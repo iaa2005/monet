@@ -1,0 +1,5 @@
+node_modules/
+bun.lock
+*.png
+src/
+test_*
