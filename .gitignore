@@ -3,3 +3,5 @@ bun.lock
 *.png
 src/
 test_*
+.env
+*.log

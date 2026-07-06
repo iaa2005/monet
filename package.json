@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "private": true,
+  "bin": {
+    "claude": "./bin/claude.js"
+  },
   "scripts": {
     "postinstall": "bun run patches/apply.js",
     "start": "bun run --preload ./macro_preload.ts entrypoints/cli.tsx",

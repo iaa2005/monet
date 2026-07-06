@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Claude Code CLI Launcher for Linux/macOS
+# Usage: claude [options] [prompt]
+# Requires: bun (https://bun.sh)
+# Requires: ANTHROPIC_API_KEY environment variable (or use --settings)
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec bun run "$SCRIPT_DIR/bin/claude.js" "$@"
