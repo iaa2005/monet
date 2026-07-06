@@ -1,6 +1,7 @@
 // Content for the claude-api bundled skill.
 // Patched: replaced build-time .md imports with runtime fs.readFileSync
 // (original code used `import x from './file.md'` which only works with bun build)
+// Updated paths to match current anthropics/skills repo structure.
 
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
@@ -12,15 +13,14 @@ function readMd(relPath: string): string {
   return readFileSync(join(__dirname, relPath), "utf-8");
 }
 
-const csharpClaudeApi = readMd("claude-api/csharp/claude-api.md");
+const csharpClaudeApi = readMd("claude-api/csharp/claude-api/README.md");
 const curlExamples = readMd("claude-api/curl/examples.md");
-const goClaudeApi = readMd("claude-api/go/claude-api.md");
-const javaClaudeApi = readMd("claude-api/java/claude-api.md");
-const phpClaudeApi = readMd("claude-api/php/claude-api.md");
-const pythonAgentSdkPatterns = readMd(
-  "claude-api/python/agent-sdk/patterns.md",
-);
-const pythonAgentSdkReadme = readMd("claude-api/python/agent-sdk/README.md");
+const goClaudeApi = readMd("claude-api/go/claude-api/README.md");
+const javaClaudeApi = readMd("claude-api/java/claude-api/README.md");
+const phpClaudeApi = readMd("claude-api/php/claude-api/README.md");
+// python/agent-sdk removed in newer skills repo — skip
+const pythonAgentSdkPatterns = "";
+const pythonAgentSdkReadme = "";
 const pythonClaudeApiBatches = readMd(
   "claude-api/python/claude-api/batches.md",
 );
@@ -34,19 +34,16 @@ const pythonClaudeApiStreaming = readMd(
 const pythonClaudeApiToolUse = readMd(
   "claude-api/python/claude-api/tool-use.md",
 );
-const rubyClaudeApi = readMd("claude-api/ruby/claude-api.md");
+const rubyClaudeApi = readMd("claude-api/ruby/claude-api/README.md");
 const skillPrompt = readMd("claude-api/SKILL.md");
 const sharedErrorCodes = readMd("claude-api/shared/error-codes.md");
 const sharedLiveSources = readMd("claude-api/shared/live-sources.md");
 const sharedModels = readMd("claude-api/shared/models.md");
 const sharedPromptCaching = readMd("claude-api/shared/prompt-caching.md");
 const sharedToolUseConcepts = readMd("claude-api/shared/tool-use-concepts.md");
-const typescriptAgentSdkPatterns = readMd(
-  "claude-api/typescript/agent-sdk/patterns.md",
-);
-const typescriptAgentSdkReadme = readMd(
-  "claude-api/typescript/agent-sdk/README.md",
-);
+// typescript/agent-sdk removed in newer skills repo — skip
+const typescriptAgentSdkPatterns = "";
+const typescriptAgentSdkReadme = "";
 const typescriptClaudeApiBatches = readMd(
   "claude-api/typescript/claude-api/batches.md",
 );
