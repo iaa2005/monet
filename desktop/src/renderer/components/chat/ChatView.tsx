@@ -1,98 +1,131 @@
-import { useEffect, useRef } from 'react'
-import { useChatStore } from '@/stores/chatStore'
-import { MarkdownViewer } from './MarkdownViewer'
-import { ToolCallBubble } from './ToolCallBubble'
-import { PermissionDialog } from './PermissionDialog'
-import { MessageInput } from './MessageInput'
-import { cn } from '@/lib/utils'
-import type { ElectronAPI, PermissionRequest, PermissionDecision } from '@/types/electron'
-import type { ChatMessage } from '@/types/chat'
+import { useEffect } from "react";
+import { useChatStore } from "@/stores/chatStore";
+import { MarkdownViewer } from "./MarkdownViewer";
+import { ToolCallBubble } from "./ToolCallBubble";
+import { MessageInput } from "./MessageInput";
+import {
+  MessageScrollerProvider,
+  MessageScroller,
+  MessageScrollerViewport,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerButton,
+} from "@/components/ui/message-scroller";
+import { Message, MessageAvatar, MessageContent } from "@/components/ui/message";
+import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Shimmer } from "@/components/ui/shimmer";
+import { ClaudeMark } from "@/components/ClaudeMark";
+import { cn } from "@/lib/utils";
+import type { ElectronAPI, PermissionRequest } from "@/types/electron";
+import type { ChatMessage } from "@/types/chat";
 
-function MessageBubble({ msg }: { msg: ChatMessage }): JSX.Element {
-  const isUser = msg.role === 'user'
-  const isTool = msg.role === 'tool'
-
-  if (isTool && msg.toolCall) {
-    return <ToolCallBubble toolCall={msg.toolCall} />
+function MessageRow({ msg }: { msg: ChatMessage }): JSX.Element {
+  if (msg.role === "tool" && msg.toolCall) {
+    return <ToolCallBubble toolCall={msg.toolCall} />;
   }
 
+  const isUser = msg.role === "user";
+
   return (
-    <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
-      <div
-        className={cn(
-          'max-w-[80%] rounded-lg px-4 py-2 text-sm',
-          isUser
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-muted',
-          msg.isError && 'border border-red-500 text-red-500',
-        )}
-      >
+    <Message align={isUser ? "end" : "start"}>
+      {!isUser && (
+        <MessageAvatar>
+          <Avatar size="sm">
+            <AvatarFallback className="bg-brand text-white">
+              <ClaudeMark className="size-3" />
+            </AvatarFallback>
+          </Avatar>
+        </MessageAvatar>
+      )}
+
+      <MessageContent>
         {isUser ? (
-          <p className="whitespace-pre-wrap">{msg.content}</p>
+          <Bubble variant="secondary" align="end">
+            <BubbleContent className="whitespace-pre-wrap">
+              {msg.content}
+            </BubbleContent>
+          </Bubble>
         ) : (
-          <MarkdownViewer content={msg.content || (msg.isStreaming ? '...' : '')} />
+          <Bubble variant="ghost">
+            <BubbleContent className={cn(msg.isError && "text-destructive")}>
+              {msg.content ? (
+                <MarkdownViewer content={msg.content} />
+              ) : msg.isStreaming ? (
+                <Shimmer>Working…</Shimmer>
+              ) : null}
+            </BubbleContent>
+          </Bubble>
         )}
-      </div>
-    </div>
-  )
+      </MessageContent>
+    </Message>
+  );
 }
 
 export function ChatView(): JSX.Element {
-  const messages = useChatStore(s => s.messages)
-  const isStreaming = useChatStore(s => s.isStreaming)
-  const error = useChatStore(s => s.error)
-  const scrollRef = useRef<HTMLDivElement>(null)
-
-  // Auto-scroll to bottom
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [messages])
+  const messages = useChatStore((s) => s.messages);
+  const error = useChatStore((s) => s.error);
+  const isEmpty = messages.length === 0 && !error;
 
   return (
     <div className="flex h-full flex-col">
-      {/* Messages area */}
-      <div ref={scrollRef} className="flex-1 overflow-auto p-4">
-        {messages.length === 0 && !error && (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
-            <p>Send a message to start</p>
+      {isEmpty ? (
+        <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
+          <div className="flex size-9 items-center justify-center rounded-lg bg-brand text-white">
+            <ClaudeMark className="size-5" />
           </div>
-        )}
-
-        <div className="space-y-3">
-          {messages.map(msg => (
-            <MessageBubble key={msg.id} msg={msg} />
-          ))}
-
-          {error && (
-            <div className="rounded-lg border border-red-500 bg-red-500/10 p-3 text-sm text-red-500">
-              {error}
-            </div>
-          )}
+          <h2 className="mt-4 text-xl font-medium text-foreground">
+            How can I help you today?
+          </h2>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Ask a question, describe a task, or type / for commands.
+          </p>
         </div>
-      </div>
+      ) : (
+        <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+          <MessageScroller className="flex-1">
+            <MessageScrollerViewport>
+              <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-6 px-4 py-6">
+                {messages.map((msg, i) => (
+                  <MessageScrollerItem
+                    key={msg.id}
+                    messageId={msg.id}
+                    scrollAnchor={i === messages.length - 1}
+                  >
+                    <MessageRow msg={msg} />
+                  </MessageScrollerItem>
+                ))}
 
-      {/* Input area */}
+                {error && (
+                  <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                    {error}
+                  </div>
+                )}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton direction="end" />
+          </MessageScroller>
+        </MessageScrollerProvider>
+      )}
+
       <MessageInput />
     </div>
-  )
+  );
 }
 
-/**
- * Permission handler hook — listens for permission requests and shows dialog.
- */
+/** Permission handler hook — auto-allows for now (MVP). */
 export function usePermissionHandler(): void {
   useEffect(() => {
-    const api = (window as unknown as { electronAPI: ElectronAPI }).electronAPI
+    const bridge = (window as unknown as { electronAPI?: ElectronAPI })
+      .electronAPI;
+    if (!bridge?.permissions) return;
 
-    const unsubscribe = api.permissions.onRequest((request: PermissionRequest) => {
-      // Show dialog via a simple approach — for MVP we auto-allow
-      // In production, this would set state in a store to show the dialog
-      console.log('Permission requested:', request)
-      api.permissions.respond('allow-once')
-    })
-
-    return unsubscribe
-  }, [])
+    const unsubscribe = bridge.permissions.onRequest(
+      (request: PermissionRequest) => {
+        console.log("Permission requested:", request);
+        bridge.permissions.respond("allow-once");
+      },
+    );
+    return unsubscribe;
+  }, []);
 }

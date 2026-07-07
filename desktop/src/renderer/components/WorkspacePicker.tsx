@@ -1,44 +1,46 @@
-import { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
-import type { ElectronAPI } from '@/types/electron'
+import { useState, useEffect } from "react";
+import { FolderOpen } from "lucide-react";
+import type { ElectronAPI } from "@/types/electron";
+
+function api(): ElectronAPI | undefined {
+  return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
+}
 
 export function WorkspacePicker(): JSX.Element {
-  const [workspace, setWorkspace] = useState('')
-  const [picking, setPicking] = useState(false)
+  const [workspace, setWorkspace] = useState("");
+  const [picking, setPicking] = useState(false);
 
   useEffect(() => {
-    const api = (window as unknown as { electronAPI: ElectronAPI }).electronAPI
-    api.workspace.get().then(setWorkspace)
-  }, [])
+    api()?.workspace.get().then(setWorkspace).catch(() => {});
+  }, []);
 
   const handlePick = async (): Promise<void> => {
-    setPicking(true)
+    setPicking(true);
     try {
-      const api = (window as unknown as { electronAPI: ElectronAPI }).electronAPI
-      const dir = await api.files.pickDirectory()
+      const dir = await api()?.files.pickDirectory();
       if (dir) {
-        await api.workspace.set(dir)
-        setWorkspace(dir)
+        await api()?.workspace.set(dir);
+        setWorkspace(dir);
       }
     } finally {
-      setPicking(false)
+      setPicking(false);
     }
-  }
+  };
 
   const displayPath = workspace
-    ? workspace.split(/[/\\]/).slice(-2).join('/')
-    : '...'
+    ? workspace.split(/[/\\]/).slice(-2).join("/")
+    : "Open folder…";
 
   return (
-    <Button
-      variant="ghost"
-      size="sm"
+    <button
+      type="button"
       onClick={handlePick}
       disabled={picking}
-      className="text-xs text-muted-foreground"
       title={workspace}
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground disabled:opacity-50 dark:hover:bg-white/[0.06]"
     >
-      📁 {displayPath}
-    </Button>
-  )
+      <FolderOpen className="size-4 shrink-0" />
+      <span className="truncate">{displayPath}</span>
+    </button>
+  );
 }

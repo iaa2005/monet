@@ -1,22 +1,29 @@
-import { useState, useCallback, useEffect, lazy, Suspense } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  lazy,
+  Suspense,
+  type ReactNode,
+} from "react";
 import {
   Home,
   Code,
-  FolderTree,
-  Terminal as TerminalIcon,
+  Plus,
   Sparkles,
   Settings,
+  FolderTree,
+  Terminal as TerminalIcon,
+  FileDiff,
+  PanelRight,
   PanelLeft,
   PanelLeftClose,
   Sun,
   Moon,
-  MoreHorizontal,
-  Plus,
-  Search,
-  ChevronRight,
-  ExternalLink,
   ChevronDown,
-  Play,
+  Search,
+  X,
+  type LucideIcon,
 } from "lucide-react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { ChatView, usePermissionHandler } from "@/components/chat/ChatView";
@@ -25,7 +32,10 @@ import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { SkillsPanel } from "@/components/SkillsPanel";
 import { DiffViewer, type DiffFile } from "@/components/diff/DiffViewer";
 import { FileTree } from "@/components/FileTree";
+import { ClaudeMark } from "@/components/ClaudeMark";
+import { Modal } from "@/components/ui/modal";
 import { useChatStore } from "@/stores/chatStore";
+import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/types/chat";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -33,7 +43,12 @@ const Terminal = lazy(() =>
   import("@/components/Terminal").then((m) => ({ default: m.Terminal })),
 );
 
-type View = "chat" | "changes" | "files" | "terminal" | "skills" | "providers";
+type View = "chat" | "changes" | "terminal" | "skills";
+type RightTab = "files" | "artifacts" | null;
+
+function api(): ElectronAPI | undefined {
+  return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
+}
 
 function useTheme(): [() => void, "light" | "dark"] {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
@@ -53,11 +68,68 @@ function useTheme(): [() => void, "light" | "dark"] {
   ];
 }
 
+/** Ghost icon button used in the header and panels. */
+function IconBtn({
+  active,
+  title,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  title: string;
+  onClick?: () => void;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      className={cn(
+        "app-no-drag flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]",
+        active && "bg-black/[0.06] text-foreground dark:bg-white/[0.08]",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Sidebar navigation row. */
+function NavRow({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-[13px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]",
+        active && "bg-black/[0.06] text-foreground dark:bg-white/[0.08]",
+      )}
+    >
+      <Icon className="size-4 shrink-0" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
 export default function App(): JSX.Element {
   const [view, setView] = useState<View>("chat");
   const [currentSessionId, setCurrentSessionId] = useState<string>();
+  const [sessionTitle, setSessionTitle] = useState("New session");
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [rightPanel, setRightPanel] = useState<"files" | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [rightTab, setRightTab] = useState<RightTab>(null);
   const [diffs] = useState<DiffFile[]>([]);
   const [toggleTheme, theme] = useTheme();
   const chatStore = useChatStore();
@@ -65,15 +137,19 @@ export default function App(): JSX.Element {
   usePermissionHandler();
 
   useEffect(() => {
-    const api = (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
-    api.workspace.get().then((ws) => {
-      document.title = `Claude Code Desktop — ${ws.split(/[/\\]/).pop() || ws}`;
-    });
+    api()
+      ?.workspace.get()
+      .then((ws) => {
+        document.title = `Claude Code — ${ws.split(/[/\\]/).pop() || ws}`;
+      })
+      .catch(() => {});
   }, []);
 
   const handleSelectSession = useCallback(
     (session: { id: string; title: string; messages: ChatMessage[] }) => {
       setCurrentSessionId(session.id);
+      setSessionTitle(session.title || "New session");
+      setView("chat");
       chatStore.clearMessages();
       useChatStore.setState({ messages: session.messages });
     },
@@ -83,9 +159,7 @@ export default function App(): JSX.Element {
   const handleDeleteSession = useCallback(
     async (id: string) => {
       try {
-        const api = (window as unknown as { electronAPI: ElectronAPI })
-          .electronAPI;
-        await api.sessions.deleteById(id);
+        await api()?.sessions.deleteById(id);
         if (id === currentSessionId) {
           setCurrentSessionId(undefined);
           chatStore.clearMessages();
@@ -97,209 +171,193 @@ export default function App(): JSX.Element {
     [currentSessionId, chatStore],
   );
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "chat", label: "Chat" },
-    {
-      id: "changes",
-      label: `Changes${diffs.length ? ` (${diffs.length})` : ""}`,
-    },
-    { id: "files", label: "Files" },
-    { id: "terminal", label: "Terminal" },
-    { id: "skills", label: "Skills" },
-    { id: "providers", label: "Settings" },
-  ];
+  const newSession = useCallback(async () => {
+    try {
+      const s = (await api()?.sessions.create()) as
+        | { id: string; title: string }
+        | undefined;
+      if (s) handleSelectSession({ id: s.id, title: s.title, messages: [] });
+    } catch {
+      /* offline / no preload */
+    }
+    setView("chat");
+  }, [handleSelectSession]);
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      {/* ─── Header (draggable, 44px) ─── */}
-      <header className="app-drag flex h-11 shrink-0 items-center border-b border-border bg-sidebar px-2">
-        {/* Segmented tabs */}
-        <div className="app-no-drag ml-1 flex min-w-0 items-center gap-2">
-          <div className="flex h-7 items-center rounded-lg bg-muted p-0.5">
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+      {/* ── Title bar ── */}
+      <header className="app-drag flex h-11 shrink-0 items-center gap-2 border-b border-border bg-sidebar px-2">
+        <div className="app-no-drag flex items-center gap-2">
+          <div className="flex size-5 items-center justify-center rounded-[5px] bg-brand text-white">
+            <ClaudeMark className="size-3" />
+          </div>
+          <div className="flex h-7 items-center rounded-lg bg-black/[0.05] p-0.5 dark:bg-white/[0.06]">
             <button
               onClick={() => setView("chat")}
-              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                 view === "chat"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
             >
               <Home className="size-3" /> Home
             </button>
             <button
               onClick={() => setView("chat")}
-              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                view !== "chat" && view !== "providers"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                view !== "chat"
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
             >
               <Code className="size-3" /> Code
             </button>
           </div>
+          <span className="ml-1 max-w-[32ch] truncate text-[13px] text-muted-foreground">
+            {sessionTitle}
+          </span>
         </div>
 
-        {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Right actions */}
-        <div className="app-no-drag ml-auto flex items-center gap-0.5">
-          <button
-            onClick={() => setRightPanel(rightPanel ? null : "files")}
-            className={`btn-ghost h-7 w-7 p-0 ${rightPanel ? "text-foreground" : ""}`}
+        <div className="app-no-drag flex items-center gap-0.5">
+          <IconBtn
+            title="Files"
+            active={rightTab === "files"}
+            onClick={() => setRightTab(rightTab === "files" ? null : "files")}
           >
-            <FolderTree className="size-3.5" />
-          </button>
-          <button
+            <PanelRight className="size-4" />
+          </IconBtn>
+          <IconBtn
+            title="Terminal"
+            active={view === "terminal"}
             onClick={() => setView("terminal")}
-            className={`btn-ghost h-7 w-7 p-0 ${view === "terminal" ? "text-foreground" : ""}`}
           >
-            <TerminalIcon className="size-3.5" />
-          </button>
-          <button
+            <TerminalIcon className="size-4" />
+          </IconBtn>
+          <IconBtn
+            title="Changes"
+            active={view === "changes"}
             onClick={() => setView("changes")}
-            className={`btn-ghost h-7 w-7 p-0 ${view === "changes" ? "text-foreground" : ""}`}
           >
-            <Play className="size-3.5" />
-          </button>
-          <button
-            onClick={() => setView("skills")}
-            className={`btn-ghost h-7 w-7 p-0 ${view === "skills" ? "text-foreground" : ""}`}
+            <FileDiff className="size-4" />
+          </IconBtn>
+          <IconBtn
+            title="Settings"
+            active={settingsOpen}
+            onClick={() => setSettingsOpen(true)}
           >
-            <Sparkles className="size-3.5" />
-          </button>
-          <button
-            onClick={() => setView("providers")}
-            className={`btn-ghost h-7 w-7 p-0 ${view === "providers" ? "text-foreground" : ""}`}
-          >
-            <Settings className="size-3.5" />
-          </button>
-          <button onClick={toggleTheme} className="btn-ghost h-7 w-7 p-0">
+            <Settings className="size-4" />
+          </IconBtn>
+          <IconBtn title="Toggle theme" onClick={toggleTheme}>
             {theme === "dark" ? (
-              <Sun className="size-3.5" />
+              <Sun className="size-4" />
             ) : (
-              <Moon className="size-3.5" />
+              <Moon className="size-4" />
             )}
-          </button>
+          </IconBtn>
         </div>
       </header>
 
-      {/* ─── Body ─── */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      {/* ── Body ── */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left sidebar */}
         {sidebarOpen && (
-          <div className="flex w-60 shrink-0 flex-col border-r border-border bg-sidebar">
-            {/* Nav */}
-            <div className="flex flex-col gap-0.5 px-2 pt-3">
-              <button
-                onClick={async () => {
-                  try {
-                    const s = await window.electronAPI.sessions.create();
-                    setCurrentSessionId(s.id);
-                  } catch {}
-                  setView("chat");
-                }}
-                className="sidebar-row"
-              >
-                <Plus className="size-4" /> New session
-              </button>
-              <button className="sidebar-row">
-                <Sparkles className="size-4" /> Artifacts
-              </button>
-              <button
-                onClick={() => setView("providers")}
-                className={`sidebar-row ${view === "providers" ? "sidebar-row-active" : ""}`}
-              >
-                <Settings className="size-4" /> Settings
-              </button>
+          <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-sidebar">
+            <div className="flex flex-col gap-0.5 p-2">
+              <NavRow icon={Plus} label="New session" onClick={newSession} />
+              <NavRow
+                icon={Sparkles}
+                label="Skills"
+                active={view === "skills"}
+                onClick={() => setView("skills")}
+              />
+              <NavRow
+                icon={Settings}
+                label="Settings"
+                active={settingsOpen}
+                onClick={() => setSettingsOpen(true)}
+              />
             </div>
 
-            {/* Recents */}
-            <div className="flex-1 min-h-0 px-2 pt-4">
-              <div className="mb-1 flex items-center justify-between px-2">
-                <span className="text-[11px] font-medium text-muted-foreground">
-                  Recent
+            <div className="flex min-h-0 flex-1 flex-col px-2">
+              <div className="flex items-center justify-between px-2 pt-2 pb-1">
+                <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
+                  Recents
                 </span>
-                <button className="rounded p-0.5 text-muted-foreground hover:text-foreground">
-                  <Search className="size-3" />
-                </button>
+                <Search className="size-3 text-muted-foreground" />
               </div>
-              <div className="scrollbar-thin -mx-1 overflow-y-auto px-1">
+              <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
                 <SessionList
                   onSelect={handleSelectSession}
                   onDelete={handleDeleteSession}
                   currentSessionId={currentSessionId}
                 />
-                <button
-                  onClick={() => setView("skills")}
-                  className="mt-2 sidebar-row"
-                >
-                  <Sparkles className="size-4" /> Skills
-                </button>
               </div>
             </div>
 
-            {/* Bottom tray */}
-            <div className="border-t border-border px-2 py-2">
+            <div className="border-t border-border p-1.5">
               <WorkspacePicker />
-              <div className="mt-2 flex items-center gap-2 rounded-full px-2 py-1.5 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
-                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px]">
+              <button className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]">
+                <div className="flex size-6 items-center justify-center rounded-full bg-brand/15 text-[11px] font-medium text-brand">
                   A
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[11px] font-medium leading-tight">
-                    User
+                <div className="min-w-0 flex-1 leading-tight">
+                  <div className="truncate text-[12px] font-medium">
+                    Aleksandr
                   </div>
-                  <div className="text-[10px] text-muted-foreground leading-tight">
+                  <div className="truncate text-[11px] text-muted-foreground">
                     Pro
                   </div>
                 </div>
-                <ChevronDown className="size-3 text-muted-foreground" />
-              </div>
+                <ChevronDown className="size-3.5 text-muted-foreground" />
+              </button>
             </div>
-          </div>
+          </aside>
         )}
 
         {/* Center */}
-        <div className="relative flex flex-1 min-w-0 flex-col overflow-hidden">
-          {/* Dot grid */}
-          <div className="pointer-events-none absolute inset-0 bg-dot-grid" />
-
-          <main className="relative flex flex-1 min-h-0 flex-col overflow-hidden">
+        <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
+          <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {view === "chat" && <ChatView />}
             {view === "changes" && (
-              <DiffViewer
-                files={diffs}
-                onAccept={() => {}}
-                onReject={() => {}}
-                onAcceptAll={() => {}}
-                onRejectAll={() => {}}
-              />
+              <div className="h-full overflow-auto">
+                <DiffViewer
+                  files={diffs}
+                  onAccept={() => {}}
+                  onReject={() => {}}
+                  onAcceptAll={() => {}}
+                  onRejectAll={() => {}}
+                />
+              </div>
             )}
             {view === "terminal" && (
               <Suspense
                 fallback={
-                  <div className="p-4 text-muted-foreground text-xs">
-                    Loading...
+                  <div className="p-4 text-xs text-muted-foreground">
+                    Loading terminal…
                   </div>
                 }
               >
                 <Terminal />
               </Suspense>
             )}
-            {view === "skills" && <SkillsPanel />}
-            {view === "providers" && (
-              <div className="p-6">
-                <ProviderSettings />
+            {view === "skills" && (
+              <div className="h-full overflow-auto">
+                <SkillsPanel />
               </div>
             )}
           </main>
 
-          {/* Sidebar toggle */}
-          <div className="flex h-7 items-center border-t border-border px-2">
+          {/* Bottom rail — sidebar toggle */}
+          <div className="flex h-7 shrink-0 items-center border-t border-border bg-sidebar px-2">
             <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="btn-ghost h-6 w-6 p-0"
+              type="button"
+              onClick={() => setSidebarOpen((o) => !o)}
+              title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+              className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
             >
               {sidebarOpen ? (
                 <PanelLeftClose className="size-3.5" />
@@ -311,23 +369,56 @@ export default function App(): JSX.Element {
         </div>
 
         {/* Right panel */}
-        {rightPanel === "files" && (
-          <div className="w-72 shrink-0 border-l border-border bg-sidebar flex flex-col">
-            <div className="flex items-center justify-between border-b border-border px-3 py-2">
-              <span className="text-xs font-medium">Files</span>
+        {rightTab && (
+          <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-sidebar">
+            <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
               <button
-                onClick={() => setRightPanel(null)}
-                className="btn-ghost h-6 w-6 p-0"
+                onClick={() => setRightTab("files")}
+                className={cn(
+                  "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                  rightTab === "files"
+                    ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
               >
-                <PanelLeftClose className="size-3.5 rotate-180" />
+                Files
               </button>
+              <button
+                onClick={() => setRightTab("artifacts")}
+                className={cn(
+                  "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                  rightTab === "artifacts"
+                    ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Artifacts
+              </button>
+              <div className="flex-1" />
+              <IconBtn title="Close panel" onClick={() => setRightTab(null)}>
+                <X className="size-4" />
+              </IconBtn>
             </div>
-            <div className="flex-1 overflow-auto">
-              <FileTree />
+            <div className="min-h-0 flex-1 overflow-auto">
+              {rightTab === "files" ? (
+                <FileTree />
+              ) : (
+                <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
+                  Artifacts published in this session appear here.
+                </div>
+              )}
             </div>
-          </div>
+          </aside>
         )}
       </div>
+
+      <Modal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        title="Settings"
+      >
+        <ProviderSettings />
+      </Modal>
     </div>
   );
 }

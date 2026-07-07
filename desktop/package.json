@@ -14,11 +14,13 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.0",
+    "@shadcn/react": "^0.2.0",
     "@tailwindcss/postcss": "^4.3.2",
     "ai": "^4.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "lucide-react": "^0.400.0",
+    "radix-ui": "^1.6.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^9.0.0",
