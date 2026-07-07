@@ -11,7 +11,11 @@ import {
   MessageScrollerItem,
   MessageScrollerButton,
 } from "@/components/ui/message-scroller";
-import { Message, MessageAvatar, MessageContent } from "@/components/ui/message";
+import {
+  Message,
+  MessageAvatar,
+  MessageContent,
+} from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Shimmer } from "@/components/ui/shimmer";
@@ -81,10 +85,8 @@ export function ChatView(): JSX.Element {
           <p className="mt-1.5 text-sm text-muted-foreground">
             Ask a question, describe a task, or type / for commands.
           </p>
-        
-          <div className="mt-4">
-            <WorkspacePicker />
-          </div></div>
+
+        </div>
       ) : (
         <MessageScrollerProvider autoScroll defaultScrollPosition="end">
           <MessageScroller className="flex-1">
@@ -112,6 +114,9 @@ export function ChatView(): JSX.Element {
         </MessageScrollerProvider>
       )}
 
+      <div className="mx-auto w-full max-w-3xl px-4 pb-1">
+        <WorkspacePicker />
+      </div>
       <MessageInput />
     </div>
   );
