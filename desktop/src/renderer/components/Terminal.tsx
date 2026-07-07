@@ -72,8 +72,8 @@ export function Terminal(): JSX.Element {
 
     const theme = isDark() ? { ...DARK_THEME } : { ...LIGHT_THEME };
     // Blend terminal background with card background
-    const cardBg = getComputedStyle(containerRef.current).backgroundColor;
-    if (cardBg && cardBg !== "rgba(0, 0, 0, 0)") theme.background = cardBg;
+    const cardBg = getComputedStyle(document.documentElement).getPropertyValue('--card').trim() || theme.background;
+    if (cardBg) theme.background = cardBg;
     const term = new XTerm({
       cursorBlink: true,
       fontSize: 13,
@@ -139,8 +139,8 @@ export function Terminal(): JSX.Element {
       if (dark !== themeRef.current) {
         themeRef.current = dark;
         const t = dark ? { ...DARK_THEME } : { ...LIGHT_THEME };
-        const bg = getComputedStyle(containerRef.current!).backgroundColor;
-        if (bg && bg !== "rgba(0, 0, 0, 0)") t.background = bg;
+        const bg = getComputedStyle(document.documentElement).getPropertyValue('--card').trim() || t.background;
+        if (bg) t.background = bg;
         term.options.theme = t;
       }
     });

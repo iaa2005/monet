@@ -254,3 +254,14 @@
 .app-no-drag {
     -webkit-app-region: no-drag;
 }
+
+/* ─── Pill scrollbar ─── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--bg-400));
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--text-400)); }
+.dark ::-webkit-scrollbar-thumb { background: hsl(0 0% 30%); }
+.dark ::-webkit-scrollbar-thumb:hover { background: hsl(0 0% 50%); }
