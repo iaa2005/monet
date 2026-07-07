@@ -14,7 +14,6 @@ const electronAPI = {
     electron: process.versions.electron,
   },
 
-  // Chat
   chat: {
     send: (request: LLMRequest): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:send", request),
@@ -27,7 +26,6 @@ const electronAPI = {
     },
   },
 
-  // Files
   files: {
     read: (path: string): Promise<string> =>
       ipcRenderer.invoke("files:read", path),
@@ -44,7 +42,6 @@ const electronAPI = {
       ipcRenderer.invoke("files:pick-directory"),
   },
 
-  // Shell
   shell: {
     run: (
       command: string,
@@ -57,7 +54,6 @@ const electronAPI = {
     }> => ipcRenderer.invoke("shell:run", command, cwd),
   },
 
-  // Providers
   providers: {
     list: (): Promise<LLMProvider[]> => ipcRenderer.invoke("providers:list"),
     get: (id: string): Promise<LLMProvider | undefined> =>
@@ -77,7 +73,6 @@ const electronAPI = {
       ipcRenderer.invoke("providers:setActive", id),
   },
 
-  // Permissions
   permissions: {
     onRequest: (
       callback: (request: PermissionRequest) => void,
@@ -92,11 +87,25 @@ const electronAPI = {
     },
   },
 
-  // Workspace
   workspace: {
     get: (): Promise<string> => ipcRenderer.invoke("workspace:get"),
     set: (path: string): Promise<{ ok: boolean; path: string }> =>
       ipcRenderer.invoke("workspace:set", path),
+  },
+
+  sessions: {
+    create: (title?: string): Promise<unknown> =>
+      ipcRenderer.invoke("sessions:create", title),
+    getById: (id: string): Promise<unknown> =>
+      ipcRenderer.invoke("sessions:get", id),
+    save: (session: unknown): Promise<void> =>
+      ipcRenderer.invoke("sessions:save", session),
+    list: (limit?: number, offset?: number): Promise<unknown[]> =>
+      ipcRenderer.invoke("sessions:list", limit, offset),
+    search: (query: string, limit?: number): Promise<unknown[]> =>
+      ipcRenderer.invoke("sessions:search", query, limit),
+    deleteById: (id: string): Promise<boolean> =>
+      ipcRenderer.invoke("sessions:delete", id),
   },
 };
 
