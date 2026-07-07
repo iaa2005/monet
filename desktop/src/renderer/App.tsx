@@ -19,7 +19,7 @@ import {
   PanelLeft,
   Sun,
   Moon,
-  
+  ChevronDown,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -324,7 +324,11 @@ export default function App(): JSX.Element {
                 active={rightTab === "artifacts"}
                 onClick={() => toggleRight("artifacts")}
               />
-              <NavRow icon={Settings} label="Customize" onClick={() => setSettingsOpen(true)} />
+              <NavRow
+                icon={Settings}
+                label="Customize"
+                onClick={() => setSettingsOpen(true)}
+              />
               <NavRow icon={ChevronDown} label="More" onClick={() => {}} />
             </div>
 
