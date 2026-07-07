@@ -31,10 +31,7 @@ const execFileAsync = promisify(execFile);
  * Get-ChildItem work) and force UTF-8 output encoding so non-ASCII text isn't
  * mojibake; elsewhere we use the default shell.
  */
-async function runShellCommand(
-  command: string,
-  cwd: string,
-): Promise<string> {
+async function runShellCommand(command: string, cwd: string): Promise<string> {
   const opts = {
     cwd,
     timeout: 60000,
@@ -60,7 +57,9 @@ async function runShellCommand(
         ],
         opts,
       );
-      return [stdout, stderr].filter(Boolean).join("\n").trim() || "(no output)";
+      return (
+        [stdout, stderr].filter(Boolean).join("\n").trim() || "(no output)"
+      );
     }
     const { stdout, stderr } = await execAsync(command, opts);
     return [stdout, stderr].filter(Boolean).join("\n").trim() || "(no output)";
@@ -195,37 +194,59 @@ function resolvePath(inputPath: string): string {
   return join(getWorkspacePath(), inputPath);
 }
 
-const SKIP_DIRS = new Set(['node_modules', '.git', '.hg', '.svn', '__pycache__', 'dist', 'out', '.next', 'build'])
-const MAX_SCAN = 5000
+const SKIP_DIRS = new Set([
+  "node_modules",
+  ".git",
+  ".hg",
+  ".svn",
+  "__pycache__",
+  "dist",
+  "out",
+  ".next",
+  "build",
+]);
+const MAX_SCAN = 5000;
 
 function globMatch(pattern: string, basePath: string): string[] {
-  const results: string[] = []
-  let scanned = 0
+  const results: string[] = [];
+  let scanned = 0;
   function walk(dir: string, parts: string[]): void {
-    if (results.length >= 100 || scanned > MAX_SCAN) return
-    if (parts.length === 0) { results.push(relative(basePath, dir)); return }
-    const [head, ...rest] = parts
-    if (head === '**') {
-      results.push(relative(basePath, dir))
+    if (results.length >= 100 || scanned > MAX_SCAN) return;
+    if (parts.length === 0) {
+      results.push(relative(basePath, dir));
+      return;
+    }
+    const [head, ...rest] = parts;
+    if (head === "**") {
+      results.push(relative(basePath, dir));
       try {
         for (const e of readdirSync(dir, { withFileTypes: true })) {
-          if (SKIP_DIRS.has(e.name)) continue
-          scanned++
-          if (e.isDirectory()) { walk(join(dir, e.name), parts); walk(join(dir, e.name), rest) }
-          else walk(join(dir, e.name), rest)
+          if (SKIP_DIRS.has(e.name)) continue;
+          scanned++;
+          if (e.isDirectory()) {
+            walk(join(dir, e.name), parts);
+            walk(join(dir, e.name), rest);
+          } else walk(join(dir, e.name), rest);
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     } else {
-      const regex = new RegExp('^' + head.replace(/\*/g, '.*').replace(/\?/g, '.') + '$')
+      const regex = new RegExp(
+        "^" + head.replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
+      );
       try {
         for (const e of readdirSync(dir, { withFileTypes: true })) {
-          if (SKIP_DIRS.has(e.name)) continue
+          if (SKIP_DIRS.has(e.name)) continue;
           if (regex.test(e.name)) {
-            if (rest.length === 0) results.push(relative(basePath, join(dir, e.name)))
-            else if (e.isDirectory()) walk(join(dir, e.name), rest)
+            if (rest.length === 0)
+              results.push(relative(basePath, join(dir, e.name)));
+            else if (e.isDirectory()) walk(join(dir, e.name), rest);
           }
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
   }
   const parts = relative(basePath, resolve(pattern))
@@ -450,6 +471,7 @@ export async function runAgent(
   for (let turn = 0; turn < maxTurns; turn++) {
     if (signal?.aborted) {
       onEvent({ type: "error", error: "Aborted" });
+      onEvent({ type: "message_stop", stop_reason: "abort" });
       return;
     }
 
@@ -459,32 +481,53 @@ export async function runAgent(
       input: Record<string, unknown>;
     }[] = [];
     let assistantText = "";
+    let streamError: string | null = null;
 
-    await adapter.stream(
-      {
-        model: provider.model,
-        system: systemPrompt,
-        messages,
-        tools: TOOLS,
-        max_tokens: 8192,
-      },
-      (event) => {
-        if (event.type === "text_delta") assistantText += event.text;
-        if (event.type === "tool_use")
-          toolCalls.push({
-            id: event.id,
-            name: event.name,
-            input: event.input,
-          });
-        onEvent(event);
-      },
-      signal,
-    );
+    try {
+      await adapter.stream(
+        {
+          model: provider.model,
+          system: systemPrompt,
+          messages,
+          tools: TOOLS,
+          max_tokens: 8192,
+        },
+        (event) => {
+          if (event.type === "text_delta") assistantText += event.text;
+          if (event.type === "tool_use")
+            toolCalls.push({
+              id: event.id,
+              name: event.name,
+              input: event.input,
+            });
+          if (event.type === "error") streamError = event.error;
+          onEvent(event);
+        },
+        signal,
+      );
+    } catch (err) {
+      streamError = err instanceof Error ? err.message : "Stream error";
+      onEvent({ type: "error", error: streamError });
+    }
+
+    // Always emit message_stop — even on error — so the frontend
+    // hides the Stop button and shows Send.
+    onEvent({
+      type: "message_stop",
+      stop_reason: streamError
+        ? "error"
+        : toolCalls.length
+          ? "tool_use"
+          : "end_turn",
+    });
+
+    if (streamError) return;
 
     // Record the assistant turn (text + tool_use blocks) so the next turn
     // and the next user message have the full context.
     const assistantBlocks: LLMContentBlock[] = [];
-    if (assistantText) assistantBlocks.push({ type: "text", text: assistantText });
+    if (assistantText)
+      assistantBlocks.push({ type: "text", text: assistantText });
     for (const tc of toolCalls)
       assistantBlocks.push({
         type: "tool_use",
@@ -495,13 +538,11 @@ export async function runAgent(
     if (assistantBlocks.length > 0)
       messages.push({
         role: "assistant",
-        content: assistantText && toolCalls.length === 0 ? assistantText : assistantBlocks,
+        content:
+          assistantText && toolCalls.length === 0
+            ? assistantText
+            : assistantBlocks,
       });
-
-    onEvent({
-      type: "message_stop",
-      stop_reason: toolCalls.length ? "tool_use" : "end_turn",
-    });
 
     if (toolCalls.length === 0) return;
 
@@ -510,11 +551,22 @@ export async function runAgent(
     for (const tc of toolCalls) {
       if (signal?.aborted) {
         onEvent({ type: "error", error: "Aborted" });
+        onEvent({ type: "message_stop", stop_reason: "abort" });
         return;
       }
-      onEvent({ type: "tool_result", toolUseID: tc.id, toolName: tc.name, content: "Running..." });
+      onEvent({
+        type: "tool_result",
+        toolUseID: tc.id,
+        toolName: tc.name,
+        content: "Running...",
+      });
       const content = await executeTool(tc.name, tc.input);
-      onEvent({ type: "tool_result", toolUseID: tc.id, toolName: tc.name, content });
+      onEvent({
+        type: "tool_result",
+        toolUseID: tc.id,
+        toolName: tc.name,
+        content,
+      });
       results.push({ tool_use_id: tc.id, content });
     }
 

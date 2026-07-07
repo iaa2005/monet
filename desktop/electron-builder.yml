@@ -4,7 +4,6 @@ directories:
   output: release
 files:
   - out/**/*
-  - "!out/renderer/**/*"
 win:
   target: nsis
   icon: build/icon.ico
