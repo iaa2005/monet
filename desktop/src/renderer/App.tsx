@@ -217,8 +217,7 @@ export default function App(): JSX.Element {
   const newSession = useCallback(async () => {
     try {
       const s = (await api()?.sessions.create()) as
-        | { id: string; title: string }
-        | undefined;
+        { id: string; title: string } | undefined;
       if (s) handleSelectSession({ id: s.id, title: s.title, messages: [] });
     } catch {
       /* offline / no preload */
@@ -397,22 +396,22 @@ export default function App(): JSX.Element {
                   <>
                     <ResizableHandle withHandle />
                     <ResizablePanel defaultSize={32} minSize={12}>
-                      <Panel className="bg-[#1a1a1a]">
-                        <div className="flex items-center justify-between border-b border-white/10 px-3 py-1.5">
-                          <span className="text-xs font-medium text-white/70">
+                      <Panel>
+                        <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
+                          <span className="text-xs font-medium text-muted-foreground">
                             Terminal
                           </span>
                           <button
                             type="button"
                             onClick={() => setTerminalOpen(false)}
-                            className="flex size-5 items-center justify-center rounded text-white/50 hover:text-white"
+                            className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
                           >
                             <X className="size-3.5" />
                           </button>
                         </div>
                         <Suspense
                           fallback={
-                            <div className="p-3 text-xs text-white/50">
+                            <div className="p-3 text-xs text-muted-foreground">
                               Loading terminal…
                             </div>
                           }
