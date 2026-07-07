@@ -70,7 +70,12 @@ export function Terminal(): JSX.Element {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const theme = isDark() ? DARK_THEME : LIGHT_THEME;
+    const theme = isDark() ? { ...DARK_THEME } : { ...LIGHT_THEME };
+    // Blend terminal background with app background
+    const appBg = getComputedStyle(document.documentElement)
+      .getPropertyValue("--background")
+      .trim();
+    if (appBg) theme.background = appBg;
     const term = new XTerm({
       cursorBlink: true,
       fontSize: 13,
@@ -135,7 +140,12 @@ export function Terminal(): JSX.Element {
       const dark = isDark();
       if (dark !== themeRef.current) {
         themeRef.current = dark;
-        term.options.theme = dark ? DARK_THEME : LIGHT_THEME;
+        const t = dark ? { ...DARK_THEME } : { ...LIGHT_THEME };
+        const bg = getComputedStyle(document.documentElement)
+          .getPropertyValue("--background")
+          .trim();
+        if (bg) t.background = bg;
+        term.options.theme = t;
       }
     });
     observer.observe(document.documentElement, {
