@@ -314,7 +314,7 @@ export default function App(): JSX.Element {
       {/* ── Body ── */}
       <div className="flex min-h-0 flex-1">
         {sidebarOpen && (
-          <aside className="flex w-60 shrink-0 flex-col">
+          <aside className="flex w-60 shrink-0 flex-col rounded-xl border border-border bg-card shadow-sm mx-1.5 my-1.5">
             <div className="flex flex-col gap-0.5 px-2">
               <NavRow icon={Plus} label="New session" onClick={newSession} />
               <NavRow
@@ -360,7 +360,7 @@ export default function App(): JSX.Element {
         )}
 
         {/* Resizable "window" panels */}
-        <div className="min-w-0 flex-1 p-1.5 pl-0">
+        <div className="min-w-0 flex-1">
           <ResizablePanelGroup
             key={rightTab ? "with-right" : "no-right"}
             direction="horizontal"
@@ -371,7 +371,7 @@ export default function App(): JSX.Element {
                 direction="vertical"
               >
                 <ResizablePanel minSize={25}>
-                  <Panel>
+                  <div className="flex h-full min-h-0 flex-col overflow-hidden">
                     {view === "chat" && <ChatView />}
                     {view === "changes" && (
                       <div className="h-full overflow-auto">
@@ -389,7 +389,7 @@ export default function App(): JSX.Element {
                         <SkillsPanel />
                       </div>
                     )}
-                  </Panel>
+                  </div>
                 </ResizablePanel>
 
                 {terminalOpen && (
