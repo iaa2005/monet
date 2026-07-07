@@ -1,57 +1,23 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+@source "../**/*.{ts,tsx}";
 
 @custom-variant dark (&:is(.dark *));
 @custom-variant data-autoscrolling (&[data-autoscrolling]);
 
-/* ─── Claude Design Tokens (extracted from official HTML) ─── */
 :root {
     --radius: 0.5rem;
-    --radius-pill: 9999px;
-
-    /* Backgrounds — warm off-white hierarchy */
     --bg-000: 0 0% 100%;
     --bg-100: 48 33.3% 97.1%;
     --bg-200: 53 28.6% 94.5%;
     --bg-300: 48 25% 92.2%;
-    --bg-400: 50 20.7% 88.6%;
-
-    /* Text */
     --text-primary: #1a1a1a;
     --text-secondary: #5c5c5c;
     --text-muted: #8a8a8a;
-    --text-disabled: #b0b0b0;
-
-    /* Accent — BLUE (not orange!) */
     --accent: #0073e6;
-    --accent-hover: #0062cc;
-    --accent-light: hsl(210 70.9% 51.6% / 0.12);
-
-    /* Brand — clay/orange (logo only) */
-    --brand: hsl(15 63.1% 59.6%);
-
-    /* Borders */
     --border-color: hsl(51 16.5% 84.5%);
-
-    /* Surface fills */
-    --fill-ghost-hover: hsl(0 0% 0% / 0.06);
-    --fill-secondary: hsl(0 0% 0% / 0.04);
-
-    /* Shadows */
-    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.04);
     --shadow-field:
         0 0 0 0.5px hsl(51 16.5% 84.5% / 0.5), 0 1px 2px hsl(0 0% 0% / 0.04);
-
-    /* Layout */
-    --sidebar-width: 240px;
-    --header-height: 44px;
-    --df-row-h: 30px;
-    --df-row-px: 8px;
-    --df-row-font: 13px;
-    --df-row-gap: 8px;
-
-    /* shadcn compat */
     --background: hsl(var(--bg-100));
     --foreground: var(--text-primary);
     --card: hsl(var(--bg-000));
@@ -85,14 +51,11 @@
     --bg-000: 60 2.1% 18.4%;
     --bg-100: 60 2.7% 14.5%;
     --bg-200: 30 3.3% 11.8%;
-    --bg-300: 60 2.6% 7.6%;
-    --text-primary: hsl(0 0% 93%);
-    --text-secondary: hsl(0 0% 65%);
-    --text-muted: hsl(0 0% 50%);
+    --text-primary: #ededed;
+    --text-secondary: #a6a6a6;
+    --text-muted: #808080;
     --border-color: hsl(0 0% 20%);
     --shadow-field: 0 0 0 0.5px hsl(0 0% 30% / 0.5);
-    --fill-ghost-hover: hsl(0 0% 100% / 0.08);
-    --fill-secondary: hsl(0 0% 100% / 0.04);
     --background: hsl(var(--bg-100));
     --foreground: var(--text-primary);
     --card: hsl(var(--bg-000));
@@ -150,14 +113,12 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
-
     --font-sans:
         "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
         Roboto, sans-serif;
     --font-mono:
         ui-monospace, "SFMono-Regular", "Cascadia Code", "Segoe UI Mono", Menlo,
         Consolas, monospace;
-
     --radius-sm: 6px;
     --radius-md: 8px;
     --radius-lg: 12px;
@@ -165,7 +126,7 @@
 
 @layer base {
     * {
-        @apply border-border;
+        border-color: var(--border);
     }
     html,
     body,
@@ -173,14 +134,15 @@
         height: 100%;
     }
     body {
-        @apply bg-background text-foreground antialiased;
+        background: var(--background);
+        color: var(--foreground);
         font-family: var(--font-sans);
         font-size: 13px;
         line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
     }
 }
 
-/* ─── Claude-style dot grid ─── */
 .bg-dot-grid {
     background-image:
         linear-gradient(to right, hsl(var(--bg-200)) 1px, transparent 1px),
@@ -188,73 +150,113 @@
     background-size: 32px 32px;
 }
 
-/* ─── Button base (cds-btn) ─── */
 .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors;
-    @apply text-muted-foreground hover:bg-black/5 hover:text-foreground;
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    font-weight: 500;
+    transition:
+        background 0.15s,
+        color 0.15s;
+    color: var(--muted-foreground);
+    outline: none;
 }
-.dark .btn-ghost {
-    @apply hover:bg-white/8;
+.btn-ghost:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--foreground);
+}
+.btn-ghost:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+.dark .btn-ghost:hover {
+    background: rgba(255, 255, 255, 0.08);
 }
 
-/* ─── Pill button ─── */
 .btn-pill {
-    @apply inline-flex h-7 items-center gap-2 rounded-full px-3 text-[13px] transition-colors;
-    @apply text-muted-foreground hover:bg-black/5 hover:text-foreground;
+    display: inline-flex;
+    height: 28px;
+    align-items: center;
+    gap: 8px;
+    border-radius: 9999px;
+    padding: 0 12px;
+    font-size: 13px;
+    transition:
+        background 0.15s,
+        color 0.15s;
+    color: var(--muted-foreground);
 }
-.dark .btn-pill {
-    @apply hover:bg-white/8;
+.btn-pill:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--foreground);
+}
+.dark .btn-pill:hover {
+    background: rgba(255, 255, 255, 0.08);
 }
 .btn-pill-active {
-    @apply bg-black/8 text-foreground;
+    background: rgba(0, 0, 0, 0.08);
+    color: var(--foreground);
 }
 .dark .btn-pill-active {
-    @apply bg-white/10;
+    background: rgba(255, 255, 255, 0.1);
 }
 
-/* ─── Input field ─── */
 .input-claude {
-    @apply w-full rounded-lg border bg-background px-3 py-2 text-[13px];
-    @apply placeholder:text-muted-foreground;
-    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-0;
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--background);
+    padding: 8px 12px;
+    font-size: 13px;
     box-shadow: var(--shadow-field);
+}
+.input-claude::placeholder {
+    color: var(--muted-foreground);
+}
+.input-claude:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--ring);
 }
 .input-claude:hover {
     box-shadow:
         0 0 0 0.5px hsl(51 16.5% 84.5% / 0.8),
-        0 2px 4px hsl(0 0% 0% / 0.06);
+        0 2px 4px rgba(0, 0, 0, 0.06);
 }
 
-/* ─── Sidebar row hover ─── */
 .sidebar-row {
-    @apply flex h-7 w-full items-center gap-2 rounded-full px-2 text-left text-[13px] transition-colors;
-    @apply text-muted-foreground hover:bg-black/5 hover:text-foreground;
+    display: flex;
+    height: 28px;
+    width: 100%;
+    align-items: center;
+    gap: 8px;
+    border-radius: 9999px;
+    padding: 0 8px;
+    text-align: left;
+    font-size: 13px;
+    transition:
+        background 0.15s,
+        color 0.15s;
+    color: var(--muted-foreground);
 }
-.dark .sidebar-row {
-    @apply hover:bg-white/8;
+.sidebar-row:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--foreground);
+}
+.dark .sidebar-row:hover {
+    background: rgba(255, 255, 255, 0.08);
 }
 .sidebar-row-active {
-    @apply bg-black/8 text-foreground;
+    background: rgba(0, 0, 0, 0.08);
+    color: var(--foreground);
 }
 .dark .sidebar-row-active {
-    @apply bg-white/10;
+    background: rgba(255, 255, 255, 0.1);
 }
 
-/* ─── Scrollbar ─── */
-@utility scrollbar-thin {
-    scrollbar-width: thin;
-    scrollbar-color: hsl(var(--bg-400)) transparent;
-    &::-webkit-scrollbar {
-        width: 6px;
-    }
-    &::-webkit-scrollbar-thumb {
-        background: hsl(var(--bg-400));
-        border-radius: 3px;
-    }
-}
-
-/* Shimmer */
 @keyframes shimmer {
     0% {
         background-position: 150% 0;
@@ -263,7 +265,7 @@
         background-position: -150% 0;
     }
 }
-@utility shimmer {
+.shimmer {
     color: transparent;
     background-image: linear-gradient(
         90deg,
@@ -275,6 +277,17 @@
     background-clip: text;
     -webkit-background-clip: text;
     animation: shimmer 2.2s linear infinite;
+}
+
+.scrollbar-thin {
+    scrollbar-width: thin;
+}
+.scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--bg-300));
+    border-radius: 3px;
 }
 
 .app-drag {
