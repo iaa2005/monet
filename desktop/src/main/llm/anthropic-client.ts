@@ -200,8 +200,6 @@ export class AnthropicClient implements LLMAdapter {
           }
         }
       }
-      // Safety: always send message_stop when stream ends
-      onEvent({ type: 'message_stop', stop_reason: 'end_turn' });
     } finally {
       reader.releaseLock();
     }
