@@ -404,6 +404,9 @@ export async function runAgent(
       signal,
     );
 
+        // Safety: ensure message_stop sent
+    onEvent({ type: "message_stop", stop_reason: "end_turn" });
+
     if (toolCalls.length === 0) return;
 
     messages.push({
