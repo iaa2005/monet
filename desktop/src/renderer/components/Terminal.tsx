@@ -184,11 +184,8 @@ export function Terminal(): JSX.Element {
   }, []);
 
   return (
-    <div className="h-full w-full p-2">
-      <div
-        ref={containerRef}
-        className="h-full w-full"
-      />
+    <div className="h-full w-full overflow-hidden p-2">
+      <div ref={containerRef} className="h-full w-full" />
     </div>
   );
 }
