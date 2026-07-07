@@ -81,8 +81,6 @@ export function Terminal(): JSX.Element {
         '"Consolas", "Consolas Powerline", "Cascadia Code", ui-monospace, monospace',
       theme,
       allowProposedApi: true,
-      allowTransparency: true,
-      disableStdin: false,
       cols: 80,
       rows: 24,
     });
