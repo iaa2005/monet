@@ -1,0 +1,19 @@
+appId: com.claude-code.desktop
+productName: Claude Code Desktop
+directories:
+  output: release
+files:
+  - out/**/*
+  - "!out/renderer/**/*"
+win:
+  target: nsis
+  icon: build/icon.ico
+mac:
+  target: dmg
+  icon: build/icon.icns
+linux:
+  target: AppImage
+  icon: build/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
