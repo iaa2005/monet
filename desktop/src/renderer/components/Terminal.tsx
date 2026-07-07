@@ -90,12 +90,17 @@ export function Terminal(): JSX.Element {
 
     // Ctrl+Shift+C/V for copy/paste (Ctrl+C reserved for SIGINT)
     term.attachCustomKeyEventHandler((e) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+      if (e.ctrlKey && e.shiftKey && e.key === "C") {
         const sel = term.getSelection();
-        if (sel) { navigator.clipboard.writeText(sel); return false; }
+        if (sel) {
+          navigator.clipboard.writeText(sel);
+          return false;
+        }
       }
-      if (e.ctrlKey && e.shiftKey && e.key === 'V') {
-        navigator.clipboard.readText().then(t => { if (t) term.paste(t); });
+      if (e.ctrlKey && e.shiftKey && e.key === "V") {
+        navigator.clipboard.readText().then((t) => {
+          if (t) term.paste(t);
+        });
         return false;
       }
       return true;
