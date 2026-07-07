@@ -149,41 +149,37 @@ function resolvePath(inputPath: string): string {
   return join(getWorkspacePath(), inputPath);
 }
 
+const SKIP_DIRS = new Set(['node_modules', '.git', '.hg', '.svn', '__pycache__', 'dist', 'out', '.next', 'build'])
+const MAX_SCAN = 5000
+
 function globMatch(pattern: string, basePath: string): string[] {
-  const results: string[] = [];
+  const results: string[] = []
+  let scanned = 0
   function walk(dir: string, parts: string[]): void {
-    if (parts.length === 0) {
-      results.push(relative(basePath, dir));
-      return;
-    }
-    const [head, ...rest] = parts;
-    if (head === "**") {
-      results.push(relative(basePath, dir));
+    if (results.length >= 100 || scanned > MAX_SCAN) return
+    if (parts.length === 0) { results.push(relative(basePath, dir)); return }
+    const [head, ...rest] = parts
+    if (head === '**') {
+      results.push(relative(basePath, dir))
       try {
         for (const e of readdirSync(dir, { withFileTypes: true })) {
-          if (e.isDirectory()) {
-            walk(join(dir, e.name), parts);
-            walk(join(dir, e.name), rest);
-          } else walk(join(dir, e.name), rest);
+          if (SKIP_DIRS.has(e.name)) continue
+          scanned++
+          if (e.isDirectory()) { walk(join(dir, e.name), parts); walk(join(dir, e.name), rest) }
+          else walk(join(dir, e.name), rest)
         }
-      } catch {
-        /* skip */
-      }
+      } catch { /* skip */ }
     } else {
-      const regex = new RegExp(
-        "^" + head.replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
-      );
+      const regex = new RegExp('^' + head.replace(/\*/g, '.*').replace(/\?/g, '.') + '$')
       try {
         for (const e of readdirSync(dir, { withFileTypes: true })) {
+          if (SKIP_DIRS.has(e.name)) continue
           if (regex.test(e.name)) {
-            if (rest.length === 0)
-              results.push(relative(basePath, join(dir, e.name)));
-            else if (e.isDirectory()) walk(join(dir, e.name), rest);
+            if (rest.length === 0) results.push(relative(basePath, join(dir, e.name)))
+            else if (e.isDirectory()) walk(join(dir, e.name), rest)
           }
         }
-      } catch {
-        /* skip */
-      }
+      } catch { /* skip */ }
     }
   }
   const parts = relative(basePath, resolve(pattern))
