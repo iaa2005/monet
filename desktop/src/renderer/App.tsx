@@ -1,11 +1,4 @@
-import {
-  useState,
-  useCallback,
-  useEffect,
-  lazy,
-  Suspense,
-  useRef,
-} from "react";
+import { useState, useCallback, useEffect, lazy, Suspense } from "react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { ChatView, usePermissionHandler } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
@@ -14,12 +7,10 @@ import { SkillsPanel } from "@/components/SkillsPanel";
 import { DiffViewer, type DiffFile } from "@/components/diff/DiffViewer";
 import { FileTree } from "@/components/FileTree";
 import { useChatStore } from "@/stores/chatStore";
-import { useSkillsStore } from "@/stores/skillsStore";
 import { Button } from "@/components/ui/button";
 import type { ChatMessage } from "@/types/chat";
 import type { ElectronAPI } from "@/types/electron";
 
-// Lazy-load heavy components
 const Terminal = lazy(() =>
   import("@/components/Terminal").then((m) => ({ default: m.Terminal })),
 );
@@ -35,9 +26,6 @@ export default function App(): JSX.Element {
   const [diffs, setDiffs] = useState<DiffFile[]>([]);
 
   const chatStore = useChatStore();
-  const activeSkills = useSkillsStore((s) =>
-    s.skills.filter((sk) => sk.enabled),
-  );
 
   usePermissionHandler();
 
@@ -47,18 +35,6 @@ export default function App(): JSX.Element {
       document.title = `Claude Code Desktop — ${ws.split(/[/\\]/).pop() || ws}`;
     });
   }, []);
-
-  const activeSkillsJson = JSON.stringify(
-    activeSkills.map((s) => s.name).sort(),
-  );
-
-  useEffect(() => {
-    (window as unknown as Record<string, unknown>).__activeSkills =
-      activeSkills;
-    (window as unknown as Record<string, unknown>).__activeSkillNames =
-      activeSkills.map((s) => s.name).join(", ");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSkillsJson]);
 
   const handleSelectSession = useCallback(
     (session: { id: string; title: string; messages: ChatMessage[] }) => {
