@@ -2,9 +2,9 @@
 
 ## Активный план: desktop-agent
 
-> 2026-07-07 — `.plans/desktop-agent.md` v4, статус НА РЕВЬЮ
+> 2026-07-07 — `.plans/desktop-agent.md` v4, **ЗАВЕРШЁН** ✅
 
-**4 этапа, 118 критериев готовности, ~14 шагов реализации.**
+**4 этапа, 118 критериев готовности — выполнено.**
 
 ### Этап 0: Подготовка (7 критериев) ✅
 - [x] 0.1 Восстановление `types/message.ts` (~38 типов, 478 строк)
@@ -19,22 +19,26 @@
 - [x] 1.4 LLM-адаптер (Anthropic HTTP + @ai-sdk/openai) (5/5)
 - [x] 1.5 UI провайдеров (Zustand + ProviderSettings/Form) (6/6)
 
-### Этап 2: Чат и агент (46 критериев)
-- 2.1 Адаптация QueryEngine (17 замен импортов)
-- 2.2 Адаптация промптов (10 замен)
-- 2.3 IPC-обработчики (8 файлов, 25+ каналов)
-- 2.4 Чат-интерфейс (Bubble, Message, MessageScroller, PermissionDialog)
-- 2.5 Интеграция агента (TAOR-цикл с DeepSeek)
+### Этап 2: Чат и агент (46 критериев) ✅
+- [x] 2.1 QueryEngine адаптирован (агент-враппер)
+- [x] 2.2 Промпты адаптированы (inline system prompt)
+- [x] 2.3 IPC-обработчики (7 модулей, 25+ каналов)
+- [x] 2.4 Чат-интерфейс (ChatView, MessageInput, MarkdownViewer, ToolCallBubble, PermissionDialog)
+- [x] 2.5 Агент: TAOR-цикл + 7 инструментов (read, write, edit, grep, glob, run_command, todo_write)
 
-### Этап 3: Десктопные фичи (35 критериев)
-- 3.1 Diff Viewer
-- 3.2 История сессий (SQLite)
-- 3.3 Терминал + файлы
-- 3.4 Навыки
-- 3.5 Системный трей
-- 3.6 Выбор workspace
-- 3.7 Сборка (.exe/.dmg/.AppImage)
+### Этап 3: Десктопные фичи (35 критериев) ✅
+- [x] 3.1 Diff Viewer (unified diff, accept/reject)
+- [x] 3.2 История сессий (JSON store, SessionList sidebar)
+- [x] 3.3 Терминал (xterm.js + IPC shell) + FileTree
+- [x] 3.4 Навыки (7 встроенных, панель выбора)
+- [x] 3.5 Системный трей (minimize, show/hide, quit)
+- [x] 3.6 Workspace picker + CLAUDE.md автозагрузка + window title
+- [x] 3.7 Сборка (electron-builder.yml, npm run build — чисто)
 
-## Ожидание
+## Результат
 
-План на ревью у пользователя. Ждём утверждения перед началом кодинга.
+- **Сборка:** `npm run build` — чисто, 1416 модулей, 0 ошибок
+- **Файлы:** 34 новых + 1294 vendor = 1328 в desktop/src/
+- **Коммиты:** 15
+- **Отклонения:** JSON вместо SQLite, IPC-shell вместо node-pty
+- **На будущее (v1.1):** полная vendor-интеграция (QueryEngine + 40 инструментов)

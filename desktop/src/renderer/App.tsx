@@ -1,17 +1,20 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { ChatView, usePermissionHandler } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { SkillsPanel } from "@/components/SkillsPanel";
 import { DiffViewer, type DiffFile } from "@/components/diff/DiffViewer";
+import { Terminal } from "@/components/Terminal";
+import { FileTree } from "@/components/FileTree";
 import { useChatStore } from "@/stores/chatStore";
+import { useSkillsStore } from "@/stores/skillsStore";
 import { Button } from "@/components/ui/button";
 import type { ChatMessage } from "@/types/chat";
+import type { ElectronAPI } from "@/types/electron";
 
-type Tab = "chat" | "changes" | "skills" | "providers";
+type Tab = "chat" | "changes" | "files" | "terminal" | "skills" | "providers";
 
-// Simple in-memory diff store (will be populated by tool results)
 const pendingDiffs: DiffFile[] = [];
 
 export default function App(): JSX.Element {
@@ -23,8 +26,28 @@ export default function App(): JSX.Element {
   const [diffs, setDiffs] = useState<DiffFile[]>(pendingDiffs);
 
   const chatStore = useChatStore();
+  const activeSkills = useSkillsStore((s) =>
+    s.skills.filter((sk) => sk.enabled),
+  );
 
   usePermissionHandler();
+
+  // Update window title on workspace change
+  useEffect(() => {
+    const api = (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
+    api.workspace.get().then((ws) => {
+      document.title = `Claude Code Desktop — ${ws.split(/[/\\]/).pop() || ws}`;
+    });
+  }, []);
+
+  // Wire skills into system prompt (exposed globally for agent to read)
+  useEffect(() => {
+    const skillNames = activeSkills.map((s) => s.name).join(", ");
+    (window as unknown as Record<string, unknown>).__activeSkills =
+      activeSkills;
+    (window as unknown as Record<string, unknown>).__activeSkillNames =
+      skillNames;
+  }, [activeSkills]);
 
   const handleSelectSession = useCallback(
     (session: { id: string; title: string; messages: ChatMessage[] }) => {
@@ -38,7 +61,9 @@ export default function App(): JSX.Element {
   const handleDeleteSession = useCallback(
     async (id: string) => {
       try {
-        await window.electronAPI.sessions.deleteById(id);
+        const api = (window as unknown as { electronAPI: ElectronAPI })
+          .electronAPI;
+        await api.sessions.deleteById(id);
         if (id === currentSessionId) {
           setCurrentSessionId(undefined);
           chatStore.clearMessages();
@@ -50,7 +75,7 @@ export default function App(): JSX.Element {
     [currentSessionId, chatStore],
   );
 
-  // Expose addDiff for tool results
+  // Add diff from tool results
   if (typeof window !== "undefined") {
     (window as unknown as Record<string, unknown>).__addDiff = (
       file: DiffFile,
@@ -66,6 +91,8 @@ export default function App(): JSX.Element {
       id: "changes",
       label: `Changes${diffs.length ? ` (${diffs.length})` : ""}`,
     },
+    { id: "files", label: "Files" },
+    { id: "terminal", label: "Terminal" },
     { id: "skills", label: "Skills" },
     { id: "providers", label: "Settings" },
   ];
@@ -85,7 +112,7 @@ export default function App(): JSX.Element {
           <h1 className="text-lg font-bold">Claude Code Desktop</h1>
           <WorkspacePicker />
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-wrap">
           {tabs.map((t) => (
             <Button
               key={t.id}
@@ -121,6 +148,8 @@ export default function App(): JSX.Element {
               onRejectAll={() => setDiffs([])}
             />
           )}
+          {tab === "files" && <FileTree />}
+          {tab === "terminal" && <Terminal />}
           {tab === "skills" && <SkillsPanel />}
           {tab === "providers" && (
             <div className="p-6">

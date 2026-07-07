@@ -89,8 +89,12 @@ const electronAPI = {
 
   workspace: {
     get: (): Promise<string> => ipcRenderer.invoke("workspace:get"),
-    set: (path: string): Promise<{ ok: boolean; path: string }> =>
+    set: (
+      path: string,
+    ): Promise<{ ok: boolean; path: string; claudeMd: string | null }> =>
       ipcRenderer.invoke("workspace:set", path),
+    getClaudeMd: (): Promise<string | null> =>
+      ipcRenderer.invoke("workspace:getClaudeMd"),
   },
 
   sessions: {

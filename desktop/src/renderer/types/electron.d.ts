@@ -57,7 +57,10 @@ export interface ElectronAPI {
   };
   workspace: {
     get: () => Promise<string>;
-    set: (path: string) => Promise<{ ok: boolean; path: string }>;
+    set: (
+      path: string,
+    ) => Promise<{ ok: boolean; path: string; claudeMd: string | null }>;
+    getClaudeMd: () => Promise<string | null>;
   };
   sessions: {
     create: (title?: string) => Promise<unknown>;
