@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "path";
 import { registerAllIPC } from "./ipc/index.js";
 import { createTray } from "./tray.js";
@@ -15,6 +15,10 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     title: "Claude Code Desktop",
+    // Hide the native title bar but keep the resizable window frame so we can
+    // draw a custom header + window controls (looks native, not Electron).
+    titleBarStyle: "hidden",
+    backgroundColor: "#f7f6f1",
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),
       sandbox: false,
@@ -38,6 +42,15 @@ function createWindow(): void {
     mainWindow?.show();
   });
 
+  // Notify the renderer when the maximized state changes so the custom
+  // maximize/restore button can update its icon.
+  mainWindow.on("maximize", () =>
+    mainWindow?.webContents.send("window:maximized", true),
+  );
+  mainWindow.on("unmaximize", () =>
+    mainWindow?.webContents.send("window:maximized", false),
+  );
+
   // Load renderer
   if (isDev && process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
@@ -48,6 +61,18 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   registerAllIPC();
+
+  // Custom window controls (frameless title bar).
+  ipcMain.handle("window:minimize", () => mainWindow?.minimize());
+  ipcMain.handle("window:toggleMaximize", () => {
+    if (!mainWindow) return false;
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+    return mainWindow.isMaximized();
+  });
+  ipcMain.handle("window:close", () => mainWindow?.close());
+  ipcMain.handle("window:isMaximized", () => mainWindow?.isMaximized() ?? false);
+
   createWindow();
   if (mainWindow) createTray(mainWindow);
 

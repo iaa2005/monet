@@ -111,6 +111,21 @@ const electronAPI = {
     deleteById: (id: string): Promise<boolean> =>
       ipcRenderer.invoke("sessions:delete", id),
   },
+
+  win: {
+    minimize: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
+    toggleMaximize: (): Promise<boolean> =>
+      ipcRenderer.invoke("window:toggleMaximize"),
+    close: (): Promise<void> => ipcRenderer.invoke("window:close"),
+    isMaximized: (): Promise<boolean> =>
+      ipcRenderer.invoke("window:isMaximized"),
+    onMaximizeChange: (callback: (maximized: boolean) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, maximized: boolean) =>
+        callback(maximized);
+      ipcRenderer.on("window:maximized", handler);
+      return () => ipcRenderer.removeListener("window:maximized", handler);
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld("electronAPI", electronAPI);

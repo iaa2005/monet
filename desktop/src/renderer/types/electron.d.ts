@@ -70,6 +70,13 @@ export interface ElectronAPI {
     search: (query: string, limit?: number) => Promise<unknown[]>;
     deleteById: (id: string) => Promise<boolean>;
   };
+  win: {
+    minimize: () => Promise<void>;
+    toggleMaximize: () => Promise<boolean>;
+    close: () => Promise<void>;
+    isMaximized: () => Promise<boolean>;
+    onMaximizeChange: (callback: (maximized: boolean) => void) => () => void;
+  };
 }
 
 declare global {
