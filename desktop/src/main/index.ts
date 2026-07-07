@@ -29,7 +29,8 @@ function createWindow(): void {
   });
 
   // Open DevTools in dev mode for debugging
-  if (isDev) {
+  // DevTools only with CLAUDE_DEVTOOLS=1
+  if (isDev && process.env.CLAUDE_DEVTOOLS) {
     mainWindow.webContents.openDevTools();
   }
 
@@ -71,7 +72,10 @@ app.whenReady().then(() => {
     return mainWindow.isMaximized();
   });
   ipcMain.handle("window:close", () => mainWindow?.close());
-  ipcMain.handle("window:isMaximized", () => mainWindow?.isMaximized() ?? false);
+  ipcMain.handle(
+    "window:isMaximized",
+    () => mainWindow?.isMaximized() ?? false,
+  );
 
   createWindow();
   if (mainWindow) createTray(mainWindow);

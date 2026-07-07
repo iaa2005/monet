@@ -184,10 +184,11 @@ export function Terminal(): JSX.Element {
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      className="h-full w-full"
-      style={{ padding: "4px" }}
-    />
+    <div className="h-full w-full p-2">
+      <div
+        ref={containerRef}
+        className="h-full w-full"
+      />
+    </div>
   );
 }
