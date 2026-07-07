@@ -16,11 +16,22 @@ function createWindow(): void {
     show: false,
     title: "Claude Code Desktop",
     webPreferences: {
-      preload: join(__dirname, "../preload/index.js"),
+      preload: join(__dirname, "../preload/index.mjs"),
       sandbox: false,
       nodeIntegration: false,
       contextIsolation: true,
+      devTools: true,
     },
+  });
+
+  // Open DevTools in dev mode for debugging
+  if (isDev) {
+    mainWindow.webContents.openDevTools();
+  }
+
+  // Log load failures
+  mainWindow.webContents.on("did-fail-load", (_event, code, desc, url) => {
+    console.error(`Failed to load: ${url} — ${code}: ${desc}`);
   });
 
   mainWindow.on("ready-to-show", () => {
