@@ -9,13 +9,13 @@ import {
   readdirSync,
   statSync,
 } from "fs";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import { resolve, join, relative } from "path";
 import type {
   LLMEvent,
   LLMMessage,
-  LLMRequest,
+  LLMContentBlock,
   LLMTool,
 } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
@@ -24,6 +24,51 @@ import { getWorkspacePath } from "../ipc/workspace.js";
 import { getSystemPrompt } from "./prompts.js";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+/**
+ * Run a shell command. On Windows we use PowerShell (so cmdlets like
+ * Get-ChildItem work) and force UTF-8 output encoding so non-ASCII text isn't
+ * mojibake; elsewhere we use the default shell.
+ */
+async function runShellCommand(
+  command: string,
+  cwd: string,
+): Promise<string> {
+  const opts = {
+    cwd,
+    timeout: 60000,
+    maxBuffer: 5 * 1024 * 1024,
+    windowsHide: true,
+    encoding: "utf8" as const,
+  };
+  try {
+    if (process.platform === "win32") {
+      const wrapped =
+        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; " +
+        "$OutputEncoding=[System.Text.Encoding]::UTF8; " +
+        command;
+      const { stdout, stderr } = await execFileAsync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-Command",
+          wrapped,
+        ],
+        opts,
+      );
+      return [stdout, stderr].filter(Boolean).join("\n").trim() || "(no output)";
+    }
+    const { stdout, stderr } = await execAsync(command, opts);
+    return [stdout, stderr].filter(Boolean).join("\n").trim() || "(no output)";
+  } catch (err: unknown) {
+    const e = err as { stdout?: string; stderr?: string; message: string };
+    return (e.stderr || e.stdout || `Error: ${e.message}`).trim() || "(error)";
+  }
+}
 
 // ─── Tool definitions ───────────────────────────────────────────────────
 
@@ -102,7 +147,8 @@ const TOOLS: LLMTool[] = [
   },
   {
     name: "run_command",
-    description: "Run a shell command. Timeout: 30s, max output: 1MB.",
+    description:
+      "Run a shell command. On Windows this runs in PowerShell (use PowerShell syntax, e.g. Get-ChildItem). Timeout: 60s.",
     input_schema: {
       type: "object",
       properties: {
@@ -315,18 +361,8 @@ async function executeTool(
       }
     }
     case "run_command": {
-      try {
-        const cwd = input.cwd ? resolvePath(input.cwd as string) : ws;
-        const { stdout, stderr } = await execAsync(input.command as string, {
-          cwd,
-          timeout: 30000,
-          maxBuffer: 1048576,
-        });
-        return [stdout, stderr].filter(Boolean).join("\n") || "(no output)";
-      } catch (err: unknown) {
-        const e = err as { stdout?: string; stderr?: string; message: string };
-        return e.stderr || e.stdout || `Error: ${e.message}`;
-      }
+      const cwd = input.cwd ? resolvePath(input.cwd as string) : ws;
+      return runShellCommand(input.command as string, cwd);
     }
     case "todo_write": {
       const todos = input.todos as Array<{
@@ -351,10 +387,40 @@ async function executeTool(
 export interface AgentRunOptions {
   maxTurns?: number;
   signal?: AbortSignal;
+  /** Prepended to the system prompt (used by chat modes like Plan/Concise). */
+  modeDirective?: string;
+}
+
+/**
+ * Per-session conversation history kept in the proper multi-turn format
+ * (assistant text + tool_use blocks, user tool_result blocks). This is what
+ * makes the chat multi-turn: each send continues the same array.
+ */
+const conversations = new Map<string, LLMMessage[]>();
+
+/** Drop a session's in-memory history (e.g. on "New session"). */
+export function resetConversation(sessionId: string): void {
+  conversations.delete(sessionId);
+}
+
+/**
+ * Seed a session's history from previously persisted display messages so a
+ * reopened chat can continue (text-only reconstruction of past turns).
+ */
+export function seedConversation(
+  sessionId: string,
+  priorText: { role: "user" | "assistant"; content: string }[],
+): void {
+  if (conversations.has(sessionId)) return;
+  conversations.set(
+    sessionId,
+    priorText.filter((m) => m.content).map((m) => ({ ...m })),
+  );
 }
 
 export async function runAgent(
-  userMessage: string,
+  sessionId: string,
+  userContent: string | LLMContentBlock[],
   onEvent: (event: LLMEvent) => void,
   options: AgentRunOptions = {},
 ): Promise<void> {
@@ -368,9 +434,18 @@ export async function runAgent(
   }
 
   const adapter = createAdapter(provider);
-  const systemPrompt = await getSystemPrompt();
-  const { maxTurns = 15, signal } = options;
-  const messages: LLMMessage[] = [{ role: "user", content: userMessage }];
+  const basePrompt = await getSystemPrompt();
+  const { maxTurns = 15, signal, modeDirective } = options;
+  const systemPrompt = modeDirective
+    ? `${modeDirective}\n\n${basePrompt}`
+    : basePrompt;
+
+  let messages = conversations.get(sessionId);
+  if (!messages) {
+    messages = [];
+    conversations.set(sessionId, messages);
+  }
+  messages.push({ role: "user", content: userContent });
 
   for (let turn = 0; turn < maxTurns; turn++) {
     if (signal?.aborted) {
@@ -383,6 +458,7 @@ export async function runAgent(
       name: string;
       input: Record<string, unknown>;
     }[] = [];
+    let assistantText = "";
 
     await adapter.stream(
       {
@@ -393,6 +469,7 @@ export async function runAgent(
         max_tokens: 8192,
       },
       (event) => {
+        if (event.type === "text_delta") assistantText += event.text;
         if (event.type === "tool_use")
           toolCalls.push({
             id: event.id,
@@ -404,28 +481,41 @@ export async function runAgent(
       signal,
     );
 
-        // Safety: ensure message_stop sent
-    onEvent({ type: "message_stop", stop_reason: "end_turn" });
-
-    if (toolCalls.length === 0) return;
-
-    messages.push({
-      role: "assistant",
-      content: toolCalls.map((tc) => ({
-        type: "tool_use" as const,
+    // Record the assistant turn (text + tool_use blocks) so the next turn
+    // and the next user message have the full context.
+    const assistantBlocks: LLMContentBlock[] = [];
+    if (assistantText) assistantBlocks.push({ type: "text", text: assistantText });
+    for (const tc of toolCalls)
+      assistantBlocks.push({
+        type: "tool_use",
         id: tc.id,
         name: tc.name,
         input: tc.input,
-      })),
+      });
+    if (assistantBlocks.length > 0)
+      messages.push({
+        role: "assistant",
+        content: assistantText && toolCalls.length === 0 ? assistantText : assistantBlocks,
+      });
+
+    onEvent({
+      type: "message_stop",
+      stop_reason: toolCalls.length ? "tool_use" : "end_turn",
     });
 
-    // Execute tools with progress events
-    const results: { tool_use_id: string; content: string }[] = []
+    if (toolCalls.length === 0) return;
+
+    // Execute tools with progress events.
+    const results: { tool_use_id: string; content: string }[] = [];
     for (const tc of toolCalls) {
-      onEvent({ type: 'tool_result', toolUseID: tc.id, toolName: tc.name, content: 'Running...' })
-      const content = await executeTool(tc.name, tc.input)
-      onEvent({ type: 'tool_result', toolUseID: tc.id, toolName: tc.name, content })
-      results.push({ tool_use_id: tc.id, content })
+      if (signal?.aborted) {
+        onEvent({ type: "error", error: "Aborted" });
+        return;
+      }
+      onEvent({ type: "tool_result", toolUseID: tc.id, toolName: tc.name, content: "Running..." });
+      const content = await executeTool(tc.name, tc.input);
+      onEvent({ type: "tool_result", toolUseID: tc.id, toolName: tc.name, content });
+      results.push({ tool_use_id: tc.id, content });
     }
 
     messages.push({

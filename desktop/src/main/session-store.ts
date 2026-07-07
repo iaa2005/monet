@@ -5,11 +5,11 @@
  * Tables: sessions, messages.
  */
 
-import { app } from "electron";
 import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "module";
+import { getDataSubdir } from "./data-dir.js";
 
 const require = createRequire(import.meta.url);
 const Database = require("better-sqlite3");
@@ -42,8 +42,45 @@ export interface SessionWithMessages extends Session {
   messages: ChatMessage[];
 }
 
+export interface StatsResult {
+  sessions: number;
+  messages: number;
+  userMessages: number;
+  activeDays: number;
+  currentStreak: number;
+  longestStreak: number;
+  peakHour: number | null;
+  approxTokens: number;
+  perDay: { date: string; count: number }[];
+}
+
+interface SessionRow {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+}
+
+function rowToSession(r: SessionRow): Session {
+  return {
+    id: r.id,
+    title: r.title,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    messageCount: r.message_count,
+  };
+}
+
+function localDay(ts: number): string {
+  const d = new Date(ts);
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
 function getDbPath(): string {
-  const dir = join(app.getPath("userData"), "sessions");
+  const dir = getDataSubdir("sessions");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   return join(dir, "sessions.db");
 }
@@ -204,20 +241,22 @@ export class SessionStore {
 
   list(limit = 50, offset = 0): Session[] {
     const d = getDb();
-    return d
+    const rows = d
       .prepare(
         "SELECT * FROM sessions ORDER BY updated_at DESC LIMIT ? OFFSET ?",
       )
-      .all(limit, offset) as Session[];
+      .all(limit, offset) as SessionRow[];
+    return rows.map(rowToSession);
   }
 
   search(query: string, limit = 20): Session[] {
     const d = getDb();
-    return d
+    const rows = d
       .prepare(
         "SELECT * FROM sessions WHERE title LIKE ? ORDER BY updated_at DESC LIMIT ?",
       )
-      .all(`%${query}%`, limit) as Session[];
+      .all(`%${query}%`, limit) as SessionRow[];
+    return rows.map(rowToSession);
   }
 
   delete(id: string): boolean {
@@ -234,6 +273,75 @@ export class SessionStore {
       id,
     );
     return this.get(id);
+  }
+
+  stats(rangeDays?: number): StatsResult {
+    const d = getDb();
+    const cutoff = rangeDays ? Date.now() - rangeDays * 86400000 : 0;
+    const rows = d
+      .prepare(
+        "SELECT session_id, role, content, timestamp FROM messages WHERE timestamp >= ? ORDER BY timestamp ASC",
+      )
+      .all(cutoff) as {
+      session_id: string;
+      role: string;
+      content: string;
+      timestamp: number;
+    }[];
+
+    const sessionIds = new Set<string>();
+    const dayCounts = new Map<string, number>();
+    const hourCounts = new Array<number>(24).fill(0);
+    let approxTokens = 0;
+    let userMessages = 0;
+
+    for (const r of rows) {
+      sessionIds.add(r.session_id);
+      approxTokens += Math.ceil((r.content?.length ?? 0) / 4);
+      if (r.role === "user") userMessages++;
+      dayCounts.set(localDay(r.timestamp), (dayCounts.get(localDay(r.timestamp)) ?? 0) + 1);
+      hourCounts[new Date(r.timestamp).getHours()]++;
+    }
+
+    const days = [...dayCounts.keys()].sort();
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let run = 0;
+    let prev: number | null = null;
+    for (const day of days) {
+      const t = Date.parse(day);
+      run = prev !== null && t - prev === 86400000 ? run + 1 : 1;
+      longestStreak = Math.max(longestStreak, run);
+      prev = t;
+    }
+    const daySet = new Set(days);
+    const cursor = new Date();
+    cursor.setHours(0, 0, 0, 0);
+    while (daySet.has(localDay(cursor.getTime()))) {
+      currentStreak++;
+      cursor.setTime(cursor.getTime() - 86400000);
+    }
+
+    let peakHour: number | null = null;
+    let peakVal = 0;
+    hourCounts.forEach((v, h) => {
+      if (v > peakVal) {
+        peakVal = v;
+        peakHour = h;
+      }
+    });
+
+    return {
+      sessions: sessionIds.size,
+      messages: rows.length,
+      userMessages,
+      activeDays: dayCounts.size,
+      currentStreak,
+      longestStreak,
+      peakHour,
+      approxTokens,
+      perDay: days.map((date) => ({ date, count: dayCounts.get(date) ?? 0 })),
+    };
   }
 }
 

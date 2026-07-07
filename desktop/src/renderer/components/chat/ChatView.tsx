@@ -20,6 +20,7 @@ import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Shimmer } from "@/components/ui/shimmer";
 import { ClaudeMark } from "@/components/ClaudeMark";
+import { StatsDashboard } from "@/components/StatsDashboard";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, PermissionRequest } from "@/types/electron";
@@ -75,17 +76,19 @@ export function ChatView(): JSX.Element {
   return (
     <div className="flex h-full flex-col">
       {isEmpty ? (
-        <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
-          <div className="flex size-9 items-center justify-center rounded-lg bg-brand text-white">
-            <ClaudeMark className="size-5" />
+        <div className="flex-1 overflow-auto">
+          <div className="flex flex-col items-center px-4 pt-12 text-center">
+            <div className="flex size-9 items-center justify-center rounded-lg bg-brand text-white">
+              <ClaudeMark className="size-5" />
+            </div>
+            <h2 className="mt-4 text-xl font-medium text-foreground">
+              How can I help you today?
+            </h2>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              Ask a question, describe a task, or type / for commands.
+            </p>
           </div>
-          <h2 className="mt-4 text-xl font-medium text-foreground">
-            How can I help you today?
-          </h2>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            Ask a question, describe a task, or type / for commands.
-          </p>
-
+          <StatsDashboard />
         </div>
       ) : (
         <MessageScrollerProvider autoScroll defaultScrollPosition="end">

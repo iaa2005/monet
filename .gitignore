@@ -5,3 +5,4 @@ src/
 test_*
 .env
 *.log
+.monet

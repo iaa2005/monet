@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { LLMEvent, LLMRequest } from "../main/llm/adapter.js";
+import type { LLMEvent } from "../main/llm/adapter.js";
 import type { LLMProvider, LLMProviderInput } from "../main/provider/types.js";
 import type {
   PermissionRequest,
@@ -15,9 +15,22 @@ const electronAPI = {
   },
 
   chat: {
-    send: (request: LLMRequest): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke("chat:send", request),
+    send: (payload: {
+      sessionId?: string;
+      message: string;
+      seed?: { role: "user" | "assistant"; content: string }[];
+      mode?: string;
+      attachments?: {
+        name: string;
+        mediaType: string;
+        kind: "text" | "image";
+        text?: string;
+        dataBase64?: string;
+      }[];
+    }): Promise<{ ok: boolean }> => ipcRenderer.invoke("chat:send", payload),
     abort: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("chat:abort"),
+    reset: (sessionId?: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("chat:reset", sessionId),
     onToken: (callback: (event: LLMEvent) => void): (() => void) => {
       const handler = (_e: Electron.IpcRendererEvent, event: LLMEvent) =>
         callback(event);
@@ -110,6 +123,20 @@ const electronAPI = {
       ipcRenderer.invoke("sessions:search", query, limit),
     deleteById: (id: string): Promise<boolean> =>
       ipcRenderer.invoke("sessions:delete", id),
+  },
+
+  stats: {
+    get: (rangeDays?: number): Promise<unknown> =>
+      ipcRenderer.invoke("stats:get", rangeDays),
+  },
+
+  settings: {
+    getDataDir: (): Promise<{ dir: string; isDefault: boolean }> =>
+      ipcRenderer.invoke("settings:getDataDir"),
+    setDataDir: (dir: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("settings:setDataDir", dir),
+    pickDataDir: (): Promise<string | null> =>
+      ipcRenderer.invoke("settings:pickDataDir"),
   },
 
   win: {

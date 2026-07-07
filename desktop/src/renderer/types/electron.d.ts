@@ -13,8 +13,21 @@ export interface ElectronAPI {
   platform: string;
   versions: { node: string; chrome: string; electron: string };
   chat: {
-    send: (request: LLMRequest) => Promise<{ ok: boolean }>;
+    send: (payload: {
+      sessionId?: string;
+      message: string;
+      seed?: { role: "user" | "assistant"; content: string }[];
+      mode?: string;
+      attachments?: {
+        name: string;
+        mediaType: string;
+        kind: "text" | "image";
+        text?: string;
+        dataBase64?: string;
+      }[];
+    }) => Promise<{ ok: boolean }>;
     abort: () => Promise<{ ok: boolean }>;
+    reset: (sessionId?: string) => Promise<{ ok: boolean }>;
     onToken: (callback: (event: LLMEvent) => void) => () => void;
   };
   files: {
@@ -69,6 +82,24 @@ export interface ElectronAPI {
     list: (limit?: number, offset?: number) => Promise<unknown[]>;
     search: (query: string, limit?: number) => Promise<unknown[]>;
     deleteById: (id: string) => Promise<boolean>;
+  };
+  stats: {
+    get: (rangeDays?: number) => Promise<{
+      sessions: number;
+      messages: number;
+      userMessages: number;
+      activeDays: number;
+      currentStreak: number;
+      longestStreak: number;
+      peakHour: number | null;
+      approxTokens: number;
+      perDay: { date: string; count: number }[];
+    }>;
+  };
+  settings: {
+    getDataDir: () => Promise<{ dir: string; isDefault: boolean }>;
+    setDataDir: (dir: string) => Promise<{ ok: boolean }>;
+    pickDataDir: () => Promise<string | null>;
   };
   win: {
     minimize: () => Promise<void>;

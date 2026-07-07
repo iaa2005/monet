@@ -30,6 +30,7 @@ import { FilterDropdown } from "@/components/FilterDropdown";
 import { SkillsPanel } from "@/components/SkillsPanel";
 import { DiffViewer, type DiffFile } from "@/components/diff/DiffViewer";
 import { FileTree } from "@/components/FileTree";
+import { FileViewer } from "@/components/FileViewer";
 import { ClaudeMark } from "@/components/ClaudeMark";
 import { WindowControls } from "@/components/WindowControls";
 import { AccountMenu } from "@/components/AccountMenu";
@@ -162,6 +163,7 @@ export default function App(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>(null);
+  const [openFilePath, setOpenFilePath] = useState<string | null>(null);
   const [diffs] = useState<DiffFile[]>([]);
   const { theme, setTheme, toggle } = useTheme();
   const chatStore = useChatStore();
@@ -195,7 +197,11 @@ export default function App(): JSX.Element {
       setSessionTitle(session.title || "New session");
       setView("chat");
       chatStore.clearMessages();
-      useChatStore.setState({ messages: session.messages });
+      useChatStore.setState({
+        messages: session.messages,
+        currentSessionId: session.id,
+        usage: null,
+      });
     },
     [chatStore],
   );
@@ -204,6 +210,7 @@ export default function App(): JSX.Element {
     async (id: string) => {
       try {
         await api()?.sessions.deleteById(id);
+        useChatStore.getState().bumpSessions();
         if (id === currentSessionId) {
           setCurrentSessionId(undefined);
           chatStore.clearMessages();
@@ -219,7 +226,11 @@ export default function App(): JSX.Element {
     try {
       const s = (await api()?.sessions.create()) as
         { id: string; title: string } | undefined;
-      if (s) handleSelectSession({ id: s.id, title: s.title, messages: [] });
+      if (s) {
+        await api()?.chat.reset(s.id);
+        handleSelectSession({ id: s.id, title: s.title, messages: [] });
+        useChatStore.getState().bumpSessions();
+      }
     } catch {
       /* offline / no preload */
     }
@@ -367,22 +378,31 @@ export default function App(): JSX.Element {
               >
                 <ResizablePanel minSize={25}>
                   <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                    {view === "chat" && <ChatView />}
-                    {view === "changes" && (
-                      <div className="h-full overflow-auto">
-                        <DiffViewer
-                          files={diffs}
-                          onAccept={() => {}}
-                          onReject={() => {}}
-                          onAcceptAll={() => {}}
-                          onRejectAll={() => {}}
-                        />
-                      </div>
-                    )}
-                    {view === "skills" && (
-                      <div className="h-full overflow-auto">
-                        <SkillsPanel />
-                      </div>
+                    {openFilePath ? (
+                      <FileViewer
+                        path={openFilePath}
+                        onClose={() => setOpenFilePath(null)}
+                      />
+                    ) : (
+                      <>
+                        {view === "chat" && <ChatView />}
+                        {view === "changes" && (
+                          <div className="h-full overflow-auto">
+                            <DiffViewer
+                              files={diffs}
+                              onAccept={() => {}}
+                              onReject={() => {}}
+                              onAcceptAll={() => {}}
+                              onRejectAll={() => {}}
+                            />
+                          </div>
+                        )}
+                        {view === "skills" && (
+                          <div className="h-full overflow-auto">
+                            <SkillsPanel />
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </ResizablePanel>
@@ -460,7 +480,7 @@ export default function App(): JSX.Element {
                     </div>
                     <div className="min-h-0 flex-1 overflow-auto">
                       {rightTab === "files" ? (
-                        <FileTree />
+                        <FileTree onSelectFile={(p) => setOpenFilePath(p)} />
                       ) : (
                         <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
                           Artifacts published in this session appear here.

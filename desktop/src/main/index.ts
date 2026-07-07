@@ -2,6 +2,11 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "path";
 import { registerAllIPC } from "./ipc/index.js";
 import { createTray } from "./tray.js";
+import { applyDataDirEnv } from "./data-dir.js";
+
+// Redirect vendored Claude Code config/memory into our data dir before anything
+// touches the filesystem.
+applyDataDirEnv();
 
 const isDev = !app.isPackaged;
 

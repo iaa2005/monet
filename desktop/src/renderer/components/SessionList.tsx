@@ -1,8 +1,21 @@
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useChatStore } from "@/stores/chatStore";
 import type { ChatMessage } from "@/types/chat";
 import type { ElectronAPI } from "@/types/electron";
+
+function relTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d`;
+  return new Date(iso).toLocaleDateString();
+}
 
 interface SessionSummary {
   id: string;
@@ -33,6 +46,7 @@ export function SessionList({
 }: SessionListProps): JSX.Element {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const version = useChatStore((s) => s.sessionsVersion);
 
   const loadSessions = async (): Promise<void> => {
     try {
@@ -45,8 +59,18 @@ export function SessionList({
     }
   };
 
+  // Reload whenever sessions change (new/save/delete) or the window regains focus.
   useEffect(() => {
     loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version]);
+
+  useEffect(() => {
+    const onFocus = (): void => {
+      loadSessions();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   const handleSelect = async (id: string): Promise<void> => {
@@ -100,13 +124,20 @@ export function SessionList({
                 active ? "bg-link" : "bg-transparent",
               )}
             />
-            <span
-              className={cn(
-                "min-w-0 flex-1 truncate text-[13px]",
-                active ? "text-foreground" : "text-muted-foreground",
+            <span className="min-w-0 flex-1">
+              <span
+                className={cn(
+                  "block truncate text-[13px]",
+                  active ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {s.title || "New session"}
+              </span>
+              {s.messageCount > 0 && (
+                <span className="block truncate text-[11px] text-muted-foreground/70">
+                  {s.messageCount} msgs · {relTime(s.updatedAt)}
+                </span>
               )}
-            >
-              {s.title || "New session"}
             </span>
             <button
               type="button"

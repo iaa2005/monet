@@ -9,20 +9,28 @@ function generateId(): string {
   return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
 }
 
+export interface ChatUsage {
+  input_tokens: number;
+  output_tokens: number;
+}
+
 interface ChatStore {
   messages: ChatMessage[];
   isStreaming: boolean;
   error: string | null;
+  currentSessionId?: string;
+  usage: ChatUsage | null;
+  /** Bumped whenever sessions change, so the sidebar reloads. */
+  sessionsVersion: number;
 
+  setCurrentSessionId: (id?: string) => void;
+  bumpSessions: () => void;
   addUserMessage: (content: string) => ChatMessage;
   addAssistantMessage: () => ChatMessage;
   appendToLastMessage: (text: string) => void;
   addToolCall: (toolCall: ToolCall) => void;
   updateToolCall: (id: string, update: Partial<ToolCall>) => void;
-  finishStreaming: (usage?: {
-    input_tokens: number;
-    output_tokens: number;
-  }) => void;
+  finishStreaming: (usage?: ChatUsage) => void;
   setError: (error: string) => void;
   clearMessages: () => void;
   handleLLMEvent: (event: LLMEvent) => void;
@@ -32,6 +40,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   isStreaming: false,
   error: null,
+  currentSessionId: undefined,
+  usage: null,
+  sessionsVersion: 0,
+
+  setCurrentSessionId: (id) => set({ currentSessionId: id }),
+  bumpSessions: () => set((s) => ({ sessionsVersion: s.sessionsVersion + 1 })),
 
   addUserMessage: (content) => {
     const msg: ChatMessage = {
@@ -95,14 +109,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }));
   },
 
-  finishStreaming: (_usage) => {
+  finishStreaming: (usage) => {
     set((s) => {
       const msgs = [...s.messages];
       const last = msgs[msgs.length - 1];
       if (last && last.role === "assistant") {
         msgs[msgs.length - 1] = { ...last, isStreaming: false };
       }
-      return { messages: msgs, isStreaming: false };
+      return { messages: msgs, isStreaming: false, usage: usage ?? s.usage };
     });
   },
 
@@ -111,7 +125,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   clearMessages: () => {
-    set({ messages: [], error: null, isStreaming: false });
+    set({ messages: [], error: null, isStreaming: false, usage: null });
   },
 
   handleLLMEvent: (event) => {

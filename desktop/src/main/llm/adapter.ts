@@ -10,6 +10,10 @@ export interface LLMMessage {
 export type LLMContentBlock =
   | { type: "text"; text: string }
   | {
+      type: "image";
+      source: { type: "base64"; media_type: string; data: string };
+    }
+  | {
       type: "tool_use";
       id: string;
       name: string;

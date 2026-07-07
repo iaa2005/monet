@@ -9,6 +9,8 @@ import { registerProvidersIPC } from "./providers.js";
 import { registerPermissionsIPC } from "./permissions.js";
 import { registerWorkspaceIPC } from "./workspace.js";
 import { registerSessionsIPC } from "./sessions.js";
+import { registerSettingsIPC } from "./settings.js";
+import { registerStatsIPC } from "./stats.js";
 
 export function registerAllIPC(): void {
   registerChatIPC();
@@ -18,4 +20,6 @@ export function registerAllIPC(): void {
   registerPermissionsIPC();
   registerWorkspaceIPC();
   registerSessionsIPC();
+  registerSettingsIPC();
+  registerStatsIPC();
 }

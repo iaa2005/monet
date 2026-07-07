@@ -5,18 +5,16 @@
  * API keys are encrypted via Electron safeStorage (DPAPI/Keychain/libsecret).
  */
 
-import { app } from 'electron'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'node:crypto'
 import { safeStorage } from 'electron'
 import type { LLMProvider, LLMProviderInput } from './types.js'
 import { PRESET_PROVIDERS } from './types.js'
+import { getDataSubdir } from '../data-dir.js'
 
 function getStoragePath(): string {
-  const dir = join(app.getPath('userData'), 'providers')
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  return join(dir, 'providers.json')
+  return join(getDataSubdir('providers'), 'providers.json')
 }
 
 function encrypt(text: string): string {
