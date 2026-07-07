@@ -1,10 +1,13 @@
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+/**
+ * Markdown viewer — lightweight, no heavy syntax highlighter in MVP.
+ * Uses basic <pre><code> for code blocks.
+ */
+
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface MarkdownViewerProps {
-  content: string
+  content: string;
 }
 
 export function MarkdownViewer({ content }: MarkdownViewerProps): JSX.Element {
@@ -14,33 +17,29 @@ export function MarkdownViewer({ content }: MarkdownViewerProps): JSX.Element {
         remarkPlugins={[remarkGfm]}
         components={{
           code({ className, children, ...props }) {
-            const match = /language-(\w+)/.exec(className || '')
-            const codeStr = String(children).replace(/\n$/, '')
-            const { node: _unused, ...rest } = props as Record<string, unknown>
+            const { node: _unused, ...rest } = props as Record<string, unknown>;
+            const codeStr = String(children).replace(/\n$/, "");
 
-            if (match) {
+            if (className) {
               return (
-                <SyntaxHighlighter
-                  style={oneDark}
-                  language={match[1]}
-                  PreTag="div"
-                  {...rest}
-                >
-                  {codeStr}
-                </SyntaxHighlighter>
-              )
+                <pre className="overflow-auto rounded-md bg-muted p-3 text-xs">
+                  <code className={className} {...rest}>
+                    {codeStr}
+                  </code>
+                </pre>
+              );
             }
 
             return (
-              <code className={className} {...rest}>
+              <code className="rounded bg-muted px-1 py-0.5 text-xs" {...rest}>
                 {children}
               </code>
-            )
+            );
           },
         }}
       >
         {content}
       </ReactMarkdown>
     </div>
-  )
+  );
 }

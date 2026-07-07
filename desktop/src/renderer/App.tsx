@@ -1,11 +1,10 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, lazy, Suspense } from "react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { ChatView, usePermissionHandler } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { SkillsPanel } from "@/components/SkillsPanel";
 import { DiffViewer, type DiffFile } from "@/components/diff/DiffViewer";
-import { Terminal } from "@/components/Terminal";
 import { FileTree } from "@/components/FileTree";
 import { useChatStore } from "@/stores/chatStore";
 import { useSkillsStore } from "@/stores/skillsStore";
@@ -13,9 +12,12 @@ import { Button } from "@/components/ui/button";
 import type { ChatMessage } from "@/types/chat";
 import type { ElectronAPI } from "@/types/electron";
 
-type Tab = "chat" | "changes" | "files" | "terminal" | "skills" | "providers";
+// Lazy-load heavy components
+const Terminal = lazy(() =>
+  import("@/components/Terminal").then((m) => ({ default: m.Terminal })),
+);
 
-const pendingDiffs: DiffFile[] = [];
+type Tab = "chat" | "changes" | "files" | "terminal" | "skills" | "providers";
 
 export default function App(): JSX.Element {
   const [tab, setTab] = useState<Tab>("chat");
@@ -23,7 +25,7 @@ export default function App(): JSX.Element {
     string | undefined
   >();
   const [showSessions, setShowSessions] = useState(true);
-  const [diffs, setDiffs] = useState<DiffFile[]>(pendingDiffs);
+  const [diffs, setDiffs] = useState<DiffFile[]>([]);
 
   const chatStore = useChatStore();
   const activeSkills = useSkillsStore((s) =>
@@ -32,7 +34,6 @@ export default function App(): JSX.Element {
 
   usePermissionHandler();
 
-  // Update window title on workspace change
   useEffect(() => {
     const api = (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
     api.workspace.get().then((ws) => {
@@ -40,7 +41,6 @@ export default function App(): JSX.Element {
     });
   }, []);
 
-  // Wire skills into system prompt (exposed globally for agent to read)
   useEffect(() => {
     const skillNames = activeSkills.map((s) => s.name).join(", ");
     (window as unknown as Record<string, unknown>).__activeSkills =
@@ -74,16 +74,6 @@ export default function App(): JSX.Element {
     },
     [currentSessionId, chatStore],
   );
-
-  // Add diff from tool results
-  if (typeof window !== "undefined") {
-    (window as unknown as Record<string, unknown>).__addDiff = (
-      file: DiffFile,
-    ) => {
-      setDiffs((prev) => [...prev, file]);
-      setTab("changes");
-    };
-  }
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "chat", label: "Chat" },
@@ -149,7 +139,17 @@ export default function App(): JSX.Element {
             />
           )}
           {tab === "files" && <FileTree />}
-          {tab === "terminal" && <Terminal />}
+          {tab === "terminal" && (
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center text-muted-foreground">
+                  Loading terminal...
+                </div>
+              }
+            >
+              <Terminal />
+            </Suspense>
+          )}
           {tab === "skills" && <SkillsPanel />}
           {tab === "providers" && (
             <div className="p-6">
