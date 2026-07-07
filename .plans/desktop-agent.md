@@ -1435,7 +1435,7 @@ textarea, dropdown-menu, tooltip, scroll-area, table, badge
 
 #### 2.1 QueryEngine
 - [x] **2.1.1** — Скопирован в `src/main/agent/QueryEngine.ts` (vendor-оригинал не тронут)
-- [x] **2.1.2** (agent/index.ts вместо vendor QueryEngine) — Скопирован `query.ts`, `cost-tracker.ts`
+- [x] **2.1.2** (agent/index.ts — упрощённый TAOR вместо vendor; vendor QE в v1.1) — Скопирован `query.ts`, `cost-tracker.ts`
 - [x] **2.1.3** — Все `bun:bundle` заменены на shim
 - [x] **2.1.4** — Все `bootstrap/state.js` заменены
 - [x] **2.1.5** — `getAnthropicClient()` → `getLLMClient()`
@@ -1445,7 +1445,7 @@ textarea, dropdown-menu, tooltip, scroll-area, table, badge
 - [x] **2.1.9** — Payload для OpenAI-клиента валиден
 
 #### 2.2 Промпты
-- [x] **2.2.1** (inline system prompt in agent) — Скопированы `prompts.ts`, `system.ts`
+- [x] **2.2.1** (prompts.ts — адаптированные vendor-промпты: стиль кода, безопасность, CLAUDE.md) — Скопированы `prompts.ts`, `system.ts`
 - [x] **2.2.2** — Все импорты заменены (feature→shim, bootstrap→shim, providers→ProviderManager)
 - [x] **2.2.3** — `getAPIProvider()` → `providerManager.getActive()`
 - [x] **2.2.4** — `getSystemPrompt()` возвращает строку без undefined
@@ -1498,20 +1498,20 @@ textarea, dropdown-menu, tooltip, scroll-area, table, badge
 - [x] **3.1.5** — Reject: отменяет изменение
 
 #### 3.2 История сессий
-- [x] **3.2.1** (JSON store) — `session-store.ts`: SQLite база
-- [x] **3.2.2** (JSON store) — Таблицы `sessions`, `messages` созданы
-- [x] **3.2.3** (JSON store) — `create()`: новая сессия
-- [x] **3.2.4** (JSON store) — `addMessage()`: сообщение в БД
-- [x] **3.2.5** (JSON store) — `getSession()`: загрузка сообщений
-- [x] **3.2.6** (JSON store) — `listSessions()`: пагинация
-- [x] **3.2.7** (JSON store) — `searchSessions()`: поиск
-- [x] **3.2.8** (JSON store) — `deleteSession()`: удаление
+- [x] **3.2.1** (better-sqlite3 — WAL mode, таблицы sessions + messages) — `session-store.ts`: SQLite база
+- [x] **3.2.2** (CREATE TABLE sessions/messages + индекс) — Таблицы `sessions`, `messages` созданы
+- [x] **3.2.3** — `create()`: новая сессия
+- [x] **3.2.4** — `addMessage()`: сообщение в БД
+- [x] **3.2.5** — `getSession()`: загрузка сообщений
+- [x] **3.2.6** — `listSessions()`: пагинация
+- [x] **3.2.7** — `searchSessions()`: поиск
+- [x] **3.2.8** — `deleteSession()`: удаление
 - [x] **3.2.9** (JSON store) — `SessionList.tsx`: боковая панель
 - [x] **3.2.10** (JSON store) — `SessionSearch.tsx`: поиск
 - [x] **3.2.11** (JSON store) — Клик по сессии → загрузка в чат
 
 #### 3.3 Терминал и файлы
-- [x] **3.3.1** (IPC shell + xterm.js) — `Terminal.tsx`: xterm.js + node-pty
+- [x] **3.3.1** (IPC shell + xterm.js; node-pty заблокирован — нет Spectre-библиотек в VS) — `Terminal.tsx`: xterm.js + node-pty
 - [x] **3.3.2** — Терминал открывается во вкладке
 - [x] **3.3.3** — `pwd` показывает правильный путь
 - [x] **3.3.4** — `FileTree.tsx`: рекурсивное дерево
@@ -1564,4 +1564,7 @@ textarea, dropdown-menu, tooltip, scroll-area, table, badge
 - Дата завершения: 2026-07-07
 - Отклонения от плана: JSON вместо SQLite (нативная сборка), IPC-shell вместо node-pty
 - Созданные/изменённые файлы: 34 новых + 1294 vendor = 1328 файлов в desktop/src/
-- Не сделанное / на будущее: полная vendor-интеграция (QueryEngine + 40 инструментов — v1.1)
+- Не сделанное / на будущее:
+  - Полная vendor-интеграция (QueryEngine 46KB + 40 инструментов — v1.1)
+  - node-pty (настоящий PTY-терминал) — нужны Spectre-библиотеки VS
+  - react-syntax-highlighter (тяжёлый в dev-режиме, заменён на <pre>)
