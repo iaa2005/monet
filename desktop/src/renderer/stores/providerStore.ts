@@ -1,112 +1,97 @@
 /**
- * Provider Store — Zustand store for LLM provider state in renderer.
- *
- * Initially seeded from presets. In Step 2.3, IPC handlers will sync
- * with the main process ProviderManager.
+ * Provider Store — IPC-synced Zustand store for LLM providers.
+ * All mutations go through main process (encrypted storage).
  */
 
-import { create } from 'zustand'
+import { create } from "zustand";
 
-export type ProviderKind = 'anthropic' | 'deepseek' | 'openai'
+export type ProviderKind = "anthropic" | "deepseek" | "openai";
 
 export interface LLMProvider {
-  id: string
-  name: string
-  kind: ProviderKind
-  baseURL: string
-  apiKey: string
-  model: string
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
+  id: string;
+  name: string;
+  kind: ProviderKind;
+  baseURL: string;
+  apiKey: string;
+  model: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
-export type LLMProviderInput = Omit<LLMProvider, 'id' | 'createdAt' | 'updatedAt'>
+export type LLMProviderInput = Omit<
+  LLMProvider,
+  "id" | "createdAt" | "updatedAt"
+>;
 
 interface ProviderStore {
-  providers: LLMProvider[]
-  activeId: string | null
+  providers: LLMProvider[];
+  loading: boolean;
+  error: string | null;
 
-  add: (input: LLMProviderInput) => void
-  update: (id: string, input: Partial<LLMProviderInput>) => void
-  remove: (id: string) => void
-  setActive: (id: string) => void
-  getActive: () => LLMProvider | undefined
+  load: () => Promise<void>;
+  add: (input: LLMProviderInput) => Promise<void>;
+  update: (id: string, input: Partial<LLMProviderInput>) => Promise<void>;
+  remove: (id: string) => Promise<void>;
+  setActive: (id: string) => Promise<void>;
 }
 
-function generateId(): string {
-  return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)
+function api() {
+  return window.electronAPI.providers;
 }
 
-const PRESETS: LLMProviderInput[] = [
-  {
-    name: 'Anthropic',
-    kind: 'anthropic',
-    baseURL: 'https://api.anthropic.com',
-    apiKey: '',
-    model: 'claude-sonnet-4-20250514',
-    isActive: true,
-  },
-  {
-    name: 'DeepSeek',
-    kind: 'deepseek',
-    baseURL: 'https://api.deepseek.com/anthropic',
-    apiKey: '',
-    model: 'deepseek-v4-pro',
-    isActive: false,
-  },
-  {
-    name: 'llama.cpp',
-    kind: 'openai',
-    baseURL: 'http://localhost:8080/v1',
-    apiKey: '',
-    model: 'local-model',
-    isActive: false,
-  },
-]
+export const useProviderStore = create<ProviderStore>((set) => ({
+  providers: [],
+  loading: true,
+  error: null,
 
-export const useProviderStore = create<ProviderStore>((set, get) => ({
-  providers: PRESETS.map(p => ({
-    ...p,
-    id: generateId(),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  })),
-  activeId: null,
-
-  add: (input) => {
-    const now = new Date().toISOString()
-    const provider: LLMProvider = { ...input, id: generateId(), createdAt: now, updatedAt: now }
-    set(s => ({ providers: [...s.providers, provider] }))
+  load: async () => {
+    try {
+      set({ loading: true, error: null });
+      const providers = await api().list();
+      set({ providers: providers as LLMProvider[], loading: false });
+    } catch (err) {
+      set({ error: String(err), loading: false });
+    }
   },
 
-  update: (id, input) => {
-    set(s => ({
-      providers: s.providers.map(p =>
-        p.id === id ? { ...p, ...input, updatedAt: new Date().toISOString() } : p,
-      ),
-    }))
+  add: async (input) => {
+    try {
+      await api().add(input as never);
+      const providers = await api().list();
+      set({ providers: providers as LLMProvider[] });
+    } catch (err) {
+      set({ error: String(err) });
+    }
   },
 
-  remove: (id) => {
-    set(s => ({
-      providers: s.providers.filter(p => p.id !== id),
-      activeId: s.activeId === id ? null : s.activeId,
-    }))
+  update: async (id, input) => {
+    try {
+      await api().update(id, input as never);
+      const providers = await api().list();
+      set({ providers: providers as LLMProvider[] });
+    } catch (err) {
+      set({ error: String(err) });
+    }
   },
 
-  setActive: (id) => {
-    set(s => ({
-      activeId: id,
-      providers: s.providers.map(p => ({ ...p, isActive: p.id === id })),
-    }))
+  remove: async (id) => {
+    try {
+      await api().remove(id);
+      const providers = await api().list();
+      set({ providers: providers as LLMProvider[] });
+    } catch (err) {
+      set({ error: String(err) });
+    }
   },
 
-  getActive: () => {
-    const { providers, activeId } = get()
-    return (
-      providers.find(p => p.id === activeId) ||
-      providers.find(p => p.isActive)
-    )
+  setActive: async (id) => {
+    try {
+      await api().setActive(id);
+      const providers = await api().list();
+      set({ providers: providers as LLMProvider[] });
+    } catch (err) {
+      set({ error: String(err) });
+    }
   },
-}))
+}));
