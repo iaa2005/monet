@@ -2,54 +2,284 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --radius: 0.5rem;
-  }
+@custom-variant dark (&:is(.dark *));
+@custom-variant data-autoscrolling (&[data-autoscrolling]);
 
-  .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-  }
+/* ─── Claude Design Tokens (extracted from official HTML) ─── */
+:root {
+    --radius: 0.5rem;
+    --radius-pill: 9999px;
+
+    /* Backgrounds — warm off-white hierarchy */
+    --bg-000: 0 0% 100%;
+    --bg-100: 48 33.3% 97.1%;
+    --bg-200: 53 28.6% 94.5%;
+    --bg-300: 48 25% 92.2%;
+    --bg-400: 50 20.7% 88.6%;
+
+    /* Text */
+    --text-primary: #1a1a1a;
+    --text-secondary: #5c5c5c;
+    --text-muted: #8a8a8a;
+    --text-disabled: #b0b0b0;
+
+    /* Accent — BLUE (not orange!) */
+    --accent: #0073e6;
+    --accent-hover: #0062cc;
+    --accent-light: hsl(210 70.9% 51.6% / 0.12);
+
+    /* Brand — clay/orange (logo only) */
+    --brand: hsl(15 63.1% 59.6%);
+
+    /* Borders */
+    --border-color: hsl(51 16.5% 84.5%);
+
+    /* Surface fills */
+    --fill-ghost-hover: hsl(0 0% 0% / 0.06);
+    --fill-secondary: hsl(0 0% 0% / 0.04);
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.04);
+    --shadow-field:
+        0 0 0 0.5px hsl(51 16.5% 84.5% / 0.5), 0 1px 2px hsl(0 0% 0% / 0.04);
+
+    /* Layout */
+    --sidebar-width: 240px;
+    --header-height: 44px;
+    --df-row-h: 30px;
+    --df-row-px: 8px;
+    --df-row-font: 13px;
+    --df-row-gap: 8px;
+
+    /* shadcn compat */
+    --background: hsl(var(--bg-100));
+    --foreground: var(--text-primary);
+    --card: hsl(var(--bg-000));
+    --card-foreground: var(--text-primary);
+    --popover: hsl(var(--bg-000));
+    --popover-foreground: var(--text-primary);
+    --primary: #1a1a1a;
+    --primary-foreground: #ffffff;
+    --secondary: hsl(var(--bg-200));
+    --secondary-foreground: var(--text-primary);
+    --muted: hsl(var(--bg-200));
+    --muted-foreground: var(--text-secondary);
+    --accent-c: hsl(var(--bg-300));
+    --accent-foreground: var(--text-primary);
+    --destructive: #dc2626;
+    --destructive-foreground: #ffffff;
+    --border: var(--border-color);
+    --input: var(--border-color);
+    --ring: var(--accent);
+    --sidebar: hsl(var(--bg-100));
+    --sidebar-foreground: var(--text-primary);
+    --sidebar-primary: #1a1a1a;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: hsl(var(--bg-200));
+    --sidebar-accent-foreground: var(--text-primary);
+    --sidebar-border: var(--border-color);
+    --sidebar-ring: var(--accent);
+}
+
+.dark {
+    --bg-000: 60 2.1% 18.4%;
+    --bg-100: 60 2.7% 14.5%;
+    --bg-200: 30 3.3% 11.8%;
+    --bg-300: 60 2.6% 7.6%;
+    --text-primary: hsl(0 0% 93%);
+    --text-secondary: hsl(0 0% 65%);
+    --text-muted: hsl(0 0% 50%);
+    --border-color: hsl(0 0% 20%);
+    --shadow-field: 0 0 0 0.5px hsl(0 0% 30% / 0.5);
+    --fill-ghost-hover: hsl(0 0% 100% / 0.08);
+    --fill-secondary: hsl(0 0% 100% / 0.04);
+    --background: hsl(var(--bg-100));
+    --foreground: var(--text-primary);
+    --card: hsl(var(--bg-000));
+    --card-foreground: var(--text-primary);
+    --popover: hsl(var(--bg-000));
+    --popover-foreground: var(--text-primary);
+    --primary: #ffffff;
+    --primary-foreground: #1a1a1a;
+    --secondary: hsl(var(--bg-200));
+    --secondary-foreground: var(--text-primary);
+    --muted: hsl(var(--bg-200));
+    --muted-foreground: var(--text-secondary);
+    --accent-c: hsl(var(--bg-300));
+    --accent-foreground: var(--text-primary);
+    --destructive: #7f1d1d;
+    --destructive-foreground: #ffffff;
+    --border: var(--border-color);
+    --input: var(--border-color);
+    --ring: var(--accent);
+    --sidebar: hsl(var(--bg-100));
+    --sidebar-foreground: var(--text-primary);
+    --sidebar-primary: #ffffff;
+    --sidebar-primary-foreground: #1a1a1a;
+    --sidebar-accent: hsl(var(--bg-200));
+    --sidebar-accent-foreground: var(--text-primary);
+    --sidebar-border: var(--border-color);
+    --sidebar-ring: var(--accent);
+}
+
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent-c);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+
+    --font-sans:
+        "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, sans-serif;
+    --font-mono:
+        ui-monospace, "SFMono-Regular", "Cascadia Code", "Segoe UI Mono", Menlo,
+        Consolas, monospace;
+
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
+    * {
+        @apply border-border;
+    }
+    html,
+    body,
+    #root {
+        height: 100%;
+    }
+    body {
+        @apply bg-background text-foreground antialiased;
+        font-family: var(--font-sans);
+        font-size: 13px;
+        line-height: 1.5;
+    }
+}
+
+/* ─── Claude-style dot grid ─── */
+.bg-dot-grid {
+    background-image:
+        linear-gradient(to right, hsl(var(--bg-200)) 1px, transparent 1px),
+        linear-gradient(to bottom, hsl(var(--bg-200)) 1px, transparent 1px);
+    background-size: 32px 32px;
+}
+
+/* ─── Button base (cds-btn) ─── */
+.btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors;
+    @apply text-muted-foreground hover:bg-black/5 hover:text-foreground;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+}
+.dark .btn-ghost {
+    @apply hover:bg-white/8;
+}
+
+/* ─── Pill button ─── */
+.btn-pill {
+    @apply inline-flex h-7 items-center gap-2 rounded-full px-3 text-[13px] transition-colors;
+    @apply text-muted-foreground hover:bg-black/5 hover:text-foreground;
+}
+.dark .btn-pill {
+    @apply hover:bg-white/8;
+}
+.btn-pill-active {
+    @apply bg-black/8 text-foreground;
+}
+.dark .btn-pill-active {
+    @apply bg-white/10;
+}
+
+/* ─── Input field ─── */
+.input-claude {
+    @apply w-full rounded-lg border bg-background px-3 py-2 text-[13px];
+    @apply placeholder:text-muted-foreground;
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-0;
+    box-shadow: var(--shadow-field);
+}
+.input-claude:hover {
+    box-shadow:
+        0 0 0 0.5px hsl(51 16.5% 84.5% / 0.8),
+        0 2px 4px hsl(0 0% 0% / 0.06);
+}
+
+/* ─── Sidebar row hover ─── */
+.sidebar-row {
+    @apply flex h-7 w-full items-center gap-2 rounded-full px-2 text-left text-[13px] transition-colors;
+    @apply text-muted-foreground hover:bg-black/5 hover:text-foreground;
+}
+.dark .sidebar-row {
+    @apply hover:bg-white/8;
+}
+.sidebar-row-active {
+    @apply bg-black/8 text-foreground;
+}
+.dark .sidebar-row-active {
+    @apply bg-white/10;
+}
+
+/* ─── Scrollbar ─── */
+@utility scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--bg-400)) transparent;
+    &::-webkit-scrollbar {
+        width: 6px;
+    }
+    &::-webkit-scrollbar-thumb {
+        background: hsl(var(--bg-400));
+        border-radius: 3px;
+    }
+}
+
+/* Shimmer */
+@keyframes shimmer {
+    0% {
+        background-position: 150% 0;
+    }
+    100% {
+        background-position: -150% 0;
+    }
+}
+@utility shimmer {
+    color: transparent;
+    background-image: linear-gradient(
+        90deg,
+        var(--muted-foreground) 35%,
+        var(--foreground) 50%,
+        var(--muted-foreground) 65%
+    );
+    background-size: 200% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    animation: shimmer 2.2s linear infinite;
+}
+
+.app-drag {
+    -webkit-app-region: drag;
+}
+.app-no-drag {
+    -webkit-app-region: no-drag;
 }
