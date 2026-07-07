@@ -177,6 +177,37 @@ export default function App(): JSX.Element {
       .catch(() => {});
   }, []);
 
+  // Auto-restore last session from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('"cc-session"');
+      if (saved) {
+        const data = JSON.parse(saved);
+        setCurrentSessionId(data.id);
+        setSessionTitle(data.title || '"New session"');
+        if (data.messages?.length) {
+          useChatStore.setState({ messages: data.messages });
+        }
+      }
+    } catch {}
+  }, []);
+
+  const messages = useChatStore((s) => s.messages);
+
+  // Auto-save messages to localStorage on every change
+  useEffect(() => {
+    if (!messages.length) return;
+    if (!msgs.length) return;
+    try {
+      localStorage.setItem('"cc-session"', JSON.stringify({
+        id: currentSessionId || (crypto.randomUUID?.() ?? Date.now().toString(36)),
+        title: sessionTitle,
+        messages: messages.slice(-200),
+        updatedAt: Date.now(),
+      }));
+    } catch {}
+  });
+
   // Ctrl+, opens settings (like the official app).
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
