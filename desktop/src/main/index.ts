@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from "electron";
 import { join } from "path";
 import { registerAllIPC } from "./ipc/index.js";
+import { createTray } from "./tray.js";
 
 const isDev = !app.isPackaged;
 
@@ -37,6 +38,7 @@ function createWindow(): void {
 app.whenReady().then(() => {
   registerAllIPC();
   createWindow();
+  if (mainWindow) createTray(mainWindow);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

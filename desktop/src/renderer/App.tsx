@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { ChatView, usePermissionHandler } from "@/components/chat/ChatView";
+import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { Button } from "@/components/ui/button";
 
 type Tab = "chat" | "providers";
@@ -8,13 +9,15 @@ type Tab = "chat" | "providers";
 export default function App(): JSX.Element {
   const [tab, setTab] = useState<Tab>("chat");
 
-  // Listen for permission requests
   usePermissionHandler();
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
-      <header className="flex items-center justify-between border-b px-6 py-3">
-        <h1 className="text-lg font-bold">Claude Code Desktop</h1>
+      <header className="flex items-center justify-between border-b px-4 py-2">
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-bold">Claude Code Desktop</h1>
+          <WorkspacePicker />
+        </div>
         <div className="flex gap-1">
           <Button
             variant={tab === "chat" ? "default" : "outline"}
