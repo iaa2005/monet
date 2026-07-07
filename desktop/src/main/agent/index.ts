@@ -416,12 +416,14 @@ export async function runAgent(
       })),
     });
 
-    const results = await Promise.all(
-      toolCalls.map(async (tc) => ({
-        tool_use_id: tc.id,
-        content: await executeTool(tc.name, tc.input),
-      })),
-    );
+    // Execute tools with progress events
+    const results: { tool_use_id: string; content: string }[] = []
+    for (const tc of toolCalls) {
+      onEvent({ type: 'tool_result', toolUseID: tc.id, toolName: tc.name, content: 'Running...' })
+      const content = await executeTool(tc.name, tc.input)
+      onEvent({ type: 'tool_result', toolUseID: tc.id, toolName: tc.name, content })
+      results.push({ tool_use_id: tc.id, content })
+    }
 
     messages.push({
       role: "user",

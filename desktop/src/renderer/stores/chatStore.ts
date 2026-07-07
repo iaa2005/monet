@@ -121,9 +121,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           id: event.id,
           name: event.name,
           input: event.input,
-          status: 'done',
+          status: 'pending',
         })
         break
+      case 'tool_result': {
+        const e = event as { type: 'tool_result'; toolUseID: string; toolName: string; content: string }
+        if (e.content === 'Running...') {
+          get().updateToolCall(e.toolUseID, { status: 'running' })
+        } else {
+          get().updateToolCall(e.toolUseID, { status: 'done', output: e.content })
+        }
+        break
+      }
       case 'message_stop':
         get().finishStreaming(event.usage)
         break
