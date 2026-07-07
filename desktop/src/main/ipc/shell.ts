@@ -1,38 +1,62 @@
 /**
- * Shell IPC handler — run bash/powershell commands.
+ * Shell IPC — uses PowerShell on Windows for proper UTF-8 encoding.
+ * Falls back to cmd /c on other platforms.
  */
 
 import { ipcMain } from "electron";
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
+import { spawn } from "child_process";
 
 export function registerShellIPC(): void {
   ipcMain.handle("shell:run", async (_event, command: string, cwd?: string) => {
-    // chcp 65001 forces UTF-8 codepage on Windows (fixes Cyrillic garbled output)
     const isWin = process.platform === "win32";
-    const cmd = isWin ? "chcp 65001 >nul && " + command : command;
-    try {
-      const { stdout, stderr } = await execAsync(cmd, {
-        cwd: cwd || process.cwd(),
-        timeout: 30000,
-        maxBuffer: 10 * 1024 * 1024,
-        encoding: "utf8",
+
+    return new Promise((resolve) => {
+      const child = isWin
+        ? spawn(
+            "powershell.exe",
+            [
+              "-NoProfile",
+              "-NonInteractive",
+              "-Command",
+              `[Console]::OutputEncoding = [Text.Encoding]::UTF8; ${command}`,
+            ],
+            { cwd: cwd || process.cwd() },
+          )
+        : spawn("sh", ["-c", command], { cwd: cwd || process.cwd() });
+
+      let stdout = "";
+      let stderr = "";
+
+      child.stdout.on("data", (data: Buffer) => {
+        stdout += data.toString("utf8");
       });
-      return { ok: true, stdout, stderr };
-    } catch (err: unknown) {
-      const execErr = err as {
-        stdout?: string;
-        stderr?: string;
-        message: string;
-      };
-      return {
-        ok: false,
-        stdout: execErr.stdout || "",
-        stderr: execErr.stderr || "",
-        error: execErr.message,
-      };
-    }
+      child.stderr.on("data", (data: Buffer) => {
+        stderr += data.toString("utf8");
+      });
+
+      child.on("error", (err) => {
+        resolve({ ok: false, stdout, stderr: "", error: err.message });
+      });
+
+      const timer = setTimeout(() => {
+        child.kill();
+        resolve({
+          ok: false,
+          stdout,
+          stderr,
+          error: "Command timed out (30s)",
+        });
+      }, 30000);
+
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        resolve({
+          ok: code === 0,
+          stdout,
+          stderr,
+          error: code !== 0 ? `Exit code: ${code}` : undefined,
+        });
+      });
+    });
   });
 }

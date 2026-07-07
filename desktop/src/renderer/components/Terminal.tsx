@@ -72,7 +72,10 @@ export function Terminal(): JSX.Element {
 
     const theme = isDark() ? { ...DARK_THEME } : { ...LIGHT_THEME };
     // Blend terminal background with card background
-    const cardBg = getComputedStyle(document.documentElement).getPropertyValue('--card').trim() || theme.background;
+    const cardBg =
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--card")
+        .trim() || theme.background;
     if (cardBg) theme.background = cardBg;
     const term = new XTerm({
       cursorBlink: true,
@@ -83,6 +86,19 @@ export function Terminal(): JSX.Element {
       allowProposedApi: true,
       cols: 80,
       rows: 24,
+    });
+
+    // Ctrl+Shift+C/V for copy/paste (Ctrl+C reserved for SIGINT)
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+        const sel = term.getSelection();
+        if (sel) { navigator.clipboard.writeText(sel); return false; }
+      }
+      if (e.ctrlKey && e.shiftKey && e.key === 'V') {
+        navigator.clipboard.readText().then(t => { if (t) term.paste(t); });
+        return false;
+      }
+      return true;
     });
 
     const fit = new FitAddon();
@@ -139,7 +155,10 @@ export function Terminal(): JSX.Element {
       if (dark !== themeRef.current) {
         themeRef.current = dark;
         const t = dark ? { ...DARK_THEME } : { ...LIGHT_THEME };
-        const bg = getComputedStyle(document.documentElement).getPropertyValue('--card').trim() || t.background;
+        const bg =
+          getComputedStyle(document.documentElement)
+            .getPropertyValue("--card")
+            .trim() || t.background;
         if (bg) t.background = bg;
         term.options.theme = t;
       }
