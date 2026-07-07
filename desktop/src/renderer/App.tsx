@@ -3,11 +3,16 @@ import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { ChatView, usePermissionHandler } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
+import { SkillsPanel } from "@/components/SkillsPanel";
+import { DiffViewer, type DiffFile } from "@/components/diff/DiffViewer";
 import { useChatStore } from "@/stores/chatStore";
 import { Button } from "@/components/ui/button";
 import type { ChatMessage } from "@/types/chat";
 
-type Tab = "chat" | "providers";
+type Tab = "chat" | "changes" | "skills" | "providers";
+
+// Simple in-memory diff store (will be populated by tool results)
+const pendingDiffs: DiffFile[] = [];
 
 export default function App(): JSX.Element {
   const [tab, setTab] = useState<Tab>("chat");
@@ -15,6 +20,7 @@ export default function App(): JSX.Element {
     string | undefined
   >();
   const [showSessions, setShowSessions] = useState(true);
+  const [diffs, setDiffs] = useState<DiffFile[]>(pendingDiffs);
 
   const chatStore = useChatStore();
 
@@ -23,9 +29,7 @@ export default function App(): JSX.Element {
   const handleSelectSession = useCallback(
     (session: { id: string; title: string; messages: ChatMessage[] }) => {
       setCurrentSessionId(session.id);
-      // Replace chat store messages with session messages
       chatStore.clearMessages();
-      // We'd ideally load messages one by one, but for MVP we just set the session
       useChatStore.setState({ messages: session.messages });
     },
     [chatStore],
@@ -46,20 +50,25 @@ export default function App(): JSX.Element {
     [currentSessionId, chatStore],
   );
 
-  // Auto-save session when messages change
-  const saveCurrentSession = useCallback(async () => {
-    if (!currentSessionId) return;
-    try {
-      const session =
-        await window.electronAPI.sessions.getById(currentSessionId);
-      if (session) {
-        session.messages = chatStore.messages as unknown as never[];
-        await window.electronAPI.sessions.save(session as never);
-      }
-    } catch (err) {
-      console.error("Failed to save session:", err);
-    }
-  }, [currentSessionId, chatStore.messages]);
+  // Expose addDiff for tool results
+  if (typeof window !== "undefined") {
+    (window as unknown as Record<string, unknown>).__addDiff = (
+      file: DiffFile,
+    ) => {
+      setDiffs((prev) => [...prev, file]);
+      setTab("changes");
+    };
+  }
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "chat", label: "Chat" },
+    {
+      id: "changes",
+      label: `Changes${diffs.length ? ` (${diffs.length})` : ""}`,
+    },
+    { id: "skills", label: "Skills" },
+    { id: "providers", label: "Settings" },
+  ];
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -77,25 +86,21 @@ export default function App(): JSX.Element {
           <WorkspacePicker />
         </div>
         <div className="flex gap-1">
-          <Button
-            variant={tab === "chat" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setTab("chat")}
-          >
-            Chat
-          </Button>
-          <Button
-            variant={tab === "providers" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setTab("providers")}
-          >
-            Settings
-          </Button>
+          {tabs.map((t) => (
+            <Button
+              key={t.id}
+              variant={tab === t.id ? "default" : "outline"}
+              size="sm"
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </Button>
+          ))}
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {showSessions && (
+        {showSessions && tab === "chat" && (
           <div className="w-64 shrink-0">
             <SessionList
               onSelect={handleSelectSession}
@@ -107,6 +112,16 @@ export default function App(): JSX.Element {
 
         <main className="flex-1 overflow-hidden">
           {tab === "chat" && <ChatView />}
+          {tab === "changes" && (
+            <DiffViewer
+              files={diffs}
+              onAccept={() => setDiffs([])}
+              onReject={() => setDiffs([])}
+              onAcceptAll={() => setDiffs([])}
+              onRejectAll={() => setDiffs([])}
+            />
+          )}
+          {tab === "skills" && <SkillsPanel />}
           {tab === "providers" && (
             <div className="p-6">
               <ProviderSettings />
