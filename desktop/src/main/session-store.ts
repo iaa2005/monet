@@ -178,8 +178,8 @@ export class SessionStore {
     const now = new Date().toISOString();
     const tx = d.transaction(() => {
       d.prepare(
-        "UPDATE sessions SET title = ?, updated_at = ?, message_count = ? WHERE id = ?",
-      ).run(session.title, now, session.messages.length, session.id);
+        "INSERT INTO sessions (id, title, created_at, updated_at, message_count) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at, message_count = excluded.message_count",
+      ).run(session.id, session.title, now, now, session.messages.length);
 
       // Replace messages
       d.prepare("DELETE FROM messages WHERE session_id = ?").run(session.id);
@@ -299,7 +299,10 @@ export class SessionStore {
       sessionIds.add(r.session_id);
       approxTokens += Math.ceil((r.content?.length ?? 0) / 4);
       if (r.role === "user") userMessages++;
-      dayCounts.set(localDay(r.timestamp), (dayCounts.get(localDay(r.timestamp)) ?? 0) + 1);
+      dayCounts.set(
+        localDay(r.timestamp),
+        (dayCounts.get(localDay(r.timestamp)) ?? 0) + 1,
+      );
       hourCounts[new Date(r.timestamp).getHours()]++;
     }
 

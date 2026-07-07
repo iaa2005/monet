@@ -111,10 +111,64 @@ export class AnthropicClient implements LLMAdapter {
     let currentToolName = "";
     let currentToolInput = "";
 
+    // Stream watchdog: abort on silence > 10s (prevent infinite hang
+    // when the server sends partial output then stalls).
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
+    const STREAM_TIMEOUT_MS = 60_000;
+
+    function armWatchdog(): void {
+      disarmWatchdog();
+      watchdog = setTimeout(() => {
+        onEvent({
+          type: "error",
+          error: `Stream timed out after ${STREAM_TIMEOUT_MS / 1000}s of silence`,
+        });
+        reader.cancel().catch(() => {});
+      }, STREAM_TIMEOUT_MS);
+    }
+
+    function disarmWatchdog(): void {
+      if (watchdog != null) {
+        clearTimeout(watchdog);
+        watchdog = null;
+      }
+    }
+
+    // Helper: wait for the next chunk OR the abort signal (whichever fires
+    // first). Without this, reader.read() can stay parked forever even after
+    // the user clicks Stop — the fetch is aborted but the reader was already
+    // awaiting the next chunk.
+    function guardedRead(): Promise<ReadableStreamReadResult<Uint8Array>> {
+      return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+          reject(new DOMException("Aborted", "AbortError"));
+          return;
+        }
+        const onAbort = (): void => {
+          reject(new DOMException("Aborted", "AbortError"));
+        };
+        signal?.addEventListener("abort", onAbort, { once: true });
+        reader
+          .read()
+          .then((result) => {
+            signal?.removeEventListener("abort", onAbort);
+            resolve(result);
+          })
+          .catch((err) => {
+            signal?.removeEventListener("abort", onAbort);
+            reject(err);
+          });
+      });
+    }
+
+    armWatchdog();
+
     try {
       while (true) {
-        const { done, value } = await reader.read();
+        const { done, value } = await guardedRead();
         if (done) break;
+
+        armWatchdog(); // reset timeout on every chunk
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -200,7 +254,47 @@ export class AnthropicClient implements LLMAdapter {
           }
         }
       }
+
+      // Flush decoder and process remaining buffer — the last SSE event
+      // may still be sitting in buffer when the stream ends.
+      buffer += decoder.decode();
+      if (buffer.trim() && buffer.startsWith("data: ")) {
+        const data = buffer.slice(6).trim();
+        try {
+          const event: AnthropicSSEEvent = JSON.parse(data);
+          if (event.type === "message_stop") {
+            onEvent({
+              type: "message_stop",
+              stop_reason: "end_turn",
+              usage: event.usage
+                ? {
+                    input_tokens: event.usage.input_tokens,
+                    output_tokens: event.usage.output_tokens,
+                    cache_creation_input_tokens:
+                      event.usage.cache_creation_input_tokens,
+                    cache_read_input_tokens:
+                      event.usage.cache_read_input_tokens,
+                  }
+                : undefined,
+            });
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch (err) {
+      // AbortError from guardedRead means user clicked Stop — not a real error
+      if (err instanceof DOMException && err.name === "AbortError") {
+        onEvent({ type: "error", error: "Aborted" });
+      } else {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        onEvent({ type: "error", error: message });
+      }
     } finally {
+      disarmWatchdog();
+      try {
+        reader.cancel().catch(() => {});
+      } catch {}
       reader.releaseLock();
     }
   }
