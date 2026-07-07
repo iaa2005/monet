@@ -9,7 +9,7 @@ import "xterm/css/xterm.css";
 import type { ElectronAPI } from "@/types/electron";
 
 const LIGHT_THEME = {
-  background: "#ffffff",
+  background: "transparent",
   foreground: "#1a1a1a",
   cursor: "#1a1a1a",
   cursorAccent: "#ffffff",
@@ -33,7 +33,7 @@ const LIGHT_THEME = {
 };
 
 const DARK_THEME = {
-  background: "#111827",
+  background: "transparent",
   foreground: "#e5e7eb",
   cursor: "#e5e7eb",
   cursorAccent: "#111827",
