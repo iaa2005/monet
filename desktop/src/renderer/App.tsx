@@ -19,13 +19,14 @@ import {
   PanelLeft,
   Sun,
   Moon,
-  Search,
+  
   X,
   type LucideIcon,
 } from "lucide-react";
 import { ChatView, usePermissionHandler } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
+import { FilterDropdown } from "@/components/FilterDropdown";
 import { SkillsPanel } from "@/components/SkillsPanel";
 import { DiffViewer, type DiffFile } from "@/components/diff/DiffViewer";
 import { FileTree } from "@/components/FileTree";
@@ -315,7 +316,7 @@ export default function App(): JSX.Element {
       <div className="flex min-h-0 flex-1">
         {sidebarOpen && (
           <aside className="flex w-60 shrink-0 flex-col rounded-xl border border-border bg-card shadow-sm mx-1.5 my-1.5">
-            <div className="flex flex-col gap-0.5 px-2">
+            <div className="flex flex-col gap-0.5 px-2 pt-2">
               <NavRow icon={Plus} label="New session" onClick={newSession} />
               <NavRow
                 icon={Blocks}
@@ -323,17 +324,8 @@ export default function App(): JSX.Element {
                 active={rightTab === "artifacts"}
                 onClick={() => toggleRight("artifacts")}
               />
-              <NavRow
-                icon={Sparkles}
-                label="Skills"
-                active={view === "skills"}
-                onClick={() => setView("skills")}
-              />
-              <NavRow
-                icon={Settings}
-                label="Settings"
-                onClick={() => setSettingsOpen(true)}
-              />
+              <NavRow icon={Settings} label="Customize" onClick={() => setSettingsOpen(true)} />
+              <NavRow icon={ChevronDown} label="More" onClick={() => {}} />
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col px-2">
@@ -341,7 +333,7 @@ export default function App(): JSX.Element {
                 <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
                   Recents
                 </span>
-                <Search className="size-3 text-muted-foreground" />
+                <FilterDropdown />
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
                 <SessionList
@@ -353,7 +345,6 @@ export default function App(): JSX.Element {
             </div>
 
             <div className="p-1.5">
-              <WorkspacePicker />
               <AccountMenu onOpenSettings={() => setSettingsOpen(true)} />
             </div>
           </aside>

@@ -16,6 +16,7 @@ import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Shimmer } from "@/components/ui/shimmer";
 import { ClaudeMark } from "@/components/ClaudeMark";
+import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, PermissionRequest } from "@/types/electron";
 import type { ChatMessage } from "@/types/chat";
@@ -80,7 +81,10 @@ export function ChatView(): JSX.Element {
           <p className="mt-1.5 text-sm text-muted-foreground">
             Ask a question, describe a task, or type / for commands.
           </p>
-        </div>
+        
+          <div className="mt-4">
+            <WorkspacePicker />
+          </div></div>
       ) : (
         <MessageScrollerProvider autoScroll defaultScrollPosition="end">
           <MessageScroller className="flex-1">
