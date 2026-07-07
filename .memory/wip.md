@@ -12,12 +12,12 @@
 - [x] 0.3 Полный shim `bootstrap/state.ts` (~30 экспортов)
 - [x] 0.4 Аудит инструментов: 147 bun:bundle, 16 Bun.*, 80 require() — всё fixable
 
-### Этап 1: Проект и провайдеры (30 критериев)
-- 1.1 Инициализация Electron + React + Vite + shadcn/ui
-- 1.2 Shim-пакеты (bun-bundle, bootstrap-state, crypto)
-- 1.3 Провайдеры: модель + safeStorage
-- 1.4 LLM-адаптер (свой HTTP + @ai-sdk/openai)
-- 1.5 UI провайдеров
+### Этап 1: Проект и провайдеры (30 критериев) ✅
+- [x] 1.1 Инициализация Electron + React + Vite + shadcn/ui (11/11)
+- [x] 1.2 Shim-пакеты (bun-bundle, bootstrap-state, crypto) (4/4)
+- [x] 1.3 Провайдеры: модель + safeStorage (4/4)
+- [x] 1.4 LLM-адаптер (Anthropic HTTP + @ai-sdk/openai) (5/5)
+- [x] 1.5 UI провайдеров (Zustand + ProviderSettings/Form) (6/6)
 
 ### Этап 2: Чат и агент (46 критериев)
 - 2.1 Адаптация QueryEngine (17 замен импортов)

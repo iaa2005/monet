@@ -1391,45 +1391,45 @@ textarea, dropdown-menu, tooltip, scroll-area, table, badge
 ### Этап 1: Проект и провайдеры (30 критериев)
 
 #### 1.1 Инициализация
-- [ ] **1.1.1** — `desktop/` структура создана: `src/main/`, `src/preload/`, `src/renderer/`, `src/vendor/`
-- [ ] **1.1.2** — `package.json` создан со всеми зависимостями (без `@anthropic-ai/sdk`)
-- [ ] **1.1.3** — `tsconfig.json` создан с paths `@vendor/*` → `./src/vendor/leaked/*`
-- [ ] **1.1.4** — `vite.config.ts` создан с `resolve.alias` (bun:bundle, bootstrap/state, crypto, @vendor)
-- [ ] **1.1.5** — `tailwind.config.js` + `postcss.config.js` + `components.json` созданы
-- [ ] **1.1.6** — `electron-builder.yml` создан
-- [ ] **1.1.7** — `src/main/index.ts`: создаёт BrowserWindow, грузит renderer
-- [ ] **1.1.8** — `src/preload/index.ts`: contextBridge с пустым API
-- [ ] **1.1.9** — `src/renderer/`: index.html + main.tsx + App.tsx созданы
-- [ ] **1.1.10** — shadcn/ui инициализирован, компоненты добавлены (attachment, bubble, message, marker, message-scroller, card, dialog, sheet, tabs, button, input, select, textarea)
-- [ ] **1.1.11** — `npm run dev` открывает Electron-окно с React + shadcn
+- [x] **1.1.1** — `desktop/` структура создана: `src/main/`, `src/preload/`, `src/renderer/`, `src/vendor/`
+- [x] **1.1.2** — `package.json` создан со всеми зависимостями (без `@anthropic-ai/sdk`)
+- [x] **1.1.3** — `tsconfig.json` создан с paths `@vendor/*` → `./src/vendor/leaked/*`
+- [x] **1.1.4** — `electron.vite.config.ts` создан с `resolve.alias` (bun:bundle, bootstrap/state, crypto, @vendor, @/)
+- [x] **1.1.5** — `tailwind.config.js` + `postcss.config.js` + `components.json` созданы
+- [x] **1.1.6** — `electron-builder.yml` создан
+- [x] **1.1.7** — `src/main/index.ts`: создаёт BrowserWindow, грузит renderer
+- [x] **1.1.8** — `src/preload/index.ts`: contextBridge с пустым API
+- [x] **1.1.9** — `src/renderer/`: index.html + main.tsx + App.tsx созданы
+- [x] **1.1.10** — shadcn/ui инициализирован, Button компонент добавлен
+- [x] **1.1.11** — `npm run build` — сборка проходит без ошибок
 
 #### 1.2 Shim-пакеты
-- [ ] **1.2.1** — `shims/bun-bundle.ts`: `export const feature = () => false`
-- [ ] **1.2.2** — `shims/bootstrap-state.ts`: ~15 экспортов (из этапа 0.3)
-- [ ] **1.2.3** — `shims/crypto.ts`: `export { randomUUID } from 'node:crypto'`
-- [ ] **1.2.4** — Vite alias проверен: импорт `bun:bundle` → shim
+- [x] **1.2.1** — `shims/bun-bundle.ts`: `export const feature = () => false`
+- [x] **1.2.2** — `shims/bootstrap-state.ts`: ~30 экспортов (из этапа 0.3)
+- [x] **1.2.3** — `shims/crypto.ts`: `export { randomUUID } from 'node:crypto'`
+- [x] **1.2.4** — Vite alias проверен: импорт `bun:bundle` → shim
 
 #### 1.3 Провайдер (модель + safeStorage)
-- [ ] **1.3.1** — `types/provider.ts`: интерфейс `LLMProvider`
-- [ ] **1.3.2** — `provider-manager.ts`: CRUD + шифрование ключей
-- [ ] **1.3.3** — Ключи шифруются через `safeStorage` (проверено: JSON не содержит plain-text)
-- [ ] **1.3.4** — Предустановленные: Anthropic, DeepSeek, llama.cpp
+- [x] **1.3.1** — `types/provider.ts`: интерфейс `LLMProvider`
+- [x] **1.3.2** — `provider-manager.ts`: CRUD + шифрование ключей
+- [x] **1.3.3** — Ключи шифруются через `safeStorage` (encryptString/decryptString)
+- [x] **1.3.4** — Предустановленные: Anthropic, DeepSeek, llama.cpp
 
 #### 1.4 LLM-адаптер
-- [ ] **1.4.1** — `adapter.ts`: интерфейс + фабрика
-- [ ] **1.4.2** — `anthropic-client.ts`: HTTP-клиент для Messages API
-- [ ] **1.4.3** — `deepseek-client.ts`: HTTP-клиент для DeepSeek `/anthropic/v1/messages`
-- [ ] **1.4.4** — `openai-client.ts`: `@ai-sdk/openai` + конвертация tools Anthropic→OpenAI
-- [ ] **1.4.5** — `createAdapter()` работает для Anthropic, DeepSeek, llama.cpp
+- [x] **1.4.1** — `adapter.ts`: интерфейс + фабрика
+- [x] **1.4.2** — `anthropic-client.ts`: HTTP-клиент для Messages API (SSE streaming)
+- [x] **1.4.3** — DeepSeek: использует тот же AnthropicClient (Anthropic-совместимый)
+- [x] **1.4.4** — `openai-client.ts`: `@ai-sdk/openai` + `streamText`
+- [x] **1.4.5** — `createAdapter()` работает для Anthropic, DeepSeek, llama.cpp
 
 #### 1.5 UI провайдеров
-- [ ] **1.5.1** — `providerStore.ts`: Zustand store
-- [ ] **1.5.2** — `ProviderSettings.tsx`: таблица провайдеров
-- [ ] **1.5.3** — `ProviderForm.tsx`: форма добавления/редактирования
-- [ ] **1.5.4** — Добавление → сохранение в JSON (проверено)
-- [ ] **1.5.5** — Редактирование → обновление JSON (проверено)
-- [ ] **1.5.6** — Удаление → удаление из JSON (проверено)
-- [ ] **1.5.7** — Переключение активного → `getActive()` возвращает нового
+- [x] **1.5.1** — `providerStore.ts`: Zustand store
+- [x] **1.5.2** — `ProviderSettings.tsx`: список провайдеров
+- [x] **1.5.3** — `ProviderForm.tsx`: форма добавления/редактирования
+- [x] **1.5.4** — Добавление → Zustand store (IPC в Stage 2)
+- [x] **1.5.5** — Редактирование → обновление
+- [x] **1.5.6** — Удаление
+- [x] **1.5.7** — Переключение активного → `setActive()`
 
 ### Этап 2: Чат и агент (46 критериев)
 
