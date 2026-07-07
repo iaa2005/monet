@@ -70,7 +70,10 @@ export function Terminal(): JSX.Element {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const theme = isDark() ? DARK_THEME : LIGHT_THEME;
+    const theme = isDark() ? { ...DARK_THEME } : { ...LIGHT_THEME };
+    // Blend terminal background with card background
+    const cardBg = getComputedStyle(containerRef.current).backgroundColor;
+    if (cardBg && cardBg !== "rgba(0, 0, 0, 0)") theme.background = cardBg;
     const term = new XTerm({
       cursorBlink: true,
       fontSize: 13,
@@ -135,7 +138,10 @@ export function Terminal(): JSX.Element {
       const dark = isDark();
       if (dark !== themeRef.current) {
         themeRef.current = dark;
-        term.options.theme = dark ? DARK_THEME : LIGHT_THEME;
+        const t = dark ? { ...DARK_THEME } : { ...LIGHT_THEME };
+        const bg = getComputedStyle(containerRef.current!).backgroundColor;
+        if (bg && bg !== "rgba(0, 0, 0, 0)") t.background = bg;
+        term.options.theme = t;
       }
     });
     observer.observe(document.documentElement, {
@@ -143,12 +149,12 @@ export function Terminal(): JSX.Element {
       attributeFilter: ["class"],
     });
 
-    const handleResize = () => fit.fit();
-    window.addEventListener("resize", handleResize);
+    const ro = new ResizeObserver(() => fit.fit());
+    ro.observe(containerRef.current);
 
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", handleResize);
+      ro.disconnect();
       term.dispose();
     };
   }, []);
