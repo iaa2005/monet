@@ -1,4 +1,11 @@
-import { useState, useCallback, useEffect, lazy, Suspense } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  lazy,
+  Suspense,
+  useRef,
+} from "react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { ChatView, usePermissionHandler } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
@@ -41,13 +48,17 @@ export default function App(): JSX.Element {
     });
   }, []);
 
+  const activeSkillsJson = JSON.stringify(
+    activeSkills.map((s) => s.name).sort(),
+  );
+
   useEffect(() => {
-    const skillNames = activeSkills.map((s) => s.name).join(", ");
     (window as unknown as Record<string, unknown>).__activeSkills =
       activeSkills;
     (window as unknown as Record<string, unknown>).__activeSkillNames =
-      skillNames;
-  }, [activeSkills]);
+      activeSkills.map((s) => s.name).join(", ");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSkillsJson]);
 
   const handleSelectSession = useCallback(
     (session: { id: string; title: string; messages: ChatMessage[] }) => {
