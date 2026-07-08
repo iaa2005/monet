@@ -44,6 +44,8 @@ interface SessionListProps {
     messages: ChatMessage[];
   }) => void;
   onDelete: (id: string) => void;
+  onRename?: (id: string, title: string) => void;
+  onFork?: (id: string) => void;
   currentSessionId?: string;
   /** Only show sessions from this space (home/code). */
   space?: string;
@@ -56,6 +58,8 @@ function api(): ElectronAPI | undefined {
 export function SessionList({
   onSelect,
   onDelete,
+  onRename,
+  onFork,
   currentSessionId,
   space,
 }: SessionListProps): JSX.Element {
@@ -279,6 +283,7 @@ export function SessionList({
                   type="button"
                   onClick={() => {
                     setOpenMenuId(null);
+                    onRename?.(s.id, s.title || "");
                   }}
                   className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                 >
@@ -292,6 +297,7 @@ export function SessionList({
                   type="button"
                   onClick={() => {
                     setOpenMenuId(null);
+                    onFork?.(s.id);
                   }}
                   className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                 >

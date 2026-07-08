@@ -189,6 +189,7 @@ export default function App(): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
+  const [renameTargetId, setRenameTargetId] = useState<string | undefined>();
   const [transcriptMode, setTranscriptMode] =
     useState<TranscriptMode>("normal");
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -319,19 +320,50 @@ export default function App(): JSX.Element {
   }, [sessionTitle]);
 
   const handleRename = useCallback(async () => {
-    const id = useChatStore.getState().currentSessionId;
+    const id = renameTargetId ?? useChatStore.getState().currentSessionId;
     const title = renameValue.trim();
     if (id && title) {
       try {
         await api()?.sessions.updateTitle(id, title);
-        setSessionTitle(title);
+        if (id === useChatStore.getState().currentSessionId)
+          setSessionTitle(title);
         useChatStore.getState().bumpSessions();
       } catch {
         /* offline */
       }
     }
     setRenameOpen(false);
-  }, [renameValue]);
+  }, [renameValue, renameTargetId]);
+
+  // Fork any session by id (sidebar menu) — load it, give the copies fresh
+  // message ids, save into a new session in the current space, switch to it.
+  const forkSession = useCallback(
+    async (id: string) => {
+      try {
+        const session = (await api()?.sessions.getById(id)) as
+          | { id: string; title: string; messages: ChatMessage[] }
+          | null
+          | undefined;
+        if (!session) return;
+        const newId = (): string =>
+          crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
+        const forked = session.messages.map((m) => ({ ...m, id: newId() }));
+        const title = `${session.title || "Chat"} (fork)`;
+        const s = (await api()?.sessions.create(
+          title,
+          useChatStore.getState().space,
+        )) as { id: string } | undefined;
+        if (s?.id) {
+          await api()?.sessions.save({ id: s.id, title, messages: forked });
+          useChatStore.getState().bumpSessions();
+          handleSelectSession({ id: s.id, title, messages: forked });
+        }
+      } catch {
+        /* offline */
+      }
+    },
+    [handleSelectSession],
+  );
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-sidebar text-foreground">
@@ -457,6 +489,7 @@ export default function App(): JSX.Element {
 
               <DropdownMenuItem
                 onClick={() => {
+                  setRenameTargetId(undefined);
                   setRenameValue(sessionTitle || "");
                   setRenameOpen(true);
                   setMenuOpen(false);
@@ -607,6 +640,12 @@ export default function App(): JSX.Element {
                       <SessionList
                         onSelect={handleSelectSession}
                         onDelete={handleDeleteSession}
+                        onRename={(id, title) => {
+                          setRenameTargetId(id);
+                          setRenameValue(title);
+                          setRenameOpen(true);
+                        }}
+                        onFork={forkSession}
                         currentSessionId={currentSessionId}
                         space={appMode}
                       />
