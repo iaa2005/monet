@@ -33,6 +33,10 @@ interface AnthropicSSEEvent {
     type: string;
     text?: string;
     partial_json?: string;
+    // message_delta carries the final stop_reason (end_turn / max_tokens /
+    // tool_use) — useful for diagnosing truncated/cut-off responses.
+    stop_reason?: string;
+    stop_sequence?: string;
   };
   usage?: {
     input_tokens: number;
@@ -121,6 +125,9 @@ export class AnthropicClient implements LLMAdapter {
     function armWatchdog(): void {
       disarmWatchdog();
       watchdog = setTimeout(() => {
+        console.error(
+          `[stream ${request.model}] WATCHDOG fired — ${STREAM_TIMEOUT_MS / 1000}s of silence, cancelling reader (this truncates the response)`,
+        );
         onEvent({
           type: "error",
           error: `Stream timed out after ${STREAM_TIMEOUT_MS / 1000}s of silence`,
@@ -163,6 +170,101 @@ export class AnthropicClient implements LLMAdapter {
       });
     }
 
+    // ─── Diagnostics ─────────────────────────────────────────────────────
+    // A one-line summary is always logged to the main-process stderr (the
+    // `npm run dev` terminal) so a truncated/stalled/cut-off response leaves a
+    // trace: text length, stop_reason, event counts, leftover buffer. Set
+    // MONET_DEBUG_STREAM=1 for per-event/raw-line logging.
+    const debug = !!process.env.MONET_DEBUG_STREAM;
+    const tag = `[stream ${request.model}]`;
+    const t0 = Date.now();
+    let textLen = 0;
+    let sawMessageStop = false;
+    let finalStopReason: string | undefined;
+    const counts: Record<string, number> = {};
+
+    const emitMessageStop = (event: AnthropicSSEEvent): void => {
+      sawMessageStop = true;
+      onEvent({
+        type: "message_stop",
+        stop_reason: finalStopReason ?? "end_turn",
+        usage: event.usage
+          ? {
+              input_tokens: event.usage.input_tokens,
+              output_tokens: event.usage.output_tokens,
+              cache_creation_input_tokens: event.usage.cache_creation_input_tokens,
+              cache_read_input_tokens: event.usage.cache_read_input_tokens,
+            }
+          : undefined,
+      });
+    };
+
+    // Parse and dispatch a single SSE line. Shared by the streaming loop and
+    // the end-of-stream flush so the final buffered text/message_stop is never
+    // dropped (the old flush only recovered a lone message_stop → truncation).
+    const processSSELine = (line: string): void => {
+      if (!line.startsWith("data: ")) return;
+      const data = line.slice(6).trim();
+      if (!data || data === "[DONE]") return;
+      let event: AnthropicSSEEvent;
+      try {
+        event = JSON.parse(data);
+      } catch {
+        if (debug) console.error(`${tag} unparseable SSE: ${data.slice(0, 160)}`);
+        return;
+      }
+      counts[event.type] = (counts[event.type] ?? 0) + 1;
+      if (debug) console.error(`${tag} < ${event.type}`);
+
+      switch (event.type) {
+        case "content_block_start":
+          if (event.content_block?.type === "tool_use") {
+            currentToolId = event.content_block.id || "";
+            currentToolName = event.content_block.name || "";
+            currentToolInput = "";
+          }
+          break;
+        case "content_block_delta":
+          if (event.delta?.type === "text_delta" && event.delta.text) {
+            textLen += event.delta.text.length;
+            onEvent({ type: "text_delta", text: event.delta.text });
+          } else if (
+            event.delta?.type === "input_json_delta" &&
+            event.delta.partial_json
+          ) {
+            currentToolInput += event.delta.partial_json;
+          }
+          break;
+        case "content_block_stop":
+          if (currentToolId) {
+            try {
+              onEvent({
+                type: "tool_use",
+                id: currentToolId,
+                name: currentToolName,
+                input: JSON.parse(currentToolInput),
+              });
+            } catch {
+              onEvent({ type: "error", error: "Failed to parse tool input" });
+            }
+            currentToolId = "";
+            currentToolName = "";
+            currentToolInput = "";
+          }
+          break;
+        case "message_delta":
+          // Carries the final stop_reason (end_turn / max_tokens / tool_use).
+          if (event.delta?.stop_reason) finalStopReason = event.delta.stop_reason;
+          break;
+        case "message_stop":
+          emitMessageStop(event);
+          break;
+        case "error":
+          onEvent({ type: "error", error: event.error?.message || "Unknown error" });
+          break;
+      }
+    };
+
     armWatchdog();
 
     try {
@@ -175,120 +277,31 @@ export class AnthropicClient implements LLMAdapter {
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6).trim();
-          if (!data) continue;
-
-          try {
-            const event: AnthropicSSEEvent = JSON.parse(data);
-
-            switch (event.type) {
-              case "content_block_start": {
-                if (event.content_block?.type === "tool_use") {
-                  currentToolId = event.content_block.id || "";
-                  currentToolName = event.content_block.name || "";
-                  currentToolInput = "";
-                }
-                break;
-              }
-              case "content_block_delta": {
-                if (event.delta?.type === "text_delta" && event.delta.text) {
-                  onEvent({ type: "text_delta", text: event.delta.text });
-                } else if (
-                  event.delta?.type === "input_json_delta" &&
-                  event.delta.partial_json
-                ) {
-                  currentToolInput += event.delta.partial_json;
-                }
-                break;
-              }
-              case "content_block_stop": {
-                if (currentToolId) {
-                  try {
-                    const input = JSON.parse(currentToolInput);
-                    onEvent({
-                      type: "tool_use",
-                      id: currentToolId,
-                      name: currentToolName,
-                      input,
-                    });
-                  } catch {
-                    onEvent({
-                      type: "error",
-                      error: "Failed to parse tool input",
-                    });
-                  }
-                  currentToolId = "";
-                  currentToolName = "";
-                  currentToolInput = "";
-                }
-                break;
-              }
-              case "message_stop": {
-                onEvent({
-                  type: "message_stop",
-                  stop_reason: "end_turn",
-                  usage: event.usage
-                    ? {
-                        input_tokens: event.usage.input_tokens,
-                        output_tokens: event.usage.output_tokens,
-                        cache_creation_input_tokens:
-                          event.usage.cache_creation_input_tokens,
-                        cache_read_input_tokens:
-                          event.usage.cache_read_input_tokens,
-                      }
-                    : undefined,
-                });
-                break;
-              }
-              case "error": {
-                onEvent({
-                  type: "error",
-                  error: event.error?.message || "Unknown error",
-                });
-                break;
-              }
-            }
-          } catch {
-            // Skip malformed SSE lines
-          }
-        }
+        for (const line of lines) processSSELine(line);
       }
 
-      // Flush decoder and process remaining buffer — the last SSE event
-      // may still be sitting in buffer when the stream ends.
+      // Stream ended. Flush the decoder and process EVERY remaining buffered
+      // line — the final text delta and/or message_stop can still be sitting
+      // in `buffer` with no trailing newline.
       buffer += decoder.decode();
-      // Some providers signal end-of-stream with `data: [DONE]` (OpenAI style)
-      // instead of a proper message_stop SSE event.
-      const isDone =
-        buffer.includes("[DONE]") ||
-        (buffer.trim() === "" && !buffer.includes("data:"));
-      if (!isDone && buffer.trim() && buffer.startsWith("data: ")) {
-        const data = buffer.slice(6).trim();
-        try {
-          const event: AnthropicSSEEvent = JSON.parse(data);
-          if (event.type === "message_stop") {
-            onEvent({
-              type: "message_stop",
-              stop_reason: "end_turn",
-              usage: event.usage
-                ? {
-                    input_tokens: event.usage.input_tokens,
-                    output_tokens: event.usage.output_tokens,
-                    cache_creation_input_tokens:
-                      event.usage.cache_creation_input_tokens,
-                    cache_read_input_tokens:
-                      event.usage.cache_read_input_tokens,
-                  }
-                : undefined,
-            });
-          }
-        } catch {
-          /* ignore */
-        }
+      for (const line of buffer.split("\n")) processSSELine(line);
+
+      // If the provider closed the stream without a message_stop (abrupt close,
+      // or OpenAI-style [DONE]), synthesize one so the turn actually completes
+      // instead of the UI staying stuck "streaming".
+      if (!sawMessageStop) {
+        console.error(
+          `${tag} stream ended WITHOUT message_stop (stop_reason=${finalStopReason ?? "unknown"}, text=${textLen}) — synthesizing`,
+        );
+        onEvent({
+          type: "message_stop",
+          stop_reason: finalStopReason ?? "end_turn",
+        });
       }
+
+      console.error(
+        `${tag} done in ${Date.now() - t0}ms: text=${textLen} chars, stop_reason=${finalStopReason ?? "n/a"}, events=${JSON.stringify(counts)}, leftover=${buffer.trim().length}`,
+      );
     } catch (err) {
       // AbortError from guardedRead means user clicked Stop — not a real error
       if (err instanceof DOMException && err.name === "AbortError") {
