@@ -178,6 +178,9 @@ function Panel({
 
 export default function App(): JSX.Element {
   const [view, setView] = useState<View>("chat");
+  // Home = simple centered chat (no IDE chrome). Code = the full IDE shell
+  // (terminal, files, changes, resizable panels).
+  const [appMode, setAppMode] = useState<"home" | "code">("home");
   const [currentSessionId, setCurrentSessionId] = useState<string>();
   const [sessionTitle, setSessionTitle] = useState("New session");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -283,29 +286,33 @@ export default function App(): JSX.Element {
         <div className="flex-1" />
 
         <div className="app-no-drag flex items-center gap-0.5 pr-1.5">
-          <IconBtn
-            title="Files"
-            active={rightTab === "files"}
-            onClick={() => toggleRight("files")}
-          >
-            <PanelRight className="size-4" />
-          </IconBtn>
-          <IconBtn
-            title="Terminal"
-            active={terminalOpen}
-            onClick={() => setTerminalOpen((o) => !o)}
-          >
-            <TerminalIcon className="size-4" />
-          </IconBtn>
-          <IconBtn
-            title="Changes"
-            active={view === "changes"}
-            onClick={() =>
-              setView((v) => (v === "changes" ? "chat" : "changes"))
-            }
-          >
-            <FileDiff className="size-4" />
-          </IconBtn>
+          {appMode === "code" && (
+            <>
+              <IconBtn
+                title="Files"
+                active={rightTab === "files"}
+                onClick={() => toggleRight("files")}
+              >
+                <PanelRight className="size-4" />
+              </IconBtn>
+              <IconBtn
+                title="Terminal"
+                active={terminalOpen}
+                onClick={() => setTerminalOpen((o) => !o)}
+              >
+                <TerminalIcon className="size-4" />
+              </IconBtn>
+              <IconBtn
+                title="Changes"
+                active={view === "changes"}
+                onClick={() =>
+                  setView((v) => (v === "changes" ? "chat" : "changes"))
+                }
+              >
+                <FileDiff className="size-4" />
+              </IconBtn>
+            </>
+          )}
           <IconBtn
             title={
               chatStore.incognito
@@ -358,49 +365,18 @@ export default function App(): JSX.Element {
                 Files
                 <DropdownMenuShortcut>Ctrl+^+F</DropdownMenuShortcut>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMenuOpen(false)}>
-                <ListTodo className="size-4" />
-                Background tasks
+              <DropdownMenuItem
+                onClick={() => {
+                  setAppMode("code");
+                  setTerminalOpen(true);
+                  setMenuOpen(false);
+                }}
+              >
+                <TerminalIcon className="size-4" />
+                Terminal
               </DropdownMenuItem>
 
               <DropdownMenuSeparator />
-
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <ExternalLink className="size-4" />
-                  Open in
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuItem onClick={() => setMenuOpen(false)}>
-                    <Columns2 className="size-4" />
-                    Split view
-                    <DropdownMenuShortcut>1</DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setMenuOpen(false)}>
-                    <Monitor className="size-4" />
-                    New window
-                    <DropdownMenuShortcut>2</DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setTerminalOpen(true);
-                      setMenuOpen(false);
-                    }}
-                  >
-                    <TerminalIcon className="size-4" />
-                    Terminal
-                    <DropdownMenuShortcut>3</DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-
-              <DropdownMenuSeparator />
-
-              <DropdownMenuItem onClick={() => setMenuOpen(false)}>
-                <Pencil className="size-4" />
-                Rename
-                <DropdownMenuShortcut>R</DropdownMenuShortcut>
-              </DropdownMenuItem>
 
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
@@ -436,26 +412,18 @@ export default function App(): JSX.Element {
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
 
-              <DropdownMenuItem onClick={() => setMenuOpen(false)}>
-                <GitFork className="size-4" />
-                Fork
-                <DropdownMenuShortcut>F</DropdownMenuShortcut>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMenuOpen(false)}>
-                <Archive className="size-4" />
-                Archive
-                <DropdownMenuShortcut>A</DropdownMenuShortcut>
-              </DropdownMenuItem>
-
               <DropdownMenuSeparator />
 
               <DropdownMenuItem
                 variant="destructive"
-                onClick={() => setMenuOpen(false)}
+                onClick={() => {
+                  setMenuOpen(false);
+                  const id = useChatStore.getState().currentSessionId;
+                  if (id) void handleDeleteSession(id);
+                }}
               >
                 <Trash2 className="size-4" />
-                Delete
-                <DropdownMenuShortcut>D</DropdownMenuShortcut>
+                Delete chat
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -480,10 +448,13 @@ export default function App(): JSX.Element {
                   <div className="flex items-center gap-1 px-2 pt-2">
                     <div className="flex h-7 flex-1 items-center rounded-md bg-black/[0.05] p-0.5 dark:bg-white/[0.06]">
                       <button
-                        onClick={() => setView("chat")}
+                        onClick={() => {
+                          setAppMode("home");
+                          setView("chat");
+                        }}
                         className={cn(
                           "flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
-                          view === "chat"
+                          appMode === "home"
                             ? "bg-card text-foreground shadow-sm"
                             : "text-muted-foreground hover:text-foreground",
                         )}
@@ -492,10 +463,13 @@ export default function App(): JSX.Element {
                         Home
                       </button>
                       <button
-                        onClick={() => setView("changes")}
+                        onClick={() => {
+                          setAppMode("code");
+                          setView("chat");
+                        }}
                         className={cn(
                           "flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
-                          view === "changes"
+                          appMode === "code"
                             ? "bg-card text-foreground shadow-sm"
                             : "text-muted-foreground hover:text-foreground",
                         )}
@@ -522,11 +496,6 @@ export default function App(): JSX.Element {
                       icon={Settings}
                       label="Customize"
                       onClick={() => setSettingsOpen(true)}
-                    />
-                    <NavRow
-                      icon={ChevronDown}
-                      label="More"
-                      onClick={() => {}}
                     />
                   </div>
 
@@ -560,7 +529,25 @@ export default function App(): JSX.Element {
 
           {/* Content panel group */}
           <ResizablePanel defaultSize={sidebarOpen ? 82 : 100} minSize={30}>
-            <ResizablePanelGroup direction="horizontal" className="gap-1">
+            {appMode === "home" ? (
+              // Home: a plain, centered chat — no IDE chrome (terminal, files,
+              // changes, resizable splits). The greeting/tamagotchi lives in
+              // ChatView's empty state.
+              <div className="h-full min-h-0 overflow-hidden">
+                {openFilePath ? (
+                  <FileViewer
+                    path={openFilePath}
+                    onClose={() => setOpenFilePath(null)}
+                  />
+                ) : (
+                  <ChatView
+                    transcriptMode={transcriptMode}
+                    sessionTitle={sessionTitle}
+                  />
+                )}
+              </div>
+            ) : (
+              <ResizablePanelGroup direction="horizontal" className="gap-1">
               <ResizablePanel defaultSize={72} minSize={25}>
                 <ResizablePanelGroup direction="vertical" className="gap-1">
                   <ResizablePanel minSize={20}>
@@ -691,7 +678,8 @@ export default function App(): JSX.Element {
                   </ResizablePanel>
                 </>
               )}
-            </ResizablePanelGroup>
+              </ResizablePanelGroup>
+            )}
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
