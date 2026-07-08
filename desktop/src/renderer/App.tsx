@@ -275,15 +275,22 @@ export default function App(): JSX.Element {
     const store = useChatStore.getState();
     const msgs = store.messages;
     if (msgs.length === 0) return;
+    // messages.id is a GLOBAL primary key in the DB, so a fork must give the
+    // copied messages fresh ids — otherwise saving the fork collides with the
+    // originals (SQLITE_CONSTRAINT_PRIMARYKEY). Regenerate in the store too so
+    // the fork's future auto-saves keep using the new ids.
+    const newId = (): string =>
+      crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
+    const forked = msgs.map((m) => ({ ...m, id: newId() }));
     try {
       const s = (await api()?.sessions.create()) as { id: string } | undefined;
       if (s?.id) {
         await api()?.sessions.save({
           id: s.id,
           title: `${sessionTitle || "Chat"} (fork)`,
-          messages: msgs,
+          messages: forked,
         });
-        store.setCurrentSessionId(s.id);
+        useChatStore.setState({ messages: forked, currentSessionId: s.id });
         setCurrentSessionId(s.id);
         store.bumpSessions();
       }
@@ -425,15 +432,6 @@ export default function App(): JSX.Element {
               >
                 <Columns2 className="size-4" />
                 Split view
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  void api()?.win.newWindow();
-                  setMenuOpen(false);
-                }}
-              >
-                <Monitor className="size-4" />
-                New window
               </DropdownMenuItem>
 
               <DropdownMenuSeparator />
@@ -623,6 +621,7 @@ export default function App(): JSX.Element {
                   <ChatView
                     transcriptMode={transcriptMode}
                     sessionTitle={sessionTitle}
+                    home
                   />
                 )}
               </div>

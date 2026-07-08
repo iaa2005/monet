@@ -171,9 +171,13 @@ function pickGreeting(isFirstRun: boolean): {
 export function ChatView({
   transcriptMode = "normal",
   sessionTitle,
+  home = false,
 }: {
   transcriptMode?: TranscriptMode;
   sessionTitle?: string;
+  /** Home mode shows the "Ideas for you" chips; Code mode shows the stats
+   * overview instead. */
+  home?: boolean;
 }): JSX.Element {
   const messages = useChatStore((s) => s.messages);
   const error = useChatStore((s) => s.error);
@@ -211,28 +215,32 @@ export function ChatView({
               {greeting.subtitle}
             </p>
 
-            <div className="mt-8 w-full">
-              <div className="mb-2 text-left text-xs font-medium text-muted-foreground">
-                Ideas for you
+            {home && (
+              <div className="mt-8 w-full">
+                <div className="mb-2 text-left text-xs font-medium text-muted-foreground">
+                  Ideas for you
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {IDEAS.map((idea) => (
+                    <button
+                      key={idea.label}
+                      type="button"
+                      onClick={() => setComposerDraft(idea.prompt)}
+                      className="flex items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left text-sm transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                    >
+                      <idea.icon className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="font-medium">{idea.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex flex-col gap-1.5">
-                {IDEAS.map((idea) => (
-                  <button
-                    key={idea.label}
-                    type="button"
-                    onClick={() => setComposerDraft(idea.prompt)}
-                    className="flex items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left text-sm transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                  >
-                    <idea.icon className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="font-medium">{idea.label}</span>
-                  </button>
-                ))}
-              </div>
+            )}
+          </div>
+          {!home && (
+            <div className="mt-8">
+              <StatsDashboard />
             </div>
-          </div>
-          <div className="mt-8">
-            <StatsDashboard />
-          </div>
+          )}
         </div>
       ) : (
         <>

@@ -309,4 +309,9 @@ export async function runAgent(
       })),
     });
   }
+
+  // Loop fell through maxTurns without a natural end (no more tool calls) —
+  // emit the terminal message_stop anyway so the UI doesn't stay stuck
+  // "streaming" forever.
+  onEvent({ type: "message_stop", stop_reason: "max_turns" });
 }
