@@ -25,7 +25,9 @@ import { StatsDashboard } from "@/components/StatsDashboard";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, PermissionRequest } from "@/types/electron";
-import type { ChatMessage } from "@/types/chat";
+import type { ChatMessage, ToolCall } from "@/types/chat";
+
+type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
 function AssistantAvatar(): JSX.Element {
   return (
@@ -39,8 +41,6 @@ function AssistantAvatar(): JSX.Element {
   );
 }
 
-/** Standalone "Working…" row shown while streaming before/between visible
- * assistant text (waiting for the first token or during tool execution). */
 function WorkingRow(): JSX.Element {
   return (
     <Message align="start">
@@ -56,9 +56,15 @@ function WorkingRow(): JSX.Element {
   );
 }
 
-function MessageRow({ msg }: { msg: ChatMessage }): JSX.Element {
+function MessageRow({
+  msg,
+  mode,
+}: {
+  msg: ChatMessage;
+  mode?: TranscriptMode;
+}): JSX.Element {
   if (msg.role === "tool" && msg.toolCall) {
-    return <ToolCallBubble toolCall={msg.toolCall} />;
+    return <ToolCallBubble toolCall={msg.toolCall} mode={mode} />;
   }
 
   const isUser = msg.role === "user";
@@ -70,7 +76,7 @@ function MessageRow({ msg }: { msg: ChatMessage }): JSX.Element {
       <MessageContent>
         {isUser ? (
           <Bubble variant="secondary" align="end">
-            <BubbleContent className="whitespace-pre-wrap">
+            <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.08]">
               {msg.content}
             </BubbleContent>
           </Bubble>
@@ -86,14 +92,49 @@ function MessageRow({ msg }: { msg: ChatMessage }): JSX.Element {
   );
 }
 
-export function ChatView(): JSX.Element {
+type GroupedItem =
+  ChatMessage | { type: "tool-group"; id: string; calls: ToolCall[] };
+
+/** In Normal mode, consecutive tool messages become a single group card. */
+function groupMessages(
+  msgs: ChatMessage[],
+  mode: TranscriptMode,
+): GroupedItem[] {
+  if (mode !== "normal") return msgs;
+
+  const out: GroupedItem[] = [];
+  let i = 0;
+  while (i < msgs.length) {
+    const m = msgs[i];
+    if (m.role === "tool" && m.toolCall) {
+      const group: ToolCall[] = [m.toolCall];
+      let j = i + 1;
+      while (j < msgs.length && msgs[j].role === "tool" && msgs[j].toolCall) {
+        group.push(msgs[j].toolCall!);
+        j++;
+      }
+      out.push({ type: "tool-group", id: `tg-${i}`, calls: group });
+      i = j;
+    } else {
+      out.push(m);
+      i++;
+    }
+  }
+  return out;
+}
+
+export function ChatView({
+  transcriptMode = "normal",
+}: {
+  transcriptMode?: TranscriptMode;
+}): JSX.Element {
   const messages = useChatStore((s) => s.messages);
   const error = useChatStore((s) => s.error);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const isEmpty = messages.length === 0 && !error;
 
-  // Show the bottom "Working…" row while streaming unless the tail is already
-  // an assistant message actively rendering text.
+  const grouped = groupMessages(messages, transcriptMode);
+
   const last = messages[messages.length - 1];
   const activeText =
     last?.role === "assistant" && last.isStreaming && !!last.content;
@@ -121,15 +162,35 @@ export function ChatView(): JSX.Element {
           <MessageScroller className="flex-1">
             <MessageScrollerViewport>
               <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-6 px-4 py-6">
-                {messages.map((msg, i) => (
-                  <MessageScrollerItem
-                    key={msg.id}
-                    messageId={msg.id}
-                    scrollAnchor={!showWorking && i === messages.length - 1}
-                  >
-                    <MessageRow msg={msg} />
-                  </MessageScrollerItem>
-                ))}
+                {grouped.map((item, i) => {
+                  if ("type" in item && item.type === "tool-group") {
+                    return (
+                      <MessageScrollerItem
+                        key={item.id}
+                        messageId={item.id}
+                        scrollAnchor={!showWorking && i === grouped.length - 1}
+                      >
+                        <ToolCallBubble
+                          toolCall={item.calls[0]}
+                          groupMembers={item.calls.slice(1)}
+                          mode={transcriptMode}
+                        />
+                      </MessageScrollerItem>
+                    );
+                  }
+                  return (
+                    <MessageScrollerItem
+                      key={item.id}
+                      messageId={item.id}
+                      scrollAnchor={!showWorking && i === grouped.length - 1}
+                    >
+                      <MessageRow
+                        msg={item as ChatMessage}
+                        mode={transcriptMode}
+                      />
+                    </MessageScrollerItem>
+                  );
+                })}
 
                 {showWorking && (
                   <MessageScrollerItem messageId="__working" scrollAnchor>
@@ -157,11 +218,6 @@ export function ChatView(): JSX.Element {
   );
 }
 
-/**
- * Permission host — listens for tool permission requests from the agent and
- * shows the approval dialog. One request is pending at a time (tools run
- * sequentially), so a single-slot queue is sufficient.
- */
 export function PermissionHost(): JSX.Element | null {
   const [request, setRequest] = useState<PermissionRequest | null>(null);
 

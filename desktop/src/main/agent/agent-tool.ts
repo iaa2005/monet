@@ -66,7 +66,9 @@ export const AgentTaskTool = buildTool({
   async call({ prompt }: z.infer<InputSchema>, context: ToolUseContext) {
     const model = context.options.mainLoopModel;
     const signal = context.abortController.signal;
-    const report = await runSubAgent({ prompt, model, signal });
+    const onProgress = (context as Record<string, unknown>)
+      ._subAgentOnProgress as ((text: string) => void) | undefined;
+    const report = await runSubAgent({ prompt, model, signal, onProgress });
     return { data: { report } };
   },
   mapToolResultToToolResultBlockParam(

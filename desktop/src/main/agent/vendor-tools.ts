@@ -7,34 +7,34 @@
  * LLM adapter layer.
  */
 
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
-import type { Tool, Tools, ToolUseContext } from '@vendor/Tool.js'
-import { findToolByName } from '@vendor/Tool.js'
-import { BashTool } from '@vendor/tools/BashTool/BashTool.js'
-import { FileEditTool } from '@vendor/tools/FileEditTool/FileEditTool.js'
-import { FileReadTool } from '@vendor/tools/FileReadTool/FileReadTool.js'
-import { FileWriteTool } from '@vendor/tools/FileWriteTool/FileWriteTool.js'
-import { GlobTool } from '@vendor/tools/GlobTool/GlobTool.js'
-import { GrepTool } from '@vendor/tools/GrepTool/GrepTool.js'
-import { PowerShellTool } from '@vendor/tools/PowerShellTool/PowerShellTool.js'
-import { TodoWriteTool } from '@vendor/tools/TodoWriteTool/TodoWriteTool.js'
-import { zodToJsonSchema } from '@vendor/utils/zodToJsonSchema.js'
-import { InlineSkillTool } from './skill-tool.js'
-import { AgentTaskTool } from './agent-tool.js'
+import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
+import type { Tool, Tools, ToolUseContext } from "@vendor/Tool.js";
+import { findToolByName } from "@vendor/Tool.js";
+import { BashTool } from "@vendor/tools/BashTool/BashTool.js";
+import { FileEditTool } from "@vendor/tools/FileEditTool/FileEditTool.js";
+import { FileReadTool } from "@vendor/tools/FileReadTool/FileReadTool.js";
+import { FileWriteTool } from "@vendor/tools/FileWriteTool/FileWriteTool.js";
+import { GlobTool } from "@vendor/tools/GlobTool/GlobTool.js";
+import { GrepTool } from "@vendor/tools/GrepTool/GrepTool.js";
+import { PowerShellTool } from "@vendor/tools/PowerShellTool/PowerShellTool.js";
+import { TodoWriteTool } from "@vendor/tools/TodoWriteTool/TodoWriteTool.js";
+import { zodToJsonSchema } from "@vendor/utils/zodToJsonSchema.js";
+import { InlineSkillTool } from "./skill-tool.js";
+import { AgentTaskTool } from "./agent-tool.js";
 import {
   callMcpTool,
   ensureConnected,
   getMcpTools,
   isMcpToolName,
-} from '../mcp/manager.js'
-import type { LLMTool } from '../llm/adapter.js'
+} from "../mcp/manager.js";
+import type { LLMTool } from "../llm/adapter.js";
 import {
   createParentAssistantMessage,
   createToolUseContext,
   getAppState,
   initVendorRuntime,
   setVendorPermissionMode,
-} from './vendor-context.js'
+} from "./vendor-context.js";
 
 // ─── Permission modes ─────────────────────────────────────────────────────
 
@@ -42,46 +42,47 @@ import {
  * checkPermissions() run against — 'auto' has no vendor equivalent (needs the
  * Anthropic classifier we can't run), so it uses 'default' + a local heuristic. */
 export type UiPermissionMode =
-  | 'default'
-  | 'acceptEdits'
-  | 'plan'
-  | 'auto'
-  | 'bypassPermissions'
+  "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions";
 
 export type PermissionAsk = {
-  toolName: string
-  description: string
-  detail?: string
-}
-export type PermissionDecision = 'allow' | 'allow-once' | 'deny'
-export type RequestPermission = (ask: PermissionAsk) => Promise<PermissionDecision>
+  toolName: string;
+  description: string;
+  detail?: string;
+};
+export type PermissionDecision = "allow" | "allow-once" | "deny";
+export type RequestPermission = (
+  ask: PermissionAsk,
+) => Promise<PermissionDecision>;
 
-const VENDOR_MODE_FOR: Record<UiPermissionMode, 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'> = {
-  default: 'default',
-  acceptEdits: 'acceptEdits',
-  plan: 'plan',
-  auto: 'default',
-  bypassPermissions: 'bypassPermissions',
-}
+const VENDOR_MODE_FOR: Record<
+  UiPermissionMode,
+  "default" | "acceptEdits" | "plan" | "bypassPermissions"
+> = {
+  default: "default",
+  acceptEdits: "acceptEdits",
+  plan: "plan",
+  auto: "default",
+  bypassPermissions: "bypassPermissions",
+};
 
 // Tools "Auto" mode runs without asking (read/search + file mutations). Shell
 // tools and anything else still prompt.
 const AUTO_ALLOW_TOOLS = new Set([
-  'Read',
-  'Grep',
-  'Glob',
-  'Edit',
-  'Write',
-  'MultiEdit',
-  'TodoWrite',
-])
+  "Read",
+  "Grep",
+  "Glob",
+  "Edit",
+  "Write",
+  "MultiEdit",
+  "TodoWrite",
+]);
 
 // Per-session "Allow always" grants (keyed by sessionId:toolName) so a tool the
 // user approved with "Allow always" won't prompt again this session.
-const sessionAllowAlways = new Set<string>()
+const sessionAllowAlways = new Set<string>();
 
 function baseName(p: string): string {
-  return p.split(/[/\\]/).pop() || p
+  return p.split(/[/\\]/).pop() || p;
 }
 
 function describeAsk(
@@ -89,101 +90,119 @@ function describeAsk(
   input: Record<string, unknown>,
 ): { description: string; detail?: string } {
   const str = (k: string): string | undefined =>
-    typeof input[k] === 'string' ? (input[k] as string) : undefined
-  const name = tool.name
-  if (name === 'Bash' || name === 'PowerShell') {
-    return { description: `Run a ${name} command`, detail: str('command') }
+    typeof input[k] === "string" ? (input[k] as string) : undefined;
+  const name = tool.name;
+  if (name === "Bash" || name === "PowerShell") {
+    return { description: `Run a ${name} command`, detail: str("command") };
   }
-  const path = str('file_path') ?? str('path')
-  if (name === 'Write') return { description: `Create or overwrite ${path ? baseName(path) : 'a file'}`, detail: path }
-  if (name === 'Edit' || name === 'MultiEdit')
-    return { description: `Edit ${path ? baseName(path) : 'a file'}`, detail: path }
-  if (name === 'Read') return { description: `Read ${path ? baseName(path) : 'a file'}`, detail: path }
-  const first = str('command') ?? str('pattern') ?? str('query') ?? str('url') ?? path
-  return { description: `Run ${name}`, detail: first }
+  const path = str("file_path") ?? str("path");
+  if (name === "Write")
+    return {
+      description: `Create or overwrite ${path ? baseName(path) : "a file"}`,
+      detail: path,
+    };
+  if (name === "Edit" || name === "MultiEdit")
+    return {
+      description: `Edit ${path ? baseName(path) : "a file"}`,
+      detail: path,
+    };
+  if (name === "Read")
+    return {
+      description: `Read ${path ? baseName(path) : "a file"}`,
+      detail: path,
+    };
+  const first =
+    str("command") ?? str("pattern") ?? str("query") ?? str("url") ?? path;
+  return { description: `Run ${name}`, detail: first };
 }
 
-type GateResult = { behavior: 'allow'; input: Record<string, unknown> } | { behavior: 'deny'; message: string }
+type GateResult =
+  | { behavior: "allow"; input: Record<string, unknown> }
+  | { behavior: "deny"; message: string };
 
 async function gatePermission(args: {
-  tool: Tool
-  input: Record<string, unknown>
-  context: ToolUseContext
-  permissionMode: UiPermissionMode
-  requestPermission?: RequestPermission
-  sessionId: string
+  tool: Tool;
+  input: Record<string, unknown>;
+  context: ToolUseContext;
+  permissionMode: UiPermissionMode;
+  requestPermission?: RequestPermission;
+  sessionId: string;
 }): Promise<GateResult> {
-  const { tool, input, context, permissionMode, requestPermission, sessionId } = args
+  const { tool, input, context, permissionMode, requestPermission, sessionId } =
+    args;
 
-  if (permissionMode === 'bypassPermissions') return { behavior: 'allow', input }
+  if (permissionMode === "bypassPermissions")
+    return { behavior: "allow", input };
 
   // Plan mode: only read-only tools may run until the user approves the plan.
-  if (permissionMode === 'plan') {
-    if (tool.isReadOnly(input)) return { behavior: 'allow', input }
+  if (permissionMode === "plan") {
+    if (tool.isReadOnly(input)) return { behavior: "allow", input };
     return {
-      behavior: 'deny',
+      behavior: "deny",
       message: `Plan mode is active — ${tool.name} is blocked. Present the plan and let the user switch modes before making changes.`,
-    }
+    };
   }
 
-  const allowKey = `${sessionId}:${tool.name}`
-  if (sessionAllowAlways.has(allowKey)) return { behavior: 'allow', input }
+  const allowKey = `${sessionId}:${tool.name}`;
+  if (sessionAllowAlways.has(allowKey)) return { behavior: "allow", input };
 
-  const perm = await tool.checkPermissions(input, context)
-  if (perm.behavior === 'deny') {
-    return { behavior: 'deny', message: `Permission denied: ${perm.message}` }
+  const perm = await tool.checkPermissions(input, context);
+  if (perm.behavior === "deny") {
+    return { behavior: "deny", message: `Permission denied: ${perm.message}` };
   }
-  const nextInput =
-    (perm.behavior === 'allow' && perm.updatedInput) || input
-  if (perm.behavior === 'allow') return { behavior: 'allow', input: nextInput }
+  const nextInput = (perm.behavior === "allow" && perm.updatedInput) || input;
+  if (perm.behavior === "allow") return { behavior: "allow", input: nextInput };
 
   // perm.behavior is 'ask' (or 'passthrough') — needs a decision.
-  if (permissionMode === 'auto') {
+  if (permissionMode === "auto") {
     if (tool.isReadOnly(input) || AUTO_ALLOW_TOOLS.has(tool.name)) {
-      return { behavior: 'allow', input: nextInput }
+      return { behavior: "allow", input: nextInput };
     }
   }
 
   if (!requestPermission) {
     return {
-      behavior: 'deny',
+      behavior: "deny",
       message: `${tool.name} needs permission but no prompt channel is available.`,
-    }
+    };
   }
-  const { description, detail } = describeAsk(tool, input)
+  const { description, detail } = describeAsk(tool, input);
   const decision = await requestPermission({
     toolName: tool.userFacingName(input) || tool.name,
     description,
     detail,
-  })
-  if (decision === 'deny') {
-    return { behavior: 'deny', message: `The user declined to run ${tool.name}.` }
+  });
+  if (decision === "deny") {
+    return {
+      behavior: "deny",
+      message: `The user declined to run ${tool.name}.`,
+    };
   }
-  if (decision === 'allow') sessionAllowAlways.add(allowKey)
-  return { behavior: 'allow', input: nextInput }
+  if (decision === "allow") sessionAllowAlways.add(allowKey);
+  return { behavior: "allow", input: nextInput };
 }
 
 /** Clear a session's "Allow always" grants (on New session / reset). */
 export function clearSessionGrants(sessionId: string): void {
   for (const key of sessionAllowAlways) {
-    if (key.startsWith(`${sessionId}:`)) sessionAllowAlways.delete(key)
+    if (key.startsWith(`${sessionId}:`)) sessionAllowAlways.delete(key);
   }
 }
 
 // ─── Toolset ────────────────────────────────────────────────────────────
 
-let cachedTools: Tools | null = null
-let cachedForWorkspace: string | null = null
+let cachedTools: Tools | null = null;
+let cachedForWorkspace: string | null = null;
 
 export function getVendorTools(): Tools {
-  const ws = initVendorRuntime()
+  const ws = initVendorRuntime();
   if (ws !== cachedForWorkspace) {
     // Workspace switch: tool enablement and prompt content (cwd, git) change.
-    cachedTools = null
-    apiToolsCache.clear()
-    cachedForWorkspace = ws
+    cachedTools = null;
+    apiToolsCache.clear();
+    cachedForWorkspace = ws;
   }
-  if (cachedTools) return cachedTools
+  if (cachedTools) return cachedTools;
   const all = [
     BashTool,
     PowerShellTool,
@@ -195,86 +214,88 @@ export function getVendorTools(): Tools {
     TodoWriteTool,
     InlineSkillTool,
     AgentTaskTool,
-  ] as unknown as Tool[]
-  cachedTools = all.filter(t => t.isEnabled())
-  return cachedTools
+  ] as unknown as Tool[];
+  cachedTools = all.filter((t) => t.isEnabled());
+  return cachedTools;
 }
 
 /** Reset cached tools (workspace switch changes isEnabled outcomes). */
 export function resetVendorTools(): void {
-  cachedTools = null
-  apiToolsCache.clear()
+  cachedTools = null;
+  apiToolsCache.clear();
 }
 
 // ─── API schema conversion (adapter-facing) ─────────────────────────────
 
-const apiToolsCache = new Map<string, LLMTool[]>()
+const apiToolsCache = new Map<string, LLMTool[]>();
 
 // (declared before getVendorTools uses it at runtime — module-level const
 // hoisting via TDZ is satisfied because getVendorTools runs post-init)
 
 export async function getVendorApiTools(): Promise<LLMTool[]> {
-  const tools = getVendorTools()
-  const cacheKey = tools.map(t => t.name).join(',')
-  let base = apiToolsCache.get(cacheKey)
+  const tools = getVendorTools();
+  const cacheKey = tools.map((t) => t.name).join(",");
+  let base = apiToolsCache.get(cacheKey);
   if (!base) {
     const promptOptions = {
       getToolPermissionContext: async () => getAppState().toolPermissionContext,
       tools,
       agents: [],
-    }
+    };
     base = await Promise.all(
-      tools.map(async tool => {
-        const schema = zodToJsonSchema(tool.inputSchema) as LLMTool['input_schema']
+      tools.map(async (tool) => {
+        const schema = zodToJsonSchema(
+          tool.inputSchema,
+        ) as LLMTool["input_schema"];
         return {
           name: tool.name,
           description: await tool.prompt(promptOptions),
           input_schema: {
-            type: 'object' as const,
+            type: "object" as const,
             properties: schema.properties ?? {},
             ...(schema.required ? { required: schema.required } : {}),
           },
-        }
+        };
       }),
-    )
-    apiToolsCache.set(cacheKey, base)
+    );
+    apiToolsCache.set(cacheKey, base);
   }
 
   // Append live MCP tools. Not cached with the vendor tools — connections
   // (and thus the tool list) change as servers connect/disconnect.
   try {
-    await ensureConnected()
-    const mcpTools = getMcpTools().map(t => ({
+    await ensureConnected();
+    const mcpTools = getMcpTools().map((t) => ({
       name: t.fullName,
       description: t.description,
       input_schema: t.inputSchema,
-    }))
-    if (mcpTools.length) return [...base, ...mcpTools]
+    }));
+    if (mcpTools.length) return [...base, ...mcpTools];
   } catch {
     // MCP is best-effort — never block the toolset on a server failure.
   }
-  return base
+  return base;
 }
 
 // ─── Execution ──────────────────────────────────────────────────────────
 
 function flattenToolResultContent(
-  content: ToolResultBlockParam['content'],
+  content: ToolResultBlockParam["content"],
 ): string {
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return String(content ?? '')
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return String(content ?? "");
   return content
-    .map(block => {
-      if (block.type === 'text') return block.text
-      if (block.type === 'image') return '[image attached]'
-      return JSON.stringify(block)
+    .map((block) => {
+      if (block.type === "text") return block.text;
+      if (block.type === "image") return "[image attached]";
+      return JSON.stringify(block);
     })
-    .join('\n')
+    .join("\n");
 }
 
 export interface VendorToolResult {
-  content: string
-  isError: boolean
+  content: string;
+  isError: boolean;
 }
 
 /** The tool.call() canUseTool hook — gating already happened in gatePermission
@@ -282,21 +303,21 @@ export interface VendorToolResult {
 const canUseTool = async (
   _tool: unknown,
   input: Record<string, unknown>,
-): Promise<{ behavior: 'allow'; updatedInput: Record<string, unknown> }> => ({
-  behavior: 'allow',
+): Promise<{ behavior: "allow"; updatedInput: Record<string, unknown> }> => ({
+  behavior: "allow",
   updatedInput: input,
-})
+});
 
 export async function executeVendorTool(opts: {
-  sessionId: string
-  toolUseID: string
-  name: string
-  input: Record<string, unknown>
-  model: string
-  permissionMode?: UiPermissionMode
-  requestPermission?: RequestPermission
-  signal?: AbortSignal
-  onProgress?: (text: string) => void
+  sessionId: string;
+  toolUseID: string;
+  name: string;
+  input: Record<string, unknown>;
+  model: string;
+  permissionMode?: UiPermissionMode;
+  requestPermission?: RequestPermission;
+  signal?: AbortSignal;
+  onProgress?: (text: string) => void;
 }): Promise<VendorToolResult> {
   const {
     sessionId,
@@ -304,39 +325,40 @@ export async function executeVendorTool(opts: {
     name,
     input,
     model,
-    permissionMode = 'default',
+    permissionMode = "default",
     requestPermission,
     signal,
-  } = opts
-  initVendorRuntime()
+    onProgress,
+  } = opts;
+  initVendorRuntime();
 
   // MCP tools (mcp__<server>__<tool>) are served by the connection manager,
   // not the vendor tool pipeline. Auto/bypass modes run them without asking;
   // otherwise route an approval through the UI like any other tool.
   if (isMcpToolName(name)) {
     if (
-      permissionMode !== 'bypassPermissions' &&
-      permissionMode !== 'auto' &&
+      permissionMode !== "bypassPermissions" &&
+      permissionMode !== "auto" &&
       requestPermission
     ) {
       const decision = await requestPermission({
         toolName: name,
         description: `Run MCP tool ${name}`,
         detail: JSON.stringify(input).slice(0, 300),
-      })
-      if (decision === 'deny') {
-        return { content: `Permission denied: ${name}`, isError: true }
+      });
+      if (decision === "deny") {
+        return { content: `Permission denied: ${name}`, isError: true };
       }
     }
-    return callMcpTool(name, input)
+    return callMcpTool(name, input);
   }
 
   // Point the vendor tools' checkPermissions() at the selected mode.
-  setVendorPermissionMode(VENDOR_MODE_FOR[permissionMode])
-  const tools = getVendorTools()
-  const tool = findToolByName(tools, name)
+  setVendorPermissionMode(VENDOR_MODE_FOR[permissionMode]);
+  const tools = getVendorTools();
+  const tool = findToolByName(tools, name);
   if (!tool) {
-    return { content: `Unknown tool: ${name}`, isError: true }
+    return { content: `Unknown tool: ${name}`, isError: true };
   }
 
   const context: ToolUseContext = createToolUseContext({
@@ -344,26 +366,28 @@ export async function executeVendorTool(opts: {
     tools,
     model,
     signal,
-  })
-  ;(context as { toolUseId?: string }).toolUseId = toolUseID
+  });
+  (context as { toolUseId?: string }).toolUseId = toolUseID;
+  if (onProgress)
+    (context as Record<string, unknown>)._subAgentOnProgress = onProgress;
 
   try {
     // 1. Schema parse (defaults, coercions, strictness) — the query engine
     //    does this before validateInput.
-    const parsed = tool.inputSchema.safeParse(input)
+    const parsed = tool.inputSchema.safeParse(input);
     if (!parsed.success) {
       return {
         content: `InputValidationError: ${parsed.error.message}`,
         isError: true,
-      }
+      };
     }
-    const toolInput = parsed.data as Record<string, unknown>
+    const toolInput = parsed.data as Record<string, unknown>;
 
     // 2. Tool-specific validation.
     if (tool.validateInput) {
-      const validation = await tool.validateInput(toolInput, context)
+      const validation = await tool.validateInput(toolInput, context);
       if (!validation.result) {
-        return { content: `Error: ${validation.message}`, isError: true }
+        return { content: `Error: ${validation.message}`, isError: true };
       }
     }
 
@@ -375,11 +399,11 @@ export async function executeVendorTool(opts: {
       permissionMode,
       requestPermission,
       sessionId,
-    })
-    if (gate.behavior === 'deny') {
-      return { content: gate.message, isError: true }
+    });
+    if (gate.behavior === "deny") {
+      return { content: gate.message, isError: true };
     }
-    const finalInput = gate.input
+    const finalInput = gate.input;
 
     // 4. Execute.
     const parentMessage = createParentAssistantMessage(
@@ -387,29 +411,29 @@ export async function executeVendorTool(opts: {
       toolUseID,
       tool.name,
       finalInput,
-    )
+    );
     const result = await tool.call(
       finalInput,
       context,
       canUseTool as never,
       parentMessage,
       undefined,
-    )
+    );
 
     // 5. Serialize the result the way the API layer would.
     const block = tool.mapToolResultToToolResultBlockParam(
       result.data,
       toolUseID,
-    )
+    );
     return {
       content: flattenToolResultContent(block.content),
       isError: block.is_error === true,
-    }
+    };
   } catch (err) {
     if (signal?.aborted) {
-      return { content: 'Tool execution aborted', isError: true }
+      return { content: "Tool execution aborted", isError: true };
     }
-    const message = err instanceof Error ? err.message : String(err)
-    return { content: `Error: ${message}`, isError: true }
+    const message = err instanceof Error ? err.message : String(err);
+    return { content: `Error: ${message}`, isError: true };
   }
 }

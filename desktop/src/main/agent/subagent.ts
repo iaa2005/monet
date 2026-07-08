@@ -44,8 +44,11 @@ export async function runSubAgent(opts: {
     if (signal?.aborted) return finalText || "Sub-agent aborted.";
 
     let assistantText = "";
-    const toolCalls: { id: string; name: string; input: Record<string, unknown> }[] =
-      [];
+    const toolCalls: {
+      id: string;
+      name: string;
+      input: Record<string, unknown>;
+    }[] = [];
     try {
       await adapter.stream(
         {
@@ -80,11 +83,17 @@ export async function runSubAgent(opts: {
     const blocks: LLMContentBlock[] = [];
     if (assistantText) blocks.push({ type: "text", text: assistantText });
     for (const tc of toolCalls)
-      blocks.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.input });
+      blocks.push({
+        type: "tool_use",
+        id: tc.id,
+        name: tc.name,
+        input: tc.input,
+      });
     if (blocks.length)
       messages.push({
         role: "assistant",
-        content: assistantText && toolCalls.length === 0 ? assistantText : blocks,
+        content:
+          assistantText && toolCalls.length === 0 ? assistantText : blocks,
       });
 
     if (toolCalls.length === 0) {
@@ -99,6 +108,7 @@ export async function runSubAgent(opts: {
     }[] = [];
     for (const tc of toolCalls) {
       if (signal?.aborted) return finalText || "Sub-agent aborted.";
+      onProgress?.(`\n⚙ Sub-agent: running ${tc.name}...\n`);
       const r = await executeVendorTool({
         sessionId,
         toolUseID: tc.id,

@@ -38,9 +38,7 @@ import { shouldCompact, compactMessages } from "./compaction.js";
 async function buildSystemPrompt(model: string): Promise<string> {
   initVendorRuntime();
   try {
-    const { getSystemPrompt } = await import(
-      "@vendor/constants/prompts.js"
-    );
+    const { getSystemPrompt } = await import("@vendor/constants/prompts.js");
     const sections = await getSystemPrompt(getVendorTools(), model);
     const prompt = sections.filter(Boolean).join("\n\n");
     if (prompt.trim().length > 0) return prompt;
@@ -244,7 +242,11 @@ export async function runAgent(
       });
 
     if (toolCalls.length === 0) {
-      onEvent({ type: "message_stop", stop_reason: "end_turn", usage: lastUsage });
+      onEvent({
+        type: "message_stop",
+        stop_reason: "end_turn",
+        usage: lastUsage,
+      });
       return;
     }
 
@@ -275,6 +277,14 @@ export async function runAgent(
         permissionMode,
         requestPermission,
         signal,
+        onProgress: (text) => {
+          onEvent({
+            type: "tool_result",
+            toolUseID: tc.id,
+            toolName: tc.name,
+            content: text,
+          });
+        },
       });
       onEvent({
         type: "tool_result",

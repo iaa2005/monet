@@ -1,5 +1,17 @@
-import { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import {
+  MoreVertical,
+  Pin,
+  BookOpen,
+  Pencil,
+  GitFork,
+  Archive,
+  Trash2,
+  ExternalLink,
+  Columns2,
+  Monitor,
+  Terminal as TerminalIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import type { ChatMessage } from "@/types/chat";
@@ -46,6 +58,8 @@ export function SessionList({
 }: SessionListProps): JSX.Element {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const version = useChatStore((s) => s.sessionsVersion);
 
   const loadSessions = async (): Promise<void> => {
@@ -59,7 +73,6 @@ export function SessionList({
     }
   };
 
-  // Reload whenever sessions change (new/save/delete) or the window regains focus.
   useEffect(() => {
     loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -72,6 +85,18 @@ export function SessionList({
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!openMenuId) return;
+    const handler = (e: MouseEvent): void => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [openMenuId]);
 
   const handleSelect = async (id: string): Promise<void> => {
     try {
@@ -109,48 +134,227 @@ export function SessionList({
     <div className="flex flex-col gap-0.5 pb-2">
       {sessions.map((s) => {
         const active = s.id === currentSessionId;
+        const menuOpen = openMenuId === s.id;
         return (
           <div
             key={s.id}
-            onClick={() => handleSelect(s.id)}
             className={cn(
-              "group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
+              "group relative flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
               active && "bg-black/[0.06] dark:bg-white/[0.08]",
             )}
           >
-            <span
-              className={cn(
-                "size-1.5 shrink-0 rounded-full",
-                active ? "bg-link" : "bg-transparent",
-              )}
-            />
-            <span className="min-w-0 flex-1">
+            <div
+              className="flex min-w-0 flex-1 items-center gap-2"
+              onClick={() => handleSelect(s.id)}
+            >
               <span
                 className={cn(
-                  "block truncate text-[13px]",
-                  active ? "text-foreground" : "text-muted-foreground",
+                  "size-1.5 shrink-0 rounded-full",
+                  active ? "bg-link" : "bg-transparent",
                 )}
-              >
-                {s.title || "New session"}
-              </span>
-              {s.messageCount > 0 && (
-                <span className="block truncate text-[11px] text-muted-foreground/70">
-                  {s.messageCount} msgs · {relTime(s.updatedAt)}
+              />
+              <span className="min-w-0 flex-1">
+                <span
+                  className={cn(
+                    "block truncate text-[13px]",
+                    active ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {s.title || "New session"}
                 </span>
-              )}
-            </span>
+                {s.messageCount > 0 && (
+                  <span className="block truncate text-[11px] text-muted-foreground/70">
+                    {s.messageCount} msgs · {relTime(s.updatedAt)}
+                  </span>
+                )}
+              </span>
+            </div>
+
+            {/* ⋮ button — visible on hover */}
             <button
               type="button"
-              aria-label="Delete chat"
+              aria-label="More actions"
               className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition hover:bg-black/10 hover:text-foreground group-hover:opacity-100 dark:hover:bg-white/10"
               onClick={(e) => {
                 e.stopPropagation();
-                onDelete(s.id);
-                setSessions((prev) => prev.filter((x) => x.id !== s.id));
+                setOpenMenuId(menuOpen ? null : s.id);
               }}
             >
-              <X className="size-3" />
+              <MoreVertical className="size-3" />
             </button>
+
+            {/* Dropdown menu */}
+            {menuOpen && (
+              <div
+                ref={menuRef}
+                className="absolute right-1 top-full z-50 mt-0.5 w-48 rounded-xl border border-border bg-card p-1 shadow-lg"
+              >
+                {/* Open in submenu */}
+                <div className="relative group/item">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                  >
+                    <ExternalLink className="size-4 text-muted-foreground" />
+                    Open in
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      ▸
+                    </span>
+                  </button>
+                  <div className="absolute left-full top-0 z-50 ml-1 hidden w-44 rounded-xl border border-border bg-card p-1 shadow-lg group-hover/item:block">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                    >
+                      <Columns2 className="size-4 text-muted-foreground" />
+                      Split view
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        1
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                    >
+                      <Monitor className="size-4 text-muted-foreground" />
+                      New window
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        2
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                    >
+                      <TerminalIcon className="size-4 text-muted-foreground" />
+                      Terminal
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        3
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="-mx-1 my-1 h-px bg-border" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenMenuId(null);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                >
+                  <Pin className="size-4 text-muted-foreground" />
+                  Pin
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    P
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenMenuId(null);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                >
+                  <BookOpen className="size-4 text-muted-foreground" />
+                  Mark as unread
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    U
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenMenuId(null);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                >
+                  <Pencil className="size-4 text-muted-foreground" />
+                  Rename
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    R
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenMenuId(null);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                >
+                  <GitFork className="size-4 text-muted-foreground" />
+                  Fork
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    F
+                  </span>
+                </button>
+
+                <div className="-mx-1 my-1 h-px bg-border" />
+
+                <div className="relative group/item">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                  >
+                    <Archive className="size-4 text-muted-foreground" />
+                    Move to group
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      ▸
+                    </span>
+                  </button>
+                  <div className="absolute left-full top-0 z-50 ml-1 hidden w-36 rounded-xl border border-border bg-card p-1 shadow-lg group-hover/item:block">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                      }}
+                      className="flex w-full rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                    >
+                      No groups yet
+                    </button>
+                  </div>
+                </div>
+
+                <div className="-mx-1 my-1 h-px bg-border" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenMenuId(null);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                >
+                  <Archive className="size-4 text-muted-foreground" />
+                  Archive
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    A
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenMenuId(null);
+                    onDelete(s.id);
+                    setSessions((prev) => prev.filter((x) => x.id !== s.id));
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive/10"
+                >
+                  <Trash2 className="size-4" />
+                  Delete
+                  <span className="ml-auto text-xs opacity-70">D</span>
+                </button>
+              </div>
+            )}
           </div>
         );
       })}

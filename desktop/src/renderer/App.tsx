@@ -17,11 +17,18 @@ import {
   FileDiff,
   PanelRight,
   PanelLeft,
-  Sun,
-  Moon,
   MoreVertical,
   ChevronDown,
   X,
+  ListTodo,
+  Pencil,
+  FileText,
+  GitFork,
+  Archive,
+  Trash2,
+  ExternalLink,
+  Columns2,
+  Monitor,
   type LucideIcon,
 } from "lucide-react";
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
@@ -38,6 +45,17 @@ import { AccountMenu } from "@/components/AccountMenu";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { Modal } from "@/components/ui/modal";
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+} from "@/components/ui/dropdown-menu";
+import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
@@ -53,6 +71,7 @@ const Terminal = lazy(() =>
 
 type View = "chat" | "changes" | "skills";
 type RightTab = "files" | "artifacts" | null;
+type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -163,6 +182,8 @@ export default function App(): JSX.Element {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [transcriptMode, setTranscriptMode] =
+    useState<TranscriptMode>("normal");
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>(null);
   const [openFilePath, setOpenFilePath] = useState<string | null>(null);
@@ -308,47 +329,139 @@ export default function App(): JSX.Element {
           >
             <FileDiff className="size-4" />
           </IconBtn>
-          <div className="relative">
-            <IconBtn title="More" onClick={() => setMenuOpen((o) => !o)}>
-              <MoreVertical className="size-4" />
-            </IconBtn>
-            {menuOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setMenuOpen(false)}
-                />
-                <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-xl border border-border bg-card p-1 shadow-lg">
-                  <button
-                    type="button"
+
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                title="More"
+                aria-label="More"
+                className="app-no-drag flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+              >
+                <MoreVertical className="size-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem
+                onClick={() => {
+                  toggleRight("artifacts");
+                  setMenuOpen(false);
+                }}
+              >
+                <Blocks className="size-4" />
+                Artifacts
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  toggleRight("files");
+                  setMenuOpen(false);
+                }}
+              >
+                <PanelRight className="size-4" />
+                Files
+                <DropdownMenuShortcut>Ctrl+^+F</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMenuOpen(false)}>
+                <ListTodo className="size-4" />
+                Background tasks
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <ExternalLink className="size-4" />
+                  Open in
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={() => setMenuOpen(false)}>
+                    <Columns2 className="size-4" />
+                    Split view
+                    <DropdownMenuShortcut>1</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setMenuOpen(false)}>
+                    <Monitor className="size-4" />
+                    New window
+                    <DropdownMenuShortcut>2</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
                     onClick={() => {
+                      setTerminalOpen(true);
                       setMenuOpen(false);
-                      setSettingsOpen(true);
                     }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                   >
-                    <Settings className="size-4 text-muted-foreground" />
-                    Settings
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      toggle();
-                    }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
-                  >
-                    {theme === "dark" ? (
-                      <Sun className="size-4 text-muted-foreground" />
-                    ) : (
-                      <Moon className="size-4 text-muted-foreground" />
-                    )}
-                    {theme === "dark" ? "Light mode" : "Dark mode"}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+                    <TerminalIcon className="size-4" />
+                    Terminal
+                    <DropdownMenuShortcut>3</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem onClick={() => setMenuOpen(false)}>
+                <Pencil className="size-4" />
+                Rename
+                <DropdownMenuShortcut>R</DropdownMenuShortcut>
+              </DropdownMenuItem>
+
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <FileText className="size-4" />
+                  Transcript view
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {(
+                    [
+                      "normal",
+                      "thinking",
+                      "verbose",
+                      "summary",
+                    ] as TranscriptMode[]
+                  ).map((m) => (
+                    <DropdownMenuItem
+                      key={m}
+                      onClick={() => {
+                        setTranscriptMode(m);
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <span
+                        className={m === transcriptMode ? "font-medium" : ""}
+                      >
+                        {m.charAt(0).toUpperCase() + m.slice(1)}
+                      </span>
+                      {m === transcriptMode && (
+                        <span className="ml-auto size-1.5 rounded-full bg-link" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+
+              <DropdownMenuItem onClick={() => setMenuOpen(false)}>
+                <GitFork className="size-4" />
+                Fork
+                <DropdownMenuShortcut>F</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMenuOpen(false)}>
+                <Archive className="size-4" />
+                Archive
+                <DropdownMenuShortcut>A</DropdownMenuShortcut>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => setMenuOpen(false)}
+              >
+                <Trash2 className="size-4" />
+                Delete
+                <DropdownMenuShortcut>D</DropdownMenuShortcut>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <WindowControls />
@@ -357,7 +470,7 @@ export default function App(): JSX.Element {
       {/* ── Body ── */}
       <div className="flex min-h-0 flex-1">
         {sidebarOpen && (
-          <aside className="flex w-60 shrink-0 flex-col rounded-xl border border-border bg-card shadow-sm mx-1.5 my-1.5">
+          <aside className="mx-1.5 my-1.5 flex w-60 shrink-0 flex-col rounded-xl border border-border bg-card shadow-sm">
             <div className="flex flex-col gap-0.5 px-2 pt-2">
               <NavRow icon={Plus} label="New session" onClick={newSession} />
               <NavRow
@@ -375,7 +488,7 @@ export default function App(): JSX.Element {
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col px-2">
-              <div className="flex items-center justify-between px-2 pt-3 pb-1">
+              <div className="flex items-center justify-between px-2 pb-1 pt-3">
                 <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
                   Recents
                 </span>
@@ -416,7 +529,9 @@ export default function App(): JSX.Element {
                       />
                     ) : (
                       <>
-                        {view === "chat" && <ChatView />}
+                        {view === "chat" && (
+                          <ChatView transcriptMode={transcriptMode} />
+                        )}
                         {view === "changes" && (
                           <div className="h-full overflow-auto">
                             <DiffViewer
