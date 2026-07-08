@@ -443,11 +443,7 @@ export default function App(): JSX.Element {
 
       {/* ── Body ── */}
       <div className="flex min-h-0 flex-1 p-2">
-        <ResizablePanelGroup
-          key={`${rightTab ? "right" : "noright"}-${terminalOpen ? "term" : "noterm"}-${sidebarOpen ? "side" : "noside"}`}
-          direction="horizontal"
-          className="gap-1"
-        >
+        <ResizablePanelGroup direction="horizontal" className="gap-1">
           {sidebarOpen && (
             <>
               <ResizablePanel defaultSize={18} minSize={14} maxSize={38}>
@@ -533,17 +529,9 @@ export default function App(): JSX.Element {
 
           {/* Content panel group */}
           <ResizablePanel defaultSize={sidebarOpen ? 82 : 100} minSize={40}>
-            <ResizablePanelGroup
-              key={rightTab ? "with-right" : "no-right"}
-              direction="horizontal"
-              className="gap-1"
-            >
+            <ResizablePanelGroup direction="horizontal" className="gap-1">
               <ResizablePanel defaultSize={72} minSize={32}>
-                <ResizablePanelGroup
-                  key={terminalOpen ? "with-term" : "no-term"}
-                  direction="vertical"
-                  className="gap-1"
-                >
+                <ResizablePanelGroup direction="vertical" className="gap-1">
                   <ResizablePanel minSize={25}>
                     <div className="flex h-full min-h-0 flex-col overflow-hidden">
                       {openFilePath ? (
@@ -616,7 +604,7 @@ export default function App(): JSX.Element {
               {rightTab && (
                 <>
                   <ResizableHandle withHandle />
-                  <ResizablePanel defaultSize={30} minSize={18} maxSize={48}>
+                  <ResizablePanel key="right-panel" defaultSize={30} minSize={18} maxSize={48}>
                     <Panel>
                       <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
                         <button
@@ -652,18 +640,19 @@ export default function App(): JSX.Element {
                         </button>
                       </div>
                       <div className="min-h-0 flex-1 overflow-auto">
-                        {rightTab === "files" ? (
+                        <div className={rightTab === "files" ? "" : "hidden"}>
                           <FileTree onSelectFile={(p) => setOpenFilePath(p)} />
-                        ) : (
+                        </div>
+                        <div
+                          className={rightTab === "artifacts" ? "" : "hidden"}
+                        >
                           <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
                             Artifacts published in this session appear here.
                           </div>
-                        )}
+                        </div>
                       </div>
                     </Panel>
                   </ResizablePanel>
-                </>
-              )}
             </ResizablePanelGroup>
           </ResizablePanel>
         </ResizablePanelGroup>
