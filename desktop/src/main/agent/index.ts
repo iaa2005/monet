@@ -12,6 +12,7 @@ import type {
   LLMEvent,
   LLMMessage,
   LLMContentBlock,
+  LLMUsage,
 } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
 import { createAdapter } from "../llm/adapter.js";
@@ -178,6 +179,7 @@ export async function runAgent(
     }[] = [];
     let assistantText = "";
     let streamError: string | null = null;
+    let lastUsage: LLMUsage | undefined;
 
     try {
       await adapter.stream(
@@ -198,6 +200,16 @@ export async function runAgent(
               input: event.input,
             });
           if (event.type === "error") streamError = event.error;
+          // Suppress the PER-TURN message_stop: in an agentic run each tool-use
+          // turn's stream ends with a message_stop, but the task isn't done —
+          // forwarding it would flip the UI to "finished" between turns (spinner
+          // vanishes while tools run). The loop emits ONE authoritative
+          // message_stop when the task truly ends (no tool calls / error /
+          // abort). Keep the usage from the latest turn for that final event.
+          if (event.type === "message_stop") {
+            lastUsage = event.usage;
+            return;
+          }
           onEvent(event);
         },
         signal,
@@ -232,7 +244,7 @@ export async function runAgent(
       });
 
     if (toolCalls.length === 0) {
-      onEvent({ type: "message_stop", stop_reason: "end_turn" });
+      onEvent({ type: "message_stop", stop_reason: "end_turn", usage: lastUsage });
       return;
     }
 

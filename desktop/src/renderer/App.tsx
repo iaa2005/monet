@@ -19,6 +19,7 @@ import {
   PanelLeft,
   Sun,
   Moon,
+  MoreVertical,
   ChevronDown,
   X,
   type LucideIcon,
@@ -161,6 +162,7 @@ export default function App(): JSX.Element {
   const [sessionTitle, setSessionTitle] = useState("New session");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>(null);
   const [openFilePath, setOpenFilePath] = useState<string | null>(null);
@@ -306,16 +308,47 @@ export default function App(): JSX.Element {
           >
             <FileDiff className="size-4" />
           </IconBtn>
-          <IconBtn title="Settings" onClick={() => setSettingsOpen(true)}>
-            <Settings className="size-4" />
-          </IconBtn>
-          <IconBtn title="Toggle theme" onClick={toggle}>
-            {theme === "dark" ? (
-              <Sun className="size-4" />
-            ) : (
-              <Moon className="size-4" />
+          <div className="relative">
+            <IconBtn title="More" onClick={() => setMenuOpen((o) => !o)}>
+              <MoreVertical className="size-4" />
+            </IconBtn>
+            {menuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setMenuOpen(false)}
+                />
+                <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-xl border border-border bg-card p-1 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setSettingsOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                  >
+                    <Settings className="size-4 text-muted-foreground" />
+                    Settings
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      toggle();
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                  >
+                    {theme === "dark" ? (
+                      <Sun className="size-4 text-muted-foreground" />
+                    ) : (
+                      <Moon className="size-4 text-muted-foreground" />
+                    )}
+                    {theme === "dark" ? "Light mode" : "Dark mode"}
+                  </button>
+                </div>
+              </>
             )}
-          </IconBtn>
+          </div>
         </div>
 
         <WindowControls />
