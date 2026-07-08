@@ -205,6 +205,15 @@ async function main() {
     task.content.split('\n')[0],
   )
 
+  // 11. Web tools — present + schemas + graceful invalid-URL (no network).
+  check('WebFetch + WebSearch present', tools.some(t => t.name === 'WebFetch') && tools.some(t => t.name === 'WebSearch'))
+  const wfApi = apiTools.find(t => t.name === 'WebFetch')
+  const wsApi = apiTools.find(t => t.name === 'WebSearch')
+  check('WebFetch schema has url', !!wfApi && 'url' in (wfApi.input_schema.properties ?? {}))
+  check('WebSearch schema has query', !!wsApi && 'query' in (wsApi.input_schema.properties ?? {}))
+  const badUrl = await run('WebFetch', { url: 'notaurl' })
+  check('WebFetch rejects bad URL', badUrl.isError && /invalid url/i.test(badUrl.content))
+
   rmSync(dir, { recursive: true, force: true })
   console.log(failures ? `\n${failures} FAILURES` : '\nALL SMOKE CHECKS PASSED')
   process.exit(failures ? 1 : 0)

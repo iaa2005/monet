@@ -21,6 +21,7 @@ import { TodoWriteTool } from "@vendor/tools/TodoWriteTool/TodoWriteTool.js";
 import { zodToJsonSchema } from "@vendor/utils/zodToJsonSchema.js";
 import { InlineSkillTool } from "./skill-tool.js";
 import { AgentTaskTool } from "./agent-tool.js";
+import { WebFetchTool, WebSearchTool } from "./web-tools.js";
 import {
   callMcpTool,
   ensureConnected,
@@ -214,6 +215,8 @@ export function getVendorTools(): Tools {
     TodoWriteTool,
     InlineSkillTool,
     AgentTaskTool,
+    WebFetchTool,
+    WebSearchTool,
   ] as unknown as Tool[];
   cachedTools = all.filter((t) => t.isEnabled());
   return cachedTools;
