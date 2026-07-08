@@ -26,6 +26,7 @@ interface AccountMenuProps {
   plan?: string;
   email?: string;
   onOpenSettings: () => void;
+  onOpenAbout: () => void;
 }
 
 export function AccountMenu({
@@ -33,6 +34,7 @@ export function AccountMenu({
   plan = "Pro",
   email,
   onOpenSettings,
+  onOpenAbout,
 }: AccountMenuProps): JSX.Element {
   return (
     <DropdownMenu>
@@ -92,10 +94,9 @@ export function AccountMenu({
           <ScrollText />
           View changelog
         </DropdownMenuItem>
-        <DropdownMenuItem>
+        <DropdownMenuItem onClick={onOpenAbout}>
           <Info />
-          Learn more
-          <ChevronRight className="ml-auto size-4" />
+          About project
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />

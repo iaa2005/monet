@@ -41,6 +41,7 @@ import { FileTree } from "@/components/FileTree";
 import { FileViewer } from "@/components/FileViewer";
 import { WindowControls } from "@/components/WindowControls";
 import { AccountMenu } from "@/components/AccountMenu";
+import { AboutPanel } from "@/components/AboutPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -180,6 +181,7 @@ export default function App(): JSX.Element {
   const [sessionTitle, setSessionTitle] = useState("New session");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [transcriptMode, setTranscriptMode] =
     useState<TranscriptMode>("normal");
@@ -519,7 +521,10 @@ export default function App(): JSX.Element {
                   </div>
 
                   <div className="p-1">
-                    <AccountMenu onOpenSettings={() => setSettingsOpen(true)} />
+                    <AccountMenu
+                      onOpenSettings={() => setSettingsOpen(true)}
+                      onOpenAbout={() => setAboutOpen(true)}
+                    />
                   </div>
                 </aside>
               </ResizablePanel>
@@ -604,7 +609,12 @@ export default function App(): JSX.Element {
               {rightTab && (
                 <>
                   <ResizableHandle withHandle />
-                  <ResizablePanel key="right-panel" defaultSize={30} minSize={18} maxSize={48}>
+                  <ResizablePanel
+                    key="right-panel"
+                    defaultSize={30}
+                    minSize={18}
+                    maxSize={48}
+                  >
                     <Panel>
                       <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
                         <button
@@ -659,6 +669,15 @@ export default function App(): JSX.Element {
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+
+      <Modal
+        open={aboutOpen}
+        onClose={() => setAboutOpen(false)}
+        bare
+        className="h-[80vh] max-w-4xl"
+      >
+        <AboutPanel />
+      </Modal>
 
       <Modal
         open={settingsOpen}
