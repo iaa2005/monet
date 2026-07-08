@@ -68,6 +68,9 @@ export interface ElectronAPI {
     >;
     exists: (path: string) => Promise<boolean>;
     pickDirectory: () => Promise<string | null>;
+    stat: (
+      path: string,
+    ) => Promise<{ size: number; isFile: boolean; isDirectory: boolean }>;
   };
   shell: {
     run: (
@@ -79,6 +82,7 @@ export interface ElectronAPI {
       stderr: string;
       error?: string;
     }>;
+    openPath: (path: string) => Promise<void>;
   };
   providers: {
     list: () => Promise<LLMProvider[]>;

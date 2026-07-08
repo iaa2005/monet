@@ -653,6 +653,8 @@ export default function App(): JSX.Element {
                       </div>
                     </Panel>
                   </ResizablePanel>
+                </>
+              )}
             </ResizablePanelGroup>
           </ResizablePanel>
         </ResizablePanelGroup>

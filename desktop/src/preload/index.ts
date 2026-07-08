@@ -53,6 +53,10 @@ const electronAPI = {
       ipcRenderer.invoke("files:exists", path),
     pickDirectory: (): Promise<string | null> =>
       ipcRenderer.invoke("files:pick-directory"),
+    stat: (
+      path: string,
+    ): Promise<{ size: number; isFile: boolean; isDirectory: boolean }> =>
+      ipcRenderer.invoke("files:stat", path),
   },
 
   shell: {
@@ -65,6 +69,8 @@ const electronAPI = {
       stderr: string;
       error?: string;
     }> => ipcRenderer.invoke("shell:run", command, cwd),
+    openPath: (path: string): Promise<void> =>
+      ipcRenderer.invoke("shell:openPath", path),
   },
 
   providers: {
@@ -160,10 +166,8 @@ const electronAPI = {
       ipcRenderer.invoke("mcp:add", payload),
     remove: (name: string): Promise<unknown[]> =>
       ipcRenderer.invoke("mcp:remove", name),
-    toggle: (payload: {
-      name: string;
-      enabled: boolean;
-    }): Promise<unknown[]> => ipcRenderer.invoke("mcp:toggle", payload),
+    toggle: (payload: { name: string; enabled: boolean }): Promise<unknown[]> =>
+      ipcRenderer.invoke("mcp:toggle", payload),
     reconnect: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:reconnect"),
   },
 
@@ -174,7 +178,9 @@ const electronAPI = {
     close: (): Promise<void> => ipcRenderer.invoke("window:close"),
     isMaximized: (): Promise<boolean> =>
       ipcRenderer.invoke("window:isMaximized"),
-    onMaximizeChange: (callback: (maximized: boolean) => void): (() => void) => {
+    onMaximizeChange: (
+      callback: (maximized: boolean) => void,
+    ): (() => void) => {
       const handler = (_e: Electron.IpcRendererEvent, maximized: boolean) =>
         callback(maximized);
       ipcRenderer.on("window:maximized", handler);

@@ -3,10 +3,14 @@
  * Falls back to cmd /c on other platforms.
  */
 
-import { ipcMain } from "electron";
+import { ipcMain, shell } from "electron";
 import { spawn } from "child_process";
 
 export function registerShellIPC(): void {
+  ipcMain.handle("shell:openPath", async (_event, filePath: string) => {
+    await shell.showItemInFolder(filePath);
+  });
+
   ipcMain.handle("shell:run", async (_event, command: string, cwd?: string) => {
     const isWin = process.platform === "win32";
 
