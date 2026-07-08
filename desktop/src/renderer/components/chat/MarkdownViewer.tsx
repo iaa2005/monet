@@ -6,6 +6,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
+import { CodeBlock } from "./CodeBlock";
 
 interface MarkdownViewerProps {
   content: string;
@@ -63,6 +64,9 @@ export function MarkdownViewer({
             />
           ),
           hr: ({ node: _n, ...p }) => <hr className="my-4 border-border" {...p} />,
+          // Unwrap the default <pre> — CodeBlock supplies its own container, so
+          // this prevents a nested <pre><pre> for fenced blocks.
+          pre: ({ node: _n, children }) => <>{children}</>,
           table: ({ node: _n, ...p }) => (
             <div className="my-3 overflow-x-auto">
               <table className="w-full border-collapse text-xs" {...p} />
@@ -80,14 +84,10 @@ export function MarkdownViewer({
           code({ className: cls, children, ...props }) {
             const { node: _n, ...rest } = props as Record<string, unknown>;
             const codeStr = String(children).replace(/\n$/, "");
-            if (cls) {
-              return (
-                <pre className="my-3 overflow-auto rounded-lg border border-border bg-muted/60 p-3 text-xs leading-relaxed">
-                  <code className={cn("font-mono", cls)} {...rest}>
-                    {codeStr}
-                  </code>
-                </pre>
-              );
+            // Fenced block: has a language- class, or spans multiple lines.
+            const lang = /language-(\w+)/.exec(cls ?? "")?.[1];
+            if (lang || codeStr.includes("\n")) {
+              return <CodeBlock code={codeStr} language={lang ?? ""} />;
             }
             return (
               <code

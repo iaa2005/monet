@@ -21,6 +21,8 @@ import {
   getDefaultAppState,
   type AppState,
 } from '@vendor/state/AppStateStore.js'
+import { getEmptyToolPermissionContext } from '@vendor/Tool.js'
+import type { PermissionMode } from '@vendor/types/permissions.js'
 import { enableConfigs } from '@vendor/utils/config.js'
 import { FileStateCache } from '@vendor/utils/fileStateCache.js'
 import { getWorkspacePath } from '../ipc/workspace.js'
@@ -57,16 +59,36 @@ export function initVendorRuntime(): string {
 
 let appState: AppState | null = null
 
+// The vendor PermissionMode the tools' checkPermissions() run against. Driven
+// by the UI mode selector via setVendorPermissionMode(). 'default' asks for
+// risky actions (routed to the renderer dialog); the executor layer maps the
+// UI "Auto" mode onto 'default' + its own heuristic (see vendor-tools.ts).
+let vendorMode: PermissionMode = 'default'
+
+function buildPermissionContext(mode: PermissionMode): AppState['toolPermissionContext'] {
+  return {
+    ...getEmptyToolPermissionContext(),
+    mode,
+    isBypassPermissionsModeAvailable: true,
+  }
+}
+
+export function setVendorPermissionMode(mode: PermissionMode): void {
+  vendorMode = mode
+  if (appState) {
+    appState = {
+      ...appState,
+      toolPermissionContext: buildPermissionContext(mode),
+    }
+  }
+}
+
 export function getAppState(): AppState {
   if (!appState) {
     const state = getDefaultAppState()
     appState = {
       ...state,
-      toolPermissionContext: {
-        ...state.toolPermissionContext,
-        mode: 'bypassPermissions',
-        isBypassPermissionsModeAvailable: true,
-      },
+      toolPermissionContext: buildPermissionContext(vendorMode),
     }
   }
   return appState

@@ -23,7 +23,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { ChatView, usePermissionHandler } from "@/components/chat/ChatView";
+import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { FilterDropdown } from "@/components/FilterDropdown";
@@ -167,8 +167,6 @@ export default function App(): JSX.Element {
   const [diffs] = useState<DiffFile[]>([]);
   const { theme, setTheme, toggle } = useTheme();
   const chatStore = useChatStore();
-
-  usePermissionHandler();
 
   useEffect(() => {
     api()
@@ -503,6 +501,8 @@ export default function App(): JSX.Element {
       >
         <SettingsPanel theme={theme} setTheme={setTheme} />
       </Modal>
+
+      <PermissionHost />
     </div>
   );
 }

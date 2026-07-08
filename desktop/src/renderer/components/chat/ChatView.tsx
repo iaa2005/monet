@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useChatStore } from "@/stores/chatStore";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { ToolCallBubble } from "./ToolCallBubble";
 import { MessageInput } from "./MessageInput";
+import { PermissionDialog } from "./PermissionDialog";
 import {
   MessageScrollerProvider,
   MessageScroller,
@@ -26,6 +27,35 @@ import { cn } from "@/lib/utils";
 import type { ElectronAPI, PermissionRequest } from "@/types/electron";
 import type { ChatMessage } from "@/types/chat";
 
+function AssistantAvatar(): JSX.Element {
+  return (
+    <MessageAvatar>
+      <Avatar size="sm">
+        <AvatarFallback className="bg-brand text-white">
+          <ClaudeMark className="size-3" />
+        </AvatarFallback>
+      </Avatar>
+    </MessageAvatar>
+  );
+}
+
+/** Standalone "Working…" row shown while streaming before/between visible
+ * assistant text (waiting for the first token or during tool execution). */
+function WorkingRow(): JSX.Element {
+  return (
+    <Message align="start">
+      <AssistantAvatar />
+      <MessageContent>
+        <Bubble variant="ghost">
+          <BubbleContent>
+            <Shimmer>Working…</Shimmer>
+          </BubbleContent>
+        </Bubble>
+      </MessageContent>
+    </Message>
+  );
+}
+
 function MessageRow({ msg }: { msg: ChatMessage }): JSX.Element {
   if (msg.role === "tool" && msg.toolCall) {
     return <ToolCallBubble toolCall={msg.toolCall} />;
@@ -35,15 +65,7 @@ function MessageRow({ msg }: { msg: ChatMessage }): JSX.Element {
 
   return (
     <Message align={isUser ? "end" : "start"}>
-      {!isUser && (
-        <MessageAvatar>
-          <Avatar size="sm">
-            <AvatarFallback className="bg-brand text-white">
-              <ClaudeMark className="size-3" />
-            </AvatarFallback>
-          </Avatar>
-        </MessageAvatar>
-      )}
+      {!isUser && <AssistantAvatar />}
 
       <MessageContent>
         {isUser ? (
@@ -55,11 +77,7 @@ function MessageRow({ msg }: { msg: ChatMessage }): JSX.Element {
         ) : (
           <Bubble variant="ghost">
             <BubbleContent className={cn(msg.isError && "text-destructive")}>
-              {msg.content ? (
-                <MarkdownViewer content={msg.content} />
-              ) : msg.isStreaming ? (
-                <Shimmer>Working…</Shimmer>
-              ) : null}
+              {msg.content ? <MarkdownViewer content={msg.content} /> : null}
             </BubbleContent>
           </Bubble>
         )}
@@ -71,7 +89,15 @@ function MessageRow({ msg }: { msg: ChatMessage }): JSX.Element {
 export function ChatView(): JSX.Element {
   const messages = useChatStore((s) => s.messages);
   const error = useChatStore((s) => s.error);
+  const isStreaming = useChatStore((s) => s.isStreaming);
   const isEmpty = messages.length === 0 && !error;
+
+  // Show the bottom "Working…" row while streaming unless the tail is already
+  // an assistant message actively rendering text.
+  const last = messages[messages.length - 1];
+  const activeText =
+    last?.role === "assistant" && last.isStreaming && !!last.content;
+  const showWorking = isStreaming && !activeText;
 
   return (
     <div className="flex h-full flex-col">
@@ -99,11 +125,17 @@ export function ChatView(): JSX.Element {
                   <MessageScrollerItem
                     key={msg.id}
                     messageId={msg.id}
-                    scrollAnchor={i === messages.length - 1}
+                    scrollAnchor={!showWorking && i === messages.length - 1}
                   >
                     <MessageRow msg={msg} />
                   </MessageScrollerItem>
                 ))}
+
+                {showWorking && (
+                  <MessageScrollerItem messageId="__working" scrollAnchor>
+                    <WorkingRow />
+                  </MessageScrollerItem>
+                )}
 
                 {error && (
                   <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
@@ -125,19 +157,35 @@ export function ChatView(): JSX.Element {
   );
 }
 
-/** Permission handler hook — auto-allows for now (MVP). */
-export function usePermissionHandler(): void {
+/**
+ * Permission host — listens for tool permission requests from the agent and
+ * shows the approval dialog. One request is pending at a time (tools run
+ * sequentially), so a single-slot queue is sufficient.
+ */
+export function PermissionHost(): JSX.Element | null {
+  const [request, setRequest] = useState<PermissionRequest | null>(null);
+
   useEffect(() => {
     const bridge = (window as unknown as { electronAPI?: ElectronAPI })
       .electronAPI;
     if (!bridge?.permissions) return;
-
-    const unsubscribe = bridge.permissions.onRequest(
-      (request: PermissionRequest) => {
-        console.log("Permission requested:", request);
-        bridge.permissions.respond("allow-once");
-      },
+    return bridge.permissions.onRequest((req: PermissionRequest) =>
+      setRequest(req),
     );
-    return unsubscribe;
   }, []);
+
+  if (!request) return null;
+
+  return (
+    <PermissionDialog
+      key={request.id}
+      request={request}
+      onDecision={(decision) => {
+        const bridge = (window as unknown as { electronAPI?: ElectronAPI })
+          .electronAPI;
+        bridge?.permissions.respond(decision);
+        setRequest(null);
+      }}
+    />
+  );
 }

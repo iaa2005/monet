@@ -28,6 +28,8 @@ async function run(name: string, input: Record<string, unknown>) {
     name,
     input,
     model: MODEL,
+    // Backend harness: no UI to prompt, so bypass the permission gate.
+    permissionMode: 'bypassPermissions',
   })
 }
 

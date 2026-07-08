@@ -12,6 +12,7 @@ import {
   seedConversation,
 } from "../agent/index.js";
 import { getProviderManager } from "../provider/manager.js";
+import { requestPermissionFromRenderer } from "./permissions.js";
 import type { LLMContentBlock } from "../llm/adapter.js";
 
 interface ChatAttachment {
@@ -78,9 +79,18 @@ function buildUserContent(
   return [{ type: "text", text }, ...imageBlocks];
 }
 
+// The composer now sends a permission level (matching the vendor PermissionMode
+// ids). Plan mode additionally steers the system prompt.
+const VALID_MODES = new Set([
+  "default",
+  "acceptEdits",
+  "plan",
+  "auto",
+  "bypassPermissions",
+]);
+
 const MODE_DIRECTIVES: Record<string, string> = {
   plan: "You are operating in PLAN mode: think through the task and present a clear, numbered plan first. Do NOT modify files or run mutating commands until the user approves the plan.",
-  concise: "Be concise and direct. Prefer short, high-signal answers and minimal preamble.",
 };
 
 let currentAbort: AbortController | null = null;
@@ -98,6 +108,16 @@ export function registerChatIPC(): void {
     const abort = new AbortController();
     currentAbort = abort;
 
+    const mode =
+      payload.mode && VALID_MODES.has(payload.mode)
+        ? (payload.mode as
+            | "default"
+            | "acceptEdits"
+            | "plan"
+            | "auto"
+            | "bypassPermissions")
+        : "default";
+
     try {
       await runAgent(
         sessionId,
@@ -107,9 +127,9 @@ export function registerChatIPC(): void {
         },
         {
           signal: abort.signal,
-          modeDirective: payload.mode
-            ? MODE_DIRECTIVES[payload.mode]
-            : undefined,
+          modeDirective: MODE_DIRECTIVES[mode],
+          permissionMode: mode,
+          requestPermission: (ask) => requestPermissionFromRenderer(win, ask),
         },
       );
     } catch (err) {

@@ -8,11 +8,12 @@ import {
   Square,
   X,
   FileText,
-  Zap,
-  ListChecks,
-  Minimize2,
   Gauge,
 } from "lucide-react";
+import {
+  PermissionModeMenu,
+  type PermissionMode,
+} from "./PermissionModeMenu";
 import {
   Attachment,
   AttachmentMedia,
@@ -46,12 +47,6 @@ interface Provider {
   model?: string;
   contextWindow?: number;
 }
-
-const MODES = [
-  { id: "auto", label: "Auto", icon: Zap, hint: "Balanced default" },
-  { id: "plan", label: "Plan", icon: ListChecks, hint: "Plan before acting" },
-  { id: "concise", label: "Concise", icon: Minimize2, hint: "Short answers" },
-] as const;
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -145,8 +140,10 @@ export function MessageInput(): JSX.Element {
   const [files, setFiles] = useState<StagedFile[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [activeId, setActiveId] = useState<string>("");
-  const [mode, setMode] = useState<string>(
-    () => localStorage.getItem("chat-mode") || "auto",
+  const [mode, setMode] = useState<PermissionMode>(
+    () =>
+      (localStorage.getItem("permission-mode") as PermissionMode | null) ||
+      "default",
   );
   const [listening, setListening] = useState(false);
 
@@ -155,7 +152,7 @@ export function MessageInput(): JSX.Element {
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
   const usage = useChatStore((s) => s.usage);
-  const { addUserMessage, addAssistantMessage, handleLLMEvent, setError, isStreaming } =
+  const { addUserMessage, startStreaming, handleLLMEvent, setError, isStreaming } =
     useChatStore();
 
   useEffect(() => {
@@ -189,9 +186,9 @@ export function MessageInput(): JSX.Element {
     setActiveId(id);
   };
 
-  const pickMode = (id: string): void => {
+  const pickMode = (id: PermissionMode): void => {
     setMode(id);
-    localStorage.setItem("chat-mode", id);
+    localStorage.setItem("permission-mode", id);
   };
 
   const toggleMic = (): void => {
@@ -295,7 +292,7 @@ export function MessageInput(): JSX.Element {
       .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
     addUserMessage(text);
-    addAssistantMessage();
+    startStreaming();
 
     try {
       if (!bridge) return;
@@ -320,7 +317,6 @@ export function MessageInput(): JSX.Element {
     await api()?.chat.abort();
   };
 
-  const currentMode = MODES.find((m) => m.id === mode) ?? MODES[0];
   const pillBtn =
     "flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]";
 
@@ -388,26 +384,8 @@ export function MessageInput(): JSX.Element {
               <Plus className="size-4" />
             </button>
 
-            {/* Mode / effort */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button type="button" className={pillBtn}>
-                  <currentMode.icon className="size-3.5" />
-                  {currentMode.label}
-                  <ChevronDown className="size-3" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" className="w-52">
-                <DropdownMenuLabel>Mode</DropdownMenuLabel>
-                {MODES.map((m) => (
-                  <DropdownMenuItem key={m.id} onClick={() => pickMode(m.id)}>
-                    <m.icon />
-                    <span className="flex-1">{m.label}</span>
-                    {mode === m.id && <Check className="size-4" />}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* Permission mode */}
+            <PermissionModeMenu mode={mode} onChange={pickMode} />
 
             <button
               type="button"

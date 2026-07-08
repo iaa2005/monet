@@ -26,6 +26,9 @@ interface ChatStore {
   setCurrentSessionId: (id?: string) => void;
   bumpSessions: () => void;
   addUserMessage: (content: string) => ChatMessage;
+  /** Enter the streaming state without creating an (empty) assistant bubble —
+   * the first token / tool call materializes the real message. */
+  startStreaming: () => void;
   addAssistantMessage: () => ChatMessage;
   appendToLastMessage: (text: string) => void;
   addToolCall: (toolCall: ToolCall) => void;
@@ -58,6 +61,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     return msg;
   },
 
+  startStreaming: () => set({ isStreaming: true, error: null }),
+
   addAssistantMessage: () => {
     const msg: ChatMessage = {
       id: generateId(),
@@ -87,7 +92,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   addToolCall: (toolCall) => {
     set((s) => {
+      // Drop a trailing empty assistant bubble so it can't get stranded
+      // (showing "Working…" forever) above the tool call.
       const msgs = [...s.messages];
+      const last = msgs[msgs.length - 1];
+      if (last && last.role === "assistant" && !last.content) msgs.pop();
       const toolMsg: ChatMessage = {
         id: generateId(),
         role: "tool",
@@ -111,17 +120,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   finishStreaming: (usage) => {
     set((s) => {
-      const msgs = [...s.messages];
-      const last = msgs[msgs.length - 1];
-      if (last && last.role === "assistant") {
-        msgs[msgs.length - 1] = { ...last, isStreaming: false };
-      }
-      return { messages: msgs, isStreaming: false, usage: usage ?? s.usage };
+      // Clear the streaming flag everywhere and drop any empty assistant
+      // bubbles left behind (e.g. a turn that only made tool calls).
+      const messages = s.messages
+        .filter((m) => !(m.role === "assistant" && !m.content))
+        .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m));
+      return { messages, isStreaming: false, usage: usage ?? s.usage };
     });
   },
 
   setError: (error) => {
-    set({ error, isStreaming: false });
+    set((s) => ({
+      error,
+      isStreaming: false,
+      messages: s.messages
+        .filter((m) => !(m.role === "assistant" && !m.content))
+        .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
+    }));
   },
 
   clearMessages: () => {

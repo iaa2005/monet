@@ -1,44 +1,29 @@
 import { useState } from "react";
-import {
-  Check,
-  ChevronRight,
-  Circle,
-  FilePlus,
-  FileText,
-  Loader2,
-  Pencil,
-  Search,
-  Terminal,
-  Wrench,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { Check, ChevronRight, Circle, Loader2, X } from "lucide-react";
 import type { ToolCall } from "@/types/chat";
-import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { cn } from "@/lib/utils";
+import { CodeBlock } from "./CodeBlock";
+import { InlineDiff, diffStats } from "./InlineDiff";
 
-const TOOL_ICONS: Record<string, LucideIcon> = {
-  Read: FileText,
-  Write: FilePlus,
-  Edit: Pencil,
-  MultiEdit: Pencil,
-  Bash: Terminal,
-  PowerShell: Terminal,
-  Glob: Search,
-  Grep: Search,
-};
-
-function iconFor(name: string): LucideIcon {
-  return TOOL_ICONS[name] ?? Wrench;
+function baseName(p: string): string {
+  return p.split(/[/\\]/).pop() || p;
 }
 
-function inputPreview(input: Record<string, unknown>): string {
-  for (const key of ["file_path", "path", "command", "pattern", "query", "url"]) {
-    const v = input[key];
-    if (typeof v === "string") return v;
+/** Short one-line preview of the tool's primary argument, shown in the header. */
+function inputPreview(name: string, input: Record<string, unknown>): string {
+  const str = (k: string): string | undefined =>
+    typeof input[k] === "string" ? (input[k] as string) : undefined;
+  if (name === "Bash" || name === "PowerShell") return str("command") ?? "";
+  const path = str("file_path") ?? str("path");
+  if (name === "Read" || name === "Write" || name === "Edit" || name === "MultiEdit")
+    return path ? baseName(path) : "";
+  if (name === "Grep" || name === "Glob") {
+    const pat = str("pattern") ?? "";
+    const inPath = str("path");
+    return inPath ? `${pat}  ${baseName(inPath)}` : pat;
   }
-  const keys = Object.keys(input);
-  return keys.length ? JSON.stringify(input) : "";
+  const first = str("file_path") ?? str("path") ?? str("command") ?? str("pattern") ?? str("query") ?? str("url");
+  return first ?? "";
 }
 
 function StatusIcon({ status }: { status: ToolCall["status"] }): JSX.Element {
@@ -54,60 +39,108 @@ function StatusIcon({ status }: { status: ToolCall["status"] }): JSX.Element {
   }
 }
 
-export function ToolCallBubble({
-  toolCall,
-}: {
-  toolCall: ToolCall;
-}): JSX.Element {
+/** Expanded detail body — diff for edits, code for writes/outputs. */
+function ToolDetail({ toolCall }: { toolCall: ToolCall }): JSX.Element {
+  const { name, input, output } = toolCall;
+  const str = (k: string): string | undefined =>
+    typeof input[k] === "string" ? (input[k] as string) : undefined;
+
+  if ((name === "Edit" || name === "MultiEdit") && str("old_string") != null) {
+    return (
+      <InlineDiff oldText={str("old_string") ?? ""} newText={str("new_string") ?? ""} />
+    );
+  }
+
+  if (name === "Write" && str("content") != null) {
+    // New file → render as an all-added diff (green "+" lines), matching Edit.
+    return <InlineDiff oldText="" newText={str("content") ?? ""} />;
+  }
+
+  const shellLang =
+    name === "Bash" ? "bash" : name === "PowerShell" ? "powershell" : "";
+
+  return (
+    <div className="space-y-2">
+      {(name === "Bash" || name === "PowerShell") && str("command") && (
+        <CodeBlock code={str("command") ?? ""} language={shellLang} />
+      )}
+      {output ? (
+        <CodeBlock code={output} language="text" maxHeight={320} />
+      ) : Object.keys(input).length > 0 &&
+        name !== "Bash" &&
+        name !== "PowerShell" ? (
+        <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
+      ) : null}
+    </div>
+  );
+}
+
+export function ToolCallBubble({ toolCall }: { toolCall: ToolCall }): JSX.Element {
   const [open, setOpen] = useState(false);
-  const Icon = iconFor(toolCall.name);
-  const preview = inputPreview(toolCall.input);
+  const preview = inputPreview(toolCall.name, toolCall.input);
+
+  const isEdit =
+    (toolCall.name === "Edit" || toolCall.name === "MultiEdit") &&
+    typeof toolCall.input.old_string === "string";
+  const isWrite =
+    toolCall.name === "Write" && typeof toolCall.input.content === "string";
+  const stats = isEdit
+    ? diffStats(
+        String(toolCall.input.old_string ?? ""),
+        String(toolCall.input.new_string ?? ""),
+      )
+    : isWrite
+      ? diffStats("", String(toolCall.input.content ?? ""))
+      : null;
+
   const hasDetails =
     Object.keys(toolCall.input).length > 0 || Boolean(toolCall.output);
 
   return (
     <div className="w-full">
-      <Marker variant="border" asChild>
-        <button
-          type="button"
-          onClick={() => hasDetails && setOpen((o) => !o)}
-          className={cn("w-full", hasDetails && "cursor-pointer")}
-        >
-          <MarkerIcon>
-            <Icon className="size-4" />
-          </MarkerIcon>
-          <MarkerContent className="flex min-w-0 items-center gap-2">
-            <span className="font-medium text-foreground">{toolCall.name}</span>
-            {preview && (
-              <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
-                {preview}
-              </span>
+      <button
+        type="button"
+        onClick={() => hasDetails && setOpen((o) => !o)}
+        className={cn(
+          "-mx-1.5 flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors",
+          hasDetails &&
+            "cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
+        )}
+      >
+        <span className="shrink-0 text-sm font-medium text-foreground">
+          {toolCall.name}
+        </span>
+        {preview ? (
+          <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+            {preview}
+          </span>
+        ) : (
+          <span className="flex-1" />
+        )}
+        {stats && (stats.added > 0 || stats.removed > 0) && (
+          <span className="shrink-0 font-mono text-[11px]">
+            <span className="text-emerald-600 dark:text-emerald-500">
+              +{stats.added}
+            </span>{" "}
+            <span className="text-red-600 dark:text-red-500">
+              -{stats.removed}
+            </span>
+          </span>
+        )}
+        <StatusIcon status={toolCall.status} />
+        {hasDetails && (
+          <ChevronRight
+            className={cn(
+              "size-3.5 shrink-0 text-muted-foreground/70 transition-transform",
+              open && "rotate-90",
             )}
-          </MarkerContent>
-          <StatusIcon status={toolCall.status} />
-          {hasDetails && (
-            <ChevronRight
-              className={cn(
-                "size-4 shrink-0 text-muted-foreground transition-transform",
-                open && "rotate-90",
-              )}
-            />
-          )}
-        </button>
-      </Marker>
+          />
+        )}
+      </button>
 
       {open && hasDetails && (
-        <div className="mt-2 space-y-2">
-          {Object.keys(toolCall.input).length > 0 && (
-            <pre className="max-h-60 overflow-auto rounded-lg border border-border bg-muted/50 p-3 font-mono text-xs leading-relaxed text-muted-foreground">
-              {JSON.stringify(toolCall.input, null, 2)}
-            </pre>
-          )}
-          {toolCall.output && (
-            <pre className="max-h-72 overflow-auto rounded-lg border border-border bg-card p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
-              {toolCall.output}
-            </pre>
-          )}
+        <div className="mt-1.5">
+          <ToolDetail toolCall={toolCall} />
         </div>
       )}
     </div>

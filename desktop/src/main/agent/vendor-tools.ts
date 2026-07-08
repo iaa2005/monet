@@ -25,7 +25,142 @@ import {
   createToolUseContext,
   getAppState,
   initVendorRuntime,
+  setVendorPermissionMode,
 } from './vendor-context.js'
+
+// ─── Permission modes ─────────────────────────────────────────────────────
+
+/** The 5 UI permission levels. Map to the vendor PermissionMode the tools'
+ * checkPermissions() run against — 'auto' has no vendor equivalent (needs the
+ * Anthropic classifier we can't run), so it uses 'default' + a local heuristic. */
+export type UiPermissionMode =
+  | 'default'
+  | 'acceptEdits'
+  | 'plan'
+  | 'auto'
+  | 'bypassPermissions'
+
+export type PermissionAsk = {
+  toolName: string
+  description: string
+  detail?: string
+}
+export type PermissionDecision = 'allow' | 'allow-once' | 'deny'
+export type RequestPermission = (ask: PermissionAsk) => Promise<PermissionDecision>
+
+const VENDOR_MODE_FOR: Record<UiPermissionMode, 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'> = {
+  default: 'default',
+  acceptEdits: 'acceptEdits',
+  plan: 'plan',
+  auto: 'default',
+  bypassPermissions: 'bypassPermissions',
+}
+
+// Tools "Auto" mode runs without asking (read/search + file mutations). Shell
+// tools and anything else still prompt.
+const AUTO_ALLOW_TOOLS = new Set([
+  'Read',
+  'Grep',
+  'Glob',
+  'Edit',
+  'Write',
+  'MultiEdit',
+  'TodoWrite',
+])
+
+// Per-session "Allow always" grants (keyed by sessionId:toolName) so a tool the
+// user approved with "Allow always" won't prompt again this session.
+const sessionAllowAlways = new Set<string>()
+
+function baseName(p: string): string {
+  return p.split(/[/\\]/).pop() || p
+}
+
+function describeAsk(
+  tool: Tool,
+  input: Record<string, unknown>,
+): { description: string; detail?: string } {
+  const str = (k: string): string | undefined =>
+    typeof input[k] === 'string' ? (input[k] as string) : undefined
+  const name = tool.name
+  if (name === 'Bash' || name === 'PowerShell') {
+    return { description: `Run a ${name} command`, detail: str('command') }
+  }
+  const path = str('file_path') ?? str('path')
+  if (name === 'Write') return { description: `Create or overwrite ${path ? baseName(path) : 'a file'}`, detail: path }
+  if (name === 'Edit' || name === 'MultiEdit')
+    return { description: `Edit ${path ? baseName(path) : 'a file'}`, detail: path }
+  if (name === 'Read') return { description: `Read ${path ? baseName(path) : 'a file'}`, detail: path }
+  const first = str('command') ?? str('pattern') ?? str('query') ?? str('url') ?? path
+  return { description: `Run ${name}`, detail: first }
+}
+
+type GateResult = { behavior: 'allow'; input: Record<string, unknown> } | { behavior: 'deny'; message: string }
+
+async function gatePermission(args: {
+  tool: Tool
+  input: Record<string, unknown>
+  context: ToolUseContext
+  permissionMode: UiPermissionMode
+  requestPermission?: RequestPermission
+  sessionId: string
+}): Promise<GateResult> {
+  const { tool, input, context, permissionMode, requestPermission, sessionId } = args
+
+  if (permissionMode === 'bypassPermissions') return { behavior: 'allow', input }
+
+  // Plan mode: only read-only tools may run until the user approves the plan.
+  if (permissionMode === 'plan') {
+    if (tool.isReadOnly(input)) return { behavior: 'allow', input }
+    return {
+      behavior: 'deny',
+      message: `Plan mode is active — ${tool.name} is blocked. Present the plan and let the user switch modes before making changes.`,
+    }
+  }
+
+  const allowKey = `${sessionId}:${tool.name}`
+  if (sessionAllowAlways.has(allowKey)) return { behavior: 'allow', input }
+
+  const perm = await tool.checkPermissions(input, context)
+  if (perm.behavior === 'deny') {
+    return { behavior: 'deny', message: `Permission denied: ${perm.message}` }
+  }
+  const nextInput =
+    (perm.behavior === 'allow' && perm.updatedInput) || input
+  if (perm.behavior === 'allow') return { behavior: 'allow', input: nextInput }
+
+  // perm.behavior is 'ask' (or 'passthrough') — needs a decision.
+  if (permissionMode === 'auto') {
+    if (tool.isReadOnly(input) || AUTO_ALLOW_TOOLS.has(tool.name)) {
+      return { behavior: 'allow', input: nextInput }
+    }
+  }
+
+  if (!requestPermission) {
+    return {
+      behavior: 'deny',
+      message: `${tool.name} needs permission but no prompt channel is available.`,
+    }
+  }
+  const { description, detail } = describeAsk(tool, input)
+  const decision = await requestPermission({
+    toolName: tool.userFacingName(input) || tool.name,
+    description,
+    detail,
+  })
+  if (decision === 'deny') {
+    return { behavior: 'deny', message: `The user declined to run ${tool.name}.` }
+  }
+  if (decision === 'allow') sessionAllowAlways.add(allowKey)
+  return { behavior: 'allow', input: nextInput }
+}
+
+/** Clear a session's "Allow always" grants (on New session / reset). */
+export function clearSessionGrants(sessionId: string): void {
+  for (const key of sessionAllowAlways) {
+    if (key.startsWith(`${sessionId}:`)) sessionAllowAlways.delete(key)
+  }
+}
 
 // ─── Toolset ────────────────────────────────────────────────────────────
 
@@ -119,7 +254,8 @@ export interface VendorToolResult {
   isError: boolean
 }
 
-/** Auto-allow: permission mode is bypassPermissions; asks resolve to allow. */
+/** The tool.call() canUseTool hook — gating already happened in gatePermission
+ * (which routes asks to the UI), so this simply confirms the pre-approved run. */
 const canUseTool = async (
   _tool: unknown,
   input: Record<string, unknown>,
@@ -134,11 +270,24 @@ export async function executeVendorTool(opts: {
   name: string
   input: Record<string, unknown>
   model: string
+  permissionMode?: UiPermissionMode
+  requestPermission?: RequestPermission
   signal?: AbortSignal
   onProgress?: (text: string) => void
 }): Promise<VendorToolResult> {
-  const { sessionId, toolUseID, name, input, model, signal } = opts
+  const {
+    sessionId,
+    toolUseID,
+    name,
+    input,
+    model,
+    permissionMode = 'default',
+    requestPermission,
+    signal,
+  } = opts
   initVendorRuntime()
+  // Point the vendor tools' checkPermissions() at the selected mode.
+  setVendorPermissionMode(VENDOR_MODE_FOR[permissionMode])
   const tools = getVendorTools()
   const tool = findToolByName(tools, name)
   if (!tool) {
@@ -173,17 +322,19 @@ export async function executeVendorTool(opts: {
       }
     }
 
-    // 3. Permission check (bypass mode: rules still run, asks auto-allow).
-    const permission = await tool.checkPermissions(toolInput, context)
-    if (permission.behavior === 'deny') {
-      return {
-        content: `Permission denied: ${permission.message}`,
-        isError: true,
-      }
+    // 3. Permission gate — mode-aware; routes 'ask' decisions to the UI.
+    const gate = await gatePermission({
+      tool,
+      input: toolInput,
+      context,
+      permissionMode,
+      requestPermission,
+      sessionId,
+    })
+    if (gate.behavior === 'deny') {
+      return { content: gate.message, isError: true }
     }
-    const finalInput =
-      (permission.behavior === 'allow' && permission.updatedInput) ||
-      toolInput
+    const finalInput = gate.input
 
     // 4. Execute.
     const parentMessage = createParentAssistantMessage(

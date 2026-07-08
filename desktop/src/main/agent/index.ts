@@ -20,6 +20,9 @@ import {
   executeVendorTool,
   getVendorApiTools,
   getVendorTools,
+  clearSessionGrants,
+  type RequestPermission,
+  type UiPermissionMode,
 } from "./vendor-tools.js";
 import { dropSessionContext, initVendorRuntime } from "./vendor-context.js";
 
@@ -56,6 +59,10 @@ export interface AgentRunOptions {
   signal?: AbortSignal;
   /** Prepended to the system prompt (used by chat modes like Plan/Concise). */
   modeDirective?: string;
+  /** Permission level driving the tool gate (default: "default" = ask). */
+  permissionMode?: UiPermissionMode;
+  /** Called when a tool needs the user's approval (routes to the UI dialog). */
+  requestPermission?: RequestPermission;
 }
 
 /**
@@ -69,6 +76,7 @@ const conversations = new Map<string, LLMMessage[]>();
 export function resetConversation(sessionId: string): void {
   conversations.delete(sessionId);
   dropSessionContext(sessionId);
+  clearSessionGrants(sessionId);
 }
 
 /**
@@ -102,7 +110,13 @@ export async function runAgent(
   }
 
   const adapter = createAdapter(provider);
-  const { maxTurns = 40, signal, modeDirective } = options;
+  const {
+    maxTurns = 40,
+    signal,
+    modeDirective,
+    permissionMode = "default",
+    requestPermission,
+  } = options;
 
   let tools;
   let basePrompt;
@@ -227,6 +241,8 @@ export async function runAgent(
         name: tc.name,
         input: tc.input,
         model: provider.model,
+        permissionMode,
+        requestPermission,
         signal,
       });
       onEvent({
