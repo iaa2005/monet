@@ -31,6 +31,13 @@ function ProviderForm({
   const [baseURL, setBaseURL] = useState(provider?.baseURL ?? "");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState(provider?.model ?? "");
+  const [maxTokens, setMaxTokens] = useState(String(provider?.maxTokens ?? 16000));
+  const [contextLimit, setContextLimit] = useState(
+    String(provider?.contextLimit ?? 200_000),
+  );
+  const [temperature, setTemperature] = useState(
+    provider?.temperature != null ? String(provider.temperature) : "",
+  );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -50,6 +57,11 @@ function ProviderForm({
       apiKey: apiKey || provider?.apiKey || "",
       model: model.trim(),
       isActive: provider?.isActive ?? false,
+      maxTokens: parseInt(maxTokens, 10) || 16000,
+      contextLimit: parseInt(contextLimit, 10) || 200_000,
+      temperature: temperature.trim()
+        ? parseFloat(temperature)
+        : undefined,
     };
 
     try {
@@ -131,6 +143,34 @@ function ProviderForm({
             onChange={(e) => setModel(e.target.value)}
             className="w-full rounded-md border px-3 py-2 text-sm"
             placeholder="claude-sonnet-4-20250514"
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium">Max Tokens</label>
+          <input
+            type="number"
+            value={maxTokens}
+            onChange={(e) => setMaxTokens(e.target.value)}
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="16000"
+            min={1}
+            max={384000}
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium">
+            Temperature{" "}
+            <span className="text-muted-foreground">(optional)</span>
+          </label>
+          <input
+            type="number"
+            value={temperature}
+            onChange={(e) => setTemperature(e.target.value)}
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="default"
+            min={0}
+            max={2}
+            step={0.1}
           />
         </div>
       </div>

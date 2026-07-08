@@ -1,0 +1,8 @@
+/**
+ * AUTO-STUB (desktop build): CLI-only module absent from the vendored
+ * leak. Never executed in Electron — exists so imports resolve for
+ * tsc + vite.
+ */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+export {}

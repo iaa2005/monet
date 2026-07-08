@@ -15,6 +15,9 @@ export interface LLMProvider {
   apiKey: string;
   model: string;
   isActive: boolean;
+  maxTokens: number;
+  temperature?: number;
+  contextLimit: number;
   createdAt: string;
   updatedAt: string;
 }

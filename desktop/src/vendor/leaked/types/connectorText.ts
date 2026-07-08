@@ -6,3 +6,8 @@ export type ConnectorTextBlock = {
 export function isConnectorTextBlock(value: unknown): value is ConnectorTextBlock {
   return typeof value === 'object' && value !== null && (value as any).type === 'connector_text';
 }
+
+export type ConnectorTextDelta = {
+  type: 'connector_text_delta';
+  text: string;
+};

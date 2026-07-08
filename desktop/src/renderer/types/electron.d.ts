@@ -9,6 +9,8 @@ import type {
   PermissionDecision,
 } from "../main/ipc/permissions.js";
 
+export type { PermissionRequest, PermissionDecision };
+
 export interface ElectronAPI {
   platform: string;
   versions: { node: string; chrome: string; electron: string };

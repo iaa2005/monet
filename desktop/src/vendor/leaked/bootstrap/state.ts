@@ -1756,3 +1756,7 @@ export function setPromptId(id: string | null): void {
   STATE.promptId = id
 }
 
+
+// DRIFT-SHIM (desktop): 'isReplBridgeActive' is imported elsewhere in the leak but
+// missing from this snapshot. Callable falsy stand-in.
+export const isReplBridgeActive: any = Object.assign((..._args: unknown[]) => undefined, {})

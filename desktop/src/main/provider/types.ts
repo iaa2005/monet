@@ -12,6 +12,10 @@ export interface LLMProvider {
   apiKey: string // encrypted at rest
   model: string
   isActive: boolean
+  maxTokens: number
+  temperature?: number
+  /** Context window size in tokens. Defaults per preset (~200K Anthropic, 1M DeepSeek, 128K OpenAI). */
+  contextLimit: number
   createdAt: string
   updatedAt: string
 }
@@ -27,6 +31,8 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
     apiKey: '',
     model: 'claude-sonnet-4-20250514',
     isActive: true,
+    maxTokens: 16000,
+    contextLimit: 200_000,
   },
   {
     name: 'DeepSeek',
@@ -35,6 +41,8 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
     apiKey: '',
     model: 'deepseek-v4-pro',
     isActive: false,
+    maxTokens: 16000,
+    contextLimit: 1_000_000,
   },
   {
     name: 'llama.cpp',
@@ -43,5 +51,7 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
     apiKey: '',
     model: 'local-model',
     isActive: false,
+    maxTokens: 16000,
+    contextLimit: 128_000,
   },
 ]

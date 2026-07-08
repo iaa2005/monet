@@ -54,7 +54,13 @@ export type LLMEvent =
       input: Record<string, unknown>;
     }
   | { type: "message_stop"; stop_reason: string; usage?: LLMUsage }
-  | { type: "error"; error: string };
+  | { type: "error"; error: string }
+  | {
+      type: "tool_result";
+      toolUseID: string;
+      toolName: string;
+      content: string;
+    };
 
 export interface LLMUsage {
   input_tokens: number;

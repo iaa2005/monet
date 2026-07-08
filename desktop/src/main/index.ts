@@ -1,8 +1,13 @@
 import { app, BrowserWindow, ipcMain } from "electron";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { registerAllIPC } from "./ipc/index.js";
 import { createTray } from "./tray.js";
 import { applyDataDirEnv } from "./data-dir.js";
+
+// The main bundle is ESM ("type": "module"), where __dirname is not defined.
+// Derive it from import.meta.url so preload/renderer paths resolve.
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Redirect vendored Claude Code config/memory into our data dir before anything
 // touches the filesystem.

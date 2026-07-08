@@ -16,7 +16,8 @@ interface AnthropicSSEEvent {
     | "content_block_stop"
     | "message_delta"
     | "message_stop"
-    | "ping";
+    | "ping"
+    | "error";
   message?: {
     id: string;
     model: string;
@@ -69,7 +70,7 @@ export class AnthropicClient implements LLMAdapter {
       input_schema: t.input_schema,
     }));
 
-    const body = {
+    const body: Record<string, unknown> = {
       model: request.model,
       max_tokens: request.max_tokens,
       system: request.system,
@@ -80,6 +81,7 @@ export class AnthropicClient implements LLMAdapter {
       tools: tools && tools.length > 0 ? tools : undefined,
       stream: true,
     };
+    if (request.temperature != null) body.temperature = request.temperature;
 
     const response = await fetch(url, {
       method: "POST",
@@ -114,7 +116,7 @@ export class AnthropicClient implements LLMAdapter {
     // Stream watchdog: abort on silence > 10s (prevent infinite hang
     // when the server sends partial output then stalls).
     let watchdog: ReturnType<typeof setTimeout> | null = null;
-    const STREAM_TIMEOUT_MS = 60_000;
+    const STREAM_TIMEOUT_MS = 300_000; // 5 min — DeepSeek can pause for a long time mid-generation
 
     function armWatchdog(): void {
       disarmWatchdog();
@@ -258,7 +260,12 @@ export class AnthropicClient implements LLMAdapter {
       // Flush decoder and process remaining buffer — the last SSE event
       // may still be sitting in buffer when the stream ends.
       buffer += decoder.decode();
-      if (buffer.trim() && buffer.startsWith("data: ")) {
+      // Some providers signal end-of-stream with `data: [DONE]` (OpenAI style)
+      // instead of a proper message_stop SSE event.
+      const isDone =
+        buffer.includes("[DONE]") ||
+        (buffer.trim() === "" && !buffer.includes("data:"));
+      if (!isDone && buffer.trim() && buffer.startsWith("data: ")) {
         const data = buffer.slice(6).trim();
         try {
           const event: AnthropicSSEEvent = JSON.parse(data);
@@ -292,10 +299,16 @@ export class AnthropicClient implements LLMAdapter {
       }
     } finally {
       disarmWatchdog();
+      // After the stream is consumed or errored, cancel any lingering I/O and
+      // release the lock. `cancel()` is a no-op on a closed stream; `releaseLock()`
+      // is safe after cancel because cancel closes the stream synchronously.
       try {
         reader.cancel().catch(() => {});
       } catch {}
-      reader.releaseLock();
+      // releaseLock() on an already-released reader throws — swallow it.
+      try {
+        reader.releaseLock();
+      } catch {}
     }
   }
 
@@ -308,7 +321,7 @@ export class AnthropicClient implements LLMAdapter {
   }> {
     const url = `${this.baseURL}/v1/messages`;
 
-    const body = {
+    const body: Record<string, unknown> = {
       model: request.model,
       max_tokens: request.max_tokens,
       system: request.system,
@@ -318,6 +331,7 @@ export class AnthropicClient implements LLMAdapter {
       })),
       stream: false,
     };
+    if (request.temperature != null) body.temperature = request.temperature;
 
     const response = await fetch(url, {
       method: "POST",

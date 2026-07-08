@@ -41,6 +41,7 @@ export class OpenAIClient implements LLMAdapter {
           content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
         })),
         maxTokens: request.max_tokens,
+        ...(request.temperature != null ? { temperature: request.temperature } : {}),
         abortSignal: signal,
       })
 
@@ -70,6 +71,7 @@ export class OpenAIClient implements LLMAdapter {
         content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
       })),
       maxTokens: request.max_tokens,
+      ...(request.temperature != null ? { temperature: request.temperature } : {}),
     })
 
     let text = ''

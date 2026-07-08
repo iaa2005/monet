@@ -19,7 +19,7 @@ export function registerSettingsIPC(): void {
     const win = BrowserWindow.getFocusedWindow();
     const opts = {
       title: "Choose a data folder",
-      properties: ["openDirectory", "createDirectory"] as const,
+      properties: ["openDirectory" as const, "createDirectory" as const],
     };
     const result = win
       ? await dialog.showOpenDialog(win, opts)
