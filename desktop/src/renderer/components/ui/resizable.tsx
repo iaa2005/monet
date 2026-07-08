@@ -33,14 +33,14 @@ function ResizableHandle({
     <ResizablePrimitive.PanelResizeHandle
       data-slot="resizable-handle"
       className={cn(
-        "relative flex w-1.5 items-center justify-center transition-colors after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 hover:bg-border focus-visible:outline-none data-[panel-group-direction=vertical]:h-1.5 data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:after:left-0 data-[panel-group-direction=vertical]:after:h-1 data-[panel-group-direction=vertical]:after:w-full data-[panel-group-direction=vertical]:after:-translate-y-1/2 [&[data-panel-group-direction=vertical]>div]:rotate-90",
+        "group/resize relative flex w-px items-center justify-center transition-colors after:absolute after:inset-y-0 after:left-0 after:w-0.5 after:bg-transparent after:transition-colors hover:after:bg-border focus-visible:outline-none data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:after:left-0 data-[panel-group-direction=vertical]:after:top-0 data-[panel-group-direction=vertical]:after:h-0.5 data-[panel-group-direction=vertical]:after:w-full [&[data-panel-group-direction=vertical]>div]:rotate-90",
         className,
       )}
       {...props}
     >
       {withHandle && (
-        <div className="z-10 flex h-5 w-3 items-center justify-center rounded-sm border border-border bg-card">
-          <GripVertical className="size-2.5 text-muted-foreground" />
+        <div className="z-10 flex h-7 w-2.5 items-center justify-center rounded-md border border-border/50 bg-card opacity-0 transition-opacity group-hover/resize:opacity-100">
+          <GripVertical className="size-3 text-muted-foreground" />
         </div>
       )}
     </ResizablePrimitive.PanelResizeHandle>

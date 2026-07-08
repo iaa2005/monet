@@ -10,10 +10,7 @@ import {
   FileText,
   Gauge,
 } from "lucide-react";
-import {
-  PermissionModeMenu,
-  type PermissionMode,
-} from "./PermissionModeMenu";
+import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import {
   Attachment,
   AttachmentMedia,
@@ -98,7 +95,9 @@ interface AttachmentPayload {
   dataBase64?: string;
 }
 
-async function buildAttachments(files: StagedFile[]): Promise<AttachmentPayload[]> {
+async function buildAttachments(
+  files: StagedFile[],
+): Promise<AttachmentPayload[]> {
   const out: AttachmentPayload[] = [];
   for (const { file } of files) {
     try {
@@ -125,7 +124,11 @@ async function buildAttachments(files: StagedFile[]): Promise<AttachmentPayload[
         });
       }
     } catch {
-      out.push({ name: file.name, mediaType: "application/octet-stream", kind: "text" });
+      out.push({
+        name: file.name,
+        mediaType: "application/octet-stream",
+        kind: "text",
+      });
     }
   }
   return out;
@@ -152,8 +155,13 @@ export function MessageInput(): JSX.Element {
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
   const usage = useChatStore((s) => s.usage);
-  const { addUserMessage, startStreaming, handleLLMEvent, setError, isStreaming } =
-    useChatStore();
+  const {
+    addUserMessage,
+    startStreaming,
+    handleLLMEvent,
+    setError,
+    isStreaming,
+  } = useChatStore();
 
   useEffect(() => {
     const ta = taRef.current;
@@ -197,24 +205,30 @@ export function MessageInput(): JSX.Element {
       return;
     }
     const SR =
-      (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown })
-        .SpeechRecognition ||
+      (
+        window as unknown as {
+          SpeechRecognition?: unknown;
+          webkitSpeechRecognition?: unknown;
+        }
+      ).SpeechRecognition ||
       (window as unknown as { webkitSpeechRecognition?: unknown })
         .webkitSpeechRecognition;
     if (!SR) {
       setError("Speech recognition isn't available in this build.");
       return;
     }
-    const rec = new (SR as new () => {
-      lang: string;
-      interimResults: boolean;
-      continuous: boolean;
-      onresult: (e: unknown) => void;
-      onend: () => void;
-      onerror: () => void;
-      start: () => void;
-      stop: () => void;
-    })();
+    const rec = new (
+      SR as new () => {
+        lang: string;
+        interimResults: boolean;
+        continuous: boolean;
+        onresult: (e: unknown) => void;
+        onend: () => void;
+        onerror: () => void;
+        start: () => void;
+        stop: () => void;
+      }
+    )();
     rec.lang = navigator.language || "en-US";
     rec.interimResults = true;
     rec.continuous = false;
@@ -222,7 +236,9 @@ export function MessageInput(): JSX.Element {
     rec.onresult = (e: unknown) => {
       const ev = e as {
         resultIndex: number;
-        results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>;
+        results: ArrayLike<
+          ArrayLike<{ transcript: string }> & { isFinal: boolean }
+        >;
       };
       let text = "";
       for (let i = 0; i < ev.results.length; i++) {
@@ -244,7 +260,9 @@ export function MessageInput(): JSX.Element {
       ...Array.from(list).map((file) => ({
         id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
         file,
-        url: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+        url: file.type.startsWith("image/")
+          ? URL.createObjectURL(file)
+          : undefined,
       })),
     ]);
   };
@@ -275,8 +293,7 @@ export function MessageInput(): JSX.Element {
     if (!sessionId && bridge) {
       try {
         const s = (await bridge.sessions.create(text.slice(0, 60))) as
-          | { id: string }
-          | undefined;
+          { id: string } | undefined;
         if (s?.id) {
           sessionId = s.id;
           store.setCurrentSessionId(s.id);
@@ -289,7 +306,10 @@ export function MessageInput(): JSX.Element {
 
     const seed = store.messages
       .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+      .map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
 
     addUserMessage(text);
     startStreaming();
@@ -297,7 +317,13 @@ export function MessageInput(): JSX.Element {
     try {
       if (!bridge) return;
       const unsubscribe = bridge.chat.onToken(handleLLMEvent);
-      await bridge.chat.send({ sessionId, message: text, seed, mode, attachments });
+      await bridge.chat.send({
+        sessionId,
+        message: text,
+        seed,
+        mode,
+        attachments,
+      });
       unsubscribe();
 
       if (sessionId) {
@@ -321,8 +347,8 @@ export function MessageInput(): JSX.Element {
     "flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]";
 
   return (
-    <div className="px-4 pb-4">
-      <div className="mx-auto max-w-3xl">
+    <div className="pb-4">
+      <div className="mx-auto w-full max-w-3xl px-4">
         {files.length > 0 && (
           <div className="mb-2 flex gap-2 overflow-x-auto scrollbar-none">
             {files.map((f) => {
@@ -330,14 +356,23 @@ export function MessageInput(): JSX.Element {
               return (
                 <Attachment key={f.id} size="sm" className="max-w-56">
                   <AttachmentMedia variant={isImg ? "image" : "icon"}>
-                    {isImg && f.url ? <img src={f.url} alt={f.file.name} /> : <FileText />}
+                    {isImg && f.url ? (
+                      <img src={f.url} alt={f.file.name} />
+                    ) : (
+                      <FileText />
+                    )}
                   </AttachmentMedia>
                   <AttachmentContent>
                     <AttachmentTitle>{f.file.name}</AttachmentTitle>
-                    <AttachmentDescription>{formatSize(f.file.size)}</AttachmentDescription>
+                    <AttachmentDescription>
+                      {formatSize(f.file.size)}
+                    </AttachmentDescription>
                   </AttachmentContent>
                   <AttachmentActions>
-                    <AttachmentAction aria-label="Remove attachment" onClick={() => removeFile(f.id)}>
+                    <AttachmentAction
+                      aria-label="Remove attachment"
+                      onClick={() => removeFile(f.id)}
+                    >
                       <X />
                     </AttachmentAction>
                   </AttachmentActions>
@@ -429,7 +464,10 @@ export function MessageInput(): JSX.Element {
                   </div>
                 )}
                 {providers.map((p) => (
-                  <DropdownMenuItem key={p.id} onClick={() => selectProvider(p.id)}>
+                  <DropdownMenuItem
+                    key={p.id}
+                    onClick={() => selectProvider(p.id)}
+                  >
                     <div className="min-w-0 flex-1">
                       <div className="truncate">{p.name}</div>
                       {p.model && (
@@ -442,7 +480,9 @@ export function MessageInput(): JSX.Element {
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={loadProviders}>Refresh</DropdownMenuItem>
+                <DropdownMenuItem onClick={loadProviders}>
+                  Refresh
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 

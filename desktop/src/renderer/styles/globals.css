@@ -2,6 +2,13 @@
 @import "tw-animate-css";
 @source "../**/*.{ts,tsx}";
 
+@font-face {
+    font-family: "Copernicus";
+    src: url("../fonts/GalaxieCopernicus-Book.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+}
+
 @custom-variant dark (&:is(.dark *));
 /* Applied by @shadcn/react message-scroller while it auto-scrolls */
 @custom-variant data-autoscrolling (&[data-autoscrolling]);
@@ -13,13 +20,13 @@
  * brand color is reserved for the logo mark; links are blue.
  */
 :root {
-    --radius: 0.25rem;
+    --radius: 0.5rem;
 
     --bg-000: 0 0% 100%;
-    --bg-100: 48 33.3% 97.1%;
-    --bg-200: 53 28.6% 94.5%;
-    --bg-300: 48 25% 92.2%;
-    --bg-400: 50 20.7% 88.6%;
+    --bg-100: 220 5% 99%;
+    --bg-200: 220 4% 97%;
+    --bg-300: 220 4% 95%;
+    --bg-400: 220 3% 92%;
 
     --text-000: 60 2.6% 7.6%;
     --text-200: 60 2.5% 23.3%;
@@ -146,12 +153,11 @@
         ui-monospace, "SFMono-Regular", "Cascadia Code", "Segoe UI Mono", Menlo,
         Consolas, monospace;
 
-    --radius: 0.25rem;
-    --radius-sm: 0.125rem;
-    --radius-md: 0.25rem;
-    --radius-lg: 0.375rem;
-    --radius-xl: 0.5rem;
-    --radius-2xl: 0.625rem;
+    --radius-sm: calc(var(--radius) * 0.5);
+    --radius-md: calc(var(--radius) * 0.833);
+    --radius-lg: calc(var(--radius) * 1.167);
+    --radius-xl: calc(var(--radius) * 1.5);
+    --radius-2xl: calc(var(--radius) * 2);
     --radius-3xl: 0.75rem;
 }
 

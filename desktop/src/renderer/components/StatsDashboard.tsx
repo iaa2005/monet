@@ -100,9 +100,9 @@ function Heatmap({
   const columns = buildColumns(perDay);
   const max = Math.max(1, ...perDay.map((d) => d.count));
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-0.5 max-w-xs">
       {columns.map((col, ci) => (
-        <div key={ci} className="flex flex-1 flex-col gap-1">
+        <div key={ci} className="flex flex-1 flex-col gap-0.5">
           {col.map((cell) => (
             <div
               key={cell.date}
@@ -162,7 +162,7 @@ export function StatsDashboard(): JSX.Element {
   const maxDay = Math.max(1, ...recent.map((d) => d.count));
 
   return (
-    <div className="mx-auto w-full max-w-lg rounded-2xl bg-black/[0.025] p-5 dark:bg-white/[0.04]">
+    <div className="mx-auto w-full max-w-3xl rounded-2xl bg-black/[0.025] p-5 dark:bg-white/[0.04]">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex gap-1">
           {(["overview", "models"] as const).map((t) => (
@@ -206,7 +206,7 @@ export function StatsDashboard(): JSX.Element {
             {cards.map((c) => (
               <div
                 key={c.label}
-                className="rounded-xl bg-black/[0.04] px-3 py-2.5 dark:bg-white/[0.06]"
+                className="rounded-md bg-black/[0.04] px-3 py-2.5 dark:bg-white/[0.06]"
               >
                 <div className="truncate text-xs text-muted-foreground">
                   {c.label}

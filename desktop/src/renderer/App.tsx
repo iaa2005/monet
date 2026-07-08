@@ -39,7 +39,6 @@ import { SkillsPanel } from "@/components/SkillsPanel";
 import { DiffViewer, type DiffFile } from "@/components/diff/DiffViewer";
 import { FileTree } from "@/components/FileTree";
 import { FileViewer } from "@/components/FileViewer";
-import { ClaudeMark } from "@/components/ClaudeMark";
 import { WindowControls } from "@/components/WindowControls";
 import { AccountMenu } from "@/components/AccountMenu";
 import { SettingsPanel } from "@/components/SettingsPanel";
@@ -273,35 +272,8 @@ export default function App(): JSX.Element {
         </IconBtn>
 
         <div className="app-no-drag flex items-center gap-2">
-          <div className="flex size-5 items-center justify-center rounded-[5px] bg-brand text-white">
-            <ClaudeMark className="size-3" />
-          </div>
-          <div className="flex h-7 items-center rounded-lg bg-black/[0.05] p-0.5 dark:bg-white/[0.06]">
-            <button
-              onClick={() => setView("chat")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                view === "chat"
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Home className="size-3" /> Home
-            </button>
-            <button
-              onClick={() => setView("chat")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                view !== "chat"
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Code className="size-3" /> Code
-            </button>
-          </div>
-          <span className="ml-1 max-w-[32ch] truncate text-[13px] text-muted-foreground">
-            {sessionTitle}
+          <span className="font-[Copernicus] text-[15px] font-semibold tracking-tight text-foreground">
+            Monet
           </span>
         </div>
 
@@ -325,7 +297,9 @@ export default function App(): JSX.Element {
           <IconBtn
             title="Changes"
             active={view === "changes"}
-            onClick={() => setView("changes")}
+            onClick={() =>
+              setView((v) => (v === "changes" ? "chat" : "changes"))
+            }
           >
             <FileDiff className="size-4" />
           </IconBtn>
@@ -468,177 +442,231 @@ export default function App(): JSX.Element {
       </header>
 
       {/* ── Body ── */}
-      <div className="flex min-h-0 flex-1">
-        {sidebarOpen && (
-          <aside className="mx-1.5 my-1.5 flex w-60 shrink-0 flex-col rounded-xl border border-border bg-card shadow-sm">
-            <div className="flex flex-col gap-0.5 px-2 pt-2">
-              <NavRow icon={Plus} label="New session" onClick={newSession} />
-              <NavRow
-                icon={Blocks}
-                label="Artifacts"
-                active={rightTab === "artifacts"}
-                onClick={() => toggleRight("artifacts")}
-              />
-              <NavRow
-                icon={Settings}
-                label="Customize"
-                onClick={() => setSettingsOpen(true)}
-              />
-              <NavRow icon={ChevronDown} label="More" onClick={() => {}} />
-            </div>
-
-            <div className="flex min-h-0 flex-1 flex-col px-2">
-              <div className="flex items-center justify-between px-2 pb-1 pt-3">
-                <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
-                  Recents
-                </span>
-                <FilterDropdown />
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
-                <SessionList
-                  onSelect={handleSelectSession}
-                  onDelete={handleDeleteSession}
-                  currentSessionId={currentSessionId}
-                />
-              </div>
-            </div>
-
-            <div className="p-1.5">
-              <AccountMenu onOpenSettings={() => setSettingsOpen(true)} />
-            </div>
-          </aside>
-        )}
-
-        {/* Resizable "window" panels */}
-        <div className="min-w-0 flex-1">
-          <ResizablePanelGroup
-            key={rightTab ? "with-right" : "no-right"}
-            direction="horizontal"
-          >
-            <ResizablePanel defaultSize={72} minSize={32}>
-              <ResizablePanelGroup
-                key={terminalOpen ? "with-term" : "no-term"}
-                direction="vertical"
-              >
-                <ResizablePanel minSize={25}>
-                  <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                    {openFilePath ? (
-                      <FileViewer
-                        path={openFilePath}
-                        onClose={() => setOpenFilePath(null)}
-                      />
-                    ) : (
-                      <>
-                        {view === "chat" && (
-                          <ChatView transcriptMode={transcriptMode} />
-                        )}
-                        {view === "changes" && (
-                          <div className="h-full overflow-auto">
-                            <DiffViewer
-                              files={diffs}
-                              onAccept={() => {}}
-                              onReject={() => {}}
-                              onAcceptAll={() => {}}
-                              onRejectAll={() => {}}
-                            />
-                          </div>
-                        )}
-                        {view === "skills" && (
-                          <div className="h-full overflow-auto">
-                            <SkillsPanel />
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </ResizablePanel>
-
-                {terminalOpen && (
-                  <>
-                    <ResizableHandle withHandle />
-                    <ResizablePanel defaultSize={32} minSize={12}>
-                      <Panel>
-                        <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            Terminal
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setTerminalOpen(false)}
-                            className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
-                          >
-                            <X className="size-3.5" />
-                          </button>
-                        </div>
-                        <Suspense
-                          fallback={
-                            <div className="p-3 text-xs text-muted-foreground">
-                              Loading terminal…
-                            </div>
-                          }
-                        >
-                          <Terminal />
-                        </Suspense>
-                      </Panel>
-                    </ResizablePanel>
-                  </>
-                )}
-              </ResizablePanelGroup>
-            </ResizablePanel>
-
-            {rightTab && (
-              <>
-                <ResizableHandle withHandle />
-                <ResizablePanel defaultSize={30} minSize={18} maxSize={48}>
-                  <Panel>
-                    <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
+      <div className="flex min-h-0 flex-1 p-2">
+        <ResizablePanelGroup
+          key={`${rightTab ? "right" : "noright"}-${terminalOpen ? "term" : "noterm"}-${sidebarOpen ? "side" : "noside"}`}
+          direction="horizontal"
+          className="gap-1"
+        >
+          {sidebarOpen && (
+            <>
+              <ResizablePanel defaultSize={18} minSize={14} maxSize={38}>
+                <aside className="flex h-full flex-col rounded-xl border border-border bg-card shadow-sm">
+                  {/* Home / Code tabs */}
+                  <div className="flex items-center gap-1 px-2 pt-2">
+                    <div className="flex h-7 flex-1 items-center rounded-md bg-black/[0.05] p-0.5 dark:bg-white/[0.06]">
                       <button
-                        onClick={() => setRightTab("files")}
+                        onClick={() => setView("chat")}
                         className={cn(
-                          "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                          rightTab === "files"
-                            ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                          "flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
+                          view === "chat"
+                            ? "bg-card text-foreground shadow-sm"
                             : "text-muted-foreground hover:text-foreground",
                         )}
                       >
-                        Files
+                        <Home className="size-3" />
+                        Home
                       </button>
                       <button
-                        onClick={() => setRightTab("artifacts")}
+                        onClick={() => setView("changes")}
                         className={cn(
-                          "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                          rightTab === "artifacts"
-                            ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                          "flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
+                          view === "changes"
+                            ? "bg-card text-foreground shadow-sm"
                             : "text-muted-foreground hover:text-foreground",
                         )}
                       >
-                        Artifacts
-                      </button>
-                      <div className="flex-1" />
-                      <button
-                        type="button"
-                        onClick={() => setRightTab(null)}
-                        aria-label="Close panel"
-                        className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
-                      >
-                        <X className="size-4" />
+                        <Code className="size-3" />
+                        Code
                       </button>
                     </div>
-                    <div className="min-h-0 flex-1 overflow-auto">
-                      {rightTab === "files" ? (
-                        <FileTree onSelectFile={(p) => setOpenFilePath(p)} />
+                  </div>
+
+                  <div className="flex flex-col gap-0.5 px-2 pt-1">
+                    <NavRow
+                      icon={Plus}
+                      label="New session"
+                      onClick={newSession}
+                    />
+                    <NavRow
+                      icon={Blocks}
+                      label="Artifacts"
+                      active={rightTab === "artifacts"}
+                      onClick={() => toggleRight("artifacts")}
+                    />
+                    <NavRow
+                      icon={Settings}
+                      label="Customize"
+                      onClick={() => setSettingsOpen(true)}
+                    />
+                    <NavRow
+                      icon={ChevronDown}
+                      label="More"
+                      onClick={() => {}}
+                    />
+                  </div>
+
+                  <div className="flex min-h-0 flex-1 flex-col px-2">
+                    <div className="flex items-center justify-between px-2 pb-1 pt-3">
+                      <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
+                        Recents
+                      </span>
+                      <FilterDropdown />
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
+                      <SessionList
+                        onSelect={handleSelectSession}
+                        onDelete={handleDeleteSession}
+                        currentSessionId={currentSessionId}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-1">
+                    <AccountMenu onOpenSettings={() => setSettingsOpen(true)} />
+                  </div>
+                </aside>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+            </>
+          )}
+
+          {/* Content panel group */}
+          <ResizablePanel defaultSize={sidebarOpen ? 82 : 100} minSize={40}>
+            <ResizablePanelGroup
+              key={rightTab ? "with-right" : "no-right"}
+              direction="horizontal"
+              className="gap-1"
+            >
+              <ResizablePanel defaultSize={72} minSize={32}>
+                <ResizablePanelGroup
+                  key={terminalOpen ? "with-term" : "no-term"}
+                  direction="vertical"
+                  className="gap-1"
+                >
+                  <ResizablePanel minSize={25}>
+                    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+                      {openFilePath ? (
+                        <FileViewer
+                          path={openFilePath}
+                          onClose={() => setOpenFilePath(null)}
+                        />
                       ) : (
-                        <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
-                          Artifacts published in this session appear here.
-                        </div>
+                        <>
+                          {view === "chat" && (
+                            <ChatView
+                              transcriptMode={transcriptMode}
+                              sessionTitle={sessionTitle}
+                            />
+                          )}
+                          {view === "changes" && (
+                            <div className="h-full overflow-auto">
+                              <DiffViewer
+                                files={diffs}
+                                onAccept={() => {}}
+                                onReject={() => {}}
+                                onAcceptAll={() => {}}
+                                onRejectAll={() => {}}
+                              />
+                            </div>
+                          )}
+                          {view === "skills" && (
+                            <div className="h-full overflow-auto">
+                              <SkillsPanel />
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
-                  </Panel>
-                </ResizablePanel>
-              </>
-            )}
-          </ResizablePanelGroup>
-        </div>
+                  </ResizablePanel>
+
+                  {terminalOpen && (
+                    <>
+                      <ResizableHandle withHandle />
+                      <ResizablePanel defaultSize={32} minSize={12}>
+                        <Panel>
+                          <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
+                            <span className="text-xs font-medium text-muted-foreground">
+                              Terminal
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setTerminalOpen(false)}
+                              className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                            >
+                              <X className="size-3.5" />
+                            </button>
+                          </div>
+                          <Suspense
+                            fallback={
+                              <div className="p-3 text-xs text-muted-foreground">
+                                Loading terminal…
+                              </div>
+                            }
+                          >
+                            <Terminal />
+                          </Suspense>
+                        </Panel>
+                      </ResizablePanel>
+                    </>
+                  )}
+                </ResizablePanelGroup>
+              </ResizablePanel>
+
+              {rightTab && (
+                <>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel defaultSize={30} minSize={18} maxSize={48}>
+                    <Panel>
+                      <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
+                        <button
+                          onClick={() => setRightTab("files")}
+                          className={cn(
+                            "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                            rightTab === "files"
+                              ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          Files
+                        </button>
+                        <button
+                          onClick={() => setRightTab("artifacts")}
+                          className={cn(
+                            "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                            rightTab === "artifacts"
+                              ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          Artifacts
+                        </button>
+                        <div className="flex-1" />
+                        <button
+                          type="button"
+                          onClick={() => setRightTab(null)}
+                          aria-label="Close panel"
+                          className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      </div>
+                      <div className="min-h-0 flex-1 overflow-auto">
+                        {rightTab === "files" ? (
+                          <FileTree onSelectFile={(p) => setOpenFilePath(p)} />
+                        ) : (
+                          <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
+                            Artifacts published in this session appear here.
+                          </div>
+                        )}
+                      </div>
+                    </Panel>
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
 
       <Modal

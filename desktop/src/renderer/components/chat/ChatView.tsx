@@ -12,13 +12,8 @@ import {
   MessageScrollerItem,
   MessageScrollerButton,
 } from "@/components/ui/message-scroller";
-import {
-  Message,
-  MessageAvatar,
-  MessageContent,
-} from "@/components/ui/message";
+import { Message, MessageContent } from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Shimmer } from "@/components/ui/shimmer";
 import { ClaudeMark } from "@/components/ClaudeMark";
 import { StatsDashboard } from "@/components/StatsDashboard";
@@ -29,22 +24,9 @@ import type { ChatMessage, ToolCall } from "@/types/chat";
 
 type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
-function AssistantAvatar(): JSX.Element {
-  return (
-    <MessageAvatar>
-      <Avatar size="sm">
-        <AvatarFallback className="bg-brand text-white">
-          <ClaudeMark className="size-3" />
-        </AvatarFallback>
-      </Avatar>
-    </MessageAvatar>
-  );
-}
-
 function WorkingRow(): JSX.Element {
   return (
     <Message align="start">
-      <AssistantAvatar />
       <MessageContent>
         <Bubble variant="ghost">
           <BubbleContent>
@@ -71,8 +53,6 @@ function MessageRow({
 
   return (
     <Message align={isUser ? "end" : "start"}>
-      {!isUser && <AssistantAvatar />}
-
       <MessageContent>
         {isUser ? (
           <Bubble variant="secondary" align="end">
@@ -125,8 +105,10 @@ function groupMessages(
 
 export function ChatView({
   transcriptMode = "normal",
+  sessionTitle,
 }: {
   transcriptMode?: TranscriptMode;
+  sessionTitle?: string;
 }): JSX.Element {
   const messages = useChatStore((s) => s.messages);
   const error = useChatStore((s) => s.error);
@@ -158,56 +140,65 @@ export function ChatView({
           <StatsDashboard />
         </div>
       ) : (
-        <MessageScrollerProvider autoScroll defaultScrollPosition="end">
-          <MessageScroller className="flex-1">
-            <MessageScrollerViewport>
-              <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-6 px-4 py-6">
-                {grouped.map((item, i) => {
-                  if ("type" in item && item.type === "tool-group") {
+        <>
+          {sessionTitle && (
+            <div className="px-4 pt-3 text-[13px] font-medium text-muted-foreground">
+              {sessionTitle}
+            </div>
+          )}
+          <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+            <MessageScroller className="flex-1">
+              <MessageScrollerViewport>
+                <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-2 px-4 py-4">
+                  {grouped.map((item, i) => {
+                    if ("type" in item && item.type === "tool-group") {
+                      return (
+                        <MessageScrollerItem
+                          key={item.id}
+                          messageId={item.id}
+                          scrollAnchor={
+                            !showWorking && i === grouped.length - 1
+                          }
+                        >
+                          <ToolCallBubble
+                            toolCall={item.calls[0]}
+                            groupMembers={item.calls.slice(1)}
+                            mode={transcriptMode}
+                          />
+                        </MessageScrollerItem>
+                      );
+                    }
                     return (
                       <MessageScrollerItem
                         key={item.id}
                         messageId={item.id}
                         scrollAnchor={!showWorking && i === grouped.length - 1}
                       >
-                        <ToolCallBubble
-                          toolCall={item.calls[0]}
-                          groupMembers={item.calls.slice(1)}
+                        <MessageRow
+                          msg={item as ChatMessage}
                           mode={transcriptMode}
                         />
                       </MessageScrollerItem>
                     );
-                  }
-                  return (
-                    <MessageScrollerItem
-                      key={item.id}
-                      messageId={item.id}
-                      scrollAnchor={!showWorking && i === grouped.length - 1}
-                    >
-                      <MessageRow
-                        msg={item as ChatMessage}
-                        mode={transcriptMode}
-                      />
+                  })}
+
+                  {showWorking && (
+                    <MessageScrollerItem messageId="__working" scrollAnchor>
+                      <WorkingRow />
                     </MessageScrollerItem>
-                  );
-                })}
+                  )}
 
-                {showWorking && (
-                  <MessageScrollerItem messageId="__working" scrollAnchor>
-                    <WorkingRow />
-                  </MessageScrollerItem>
-                )}
-
-                {error && (
-                  <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-                    {error}
-                  </div>
-                )}
-              </MessageScrollerContent>
-            </MessageScrollerViewport>
-            <MessageScrollerButton direction="end" />
-          </MessageScroller>
-        </MessageScrollerProvider>
+                  {error && (
+                    <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                      {error}
+                    </div>
+                  )}
+                </MessageScrollerContent>
+              </MessageScrollerViewport>
+              <MessageScrollerButton direction="end" />
+            </MessageScroller>
+          </MessageScrollerProvider>
+        </>
       )}
 
       <div className="mx-auto w-full max-w-3xl px-4 pb-1">

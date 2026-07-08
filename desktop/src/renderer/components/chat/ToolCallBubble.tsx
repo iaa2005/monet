@@ -245,7 +245,7 @@ function ToolRow({
         type="button"
         onClick={hasDetails ? onToggle : undefined}
         className={cn(
-          "-mx-1.5 flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors",
+          "mx-0 flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors",
           hasDetails &&
             "cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
           compact && "py-0.5",
@@ -319,7 +319,7 @@ function ToolGroupCard({ calls }: { calls: ToolCall[] }): JSX.Element {
       <button
         type="button"
         onClick={() => setGroupOpen((o) => !o)}
-        className="-mx-1.5 flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+        className="mx-0 flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
       >
         <Wrench className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="text-sm font-medium text-foreground">
@@ -379,7 +379,7 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }): JSX.Element {
         type="button"
         onClick={() => hasDetails && setOpen((o) => !o)}
         className={cn(
-          "-mx-1.5 flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors",
+          "mx-0 flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors",
           hasDetails &&
             "cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
         )}

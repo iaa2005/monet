@@ -187,13 +187,13 @@ export function SessionList({
             {menuOpen && (
               <div
                 ref={menuRef}
-                className="absolute right-1 top-full z-50 mt-0.5 w-48 rounded-xl border border-border bg-card p-1 shadow-lg"
+                className="absolute right-1 top-full z-50 mt-0.5 w-48 rounded-lg border border-border bg-card p-1 shadow-lg"
               >
                 {/* Open in submenu */}
                 <div className="relative group/item">
                   <button
                     type="button"
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                   >
                     <ExternalLink className="size-4 text-muted-foreground" />
                     Open in
@@ -201,13 +201,13 @@ export function SessionList({
                       ▸
                     </span>
                   </button>
-                  <div className="absolute left-full top-0 z-50 ml-1 hidden w-44 rounded-xl border border-border bg-card p-1 shadow-lg group-hover/item:block">
+                  <div className="absolute left-full top-0 z-50 ml-1 hidden w-44 rounded-lg border border-border bg-card p-1 shadow-lg group-hover/item:block">
                     <button
                       type="button"
                       onClick={() => {
                         setOpenMenuId(null);
                       }}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                     >
                       <Columns2 className="size-4 text-muted-foreground" />
                       Split view
@@ -220,7 +220,7 @@ export function SessionList({
                       onClick={() => {
                         setOpenMenuId(null);
                       }}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                     >
                       <Monitor className="size-4 text-muted-foreground" />
                       New window
@@ -233,7 +233,7 @@ export function SessionList({
                       onClick={() => {
                         setOpenMenuId(null);
                       }}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                     >
                       <TerminalIcon className="size-4 text-muted-foreground" />
                       Terminal
@@ -251,7 +251,7 @@ export function SessionList({
                   onClick={() => {
                     setOpenMenuId(null);
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                 >
                   <Pin className="size-4 text-muted-foreground" />
                   Pin
@@ -264,7 +264,7 @@ export function SessionList({
                   onClick={() => {
                     setOpenMenuId(null);
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                 >
                   <BookOpen className="size-4 text-muted-foreground" />
                   Mark as unread
@@ -277,7 +277,7 @@ export function SessionList({
                   onClick={() => {
                     setOpenMenuId(null);
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                 >
                   <Pencil className="size-4 text-muted-foreground" />
                   Rename
@@ -290,7 +290,7 @@ export function SessionList({
                   onClick={() => {
                     setOpenMenuId(null);
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                 >
                   <GitFork className="size-4 text-muted-foreground" />
                   Fork
@@ -304,7 +304,7 @@ export function SessionList({
                 <div className="relative group/item">
                   <button
                     type="button"
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                   >
                     <Archive className="size-4 text-muted-foreground" />
                     Move to group
@@ -312,13 +312,13 @@ export function SessionList({
                       ▸
                     </span>
                   </button>
-                  <div className="absolute left-full top-0 z-50 ml-1 hidden w-36 rounded-xl border border-border bg-card p-1 shadow-lg group-hover/item:block">
+                  <div className="absolute left-full top-0 z-50 ml-1 hidden w-36 rounded-lg border border-border bg-card p-1 shadow-lg group-hover/item:block">
                     <button
                       type="button"
                       onClick={() => {
                         setOpenMenuId(null);
                       }}
-                      className="flex w-full rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                      className="flex w-full rounded-lg px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                     >
                       No groups yet
                     </button>
@@ -332,7 +332,7 @@ export function SessionList({
                   onClick={() => {
                     setOpenMenuId(null);
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                 >
                   <Archive className="size-4 text-muted-foreground" />
                   Archive
@@ -347,7 +347,7 @@ export function SessionList({
                     onDelete(s.id);
                     setSessions((prev) => prev.filter((x) => x.id !== s.id));
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive/10"
+                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-destructive transition-colors hover:bg-destructive/10"
                 >
                   <Trash2 className="size-4" />
                   Delete
