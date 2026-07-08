@@ -8,8 +8,8 @@ import { getSessionStore, type Session, type SessionWithMessages } from '../sess
 export function registerSessionsIPC(): void {
   const store = getSessionStore()
 
-  ipcMain.handle('sessions:create', (_e, title?: string): SessionWithMessages => {
-    return store.create(title)
+  ipcMain.handle('sessions:create', (_e, title?: string, space?: string): SessionWithMessages => {
+    return store.create(title, space)
   })
 
   ipcMain.handle('sessions:get', (_e, id: string): SessionWithMessages | null => {
@@ -20,8 +20,8 @@ export function registerSessionsIPC(): void {
     store.save(session)
   })
 
-  ipcMain.handle('sessions:list', (_e, limit?: number, offset?: number): Session[] => {
-    return store.list(limit, offset)
+  ipcMain.handle('sessions:list', (_e, limit?: number, offset?: number, space?: string): Session[] => {
+    return store.list(limit, offset, space)
   })
 
   ipcMain.handle('sessions:search', (_e, query: string, limit?: number): Session[] => {

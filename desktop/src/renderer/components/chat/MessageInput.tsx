@@ -306,8 +306,10 @@ export function MessageInput(): JSX.Element {
       }
     } else if (!sessionId && bridge) {
       try {
-        const s = (await bridge.sessions.create(text.slice(0, 60))) as
-          { id: string } | undefined;
+        const s = (await bridge.sessions.create(
+          text.slice(0, 60),
+          store.space,
+        )) as { id: string } | undefined;
         if (s?.id) {
           sessionId = s.id;
           store.setCurrentSessionId(s.id);

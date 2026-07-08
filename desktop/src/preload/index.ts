@@ -122,14 +122,14 @@ const electronAPI = {
   },
 
   sessions: {
-    create: (title?: string): Promise<unknown> =>
-      ipcRenderer.invoke("sessions:create", title),
+    create: (title?: string, space?: string): Promise<unknown> =>
+      ipcRenderer.invoke("sessions:create", title, space),
     getById: (id: string): Promise<unknown> =>
       ipcRenderer.invoke("sessions:get", id),
     save: (session: unknown): Promise<void> =>
       ipcRenderer.invoke("sessions:save", session),
-    list: (limit?: number, offset?: number): Promise<unknown[]> =>
-      ipcRenderer.invoke("sessions:list", limit, offset),
+    list: (limit?: number, offset?: number, space?: string): Promise<unknown[]> =>
+      ipcRenderer.invoke("sessions:list", limit, offset, space),
     search: (query: string, limit?: number): Promise<unknown[]> =>
       ipcRenderer.invoke("sessions:search", query, limit),
     deleteById: (id: string): Promise<boolean> =>

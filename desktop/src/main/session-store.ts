@@ -97,7 +97,8 @@ function getDb(): ReturnType<typeof Database> {
         title TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        message_count INTEGER DEFAULT 0
+        message_count INTEGER DEFAULT 0,
+        space TEXT NOT NULL DEFAULT 'code'
       );
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
@@ -110,18 +111,26 @@ function getDb(): ReturnType<typeof Database> {
       );
       CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
     `);
+    // Migrate older DBs that predate the space column (default existing chats
+    // to the Code space, since that's where they were created).
+    const cols = db.prepare("PRAGMA table_info(sessions)").all() as {
+      name: string;
+    }[];
+    if (!cols.some((c) => c.name === "space")) {
+      db.exec("ALTER TABLE sessions ADD COLUMN space TEXT NOT NULL DEFAULT 'code'");
+    }
   }
   return db;
 }
 
 export class SessionStore {
-  create(title?: string): SessionWithMessages {
+  create(title?: string, space: string = "code"): SessionWithMessages {
     const d = getDb();
     const id = randomUUID();
     const now = new Date().toISOString();
     d.prepare(
-      "INSERT INTO sessions (id, title, created_at, updated_at, message_count) VALUES (?, ?, ?, ?, 0)",
-    ).run(id, title || "New Session", now, now);
+      "INSERT INTO sessions (id, title, created_at, updated_at, message_count, space) VALUES (?, ?, ?, ?, 0, ?)",
+    ).run(id, title || "New Session", now, now, space);
     return {
       id,
       title: title || "New Session",
@@ -239,13 +248,21 @@ export class SessionStore {
     return this.get(sessionId);
   }
 
-  list(limit = 50, offset = 0): Session[] {
+  list(limit = 50, offset = 0, space?: string): Session[] {
     const d = getDb();
-    const rows = d
-      .prepare(
-        "SELECT * FROM sessions ORDER BY updated_at DESC LIMIT ? OFFSET ?",
-      )
-      .all(limit, offset) as SessionRow[];
+    const rows = (
+      space
+        ? d
+            .prepare(
+              "SELECT * FROM sessions WHERE space = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+            )
+            .all(space, limit, offset)
+        : d
+            .prepare(
+              "SELECT * FROM sessions ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+            )
+            .all(limit, offset)
+    ) as SessionRow[];
     return rows.map(rowToSession);
   }
 

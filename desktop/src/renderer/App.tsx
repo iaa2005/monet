@@ -244,6 +244,12 @@ export default function App(): JSX.Element {
     });
   }, []);
 
+  // Keep the store's space in sync with the visible mode so new chats
+  // (created in MessageInput) are tagged with the right workspace.
+  useEffect(() => {
+    useChatStore.getState().setSpace(appMode);
+  }, [appMode]);
+
   const handleDeleteSession = useCallback(
     async (id: string) => {
       try {
@@ -262,8 +268,10 @@ export default function App(): JSX.Element {
 
   const newSession = useCallback(async () => {
     try {
-      const s = (await api()?.sessions.create()) as
-        { id: string; title: string } | undefined;
+      const s = (await api()?.sessions.create(
+        undefined,
+        useChatStore.getState().space,
+      )) as { id: string; title: string } | undefined;
       if (s) {
         await api()?.chat.reset(s.id);
         handleSelectSession({ id: s.id, title: s.title, messages: [] });
@@ -600,6 +608,7 @@ export default function App(): JSX.Element {
                         onSelect={handleSelectSession}
                         onDelete={handleDeleteSession}
                         currentSessionId={currentSessionId}
+                        space={appMode}
                       />
                     </div>
                   </div>

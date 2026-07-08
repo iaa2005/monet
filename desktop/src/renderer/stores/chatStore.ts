@@ -54,6 +54,9 @@ interface ChatStore {
   /** Text to push into the composer (e.g. a Home suggestion chip). Consumed
    * and cleared by MessageInput. */
   composerDraft: string;
+  /** Current workspace ("home" | "code") — new chats are tagged with it so
+   * Home and Code keep separate Recents. Mirrors App's appMode. */
+  space: string;
 
   /** Any session currently streaming (used to show a running indicator in the
    * sidebar). */
@@ -62,6 +65,7 @@ interface ChatStore {
   setCurrentSessionId: (id?: string) => void;
   setIncognito: (v: boolean) => void;
   setComposerDraft: (v: string) => void;
+  setSpace: (v: string) => void;
   bumpSessions: () => void;
   /** Seed a session's message list (e.g. loaded from the DB). Does NOT clobber
    * a session that's currently streaming in the background. */
@@ -191,6 +195,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     sessionsVersion: 0,
     incognito: false,
     composerDraft: "",
+    space: "home",
 
     isSessionStreaming: (id) => get().sessions[id]?.isStreaming ?? false,
 
@@ -209,6 +214,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
     setIncognito: (v) => set({ incognito: v }),
     setComposerDraft: (v) => set({ composerDraft: v }),
+    setSpace: (v) => set({ space: v }),
     bumpSessions: () =>
       set((s) => ({ sessionsVersion: s.sessionsVersion + 1 })),
 

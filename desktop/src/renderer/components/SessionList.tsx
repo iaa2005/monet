@@ -45,6 +45,8 @@ interface SessionListProps {
   }) => void;
   onDelete: (id: string) => void;
   currentSessionId?: string;
+  /** Only show sessions from this space (home/code). */
+  space?: string;
 }
 
 function api(): ElectronAPI | undefined {
@@ -55,6 +57,7 @@ export function SessionList({
   onSelect,
   onDelete,
   currentSessionId,
+  space,
 }: SessionListProps): JSX.Element {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +67,7 @@ export function SessionList({
 
   const loadSessions = async (): Promise<void> => {
     try {
-      const result = await api()?.sessions.list(50, 0);
+      const result = await api()?.sessions.list(50, 0, space);
       if (result) setSessions(result as SessionSummary[]);
     } catch (err) {
       console.error("Failed to load sessions:", err);
@@ -76,7 +79,7 @@ export function SessionList({
   useEffect(() => {
     loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version]);
+  }, [version, space]);
 
   useEffect(() => {
     const onFocus = (): void => {

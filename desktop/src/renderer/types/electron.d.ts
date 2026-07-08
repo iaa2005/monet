@@ -110,10 +110,14 @@ export interface ElectronAPI {
     getClaudeMd: () => Promise<string | null>;
   };
   sessions: {
-    create: (title?: string) => Promise<unknown>;
+    create: (title?: string, space?: string) => Promise<unknown>;
     getById: (id: string) => Promise<unknown>;
     save: (session: unknown) => Promise<void>;
-    list: (limit?: number, offset?: number) => Promise<unknown[]>;
+    list: (
+      limit?: number,
+      offset?: number,
+      space?: string,
+    ) => Promise<unknown[]>;
     search: (query: string, limit?: number) => Promise<unknown[]>;
     deleteById: (id: string) => Promise<boolean>;
     updateTitle: (id: string, title: string) => Promise<unknown>;
