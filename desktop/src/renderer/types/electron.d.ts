@@ -121,6 +121,9 @@ export interface ElectronAPI {
     search: (query: string, limit?: number) => Promise<unknown[]>;
     deleteById: (id: string) => Promise<boolean>;
     updateTitle: (id: string, title: string) => Promise<unknown>;
+    listArchived: (space?: string) => Promise<unknown[]>;
+    setArchived: (id: string, archived: boolean) => Promise<void>;
+    setPinned: (id: string, pinned: boolean) => Promise<void>;
   };
   stats: {
     get: (rangeDays?: number) => Promise<{

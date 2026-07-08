@@ -35,6 +35,8 @@ interface SessionSummary {
   createdAt: string;
   updatedAt: string;
   messageCount: number;
+  pinned?: boolean;
+  archived?: boolean;
 }
 
 interface SessionListProps {
@@ -66,12 +68,16 @@ export function SessionList({
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const version = useChatStore((s) => s.sessionsVersion);
+  const streamingIds = useChatStore((s) => s.sessions);
 
   const loadSessions = async (): Promise<void> => {
     try {
-      const result = await api()?.sessions.list(50, 0, space);
+      const result = showArchived
+        ? await api()?.sessions.listArchived(space)
+        : await api()?.sessions.list(50, 0, space);
       if (result) setSessions(result as SessionSummary[]);
     } catch (err) {
       console.error("Failed to load sessions:", err);
@@ -83,7 +89,18 @@ export function SessionList({
   useEffect(() => {
     loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, space]);
+  }, [version, space, showArchived]);
+
+  const setArchived = async (id: string, v: boolean): Promise<void> => {
+    setOpenMenuId(null);
+    await api()?.sessions.setArchived(id, v);
+    useChatStore.getState().bumpSessions();
+  };
+  const togglePin = async (id: string, pinned: boolean): Promise<void> => {
+    setOpenMenuId(null);
+    await api()?.sessions.setPinned(id, !pinned);
+    useChatStore.getState().bumpSessions();
+  };
 
   useEffect(() => {
     const onFocus = (): void => {
@@ -123,22 +140,24 @@ export function SessionList({
     }
   };
 
-  if (loading) {
-    return (
-      <p className="px-2 py-1.5 text-xs text-muted-foreground">Loading…</p>
-    );
-  }
-
-  if (sessions.length === 0) {
-    return (
-      <p className="px-2 py-1.5 text-xs text-muted-foreground">
-        No recent chats
-      </p>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-0.5 pb-2">
+    <div className="flex flex-col">
+      <button
+        type="button"
+        onClick={() => setShowArchived((v) => !v)}
+        className="mb-1 flex items-center gap-1.5 self-start rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <Archive className="size-3" />
+        {showArchived ? "Back to recents" : "Archived"}
+      </button>
+      {loading ? (
+        <p className="px-2 py-1.5 text-xs text-muted-foreground">Loading…</p>
+      ) : sessions.length === 0 ? (
+        <p className="px-2 py-1.5 text-xs text-muted-foreground">
+          {showArchived ? "No archived chats" : "No recent chats"}
+        </p>
+      ) : (
+        <div className="flex flex-col gap-0.5 pb-2">
       {sessions.map((s) => {
         const active = s.id === currentSessionId;
         const menuOpen = openMenuId === s.id;
@@ -157,17 +176,27 @@ export function SessionList({
               <span
                 className={cn(
                   "size-1.5 shrink-0 rounded-full",
-                  active ? "bg-link" : "bg-transparent",
+                  streamingIds[s.id]?.isStreaming
+                    ? "animate-pulse bg-emerald-500"
+                    : active
+                      ? "bg-link"
+                      : "bg-transparent",
                 )}
+                title={
+                  streamingIds[s.id]?.isStreaming ? "Running…" : undefined
+                }
               />
               <span className="min-w-0 flex-1">
                 <span
                   className={cn(
-                    "block truncate text-[13px]",
+                    "flex items-center gap-1 truncate text-[13px]",
                     active ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
-                  {s.title || "New session"}
+                  {s.pinned && (
+                    <Pin className="size-3 shrink-0 text-muted-foreground/70" />
+                  )}
+                  <span className="truncate">{s.title || "New session"}</span>
                 </span>
                 {s.messageCount > 0 && (
                   <span className="block truncate text-[11px] text-muted-foreground/70">
@@ -255,16 +284,11 @@ export function SessionList({
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setOpenMenuId(null);
-                  }}
+                  onClick={() => togglePin(s.id, s.pinned ?? false)}
                   className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                 >
                   <Pin className="size-4 text-muted-foreground" />
-                  Pin
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    P
-                  </span>
+                  {s.pinned ? "Unpin" : "Pin"}
                 </button>
                 <button
                   type="button"
@@ -338,16 +362,11 @@ export function SessionList({
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setOpenMenuId(null);
-                  }}
+                  onClick={() => setArchived(s.id, !showArchived)}
                   className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                 >
                   <Archive className="size-4 text-muted-foreground" />
-                  Archive
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    A
-                  </span>
+                  {showArchived ? "Unarchive" : "Archive"}
                 </button>
                 <button
                   type="button"
@@ -367,6 +386,8 @@ export function SessionList({
           </div>
         );
       })}
+        </div>
+      )}
     </div>
   );
 }

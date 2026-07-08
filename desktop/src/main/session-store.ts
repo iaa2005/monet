@@ -20,6 +20,8 @@ export interface Session {
   createdAt: string;
   updatedAt: string;
   messageCount: number;
+  archived?: boolean;
+  pinned?: boolean;
 }
 
 export interface ChatMessage {
@@ -60,6 +62,8 @@ interface SessionRow {
   created_at: string;
   updated_at: string;
   message_count: number;
+  archived?: number;
+  pinned?: number;
 }
 
 function rowToSession(r: SessionRow): Session {
@@ -69,6 +73,8 @@ function rowToSession(r: SessionRow): Session {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     messageCount: r.message_count,
+    archived: !!r.archived,
+    pinned: !!r.pinned,
   };
 }
 
@@ -98,7 +104,9 @@ function getDb(): ReturnType<typeof Database> {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         message_count INTEGER DEFAULT 0,
-        space TEXT NOT NULL DEFAULT 'code'
+        space TEXT NOT NULL DEFAULT 'code',
+        archived INTEGER NOT NULL DEFAULT 0,
+        pinned INTEGER NOT NULL DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
@@ -116,9 +124,13 @@ function getDb(): ReturnType<typeof Database> {
     const cols = db.prepare("PRAGMA table_info(sessions)").all() as {
       name: string;
     }[];
-    if (!cols.some((c) => c.name === "space")) {
+    const has = (n: string): boolean => cols.some((c) => c.name === n);
+    if (!has("space"))
       db.exec("ALTER TABLE sessions ADD COLUMN space TEXT NOT NULL DEFAULT 'code'");
-    }
+    if (!has("archived"))
+      db.exec("ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
+    if (!has("pinned"))
+      db.exec("ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
   }
   return db;
 }
@@ -250,20 +262,51 @@ export class SessionStore {
 
   list(limit = 50, offset = 0, space?: string): Session[] {
     const d = getDb();
+    // Non-archived only; pinned first, then most-recent.
     const rows = (
       space
         ? d
             .prepare(
-              "SELECT * FROM sessions WHERE space = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+              "SELECT * FROM sessions WHERE archived = 0 AND space = ? ORDER BY pinned DESC, updated_at DESC LIMIT ? OFFSET ?",
             )
             .all(space, limit, offset)
         : d
             .prepare(
-              "SELECT * FROM sessions ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+              "SELECT * FROM sessions WHERE archived = 0 ORDER BY pinned DESC, updated_at DESC LIMIT ? OFFSET ?",
             )
             .all(limit, offset)
     ) as SessionRow[];
     return rows.map(rowToSession);
+  }
+
+  listArchived(space?: string): Session[] {
+    const d = getDb();
+    const rows = (
+      space
+        ? d
+            .prepare(
+              "SELECT * FROM sessions WHERE archived = 1 AND space = ? ORDER BY updated_at DESC",
+            )
+            .all(space)
+        : d
+            .prepare(
+              "SELECT * FROM sessions WHERE archived = 1 ORDER BY updated_at DESC",
+            )
+            .all()
+    ) as SessionRow[];
+    return rows.map(rowToSession);
+  }
+
+  setArchived(id: string, archived: boolean): void {
+    getDb()
+      .prepare("UPDATE sessions SET archived = ? WHERE id = ?")
+      .run(archived ? 1 : 0, id);
+  }
+
+  setPinned(id: string, pinned: boolean): void {
+    getDb()
+      .prepare("UPDATE sessions SET pinned = ? WHERE id = ?")
+      .run(pinned ? 1 : 0, id);
   }
 
   search(query: string, limit = 20): Session[] {

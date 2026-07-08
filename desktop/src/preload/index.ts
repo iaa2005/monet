@@ -136,6 +136,12 @@ const electronAPI = {
       ipcRenderer.invoke("sessions:delete", id),
     updateTitle: (id: string, title: string): Promise<unknown> =>
       ipcRenderer.invoke("sessions:updateTitle", id, title),
+    listArchived: (space?: string): Promise<unknown[]> =>
+      ipcRenderer.invoke("sessions:listArchived", space),
+    setArchived: (id: string, archived: boolean): Promise<void> =>
+      ipcRenderer.invoke("sessions:setArchived", id, archived),
+    setPinned: (id: string, pinned: boolean): Promise<void> =>
+      ipcRenderer.invoke("sessions:setPinned", id, pinned),
   },
 
   stats: {
