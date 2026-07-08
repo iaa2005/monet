@@ -12,7 +12,15 @@ export const BrowserWindow = {
 }
 export const app = {
   getPath: (_name: string) => process.cwd(),
+  getAppPath: () => process.cwd(),
   getName: () => 'smoke',
   isPackaged: false,
 }
-export default { ipcMain, BrowserWindow, app }
+// provider/manager.ts (pulled in transitively via the sub-agent runner) uses
+// safeStorage to (de)crypt API keys at import time.
+export const safeStorage = {
+  isEncryptionAvailable: () => false,
+  encryptString: (s: string) => Buffer.from(s, 'utf8'),
+  decryptString: (b: Buffer) => b.toString('utf8'),
+}
+export default { ipcMain, BrowserWindow, app, safeStorage }

@@ -6,9 +6,11 @@ import {
   Check,
   FolderOpen,
   BookMarked,
+  Plug,
 } from "lucide-react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { SkillsSettings } from "@/components/settings/SkillsSettings";
+import { ConnectorsSettings } from "@/components/settings/ConnectorsSettings";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -65,7 +67,7 @@ function StorageSection(): JSX.Element {
   );
 }
 
-type Section = "general" | "providers" | "skills" | "about";
+type Section = "general" | "providers" | "skills" | "connectors" | "about";
 
 const NAV: {
   group: string;
@@ -80,7 +82,10 @@ const NAV: {
   },
   {
     group: "Customize",
-    items: [{ id: "skills", label: "Skills", icon: BookMarked }],
+    items: [
+      { id: "skills", label: "Skills", icon: BookMarked },
+      { id: "connectors", label: "Connectors", icon: Plug },
+    ],
   },
   { group: "About", items: [{ id: "about", label: "About", icon: Info }] },
 ];
@@ -219,6 +224,7 @@ export function SettingsPanel({
         )}
         {section === "providers" && <ProviderSettings />}
         {section === "skills" && <SkillsSettings />}
+        {section === "connectors" && <ConnectorsSettings />}
         {section === "about" && <AboutSection />}
       </div>
     </div>

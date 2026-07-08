@@ -154,6 +154,19 @@ const electronAPI = {
       ipcRenderer.invoke("skills:delete", slug),
   },
 
+  mcp: {
+    list: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:list"),
+    add: (payload: { name: string; config: unknown }): Promise<unknown[]> =>
+      ipcRenderer.invoke("mcp:add", payload),
+    remove: (name: string): Promise<unknown[]> =>
+      ipcRenderer.invoke("mcp:remove", name),
+    toggle: (payload: {
+      name: string;
+      enabled: boolean;
+    }): Promise<unknown[]> => ipcRenderer.invoke("mcp:toggle", payload),
+    reconnect: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:reconnect"),
+  },
+
   win: {
     minimize: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
     toggleMaximize: (): Promise<boolean> =>

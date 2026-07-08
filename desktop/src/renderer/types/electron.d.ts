@@ -19,6 +19,24 @@ export interface SkillInfo {
   updatedAt: number;
 }
 
+export interface McpServerConfig {
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  type?: "http" | "sse";
+  url?: string;
+  headers?: Record<string, string>;
+  enabled?: boolean;
+}
+
+export interface McpServerStatus {
+  name: string;
+  status: "connected" | "connecting" | "error" | "disabled";
+  toolCount: number;
+  error?: string;
+  config: McpServerConfig;
+}
+
 export interface ElectronAPI {
   platform: string;
   versions: { node: string; chrome: string; electron: string };
@@ -123,6 +141,19 @@ export interface ElectronAPI {
       content: string;
     }) => Promise<SkillInfo>;
     deleteBySlug: (slug: string) => Promise<{ ok: boolean }>;
+  };
+  mcp: {
+    list: () => Promise<McpServerStatus[]>;
+    add: (payload: {
+      name: string;
+      config: McpServerConfig;
+    }) => Promise<McpServerStatus[]>;
+    remove: (name: string) => Promise<McpServerStatus[]>;
+    toggle: (payload: {
+      name: string;
+      enabled: boolean;
+    }) => Promise<McpServerStatus[]>;
+    reconnect: () => Promise<McpServerStatus[]>;
   };
   win: {
     minimize: () => Promise<void>;

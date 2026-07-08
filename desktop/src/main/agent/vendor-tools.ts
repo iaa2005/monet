@@ -20,6 +20,13 @@ import { PowerShellTool } from '@vendor/tools/PowerShellTool/PowerShellTool.js'
 import { TodoWriteTool } from '@vendor/tools/TodoWriteTool/TodoWriteTool.js'
 import { zodToJsonSchema } from '@vendor/utils/zodToJsonSchema.js'
 import { InlineSkillTool } from './skill-tool.js'
+import { AgentTaskTool } from './agent-tool.js'
+import {
+  callMcpTool,
+  ensureConnected,
+  getMcpTools,
+  isMcpToolName,
+} from '../mcp/manager.js'
 import type { LLMTool } from '../llm/adapter.js'
 import {
   createParentAssistantMessage,
@@ -187,6 +194,7 @@ export function getVendorTools(): Tools {
     GrepTool,
     TodoWriteTool,
     InlineSkillTool,
+    AgentTaskTool,
   ] as unknown as Tool[]
   cachedTools = all.filter(t => t.isEnabled())
   return cachedTools
@@ -208,31 +216,44 @@ const apiToolsCache = new Map<string, LLMTool[]>()
 export async function getVendorApiTools(): Promise<LLMTool[]> {
   const tools = getVendorTools()
   const cacheKey = tools.map(t => t.name).join(',')
-  const hit = apiToolsCache.get(cacheKey)
-  if (hit) return hit
-
-  const promptOptions = {
-    getToolPermissionContext: async () => getAppState().toolPermissionContext,
-    tools,
-    agents: [],
+  let base = apiToolsCache.get(cacheKey)
+  if (!base) {
+    const promptOptions = {
+      getToolPermissionContext: async () => getAppState().toolPermissionContext,
+      tools,
+      agents: [],
+    }
+    base = await Promise.all(
+      tools.map(async tool => {
+        const schema = zodToJsonSchema(tool.inputSchema) as LLMTool['input_schema']
+        return {
+          name: tool.name,
+          description: await tool.prompt(promptOptions),
+          input_schema: {
+            type: 'object' as const,
+            properties: schema.properties ?? {},
+            ...(schema.required ? { required: schema.required } : {}),
+          },
+        }
+      }),
+    )
+    apiToolsCache.set(cacheKey, base)
   }
 
-  const apiTools: LLMTool[] = await Promise.all(
-    tools.map(async tool => {
-      const schema = zodToJsonSchema(tool.inputSchema) as LLMTool['input_schema']
-      return {
-        name: tool.name,
-        description: await tool.prompt(promptOptions),
-        input_schema: {
-          type: 'object' as const,
-          properties: schema.properties ?? {},
-          ...(schema.required ? { required: schema.required } : {}),
-        },
-      }
-    }),
-  )
-  apiToolsCache.set(cacheKey, apiTools)
-  return apiTools
+  // Append live MCP tools. Not cached with the vendor tools — connections
+  // (and thus the tool list) change as servers connect/disconnect.
+  try {
+    await ensureConnected()
+    const mcpTools = getMcpTools().map(t => ({
+      name: t.fullName,
+      description: t.description,
+      input_schema: t.inputSchema,
+    }))
+    if (mcpTools.length) return [...base, ...mcpTools]
+  } catch {
+    // MCP is best-effort — never block the toolset on a server failure.
+  }
+  return base
 }
 
 // ─── Execution ──────────────────────────────────────────────────────────
@@ -288,6 +309,28 @@ export async function executeVendorTool(opts: {
     signal,
   } = opts
   initVendorRuntime()
+
+  // MCP tools (mcp__<server>__<tool>) are served by the connection manager,
+  // not the vendor tool pipeline. Auto/bypass modes run them without asking;
+  // otherwise route an approval through the UI like any other tool.
+  if (isMcpToolName(name)) {
+    if (
+      permissionMode !== 'bypassPermissions' &&
+      permissionMode !== 'auto' &&
+      requestPermission
+    ) {
+      const decision = await requestPermission({
+        toolName: name,
+        description: `Run MCP tool ${name}`,
+        detail: JSON.stringify(input).slice(0, 300),
+      })
+      if (decision === 'deny') {
+        return { content: `Permission denied: ${name}`, isError: true }
+      }
+    }
+    return callMcpTool(name, input)
+  }
+
   // Point the vendor tools' checkPermissions() at the selected mode.
   setVendorPermissionMode(VENDOR_MODE_FOR[permissionMode])
   const tools = getVendorTools()

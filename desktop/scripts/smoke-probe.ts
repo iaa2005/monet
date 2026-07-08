@@ -13,6 +13,13 @@ import {
 } from '../src/main/agent/vendor-tools.js'
 import { initVendorRuntime } from '../src/main/agent/vendor-context.js'
 import { shouldCompact, compactMessages } from '../src/main/agent/compaction.js'
+import {
+  callMcpTool,
+  ensureConnected,
+  getMcpTools,
+  isMcpToolName,
+  loadConfig,
+} from '../src/main/mcp/manager.js'
 import type { LLMAdapter, LLMMessage } from '../src/main/llm/adapter.js'
 
 const MODEL = 'claude-opus-4-8'
@@ -173,6 +180,29 @@ async function main() {
       typeof compacted[0].content === 'string' &&
       compacted[0].content.includes('Condensed summary of the prior turns'),
     `len=${compacted.length}`,
+  )
+
+  // 9. MCP manager — loads the SDK, no-crash with no servers configured,
+  //    graceful unknown-tool handling (a live server isn't available here).
+  check('MCP config loads (empty ok)', typeof loadConfig().mcpServers === 'object')
+  await ensureConnected()
+  check('MCP tools list is an array', Array.isArray(getMcpTools()))
+  check('isMcpToolName detects mcp__ prefix', isMcpToolName('mcp__x__y') && !isMcpToolName('Bash'))
+  const badMcp = await callMcpTool('mcp__nope__nope', {})
+  check('MCP unknown-tool handled', badMcp.isError && /unknown mcp tool/i.test(badMcp.content))
+
+  // 10. Sub-agents — Task tool present + runs the sub-agent path. No live
+  //     provider in the harness, so it returns the graceful no-provider report.
+  check('Task tool present', tools.some(t => t.name === 'Task'))
+  check(
+    'Task excluded from its own schema recursion guard',
+    apiTools.some(t => t.name === 'Task'),
+  )
+  const task = await run('Task', { description: 'smoke', prompt: 'noop' })
+  check(
+    'Task sub-agent path runs',
+    /no active provider|sub-agent/i.test(task.content),
+    task.content.split('\n')[0],
   )
 
   rmSync(dir, { recursive: true, force: true })
