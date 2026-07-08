@@ -1,0 +1,90 @@
+{
+  "anytime": [
+    "Welcome back, <name>. The studio has been waiting for you.",
+    "Good to see you again, <name>.",
+    "Ah, <name>. Shall we paint something remarkable today?",
+    "Back already, <name>? I have fresh ideas waiting.",
+    "Welcome, <name>. Every masterpiece begins with a single brushstroke.",
+    "Ready for another canvas, <name>?",
+    "I've been keeping the palette ready for you, <name>.",
+    "The light looks promising today, <name>.",
+    "Every conversation adds another color, <name>.",
+    "Let's create something worth remembering, <name>.",
+    "The easel is ready. Welcome back, <name>.",
+    "A blank canvas never stays blank for long, <name>.",
+    "Good to have you here, <name>. Inspiration rarely waits.",
+    "Every session starts with curiosity. Welcome, <name>.",
+    "Let's turn ideas into brushstrokes, <name>."
+  ],
+  "morning": [
+    "Good morning, <name>. The first light often reveals the best ideas.",
+    "Morning, <name>. Shall we catch today's colors before they fade?",
+    "A fresh canvas for a fresh day. Welcome, <name>.",
+    "The morning light is perfect, <name>. Let's make good use of it.",
+    "Every sunrise paints a new beginning. Good morning, <name>.",
+    "Good morning, <name>. Inspiration tends to wake up early.",
+    "The palette feels brighter this morning, <name>.",
+    "Morning, <name>. Let's start with broad strokes."
+  ],
+  "afternoon": [
+    "Good afternoon, <name>. The studio is alive with color.",
+    "Afternoon, <name>. Ready to continue our work?",
+    "The daylight is still generous, <name>. Let's use it well.",
+    "Welcome back this afternoon, <name>.",
+    "The canvas is waiting patiently, <name>.",
+    "Another afternoon, another opportunity to create, <name>.",
+    "Let's keep the momentum going, <name>.",
+    "Good afternoon, <name>. Every detail matters."
+  ],
+  "evening": [
+    "Good evening, <name>. The golden hour has always been my favorite.",
+    "Evening, <name>. The softer light brings quieter ideas.",
+    "Welcome back, <name>. Let's finish the day with something beautiful.",
+    "The sun may be setting, but inspiration isn't, <name>.",
+    "Good evening, <name>. Every masterpiece deserves one last look.",
+    "Evening, <name>. The colors are warmer now.",
+    "Let's add a few final brushstrokes, <name>.",
+    "The studio feels peaceful tonight, <name>."
+  ],
+  "night": [
+    "Even at this hour, <name>? The quiet has its own colors.",
+    "Working late, <name>? The quiet has its own colors.",
+    "The world is asleep, but creativity rarely is, <name>.",
+    "Welcome, <name>. Moonlight has its own palette.",
+    "The stars make excellent studio lights, <name>.",
+    "Another quiet night for painting ideas together, <name>.",
+    "Take your time, <name>. Great work doesn't rush.",
+    "Even at this hour, the canvas is ready."
+  ],
+  "first_run": [
+    "Welcome, <name>. I'm Monet, your quiet companion in creation.",
+    "Hello, <name>. Every masterpiece begins with a blank canvas\u2014and this is ours.",
+    "It's a pleasure to meet you, <name>. Let's paint with ideas instead of pigments.",
+    "Welcome to the studio, <name>. I hope you'll visit often.",
+    "I'm Monet. Together we'll turn sketches into finished works, <name>."
+  ],
+  "returning_after_long_time": [
+    "Welcome back, <name>. The paint never really dried.",
+    "It's been a while, <name>. The studio missed you.",
+    "The canvas has been patiently waiting for your return, <name>.",
+    "Good to see you again, <name>. Let's pick up where inspiration left off.",
+    "Some colors fade with time. Good ideas don't. Welcome back, <name>."
+  ],
+  "tamagotchi": [
+    "\ud83c\udf38 I watered the lilies while you were away.",
+    "\ud83c\udfa8 I may have mixed one color too many... but it looks interesting.",
+    "\ud83d\udd8c\ufe0f I cleaned the brushes. They insisted.",
+    "\u2600\ufe0f The sunlight was perfect today. I tried to remember every shade.",
+    "\ud83c\udf3f I found a new patch of wildflowers. Nature is still undefeated.",
+    "\ud83c\udfa8 I almost painted another water lily. Old habits.",
+    "\ud83e\udeb7 The pond looked especially peaceful today.",
+    "\ud83d\udd4a\ufe0f A bird visited the studio. It had excellent taste in landscapes.",
+    "\ud83c\udf75 I paused for tea. Even painters need a moment of stillness.",
+    "\ud83c\udf26\ufe0f Clouds make surprisingly creative collaborators.",
+    "\ud83c\udfa8 The palette feels happier after every conversation.",
+    "\ud83c\udf38 I think the garden is secretly competing with my paintings.",
+    "\u2728 Another idea found its way onto the canvas.",
+    "\ud83c\udf0a Reflections are never quite the same twice.",
+    "\ud83c\udf3c I counted flowers. I lost track after a hundred."
+  ]
+}

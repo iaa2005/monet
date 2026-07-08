@@ -448,7 +448,12 @@ export default function App(): JSX.Element {
         <ResizablePanelGroup direction="horizontal" className="gap-1">
           {sidebarOpen && (
             <>
-              <ResizablePanel defaultSize={18} minSize={14} maxSize={38}>
+              <ResizablePanel
+                defaultSize={18}
+                minSize={14}
+                maxSize={38}
+                className="min-w-[280px]"
+              >
                 <aside className="flex h-full flex-col rounded-xl border border-border bg-card shadow-sm">
                   {/* Home / Code tabs */}
                   <div className="flex items-center gap-1 px-2 pt-2">
@@ -533,11 +538,11 @@ export default function App(): JSX.Element {
           )}
 
           {/* Content panel group */}
-          <ResizablePanel defaultSize={sidebarOpen ? 82 : 100} minSize={40}>
+          <ResizablePanel defaultSize={sidebarOpen ? 82 : 100} minSize={30}>
             <ResizablePanelGroup direction="horizontal" className="gap-1">
-              <ResizablePanel defaultSize={72} minSize={32}>
+              <ResizablePanel defaultSize={72} minSize={25}>
                 <ResizablePanelGroup direction="vertical" className="gap-1">
-                  <ResizablePanel minSize={25}>
+                  <ResizablePanel minSize={20}>
                     <div className="flex h-full min-h-0 flex-col overflow-hidden">
                       {openFilePath ? (
                         <FileViewer

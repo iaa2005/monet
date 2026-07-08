@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useChatStore } from "@/stores/chatStore";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { ToolCallBubble } from "./ToolCallBubble";
@@ -15,10 +15,10 @@ import {
 import { Message, MessageContent } from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Shimmer } from "@/components/ui/shimmer";
-import { ClaudeMark } from "@/components/ClaudeMark";
 import { StatsDashboard } from "@/components/StatsDashboard";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { cn } from "@/lib/utils";
+import greetings from "@/data/greetings.json";
 import type { ElectronAPI, PermissionRequest } from "@/types/electron";
 import type { ChatMessage, ToolCall } from "@/types/chat";
 
@@ -103,6 +103,36 @@ function groupMessages(
   return out;
 }
 
+function pickGreeting(isFirstRun: boolean): {
+  title: string;
+  subtitle: string;
+} {
+  const hour = new Date().getHours();
+  let timeKey: keyof typeof greetings = "anytime";
+  if (hour >= 5 && hour < 12) timeKey = "morning";
+  else if (hour >= 12 && hour < 17) timeKey = "afternoon";
+  else if (hour >= 17 && hour < 22) timeKey = "evening";
+  else timeKey = "night";
+
+  const name = localStorage.getItem("user-name") || "friend";
+
+  let title: string;
+  if (isFirstRun) {
+    const pool = greetings.first_run;
+    title = pool[Math.floor(Math.random() * pool.length)];
+  } else {
+    const pool = [...greetings.anytime, ...(greetings[timeKey] || [])];
+    title = pool[Math.floor(Math.random() * pool.length)];
+  }
+  title = title.replace("<name>", name);
+
+  const tamagotchi =
+    greetings.tamagotchi[
+      Math.floor(Math.random() * greetings.tamagotchi.length)
+    ];
+
+  return { title, subtitle: tamagotchi };
+}
 export function ChatView({
   transcriptMode = "normal",
   sessionTitle,
@@ -115,6 +145,17 @@ export function ChatView({
   const isStreaming = useChatStore((s) => s.isStreaming);
   const isEmpty = messages.length === 0 && !error;
 
+  const isFirstRun = useMemo(() => {
+    const flag = localStorage.getItem("monet-first-run");
+    if (!flag) {
+      localStorage.setItem("monet-first-run", "done");
+      return true;
+    }
+    return false;
+  }, []);
+
+  const greeting = useMemo(() => pickGreeting(isFirstRun), [isFirstRun]);
+
   const grouped = groupMessages(messages, transcriptMode);
 
   const last = messages[messages.length - 1];
@@ -126,15 +167,12 @@ export function ChatView({
     <div className="flex h-full flex-col">
       {isEmpty ? (
         <div className="flex-1 overflow-auto">
-          <div className="flex flex-col items-center px-4 pt-12 text-center">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-brand text-white">
-              <ClaudeMark className="size-5" />
-            </div>
-            <h2 className="mt-4 text-xl font-medium text-foreground">
-              How can I help you today?
+          <div className="mx-auto w-full max-w-3xl px-4 pt-12 text-left">
+            <h2 className="font-[Copernicus] text-2xl font-medium text-foreground">
+              {greeting.title}
             </h2>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              Ask a question, describe a task, or type / for commands.
+            <p className="mt-2 mb-4 max-w-md text-base leading-relaxed text-muted-foreground">
+              {greeting.subtitle}
             </p>
           </div>
           <StatsDashboard />
