@@ -25,6 +25,7 @@ import {
   type UiPermissionMode,
 } from "./vendor-tools.js";
 import { dropSessionContext, initVendorRuntime } from "./vendor-context.js";
+import { shouldCompact, compactMessages } from "./compaction.js";
 
 // ─── System prompt ──────────────────────────────────────────────────────
 
@@ -150,6 +151,24 @@ export async function runAgent(
       onEvent({ type: "error", error: "Aborted" });
       onEvent({ type: "message_stop", stop_reason: "abort" });
       return;
+    }
+
+    // Auto-compaction: if the running history would overflow the context
+    // window, summarize it and continue from the summary. Best-effort — on
+    // failure compactMessages() returns the history unchanged. Mutate in
+    // place so the per-session conversations Map keeps the same array ref.
+    if (shouldCompact(messages)) {
+      const compacted = await compactMessages({
+        messages,
+        adapter,
+        model: provider.model,
+        maxTokens: provider.maxTokens || 16000,
+        signal,
+      });
+      if (compacted !== messages) {
+        messages.length = 0;
+        messages.push(...compacted);
+      }
     }
 
     const toolCalls: {

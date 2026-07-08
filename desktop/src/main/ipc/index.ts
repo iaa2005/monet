@@ -11,6 +11,7 @@ import { registerWorkspaceIPC } from "./workspace.js";
 import { registerSessionsIPC } from "./sessions.js";
 import { registerSettingsIPC } from "./settings.js";
 import { registerStatsIPC } from "./stats.js";
+import { registerSkillsIPC } from "./skills.js";
 
 export function registerAllIPC(): void {
   registerChatIPC();
@@ -22,4 +23,5 @@ export function registerAllIPC(): void {
   registerSessionsIPC();
   registerSettingsIPC();
   registerStatsIPC();
+  registerSkillsIPC();
 }

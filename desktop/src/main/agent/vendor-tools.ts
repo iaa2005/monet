@@ -19,6 +19,7 @@ import { GrepTool } from '@vendor/tools/GrepTool/GrepTool.js'
 import { PowerShellTool } from '@vendor/tools/PowerShellTool/PowerShellTool.js'
 import { TodoWriteTool } from '@vendor/tools/TodoWriteTool/TodoWriteTool.js'
 import { zodToJsonSchema } from '@vendor/utils/zodToJsonSchema.js'
+import { InlineSkillTool } from './skill-tool.js'
 import type { LLMTool } from '../llm/adapter.js'
 import {
   createParentAssistantMessage,
@@ -185,6 +186,7 @@ export function getVendorTools(): Tools {
     GlobTool,
     GrepTool,
     TodoWriteTool,
+    InlineSkillTool,
   ] as unknown as Tool[]
   cachedTools = all.filter(t => t.isEnabled())
   return cachedTools

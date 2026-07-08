@@ -11,6 +11,14 @@ import type {
 
 export type { PermissionRequest, PermissionDecision };
 
+export interface SkillInfo {
+  slug: string;
+  name: string;
+  description: string;
+  author: string;
+  updatedAt: number;
+}
+
 export interface ElectronAPI {
   platform: string;
   versions: { node: string; chrome: string; electron: string };
@@ -102,6 +110,19 @@ export interface ElectronAPI {
     getDataDir: () => Promise<{ dir: string; isDefault: boolean }>;
     setDataDir: (dir: string) => Promise<{ ok: boolean }>;
     pickDataDir: () => Promise<string | null>;
+  };
+  skills: {
+    list: () => Promise<SkillInfo[]>;
+    create: (payload: {
+      name: string;
+      description: string;
+      instructions: string;
+    }) => Promise<SkillInfo>;
+    importFile: (payload: {
+      filename: string;
+      content: string;
+    }) => Promise<SkillInfo>;
+    deleteBySlug: (slug: string) => Promise<{ ok: boolean }>;
   };
   win: {
     minimize: () => Promise<void>;

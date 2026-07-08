@@ -12,6 +12,8 @@ import {
   getVendorTools,
 } from '../src/main/agent/vendor-tools.js'
 import { initVendorRuntime } from '../src/main/agent/vendor-context.js'
+import { shouldCompact, compactMessages } from '../src/main/agent/compaction.js'
+import type { LLMAdapter, LLMMessage } from '../src/main/llm/adapter.js'
 
 const MODEL = 'claude-opus-4-8'
 let failures = 0
@@ -96,6 +98,22 @@ async function main() {
   })
   check('TodoWrite ok', !todo.isError, todo.content.slice(0, 80))
 
+  // 5b. Skills — tool present, catalog prompt builds, safe unknown-skill path
+  //     (exercises getCommands + getSkillToolCommands without crashing).
+  check('Skill tool present', tools.some(t => t.name === 'Skill'))
+  const skillApi = apiTools.find(t => t.name === 'Skill')
+  check(
+    'Skill catalog prompt builds',
+    !!skillApi && /skill/i.test(skillApi.description),
+    `len=${skillApi?.description.length}`,
+  )
+  const badSkill = await run('Skill', { skill: '__nope__' })
+  check(
+    'Skill unknown-name handled',
+    badSkill.isError && /unknown skill/i.test(badSkill.content),
+    badSkill.content.split('\n')[0],
+  )
+
   // 6. Shell tools (PowerShell on win32, Bash if usable)
   const shellName = tools.some(t => t.name === 'PowerShell') ? 'PowerShell' : 'Bash'
   const shell = await run(shellName, { command: 'echo vendor-smoke-ok' })
@@ -122,6 +140,40 @@ async function main() {
   } catch (err) {
     check('vendor system prompt builds', false, err instanceof Error ? err.message : String(err))
   }
+
+  // 8. Compaction — threshold logic + summary flow with a stub adapter
+  //    (no live provider in the harness).
+  const bigHistory: LLMMessage[] = Array.from({ length: 20 }, (_, i) => ({
+    role: i % 2 === 0 ? 'user' : 'assistant',
+    content: 'x'.repeat(40_000),
+  }))
+  check('shouldCompact triggers on large history', shouldCompact(bigHistory, 1_000))
+  check('shouldCompact skips small history', !shouldCompact([{ role: 'user', content: 'hi' }]))
+  const stubAdapter: LLMAdapter = {
+    providerId: 'stub',
+    providerName: 'stub',
+    async stream() {},
+    async complete() {
+      return {
+        role: 'assistant',
+        content:
+          '<analysis>scratchpad</analysis>\n<summary>Condensed summary of the prior turns.</summary>',
+      }
+    },
+  }
+  const compacted = await compactMessages({
+    messages: bigHistory,
+    adapter: stubAdapter,
+    model: MODEL,
+    maxTokens: 8_000,
+  })
+  check(
+    'compaction returns one summary message',
+    compacted.length === 1 &&
+      typeof compacted[0].content === 'string' &&
+      compacted[0].content.includes('Condensed summary of the prior turns'),
+    `len=${compacted.length}`,
+  )
 
   rmSync(dir, { recursive: true, force: true })
   console.log(failures ? `\n${failures} FAILURES` : '\nALL SMOKE CHECKS PASSED')

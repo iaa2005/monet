@@ -139,6 +139,21 @@ const electronAPI = {
       ipcRenderer.invoke("settings:pickDataDir"),
   },
 
+  skills: {
+    list: (): Promise<unknown[]> => ipcRenderer.invoke("skills:list"),
+    create: (payload: {
+      name: string;
+      description: string;
+      instructions: string;
+    }): Promise<unknown> => ipcRenderer.invoke("skills:create", payload),
+    importFile: (payload: {
+      filename: string;
+      content: string;
+    }): Promise<unknown> => ipcRenderer.invoke("skills:import", payload),
+    deleteBySlug: (slug: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("skills:delete", slug),
+  },
+
   win: {
     minimize: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
     toggleMaximize: (): Promise<boolean> =>

@@ -1,6 +1,14 @@
 import { useState, useEffect } from "react";
-import { Settings2, Boxes, Info, Check, FolderOpen } from "lucide-react";
+import {
+  Settings2,
+  Boxes,
+  Info,
+  Check,
+  FolderOpen,
+  BookMarked,
+} from "lucide-react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
+import { SkillsSettings } from "@/components/settings/SkillsSettings";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -57,7 +65,7 @@ function StorageSection(): JSX.Element {
   );
 }
 
-type Section = "general" | "providers" | "about";
+type Section = "general" | "providers" | "skills" | "about";
 
 const NAV: {
   group: string;
@@ -69,6 +77,10 @@ const NAV: {
       { id: "general", label: "General", icon: Settings2 },
       { id: "providers", label: "Providers", icon: Boxes },
     ],
+  },
+  {
+    group: "Customize",
+    items: [{ id: "skills", label: "Skills", icon: BookMarked }],
   },
   { group: "About", items: [{ id: "about", label: "About", icon: Info }] },
 ];
@@ -206,6 +218,7 @@ export function SettingsPanel({
           <GeneralSection theme={theme} setTheme={setTheme} />
         )}
         {section === "providers" && <ProviderSettings />}
+        {section === "skills" && <SkillsSettings />}
         {section === "about" && <AboutSection />}
       </div>
     </div>
