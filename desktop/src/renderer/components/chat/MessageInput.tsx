@@ -289,8 +289,16 @@ export function MessageInput(): JSX.Element {
       : undefined;
     staged.forEach((f) => f.url && URL.revokeObjectURL(f.url));
 
+    const incognito = store.incognito;
     let sessionId = store.currentSessionId;
-    if (!sessionId && bridge) {
+    if (incognito) {
+      // Transient in-memory session — never persisted, never in Recents. Keep
+      // a stable id so the agent's multi-turn conversation map still works.
+      if (!sessionId) {
+        sessionId = `incognito-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+        store.setCurrentSessionId(sessionId);
+      }
+    } else if (!sessionId && bridge) {
       try {
         const s = (await bridge.sessions.create(text.slice(0, 60))) as
           { id: string } | undefined;
@@ -326,7 +334,7 @@ export function MessageInput(): JSX.Element {
       });
       unsubscribe();
 
-      if (sessionId) {
+      if (sessionId && !incognito) {
         const msgs = useChatStore.getState().messages;
         const title =
           msgs.find((m) => m.role === "user")?.content?.slice(0, 60) ??

@@ -22,8 +22,12 @@ interface ChatStore {
   usage: ChatUsage | null;
   /** Bumped whenever sessions change, so the sidebar reloads. */
   sessionsVersion: number;
+  /** Incognito: the conversation is kept in memory only — never written to the
+   * session DB, never shown in Recents. */
+  incognito: boolean;
 
   setCurrentSessionId: (id?: string) => void;
+  setIncognito: (v: boolean) => void;
   bumpSessions: () => void;
   addUserMessage: (content: string) => ChatMessage;
   /** Enter the streaming state without creating an (empty) assistant bubble —
@@ -46,8 +50,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   currentSessionId: undefined,
   usage: null,
   sessionsVersion: 0,
+  incognito: false,
 
   setCurrentSessionId: (id) => set({ currentSessionId: id }),
+  setIncognito: (v) => set({ incognito: v }),
   bumpSessions: () => set((s) => ({ sessionsVersion: s.sessionsVersion + 1 })),
 
   addUserMessage: (content) => {

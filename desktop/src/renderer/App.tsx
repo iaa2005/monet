@@ -18,6 +18,7 @@ import {
   PanelRight,
   PanelLeft,
   MoreVertical,
+  Ghost,
   ChevronDown,
   X,
   ListTodo,
@@ -304,6 +305,26 @@ export default function App(): JSX.Element {
             }
           >
             <FileDiff className="size-4" />
+          </IconBtn>
+          <IconBtn
+            title={
+              chatStore.incognito
+                ? "Incognito on — this chat isn't saved"
+                : "Incognito mode"
+            }
+            active={chatStore.incognito}
+            onClick={() => {
+              const store = useChatStore.getState();
+              if (store.currentSessionId)
+                void api()?.chat.reset(store.currentSessionId);
+              store.clearMessages();
+              store.setCurrentSessionId(undefined);
+              setCurrentSessionId(undefined);
+              store.setIncognito(!store.incognito);
+              setView("chat");
+            }}
+          >
+            <Ghost className="size-4" />
           </IconBtn>
 
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
