@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
+import { BackgroundTasks } from "@/components/BackgroundTasks";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { FilterDropdown } from "@/components/FilterDropdown";
 import { SkillsPanel } from "@/components/SkillsPanel";
@@ -234,6 +235,29 @@ export default function App(): JSX.Element {
     [],
   );
 
+  // Jump to a chat that's streaming in the background. We only switch the
+  // visible session to its live buffer — never reload from the DB, which could
+  // be mid-write — and refresh the title best-effort for saved sessions.
+  const openBackgroundTask = useCallback((id: string) => {
+    const store = useChatStore.getState();
+    store.setCurrentSessionId(id);
+    setCurrentSessionId(id);
+    setView("chat");
+    if (id.startsWith("incognito-")) {
+      setSessionTitle("Incognito chat");
+      return;
+    }
+    void api()
+      ?.sessions.getById(id)
+      .then((s) => {
+        const sess = s as { title?: string } | null | undefined;
+        if (sess?.title) setSessionTitle(sess.title);
+      })
+      .catch(() => {
+        /* offline */
+      });
+  }, []);
+
   // App-level stream router: one listener, forever. Each event is tagged with
   // its sessionId so background chats keep updating their own state while the
   // user views (or works in) a different one.
@@ -412,6 +436,10 @@ export default function App(): JSX.Element {
               </IconBtn>
             </>
           )}
+          <BackgroundTasks
+            onOpen={openBackgroundTask}
+            currentSessionId={currentSessionId}
+          />
           <IconBtn
             title={
               chatStore.incognito

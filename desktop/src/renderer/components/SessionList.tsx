@@ -2,15 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import {
   MoreVertical,
   Pin,
-  BookOpen,
   Pencil,
   GitFork,
   Archive,
   Trash2,
-  ExternalLink,
-  Columns2,
-  Monitor,
-  Terminal as TerminalIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
@@ -225,63 +220,6 @@ export function SessionList({
                 ref={menuRef}
                 className="absolute right-1 top-full z-50 mt-0.5 w-48 rounded-lg border border-border bg-card p-1 shadow-lg"
               >
-                {/* Open in submenu */}
-                <div className="relative group/item">
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
-                  >
-                    <ExternalLink className="size-4 text-muted-foreground" />
-                    Open in
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      ▸
-                    </span>
-                  </button>
-                  <div className="absolute left-full top-0 z-50 ml-1 hidden w-44 rounded-lg border border-border bg-card p-1 shadow-lg group-hover/item:block">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpenMenuId(null);
-                      }}
-                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
-                    >
-                      <Columns2 className="size-4 text-muted-foreground" />
-                      Split view
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        1
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpenMenuId(null);
-                      }}
-                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
-                    >
-                      <Monitor className="size-4 text-muted-foreground" />
-                      New window
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        2
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpenMenuId(null);
-                      }}
-                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
-                    >
-                      <TerminalIcon className="size-4 text-muted-foreground" />
-                      Terminal
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        3
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="-mx-1 my-1 h-px bg-border" />
-
                 <button
                   type="button"
                   onClick={() => togglePin(s.id, s.pinned ?? false)}
@@ -289,19 +227,6 @@ export function SessionList({
                 >
                   <Pin className="size-4 text-muted-foreground" />
                   {s.pinned ? "Unpin" : "Pin"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpenMenuId(null);
-                  }}
-                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
-                >
-                  <BookOpen className="size-4 text-muted-foreground" />
-                  Mark as unread
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    U
-                  </span>
                 </button>
                 <button
                   type="button"
@@ -331,32 +256,6 @@ export function SessionList({
                     F
                   </span>
                 </button>
-
-                <div className="-mx-1 my-1 h-px bg-border" />
-
-                <div className="relative group/item">
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
-                  >
-                    <Archive className="size-4 text-muted-foreground" />
-                    Move to group
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      ▸
-                    </span>
-                  </button>
-                  <div className="absolute left-full top-0 z-50 ml-1 hidden w-36 rounded-lg border border-border bg-card p-1 shadow-lg group-hover/item:block">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpenMenuId(null);
-                      }}
-                      className="flex w-full rounded-lg px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
-                    >
-                      No groups yet
-                    </button>
-                  </div>
-                </div>
 
                 <div className="-mx-1 my-1 h-px bg-border" />
 
