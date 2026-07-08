@@ -157,13 +157,8 @@ export function MessageInput(): JSX.Element {
   const usage = useChatStore((s) => s.usage);
   const composerDraft = useChatStore((s) => s.composerDraft);
   const setComposerDraft = useChatStore((s) => s.setComposerDraft);
-  const {
-    addUserMessage,
-    startStreaming,
-    handleLLMEvent,
-    setError,
-    isStreaming,
-  } = useChatStore();
+  const { addUserMessage, startStreaming, setError, isStreaming } =
+    useChatStore();
 
   // A Home suggestion chip (or anything else) can push text into the composer.
   useEffect(() => {
@@ -335,7 +330,8 @@ export function MessageInput(): JSX.Element {
 
     try {
       if (!bridge) return;
-      const unsubscribe = bridge.chat.onToken(handleLLMEvent);
+      // Events stream back through the app-level onToken listener (routed by
+      // sessionId), so the run keeps updating even if the user switches chats.
       await bridge.chat.send({
         sessionId,
         message: text,
@@ -343,10 +339,12 @@ export function MessageInput(): JSX.Element {
         mode,
         attachments,
       });
-      unsubscribe();
 
       if (sessionId && !incognito) {
-        const msgs = useChatStore.getState().messages;
+        // Save THIS session's buffer (not the visible one — the user may have
+        // switched away while it ran).
+        const msgs =
+          useChatStore.getState().sessions[sessionId]?.messages ?? [];
         const title =
           msgs.find((m) => m.role === "user")?.content?.slice(0, 60) ??
           "New Session";
@@ -359,7 +357,8 @@ export function MessageInput(): JSX.Element {
   };
 
   const abort = async (): Promise<void> => {
-    await api()?.chat.abort();
+    // Stop only the current chat — other chats keep running in the background.
+    await api()?.chat.abort(useChatStore.getState().currentSessionId);
   };
 
   const pillBtn =

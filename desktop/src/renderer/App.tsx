@@ -224,15 +224,25 @@ export default function App(): JSX.Element {
       setCurrentSessionId(session.id);
       setSessionTitle(session.title || "New session");
       setView("chat");
-      chatStore.clearMessages();
-      useChatStore.setState({
-        messages: session.messages,
-        currentSessionId: session.id,
-        usage: null,
-      });
+      const store = useChatStore.getState();
+      // Switch first (shows the live buffer if this chat is running in the
+      // background), then seed from the DB only if it isn't.
+      store.setCurrentSessionId(session.id);
+      store.loadSessionMessages(session.id, session.messages);
     },
-    [chatStore],
+    [],
   );
+
+  // App-level stream router: one listener, forever. Each event is tagged with
+  // its sessionId so background chats keep updating their own state while the
+  // user views (or works in) a different one.
+  useEffect(() => {
+    const bridge = api();
+    if (!bridge?.chat?.onToken) return;
+    return bridge.chat.onToken(({ sessionId, event }) => {
+      useChatStore.getState().handleLLMEvent(sessionId, event);
+    });
+  }, []);
 
   const handleDeleteSession = useCallback(
     async (id: string) => {
@@ -290,7 +300,8 @@ export default function App(): JSX.Element {
           title: `${sessionTitle || "Chat"} (fork)`,
           messages: forked,
         });
-        useChatStore.setState({ messages: forked, currentSessionId: s.id });
+        store.loadSessionMessages(s.id, forked);
+        store.setCurrentSessionId(s.id);
         setCurrentSessionId(s.id);
         store.bumpSessions();
       }

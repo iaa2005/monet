@@ -93,11 +93,13 @@ const MODE_DIRECTIVES: Record<string, string> = {
   plan: "You are operating in PLAN mode: think through the task and present a clear, numbered plan first. Do NOT modify files or run mutating commands until the user approves the plan.",
 };
 
-let currentAbort: AbortController | null = null;
+// Per-session abort controllers so multiple chats can run (and be stopped)
+// independently, and so switching chats doesn't cancel a background run.
+const aborts = new Map<string, AbortController>();
 
 export function registerChatIPC(): void {
   ipcMain.handle("chat:send", async (_event, payload: ChatSendPayload) => {
-    const win = BrowserWindow.getFocusedWindow();
+    const win = BrowserWindow.getAllWindows()[0];
     if (!win) throw new Error("No window");
 
     const sessionId = payload.sessionId || "default";
@@ -105,8 +107,10 @@ export function registerChatIPC(): void {
       seedConversation(sessionId, payload.seed);
     }
 
+    // A new send for the same session supersedes its previous run.
+    aborts.get(sessionId)?.abort();
     const abort = new AbortController();
-    currentAbort = abort;
+    aborts.set(sessionId, abort);
 
     const mode =
       payload.mode && VALID_MODES.has(payload.mode)
@@ -123,7 +127,9 @@ export function registerChatIPC(): void {
         sessionId,
         buildUserContent(payload.message, payload.attachments),
         (event) => {
-          win.webContents.send("chat:token", event);
+          // Tag every event with its session so the renderer routes it to the
+          // right chat even after the user switched away.
+          win.webContents.send("chat:token", { sessionId, event });
         },
         {
           signal: abort.signal,
@@ -134,21 +140,31 @@ export function registerChatIPC(): void {
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
-      win.webContents.send("chat:token", { type: "error", error: message });
+      win.webContents.send("chat:token", {
+        sessionId,
+        event: { type: "error", error: message },
+      });
     } finally {
-      currentAbort = null;
+      if (aborts.get(sessionId) === abort) aborts.delete(sessionId);
     }
 
     return { ok: true };
   });
 
-  ipcMain.handle("chat:abort", () => {
-    if (currentAbort) {
-      currentAbort.abort();
-      currentAbort = null;
-      return { ok: true };
+  ipcMain.handle("chat:abort", (_e, sessionId?: string) => {
+    if (sessionId) {
+      const a = aborts.get(sessionId);
+      if (a) {
+        a.abort();
+        aborts.delete(sessionId);
+        return { ok: true };
+      }
+      return { ok: false, error: "No active request for session" };
     }
-    return { ok: false, error: "No active request" };
+    // No id → abort everything.
+    for (const a of aborts.values()) a.abort();
+    aborts.clear();
+    return { ok: true };
   });
 
   ipcMain.handle("chat:reset", (_event, sessionId?: string) => {

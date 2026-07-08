@@ -1,5 +1,12 @@
 /**
  * Chat Store — Zustand store for chat state.
+ *
+ * Chats run autonomously: the agent runs in the main process per sessionId and
+ * streams `chat:token` events tagged with that sessionId. This store keeps a
+ * SEPARATE state per session (messages / streaming / usage / error) so a chat
+ * you switched away from keeps updating in the background without corrupting
+ * the visible one. The top-level `messages`/`isStreaming`/`usage`/`error`
+ * fields are a live MIRROR of the current session, so components stay simple.
  */
 
 import { create } from "zustand";
@@ -14,12 +21,31 @@ export interface ChatUsage {
   output_tokens: number;
 }
 
+interface SessionState {
+  messages: ChatMessage[];
+  isStreaming: boolean;
+  usage: ChatUsage | null;
+  error: string | null;
+}
+
+const EMPTY: SessionState = {
+  messages: [],
+  isStreaming: false,
+  usage: null,
+  error: null,
+};
+
 interface ChatStore {
+  // Per-session state (keyed by sessionId).
+  sessions: Record<string, SessionState>;
+
+  // Visible mirror of the current session.
   messages: ChatMessage[];
   isStreaming: boolean;
   error: string | null;
-  currentSessionId?: string;
   usage: ChatUsage | null;
+
+  currentSessionId?: string;
   /** Bumped whenever sessions change, so the sidebar reloads. */
   sessionsVersion: number;
   /** Incognito: the conversation is kept in memory only — never written to the
@@ -29,184 +55,207 @@ interface ChatStore {
    * and cleared by MessageInput. */
   composerDraft: string;
 
+  /** Any session currently streaming (used to show a running indicator in the
+   * sidebar). */
+  isSessionStreaming: (id: string) => boolean;
+
   setCurrentSessionId: (id?: string) => void;
   setIncognito: (v: boolean) => void;
   setComposerDraft: (v: string) => void;
   bumpSessions: () => void;
+  /** Seed a session's message list (e.g. loaded from the DB). Does NOT clobber
+   * a session that's currently streaming in the background. */
+  loadSessionMessages: (id: string, messages: ChatMessage[]) => void;
   addUserMessage: (content: string) => ChatMessage;
-  /** Enter the streaming state without creating an (empty) assistant bubble —
-   * the first token / tool call materializes the real message. */
   startStreaming: () => void;
-  addAssistantMessage: () => ChatMessage;
-  appendToLastMessage: (text: string) => void;
-  addToolCall: (toolCall: ToolCall) => void;
-  updateToolCall: (id: string, update: Partial<ToolCall>) => void;
   finishStreaming: (usage?: ChatUsage) => void;
   setError: (error: string) => void;
   clearMessages: () => void;
-  handleLLMEvent: (event: LLMEvent) => void;
+  /** Route a streamed event to its session (main tags each event). */
+  handleLLMEvent: (sessionId: string, event: LLMEvent) => void;
 }
 
-export const useChatStore = create<ChatStore>((set, get) => ({
-  messages: [],
-  isStreaming: false,
-  error: null,
-  currentSessionId: undefined,
-  usage: null,
-  sessionsVersion: 0,
-  incognito: false,
-  composerDraft: "",
-
-  setCurrentSessionId: (id) => set({ currentSessionId: id }),
-  setIncognito: (v) => set({ incognito: v }),
-  setComposerDraft: (v) => set({ composerDraft: v }),
-  bumpSessions: () => set((s) => ({ sessionsVersion: s.sessionsVersion + 1 })),
-
-  addUserMessage: (content) => {
-    const msg: ChatMessage = {
-      id: generateId(),
-      role: "user",
-      content,
-      timestamp: Date.now(),
-    };
-    set((s) => ({ messages: [...s.messages, msg], error: null }));
-    return msg;
-  },
-
-  startStreaming: () => set({ isStreaming: true, error: null }),
-
-  addAssistantMessage: () => {
-    const msg: ChatMessage = {
-      id: generateId(),
-      role: "assistant",
-      content: "",
-      timestamp: Date.now(),
-      isStreaming: true,
-    };
-    set((s) => ({
-      messages: [...s.messages, msg],
-      isStreaming: true,
-      error: null,
-    }));
-    return msg;
-  },
-
-  appendToLastMessage: (text) => {
+export const useChatStore = create<ChatStore>((set, get) => {
+  /** Update one session's state; mirror to the visible fields if it's current. */
+  function mutate(
+    sessionId: string,
+    fn: (prev: SessionState) => SessionState,
+  ): void {
     set((s) => {
-      const msgs = [...s.messages];
-      const last = msgs[msgs.length - 1];
-      if (last && last.role === "assistant") {
-        msgs[msgs.length - 1] = { ...last, content: last.content + text };
+      const prev = s.sessions[sessionId] ?? EMPTY;
+      const next = fn(prev);
+      const sessions = { ...s.sessions, [sessionId]: next };
+      if (sessionId === s.currentSessionId) {
+        return {
+          sessions,
+          messages: next.messages,
+          isStreaming: next.isStreaming,
+          usage: next.usage,
+          error: next.error,
+        };
       }
-      return { messages: msgs };
+      return { sessions };
     });
-  },
+  }
 
-  addToolCall: (toolCall) => {
-    set((s) => {
-      // Drop a trailing empty assistant bubble so it can't get stranded
-      // (showing "Working…" forever) above the tool call.
-      const msgs = [...s.messages];
-      const last = msgs[msgs.length - 1];
-      if (last && last.role === "assistant" && !last.content) msgs.pop();
-      const toolMsg: ChatMessage = {
-        id: generateId(),
-        role: "tool",
-        content: `Tool: ${toolCall.name}`,
-        timestamp: Date.now(),
-        toolCall,
-      };
-      return { messages: [...msgs, toolMsg] };
-    });
-  },
+  function targetId(): string {
+    return get().currentSessionId ?? "default";
+  }
 
-  updateToolCall: (id, update) => {
-    set((s) => ({
-      messages: s.messages.map((m) =>
-        m.toolCall?.id === id
-          ? { ...m, toolCall: { ...m.toolCall, ...update } }
-          : m,
-      ),
-    }));
-  },
-
-  finishStreaming: (usage) => {
-    set((s) => {
-      // Clear the streaming flag everywhere and drop any empty assistant
-      // bubbles left behind (e.g. a turn that only made tool calls).
-      const messages = s.messages
-        .filter((m) => !(m.role === "assistant" && !m.content))
-        .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m));
-      return { messages, isStreaming: false, usage: usage ?? s.usage };
-    });
-  },
-
-  setError: (error) => {
-    set((s) => ({
-      error,
-      isStreaming: false,
-      messages: s.messages
-        .filter((m) => !(m.role === "assistant" && !m.content))
-        .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
-    }));
-  },
-
-  clearMessages: () => {
-    set({ messages: [], error: null, isStreaming: false, usage: null });
-  },
-
-  handleLLMEvent: (event) => {
+  /** Apply a stream event to a session's message list (pure-ish reducer). */
+  function reduce(prev: SessionState, event: LLMEvent): SessionState {
     switch (event.type) {
       case "text_delta": {
-        const s = get();
-        const last = s.messages[s.messages.length - 1];
-        if (!last || last.role !== 'assistant' || !last.isStreaming) {
-          set(state => ({
-            messages: [...state.messages, {
-              id: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2),
-              role: 'assistant',
-              content: event.text,
-              timestamp: Date.now(),
-              isStreaming: true,
-            }],
+        const msgs = [...prev.messages];
+        const last = msgs[msgs.length - 1];
+        if (!last || last.role !== "assistant" || !last.isStreaming) {
+          msgs.push({
+            id: generateId(),
+            role: "assistant",
+            content: event.text,
+            timestamp: Date.now(),
             isStreaming: true,
-          }));
-        } else {
-          get().appendToLastMessage(event.text);
-        }
-        break;
-      }
-      case "tool_use":
-        get().addToolCall({
-          id: event.id,
-          name: event.name,
-          input: event.input,
-          status: "pending",
-        });
-        break;
-      case "tool_result": {
-        const e = event as {
-          type: "tool_result";
-          toolUseID: string;
-          toolName: string;
-          content: string;
-        };
-        if (e.content === "Running...") {
-          get().updateToolCall(e.toolUseID, { status: "running" });
-        } else {
-          get().updateToolCall(e.toolUseID, {
-            status: "done",
-            output: e.content,
           });
+        } else {
+          msgs[msgs.length - 1] = {
+            ...last,
+            content: last.content + event.text,
+          };
         }
-        break;
+        return { ...prev, messages: msgs, isStreaming: true, error: null };
       }
-      case "message_stop":
-        get().finishStreaming(event.usage);
-        break;
-      case "error":
-        get().setError(event.error);
-        break;
+      case "tool_use": {
+        const msgs = [...prev.messages];
+        // Drop a trailing empty assistant bubble so it can't get stranded.
+        const last = msgs[msgs.length - 1];
+        if (last && last.role === "assistant" && !last.content) msgs.pop();
+        msgs.push({
+          id: generateId(),
+          role: "tool",
+          content: `Tool: ${event.name}`,
+          timestamp: Date.now(),
+          toolCall: {
+            id: event.id,
+            name: event.name,
+            input: event.input,
+            status: "pending",
+          },
+        });
+        return { ...prev, messages: msgs, isStreaming: true };
+      }
+      case "tool_result": {
+        const running = event.content === "Running...";
+        const msgs = prev.messages.map((m) =>
+          m.toolCall?.id === event.toolUseID
+            ? {
+                ...m,
+                toolCall: {
+                  ...m.toolCall,
+                  status: running ? ("running" as const) : ("done" as const),
+                  ...(running ? {} : { output: event.content }),
+                },
+              }
+            : m,
+        );
+        return { ...prev, messages: msgs };
+      }
+      case "message_stop": {
+        const messages = prev.messages
+          .filter((m) => !(m.role === "assistant" && !m.content))
+          .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m));
+        return {
+          ...prev,
+          messages,
+          isStreaming: false,
+          usage: event.usage ?? prev.usage,
+        };
+      }
+      case "error": {
+        const messages = prev.messages
+          .filter((m) => !(m.role === "assistant" && !m.content))
+          .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m));
+        return { ...prev, messages, isStreaming: false, error: event.error };
+      }
+      default:
+        return prev;
     }
-  },
-}));
+  }
+
+  return {
+    sessions: {},
+    messages: [],
+    isStreaming: false,
+    error: null,
+    usage: null,
+    currentSessionId: undefined,
+    sessionsVersion: 0,
+    incognito: false,
+    composerDraft: "",
+
+    isSessionStreaming: (id) => get().sessions[id]?.isStreaming ?? false,
+
+    setCurrentSessionId: (id) => {
+      set((s) => {
+        const cur = (id && s.sessions[id]) || EMPTY;
+        return {
+          currentSessionId: id,
+          messages: cur.messages,
+          isStreaming: cur.isStreaming,
+          usage: cur.usage,
+          error: cur.error,
+        };
+      });
+    },
+
+    setIncognito: (v) => set({ incognito: v }),
+    setComposerDraft: (v) => set({ composerDraft: v }),
+    bumpSessions: () =>
+      set((s) => ({ sessionsVersion: s.sessionsVersion + 1 })),
+
+    loadSessionMessages: (id, messages) => {
+      const existing = get().sessions[id];
+      // Keep a live (streaming) background session as-is.
+      if (existing?.isStreaming) {
+        get().setCurrentSessionId(id);
+        return;
+      }
+      mutate(id, () => ({ ...EMPTY, messages }));
+    },
+
+    addUserMessage: (content) => {
+      const msg: ChatMessage = {
+        id: generateId(),
+        role: "user",
+        content,
+        timestamp: Date.now(),
+      };
+      mutate(targetId(), (p) => ({
+        ...p,
+        messages: [...p.messages, msg],
+        error: null,
+      }));
+      return msg;
+    },
+
+    startStreaming: () =>
+      mutate(targetId(), (p) => ({ ...p, isStreaming: true, error: null })),
+
+    finishStreaming: (usage) =>
+      mutate(targetId(), (p) =>
+        reduce(p, { type: "message_stop", stop_reason: "end_turn", usage }),
+      ),
+
+    setError: (error) =>
+      mutate(targetId(), (p) => reduce(p, { type: "error", error })),
+
+    clearMessages: () => {
+      const id = get().currentSessionId;
+      if (id) mutate(id, () => ({ ...EMPTY }));
+      else set({ messages: [], isStreaming: false, usage: null, error: null });
+    },
+
+    handleLLMEvent: (sessionId, event) => {
+      mutate(sessionId, (p) => reduce(p, event));
+    },
+  };
+});

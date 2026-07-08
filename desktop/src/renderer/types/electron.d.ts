@@ -54,9 +54,11 @@ export interface ElectronAPI {
         dataBase64?: string;
       }[];
     }) => Promise<{ ok: boolean }>;
-    abort: () => Promise<{ ok: boolean }>;
+    abort: (sessionId?: string) => Promise<{ ok: boolean }>;
     reset: (sessionId?: string) => Promise<{ ok: boolean }>;
-    onToken: (callback: (event: LLMEvent) => void) => () => void;
+    onToken: (
+      callback: (payload: { sessionId: string; event: LLMEvent }) => void,
+    ) => () => void;
   };
   files: {
     read: (path: string) => Promise<string>;

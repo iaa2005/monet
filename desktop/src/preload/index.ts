@@ -28,12 +28,17 @@ const electronAPI = {
         dataBase64?: string;
       }[];
     }): Promise<{ ok: boolean }> => ipcRenderer.invoke("chat:send", payload),
-    abort: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("chat:abort"),
+    abort: (sessionId?: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("chat:abort", sessionId),
     reset: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:reset", sessionId),
-    onToken: (callback: (event: LLMEvent) => void): (() => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, event: LLMEvent) =>
-        callback(event);
+    onToken: (
+      callback: (payload: { sessionId: string; event: LLMEvent }) => void,
+    ): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        payload: { sessionId: string; event: LLMEvent },
+      ) => callback(payload);
       ipcRenderer.on("chat:token", handler);
       return () => ipcRenderer.removeListener("chat:token", handler);
     },
