@@ -187,6 +187,8 @@ export default function App(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
   const [transcriptMode, setTranscriptMode] =
     useState<TranscriptMode>("normal");
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -265,6 +267,45 @@ export default function App(): JSX.Element {
 
   const toggleRight = (tab: Exclude<RightTab, null>): void =>
     setRightTab((cur) => (cur === tab ? null : tab));
+
+  // Fork: copy the current conversation into a fresh saved session and switch
+  // to it. The display messages are preserved; the next send seeds the agent
+  // via chat:send's `seed` param.
+  const handleFork = useCallback(async () => {
+    const store = useChatStore.getState();
+    const msgs = store.messages;
+    if (msgs.length === 0) return;
+    try {
+      const s = (await api()?.sessions.create()) as { id: string } | undefined;
+      if (s?.id) {
+        await api()?.sessions.save({
+          id: s.id,
+          title: `${sessionTitle || "Chat"} (fork)`,
+          messages: msgs,
+        });
+        store.setCurrentSessionId(s.id);
+        setCurrentSessionId(s.id);
+        store.bumpSessions();
+      }
+    } catch {
+      /* offline */
+    }
+  }, [sessionTitle]);
+
+  const handleRename = useCallback(async () => {
+    const id = useChatStore.getState().currentSessionId;
+    const title = renameValue.trim();
+    if (id && title) {
+      try {
+        await api()?.sessions.updateTitle(id, title);
+        setSessionTitle(title);
+        useChatStore.getState().bumpSessions();
+      } catch {
+        /* offline */
+      }
+    }
+    setRenameOpen(false);
+  }, [renameValue]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-sidebar text-foreground">
@@ -375,8 +416,47 @@ export default function App(): JSX.Element {
                 <TerminalIcon className="size-4" />
                 Terminal
               </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  setAppMode("code");
+                  toggleRight("files");
+                  setMenuOpen(false);
+                }}
+              >
+                <Columns2 className="size-4" />
+                Split view
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  void api()?.win.newWindow();
+                  setMenuOpen(false);
+                }}
+              >
+                <Monitor className="size-4" />
+                New window
+              </DropdownMenuItem>
 
               <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                onClick={() => {
+                  setRenameValue(sessionTitle || "");
+                  setRenameOpen(true);
+                  setMenuOpen(false);
+                }}
+              >
+                <Pencil className="size-4" />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  setMenuOpen(false);
+                  void handleFork();
+                }}
+              >
+                <GitFork className="size-4" />
+                Fork
+              </DropdownMenuItem>
 
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
@@ -700,6 +780,39 @@ export default function App(): JSX.Element {
         className="h-[80vh] max-w-4xl"
       >
         <SettingsPanel theme={theme} setTheme={setTheme} />
+      </Modal>
+
+      <Modal open={renameOpen} onClose={() => setRenameOpen(false)}>
+        <div className="p-5">
+          <h3 className="text-base font-semibold">Rename chat</h3>
+          <input
+            autoFocus
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleRename();
+              if (e.key === "Escape") setRenameOpen(false);
+            }}
+            placeholder="Chat name"
+            className="mt-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-foreground/20"
+          />
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setRenameOpen(false)}
+              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleRename()}
+              className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              Save
+            </button>
+          </div>
+        </div>
       </Modal>
 
       <PermissionHost />

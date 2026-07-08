@@ -155,6 +155,8 @@ export function MessageInput(): JSX.Element {
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
   const usage = useChatStore((s) => s.usage);
+  const composerDraft = useChatStore((s) => s.composerDraft);
+  const setComposerDraft = useChatStore((s) => s.setComposerDraft);
   const {
     addUserMessage,
     startStreaming,
@@ -162,6 +164,15 @@ export function MessageInput(): JSX.Element {
     setError,
     isStreaming,
   } = useChatStore();
+
+  // A Home suggestion chip (or anything else) can push text into the composer.
+  useEffect(() => {
+    if (composerDraft) {
+      setInput(composerDraft);
+      setComposerDraft("");
+      taRef.current?.focus();
+    }
+  }, [composerDraft, setComposerDraft]);
 
   useEffect(() => {
     const ta = taRef.current;

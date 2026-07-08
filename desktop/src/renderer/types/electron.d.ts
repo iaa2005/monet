@@ -114,6 +114,7 @@ export interface ElectronAPI {
     list: (limit?: number, offset?: number) => Promise<unknown[]>;
     search: (query: string, limit?: number) => Promise<unknown[]>;
     deleteById: (id: string) => Promise<boolean>;
+    updateTitle: (id: string, title: string) => Promise<unknown>;
   };
   stats: {
     get: (rangeDays?: number) => Promise<{
@@ -163,6 +164,7 @@ export interface ElectronAPI {
     minimize: () => Promise<void>;
     toggleMaximize: () => Promise<boolean>;
     close: () => Promise<void>;
+    newWindow: () => Promise<void>;
     isMaximized: () => Promise<boolean>;
     onMaximizeChange: (callback: (maximized: boolean) => void) => () => void;
   };

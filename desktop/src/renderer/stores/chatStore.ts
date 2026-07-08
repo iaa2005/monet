@@ -25,9 +25,13 @@ interface ChatStore {
   /** Incognito: the conversation is kept in memory only — never written to the
    * session DB, never shown in Recents. */
   incognito: boolean;
+  /** Text to push into the composer (e.g. a Home suggestion chip). Consumed
+   * and cleared by MessageInput. */
+  composerDraft: string;
 
   setCurrentSessionId: (id?: string) => void;
   setIncognito: (v: boolean) => void;
+  setComposerDraft: (v: string) => void;
   bumpSessions: () => void;
   addUserMessage: (content: string) => ChatMessage;
   /** Enter the streaming state without creating an (empty) assistant bubble —
@@ -51,9 +55,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   usage: null,
   sessionsVersion: 0,
   incognito: false,
+  composerDraft: "",
 
   setCurrentSessionId: (id) => set({ currentSessionId: id }),
   setIncognito: (v) => set({ incognito: v }),
+  setComposerDraft: (v) => set({ composerDraft: v }),
   bumpSessions: () => set((s) => ({ sessionsVersion: s.sessionsVersion + 1 })),
 
   addUserMessage: (content) => {

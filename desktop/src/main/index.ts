@@ -70,6 +70,36 @@ function createWindow(): void {
   }
 }
 
+/** Open an additional, independent app window (shares the same session DB / data
+ * dir). Used by the "New window" menu item. */
+function openSecondaryWindow(): void {
+  const win = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 800,
+    minHeight: 600,
+    show: false,
+    title: "Claude Code Desktop",
+    titleBarStyle: "hidden",
+    backgroundColor: "#f7f6f1",
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.mjs"),
+      sandbox: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      devTools: true,
+    },
+  });
+  win.on("ready-to-show", () => win.show());
+  win.on("maximize", () => win.webContents.send("window:maximized", true));
+  win.on("unmaximize", () => win.webContents.send("window:maximized", false));
+  if (isDev && process.env["ELECTRON_RENDERER_URL"]) {
+    win.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+  } else {
+    win.loadFile(join(__dirname, "../renderer/index.html"));
+  }
+}
+
 app.whenReady().then(() => {
   registerAllIPC();
 
@@ -82,6 +112,7 @@ app.whenReady().then(() => {
     return mainWindow.isMaximized();
   });
   ipcMain.handle("window:close", () => mainWindow?.close());
+  ipcMain.handle("window:new", () => openSecondaryWindow());
   ipcMain.handle(
     "window:isMaximized",
     () => mainWindow?.isMaximized() ?? false,

@@ -129,6 +129,8 @@ const electronAPI = {
       ipcRenderer.invoke("sessions:search", query, limit),
     deleteById: (id: string): Promise<boolean> =>
       ipcRenderer.invoke("sessions:delete", id),
+    updateTitle: (id: string, title: string): Promise<unknown> =>
+      ipcRenderer.invoke("sessions:updateTitle", id, title),
   },
 
   stats: {
@@ -176,6 +178,7 @@ const electronAPI = {
     toggleMaximize: (): Promise<boolean> =>
       ipcRenderer.invoke("window:toggleMaximize"),
     close: (): Promise<void> => ipcRenderer.invoke("window:close"),
+    newWindow: (): Promise<void> => ipcRenderer.invoke("window:new"),
     isMaximized: (): Promise<boolean> =>
       ipcRenderer.invoke("window:isMaximized"),
     onMaximizeChange: (

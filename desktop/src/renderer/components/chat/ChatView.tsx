@@ -17,12 +17,47 @@ import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Shimmer } from "@/components/ui/shimmer";
 import { StatsDashboard } from "@/components/StatsDashboard";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
+import {
+  Bug,
+  FileSearch,
+  FlaskConical,
+  GitPullRequest,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import greetings from "@/data/greetings.json";
 import type { ElectronAPI, PermissionRequest } from "@/types/electron";
 import type { ChatMessage, ToolCall } from "@/types/chat";
 
 type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
+
+/** Home-screen suggestion chips (coding-agent flavored). Clicking one prefills
+ * the composer via the store's composerDraft. */
+const IDEAS: { icon: LucideIcon; label: string; prompt: string }[] = [
+  {
+    icon: FileSearch,
+    label: "Explain this codebase",
+    prompt:
+      "Give me a high-level overview of this codebase — its structure, the main modules, and how they fit together.",
+  },
+  {
+    icon: Bug,
+    label: "Find and fix a bug",
+    prompt:
+      "Look through the code for a likely bug, fix it, and explain what was wrong.",
+  },
+  {
+    icon: FlaskConical,
+    label: "Write tests",
+    prompt: "Pick an important module and write unit tests for it.",
+  },
+  {
+    icon: GitPullRequest,
+    label: "Review my recent changes",
+    prompt:
+      "Review my most recent changes (git diff) for correctness, bugs, and quality.",
+  },
+];
 
 function WorkingRow(): JSX.Element {
   return (
@@ -143,6 +178,7 @@ export function ChatView({
   const messages = useChatStore((s) => s.messages);
   const error = useChatStore((s) => s.error);
   const isStreaming = useChatStore((s) => s.isStreaming);
+  const setComposerDraft = useChatStore((s) => s.setComposerDraft);
   const isEmpty = messages.length === 0 && !error;
 
   const isFirstRun = useMemo(() => {
@@ -167,15 +203,36 @@ export function ChatView({
     <div className="flex h-full flex-col">
       {isEmpty ? (
         <div className="flex-1 overflow-auto">
-          <div className="mx-auto w-full max-w-3xl px-4 pt-12 text-left">
-            <h2 className="font-[Copernicus] text-2xl font-medium text-foreground">
+          <div className="mx-auto flex w-full max-w-2xl flex-col items-center px-4 pt-16 text-center">
+            <h2 className="font-[Copernicus] text-3xl font-medium text-foreground">
               {greeting.title}
             </h2>
-            <p className="mt-2 mb-4 max-w-md text-base leading-relaxed text-muted-foreground">
+            <p className="mt-2 max-w-md text-base leading-relaxed text-muted-foreground">
               {greeting.subtitle}
             </p>
+
+            <div className="mt-8 w-full">
+              <div className="mb-2 text-left text-xs font-medium text-muted-foreground">
+                Ideas for you
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {IDEAS.map((idea) => (
+                  <button
+                    key={idea.label}
+                    type="button"
+                    onClick={() => setComposerDraft(idea.prompt)}
+                    className="flex items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left text-sm transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                  >
+                    <idea.icon className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="font-medium">{idea.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-          <StatsDashboard />
+          <div className="mt-8">
+            <StatsDashboard />
+          </div>
         </div>
       ) : (
         <>
