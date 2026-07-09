@@ -37,8 +37,10 @@ interface ChatSendPayload {
 
 function providerSupportsVision(): boolean {
   const p = getProviderManager().getActive();
-  // Only real Anthropic endpoints are treated as vision-capable for now.
-  return !!p && /anthropic\.com/i.test(p.baseURL);
+  if (!p) return false;
+  // Real Anthropic endpoints, and OpenRouter (the OpenAI-compat client sends
+  // image blocks as image_url parts; vision-capable models handle them).
+  return /anthropic\.com/i.test(p.baseURL) || p.kind === "openrouter";
 }
 
 function buildUserContent(

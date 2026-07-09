@@ -1,6 +1,6 @@
 import type { LLMProvider } from "../provider/types.js";
 import { AnthropicClient } from "./anthropic-client.js";
-import { OpenAIClient } from "./openai-client.js";
+import { OpenAICompatClient } from "./openai-compat-client.js";
 
 export interface LLMMessage {
   role: "user" | "assistant" | "system";
@@ -97,7 +97,8 @@ export function createAdapter(provider: LLMProvider): LLMAdapter {
     case "deepseek":
       return new AnthropicClient(provider);
     case "openai":
-      return new OpenAIClient(provider);
+    case "openrouter":
+      return new OpenAICompatClient(provider);
     default:
       throw new Error(`Unknown provider kind: ${provider.kind}`);
   }

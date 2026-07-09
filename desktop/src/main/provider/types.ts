@@ -2,7 +2,7 @@
  * LLM Provider type definitions.
  */
 
-export type ProviderKind = 'anthropic' | 'deepseek' | 'openai'
+export type ProviderKind = 'anthropic' | 'deepseek' | 'openai' | 'openrouter'
 
 export interface LLMProvider {
   id: string
@@ -43,6 +43,18 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
     isActive: false,
     maxTokens: 16000,
     contextLimit: 1_000_000,
+  },
+  {
+    name: 'OpenRouter',
+    kind: 'openrouter',
+    baseURL: 'https://openrouter.ai/api/v1',
+    apiKey: '',
+    // The auto-router picks a model per request; set a concrete model id
+    // (e.g. anthropic/claude-sonnet-4) in Settings for agentic tool use.
+    model: 'openrouter/auto',
+    isActive: false,
+    maxTokens: 16000,
+    contextLimit: 200_000,
   },
   {
     name: 'llama.cpp',

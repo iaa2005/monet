@@ -74,6 +74,21 @@ export class ProviderManager {
         updatedAt: now,
       }))
       saveProviders(this.providers)
+    } else if (!this.providers.some(p => p.kind === 'openrouter')) {
+      // Migration: OpenRouter preset postdates existing installs — append it
+      // once so the entry shows up ready for an API key.
+      const preset = PRESET_PROVIDERS.find(p => p.kind === 'openrouter')
+      if (preset) {
+        const now = new Date().toISOString()
+        this.providers.push({
+          ...preset,
+          isActive: false,
+          id: randomUUID(),
+          createdAt: now,
+          updatedAt: now,
+        })
+        saveProviders(this.providers)
+      }
     }
   }
 

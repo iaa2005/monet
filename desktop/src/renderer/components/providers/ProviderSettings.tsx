@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 const KIND_LABELS: Record<ProviderKind, string> = {
   anthropic: "Anthropic",
   deepseek: "DeepSeek (Anthropic compat)",
+  openrouter: "OpenRouter",
   openai: "OpenAI Compatible",
 };
 
@@ -105,6 +106,8 @@ function ProviderForm({
                 if (k === "anthropic") setBaseURL("https://api.anthropic.com");
                 else if (k === "deepseek")
                   setBaseURL("https://api.deepseek.com/anthropic");
+                else if (k === "openrouter")
+                  setBaseURL("https://openrouter.ai/api/v1");
                 else setBaseURL("http://localhost:8080/v1");
               }
             }}
@@ -112,6 +115,7 @@ function ProviderForm({
           >
             <option value="anthropic">Anthropic</option>
             <option value="deepseek">DeepSeek (Anthropic compat)</option>
+            <option value="openrouter">OpenRouter</option>
             <option value="openai">OpenAI Compatible</option>
           </select>
         </div>

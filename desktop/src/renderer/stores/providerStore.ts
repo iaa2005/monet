@@ -5,7 +5,7 @@
 
 import { create } from "zustand";
 
-export type ProviderKind = "anthropic" | "deepseek" | "openai";
+export type ProviderKind = "anthropic" | "deepseek" | "openai" | "openrouter";
 
 export interface LLMProvider {
   id: string;
