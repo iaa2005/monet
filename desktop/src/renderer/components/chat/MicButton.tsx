@@ -23,9 +23,18 @@ function api(): ElectronAPI | undefined {
 }
 
 const LS_DEVICE = "mic-device-id";
+const LS_ENGINE = "stt-engine"; // "local" | "cloud"
 const LS_ENDPOINT = "stt-endpoint";
 const LS_KEY = "stt-key";
 const LS_MODEL = "stt-model";
+const LS_LOCAL_MODEL = "stt-local-model";
+const LS_LANGUAGE = "stt-language"; // "" (auto) | "ru" | "en"
+
+const LOCAL_MODELS = [
+  { id: "Xenova/whisper-tiny", label: "Fast (~40 MB)" },
+  { id: "Xenova/whisper-base", label: "Balanced (~80 MB)" },
+  { id: "Xenova/whisper-small", label: "Accurate (~250 MB)" },
+];
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -33,6 +42,68 @@ function blobToBase64(blob: Blob): Promise<string> {
     r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
     r.onerror = () => reject(r.error);
     r.readAsDataURL(blob);
+  });
+}
+
+/** Decode a recorded blob to 16 kHz mono PCM — what Whisper expects. Chromium
+ * resamples inside decodeAudioData when the context is created at 16 kHz. */
+async function blobToPCM16k(blob: Blob): Promise<Float32Array> {
+  const buf = await blob.arrayBuffer();
+  const ctx = new AudioContext({ sampleRate: 16000 });
+  try {
+    const audio = await ctx.decodeAudioData(buf);
+    return audio.getChannelData(0);
+  } finally {
+    void ctx.close().catch(() => {});
+  }
+}
+
+// ── Local Whisper worker (shared across MicButton instances) ─────────────
+type WorkerMsg =
+  | { id: number; type: "progress"; file: string; progress: number }
+  | { id: number; type: "status"; text: string }
+  | { id: number; type: "result"; text: string }
+  | { id: number; type: "error"; error: string };
+
+let sttWorker: Worker | null = null;
+let sttSeq = 0;
+
+function getSttWorker(): Worker {
+  if (!sttWorker) {
+    sttWorker = new Worker(
+      new URL("../../workers/stt-worker.ts", import.meta.url),
+      { type: "module" },
+    );
+  }
+  return sttWorker;
+}
+
+function transcribeLocal(
+  audio: Float32Array,
+  model: string,
+  language: string,
+  onStatus: (text: string) => void,
+): Promise<string> {
+  const worker = getSttWorker();
+  const id = ++sttSeq;
+  return new Promise((resolve, reject) => {
+    const onMessage = (e: MessageEvent<WorkerMsg>): void => {
+      const msg = e.data;
+      if (msg.id !== id) return;
+      if (msg.type === "progress") {
+        onStatus(`Downloading model… ${msg.progress}%`);
+      } else if (msg.type === "status") {
+        onStatus(msg.text);
+      } else if (msg.type === "result") {
+        worker.removeEventListener("message", onMessage);
+        resolve(msg.text);
+      } else if (msg.type === "error") {
+        worker.removeEventListener("message", onMessage);
+        reject(new Error(msg.error));
+      }
+    };
+    worker.addEventListener("message", onMessage);
+    worker.postMessage({ id, audio, model, language: language || undefined });
   });
 }
 
@@ -51,6 +122,9 @@ export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
   const [deviceId, setDeviceId] = useState<string>(
     () => localStorage.getItem(LS_DEVICE) ?? "",
   );
+  const [engine, setEngine] = useState<string>(
+    () => localStorage.getItem(LS_ENGINE) ?? "local",
+  );
   const [endpoint, setEndpoint] = useState<string>(
     () => localStorage.getItem(LS_ENDPOINT) ?? "",
   );
@@ -60,6 +134,13 @@ export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
   const [model, setModel] = useState<string>(
     () => localStorage.getItem(LS_MODEL) ?? "",
   );
+  const [localModel, setLocalModel] = useState<string>(
+    () => localStorage.getItem(LS_LOCAL_MODEL) ?? "Xenova/whisper-base",
+  );
+  const [language, setLanguage] = useState<string>(
+    () => localStorage.getItem(LS_LANGUAGE) ?? "",
+  );
+  const [status, setStatus] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -158,11 +239,11 @@ export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
 
   // ── Recording ──────────────────────────────────────────────────────────
   async function startRecording(): Promise<void> {
-    if (!endpoint.trim()) {
+    if (engine === "cloud" && !endpoint.trim()) {
       // Nothing to transcribe with — open the settings instead of failing.
       void openMenu();
       setHint(
-        "Set a transcription endpoint first (OpenAI-compatible /audio/transcriptions).",
+        "Set a transcription endpoint first (OpenAI-compatible /audio/transcriptions), or switch to the free local engine.",
       );
       return;
     }
@@ -204,20 +285,31 @@ export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
     if (blob.size < 1000) return; // an accidental click, not speech
     setBusy(true);
     try {
-      const audioBase64 = await blobToBase64(blob);
-      const res = await api()?.stt.transcribe({
-        audioBase64,
-        mimeType: blob.type || "audio/webm",
-        endpoint: endpoint.trim(),
-        apiKey: sttKey.trim() || undefined,
-        model: model.trim() || undefined,
-      });
-      if (res?.ok && res.text) onText(res.text);
-      else if (res && !res.ok) onError(res.error || "Transcription failed");
+      if (engine === "local") {
+        // Free on-device Whisper. First run downloads the model (progress in
+        // the panel), later runs are offline.
+        setStatus("Preparing audio…");
+        const pcm = await blobToPCM16k(blob);
+        const text = await transcribeLocal(pcm, localModel, language, setStatus);
+        if (text) onText(text);
+      } else {
+        setStatus("Transcribing…");
+        const audioBase64 = await blobToBase64(blob);
+        const res = await api()?.stt.transcribe({
+          audioBase64,
+          mimeType: blob.type || "audio/webm",
+          endpoint: endpoint.trim(),
+          apiKey: sttKey.trim() || undefined,
+          model: model.trim() || undefined,
+        });
+        if (res?.ok && res.text) onText(res.text);
+        else if (res && !res.ok) onError(res.error || "Transcription failed");
+      }
     } catch (err) {
       onError(err instanceof Error ? err.message : "Transcription failed");
     } finally {
       setBusy(false);
+      setStatus(null);
     }
   }
 
@@ -297,6 +389,15 @@ export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
         <ChevronDown className="size-3" />
       </button>
 
+      {/* Progress pill when transcribing with the panel closed (e.g. the
+          first-use model download would otherwise be invisible). */}
+      {busy && !menuOpen && status && (
+        <div className="absolute bottom-full left-0 z-40 mb-1.5 flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-card px-2 py-1 text-[12px] text-muted-foreground shadow-sm">
+          <Loader2 className="size-3 animate-spin" />
+          {status}
+        </div>
+      )}
+
       {menuOpen && (
         <div className="absolute bottom-full left-0 z-50 mb-1.5 w-80 rounded-lg border border-border bg-card p-2 shadow-lg">
           <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -346,34 +447,99 @@ export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
           <div className="-mx-1 my-1.5 h-px bg-border" />
 
           <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Transcription (OpenAI-compatible)
+            Transcription
           </div>
-          <div className="flex flex-col gap-1.5 px-1 pb-1">
-            <input
-              value={endpoint}
-              onChange={(e) => saveSetting(LS_ENDPOINT, e.target.value, setEndpoint)}
-              placeholder="https://api.groq.com/openai/v1/audio/transcriptions"
-              spellCheck={false}
-              className="w-full rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-link"
-            />
-            <div className="flex gap-1.5">
-              <input
-                value={sttKey}
-                onChange={(e) => saveSetting(LS_KEY, e.target.value, setSttKey)}
-                placeholder="API key"
-                type="password"
-                spellCheck={false}
-                className="w-1/2 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-link"
-              />
-              <input
-                value={model}
-                onChange={(e) => saveSetting(LS_MODEL, e.target.value, setModel)}
-                placeholder="whisper-large-v3"
-                spellCheck={false}
-                className="w-1/2 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-link"
-              />
+          <div className="flex flex-col gap-1 px-1 pb-1">
+            {(
+              [
+                ["local", "Local — free, on-device (Whisper)"],
+                ["cloud", "Cloud — OpenAI-compatible API"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => saveSetting(LS_ENGINE, id, setEngine)}
+                className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+              >
+                <span className="flex w-4 justify-center">
+                  {engine === id && <Check className="size-3.5 text-link" />}
+                </span>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {engine === "local" ? (
+            <div className="flex flex-col gap-1.5 px-1 pb-1">
+              <div className="flex gap-1.5">
+                <select
+                  value={localModel}
+                  onChange={(e) =>
+                    saveSetting(LS_LOCAL_MODEL, e.target.value, setLocalModel)
+                  }
+                  className="w-3/5 rounded-md border border-border bg-background px-1.5 py-1 text-[12px] outline-none focus:border-link"
+                >
+                  {LOCAL_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={language}
+                  onChange={(e) =>
+                    saveSetting(LS_LANGUAGE, e.target.value, setLanguage)
+                  }
+                  className="w-2/5 rounded-md border border-border bg-background px-1.5 py-1 text-[12px] outline-none focus:border-link"
+                >
+                  <option value="">Auto language</option>
+                  <option value="ru">Русский</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+              <div className="text-[11px] leading-snug text-muted-foreground">
+                The model downloads on first use and is cached — after that it
+                works offline. No API key needed.
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-col gap-1.5 px-1 pb-1">
+              <input
+                value={endpoint}
+                onChange={(e) =>
+                  saveSetting(LS_ENDPOINT, e.target.value, setEndpoint)
+                }
+                placeholder="https://api.groq.com/openai/v1/audio/transcriptions"
+                spellCheck={false}
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-link"
+              />
+              <div className="flex gap-1.5">
+                <input
+                  value={sttKey}
+                  onChange={(e) => saveSetting(LS_KEY, e.target.value, setSttKey)}
+                  placeholder="API key"
+                  type="password"
+                  spellCheck={false}
+                  className="w-1/2 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-link"
+                />
+                <input
+                  value={model}
+                  onChange={(e) => saveSetting(LS_MODEL, e.target.value, setModel)}
+                  placeholder="whisper-large-v3"
+                  spellCheck={false}
+                  className="w-1/2 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-link"
+                />
+              </div>
+            </div>
+          )}
+
+          {status && (
+            <div className="mx-1 mb-1 flex items-center gap-1.5 rounded-md bg-black/[0.04] px-2 py-1 text-[12px] text-muted-foreground dark:bg-white/[0.06]">
+              <Loader2 className="size-3 animate-spin" />
+              {status}
+            </div>
+          )}
 
           {hint && (
             <div className="mx-1 mb-1 rounded-md bg-amber-500/10 px-2 py-1 text-[12px] text-amber-600 dark:text-amber-400">

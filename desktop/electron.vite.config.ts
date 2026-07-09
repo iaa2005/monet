@@ -79,5 +79,10 @@ export default defineConfig({
     css: {
       postcss: './postcss.config.js',
     },
+    // The STT worker (local Whisper via transformers.js) uses dynamic imports
+    // internally — iife workers can't code-split, so emit workers as ES.
+    worker: {
+      format: 'es' as const,
+    },
   },
 })
