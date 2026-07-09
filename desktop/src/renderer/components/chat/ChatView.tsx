@@ -3,6 +3,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { ToolCallBubble } from "./ToolCallBubble";
 import { MessageInput } from "./MessageInput";
+import { TodoCard } from "./TodoCard";
 import { PermissionDialog } from "./PermissionDialog";
 import {
   MessageScrollerProvider,
@@ -306,7 +307,42 @@ export function ChatView({
 
   return (
     <div className="flex h-full flex-col">
-      {isEmpty ? (
+      {isEmpty && home ? (
+        /* Home empty state: greeting + composer centered VERTICALLY, with the
+           idea chips under the input. No working directory here — Home is a
+           plain chat (markdown/formulas/tables), not an IDE. */
+        <div className="flex flex-1 flex-col items-center justify-center overflow-auto px-4 py-8">
+          <div className="w-full max-w-2xl text-center">
+            <h2 className="font-[Copernicus] text-3xl font-medium text-foreground">
+              {greeting.title}
+            </h2>
+            <p className="mx-auto mt-2 max-w-md text-base leading-relaxed text-muted-foreground">
+              {greeting.subtitle}
+            </p>
+          </div>
+          <div className="mt-6 w-full max-w-2xl">
+            <MessageInput />
+          </div>
+          <div className="w-full max-w-2xl">
+            <div className="mb-2 text-left text-xs font-medium text-muted-foreground">
+              Ideas for you
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {IDEAS.map((idea) => (
+                <button
+                  key={idea.label}
+                  type="button"
+                  onClick={() => setComposerDraft(idea.prompt)}
+                  className="flex items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left text-sm transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                >
+                  <idea.icon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="font-medium">{idea.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : isEmpty ? (
         <div className="flex-1 overflow-auto">
           <div className="mx-auto flex w-full max-w-2xl flex-col items-center px-4 pt-16 text-center">
             <h2 className="font-[Copernicus] text-3xl font-medium text-foreground">
@@ -315,33 +351,10 @@ export function ChatView({
             <p className="mt-2 max-w-md text-base leading-relaxed text-muted-foreground">
               {greeting.subtitle}
             </p>
-
-            {home && (
-              <div className="mt-8 w-full">
-                <div className="mb-2 text-left text-xs font-medium text-muted-foreground">
-                  Ideas for you
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  {IDEAS.map((idea) => (
-                    <button
-                      key={idea.label}
-                      type="button"
-                      onClick={() => setComposerDraft(idea.prompt)}
-                      className="flex items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left text-sm transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                    >
-                      <idea.icon className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="font-medium">{idea.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
-          {!home && (
-            <div className="mt-8">
-              <StatsDashboard />
-            </div>
-          )}
+          <div className="mt-8">
+            <StatsDashboard />
+          </div>
         </div>
       ) : (
         <>
@@ -350,6 +363,7 @@ export function ChatView({
               {sessionTitle}
             </div>
           )}
+          <TodoCard messages={messages} />
           <MessageScrollerProvider autoScroll defaultScrollPosition="end">
             <MessageScroller className="flex-1">
               <MessageScrollerViewport>
@@ -417,10 +431,18 @@ export function ChatView({
         </>
       )}
 
-      <div className="mx-auto w-full max-w-3xl px-4 pb-1">
-        <WorkspacePicker />
-      </div>
-      <MessageInput />
+      {/* Bottom composer — except in the Home empty state, where the composer
+          is centered above. Home never shows the working-directory picker. */}
+      {!(isEmpty && home) && (
+        <>
+          {!home && (
+            <div className="mx-auto w-full max-w-3xl px-4 pb-1">
+              <WorkspacePicker />
+            </div>
+          )}
+          <MessageInput />
+        </>
+      )}
     </div>
   );
 }
