@@ -188,6 +188,18 @@ const electronAPI = {
       ipcRenderer.invoke("skills:delete", slug),
   },
 
+  stt: {
+    transcribe: (payload: {
+      audioBase64: string;
+      mimeType: string;
+      endpoint: string;
+      apiKey?: string;
+      model?: string;
+      language?: string;
+    }): Promise<{ ok: boolean; text?: string; error?: string }> =>
+      ipcRenderer.invoke("stt:transcribe", payload),
+  },
+
   mcp: {
     list: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:list"),
     add: (payload: { name: string; config: unknown }): Promise<unknown[]> =>

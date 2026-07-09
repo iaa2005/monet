@@ -159,6 +159,16 @@ export interface ElectronAPI {
     }) => Promise<SkillInfo>;
     deleteBySlug: (slug: string) => Promise<{ ok: boolean }>;
   };
+  stt: {
+    transcribe: (payload: {
+      audioBase64: string;
+      mimeType: string;
+      endpoint: string;
+      apiKey?: string;
+      model?: string;
+      language?: string;
+    }) => Promise<{ ok: boolean; text?: string; error?: string }>;
+  };
   mcp: {
     list: () => Promise<McpServerStatus[]>;
     add: (payload: {

@@ -13,6 +13,7 @@ import { registerSettingsIPC } from "./settings.js";
 import { registerStatsIPC } from "./stats.js";
 import { registerSkillsIPC } from "./skills.js";
 import { registerMcpIPC } from "./mcp.js";
+import { registerSttIPC } from "./stt.js";
 
 export function registerAllIPC(): void {
   registerChatIPC();
@@ -26,4 +27,5 @@ export function registerAllIPC(): void {
   registerStatsIPC();
   registerSkillsIPC();
   registerMcpIPC();
+  registerSttIPC();
 }

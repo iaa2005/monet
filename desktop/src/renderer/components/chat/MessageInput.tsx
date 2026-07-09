@@ -3,7 +3,6 @@ import {
   ArrowUp,
   ChevronDown,
   Check,
-  Mic,
   Plus,
   Square,
   X,
@@ -11,6 +10,7 @@ import {
   Gauge,
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
+import { MicButton } from "./MicButton";
 import {
   Attachment,
   AttachmentMedia,
@@ -148,11 +148,8 @@ export function MessageInput(): JSX.Element {
       (localStorage.getItem("permission-mode") as PermissionMode | null) ||
       "default",
   );
-  const [listening, setListening] = useState(false);
-
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
   const usage = useChatStore((s) => s.usage);
   const composerDraft = useChatStore((s) => s.composerDraft);
@@ -207,60 +204,6 @@ export function MessageInput(): JSX.Element {
   const pickMode = (id: PermissionMode): void => {
     setMode(id);
     localStorage.setItem("permission-mode", id);
-  };
-
-  const toggleMic = (): void => {
-    if (listening) {
-      recognitionRef.current?.stop();
-      return;
-    }
-    const SR =
-      (
-        window as unknown as {
-          SpeechRecognition?: unknown;
-          webkitSpeechRecognition?: unknown;
-        }
-      ).SpeechRecognition ||
-      (window as unknown as { webkitSpeechRecognition?: unknown })
-        .webkitSpeechRecognition;
-    if (!SR) {
-      setError("Speech recognition isn't available in this build.");
-      return;
-    }
-    const rec = new (
-      SR as new () => {
-        lang: string;
-        interimResults: boolean;
-        continuous: boolean;
-        onresult: (e: unknown) => void;
-        onend: () => void;
-        onerror: () => void;
-        start: () => void;
-        stop: () => void;
-      }
-    )();
-    rec.lang = navigator.language || "en-US";
-    rec.interimResults = true;
-    rec.continuous = false;
-    const baseText = input ? input + " " : "";
-    rec.onresult = (e: unknown) => {
-      const ev = e as {
-        resultIndex: number;
-        results: ArrayLike<
-          ArrayLike<{ transcript: string }> & { isFinal: boolean }
-        >;
-      };
-      let text = "";
-      for (let i = 0; i < ev.results.length; i++) {
-        text += ev.results[i][0].transcript;
-      }
-      setInput((baseText + text).trimStart());
-    };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
-    recognitionRef.current = rec;
-    rec.start();
-    setListening(true);
   };
 
   const stageFiles = (list: FileList | null): void => {
@@ -437,19 +380,12 @@ export function MessageInput(): JSX.Element {
             {/* Permission mode */}
             <PermissionModeMenu mode={mode} onChange={pickMode} />
 
-            <button
-              type="button"
-              title={listening ? "Stop dictation" : "Dictate"}
-              onClick={toggleMic}
-              className={cn(
-                "flex size-7 items-center justify-center rounded-md transition-colors",
-                listening
-                  ? "bg-destructive/15 text-destructive"
-                  : "text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]",
-              )}
-            >
-              <Mic className="size-4" />
-            </button>
+            <MicButton
+              onText={(t) =>
+                setInput((prev) => (prev ? prev.trimEnd() + " " : "") + t)
+              }
+              onError={setError}
+            />
 
             <div className="flex-1" />
 
