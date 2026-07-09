@@ -39,6 +39,7 @@ interface SessionListProps {
     id: string;
     title: string;
     messages: ChatMessage[];
+    workspace?: string;
   }) => void;
   onDelete: (id: string) => void;
   onRename?: (id: string, title: string) => void;
@@ -154,7 +155,12 @@ export function SessionList({
   const handleSelect = async (id: string): Promise<void> => {
     try {
       const session = (await api()?.sessions.getById(id)) as
-        | { id: string; title: string; messages: ChatMessage[] }
+        | {
+            id: string;
+            title: string;
+            messages: ChatMessage[];
+            workspace?: string;
+          }
         | null
         | undefined;
       if (session) {
@@ -162,6 +168,7 @@ export function SessionList({
           id: session.id,
           title: session.title,
           messages: session.messages,
+          workspace: session.workspace,
         });
       }
     } catch (err) {
@@ -214,6 +221,12 @@ export function SessionList({
                     >
                       {s.pinned && (
                         <Pin className="size-3 shrink-0 text-muted-foreground/70" />
+                      )}
+                      {s.archived && (
+                        <Archive
+                          className="size-3 shrink-0 text-muted-foreground/70"
+                          aria-label="Archived"
+                        />
                       )}
                       <span className="truncate">
                         {s.title || "New session"}

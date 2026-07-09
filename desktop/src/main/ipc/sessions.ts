@@ -75,6 +75,13 @@ export function registerSessionsIPC(): void {
   );
 
   ipcMain.handle(
+    "sessions:setWorkspace",
+    (_e, id: string, workspace: string): void => {
+      store.setWorkspace(id, workspace);
+    },
+  );
+
+  ipcMain.handle(
     "sessions:updateTitle",
     (_e, id: string, title: string): SessionWithMessages | null => {
       return store.updateTitle(id, title);

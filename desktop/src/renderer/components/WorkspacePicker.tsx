@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { FolderOpen } from "lucide-react";
+import { useChatStore } from "@/stores/chatStore";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -9,13 +10,16 @@ function api(): ElectronAPI | undefined {
 export function WorkspacePicker(): JSX.Element {
   const [workspace, setWorkspace] = useState("");
   const [picking, setPicking] = useState(false);
+  // Re-fetch whenever the effective directory changes elsewhere (e.g. opening
+  // a chat restores that chat's own saved folder).
+  const workspaceVersion = useChatStore((s) => s.workspaceVersion);
 
   useEffect(() => {
     api()
       ?.workspace.get()
       .then(setWorkspace)
       .catch(() => {});
-  }, []);
+  }, [workspaceVersion]);
 
   const handlePick = async (): Promise<void> => {
     setPicking(true);
@@ -24,6 +28,13 @@ export function WorkspacePicker(): JSX.Element {
       if (dir) {
         await api()?.workspace.set(dir);
         setWorkspace(dir);
+        // The folder choice belongs to THIS chat — remember it on the session
+        // so reopening the chat restores it.
+        const sessionId = useChatStore.getState().currentSessionId;
+        if (sessionId && !sessionId.startsWith("incognito-")) {
+          void api()?.sessions.setWorkspace(sessionId, dir);
+        }
+        useChatStore.getState().bumpWorkspace();
       }
     } finally {
       setPicking(false);

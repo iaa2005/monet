@@ -240,7 +240,12 @@ export default function App(): JSX.Element {
   }, []);
 
   const handleSelectSession = useCallback(
-    (session: { id: string; title: string; messages: ChatMessage[] }) => {
+    (session: {
+      id: string;
+      title: string;
+      messages: ChatMessage[];
+      workspace?: string;
+    }) => {
       setCurrentSessionId(session.id);
       setSessionTitle(session.title || "New session");
       setView("chat");
@@ -249,6 +254,16 @@ export default function App(): JSX.Element {
       // background), then seed from the DB only if it isn't.
       store.setCurrentSessionId(session.id);
       store.loadSessionMessages(session.id, session.messages);
+      // Restore the chat's own working directory (chats without one keep
+      // whatever folder is current).
+      if (session.workspace) {
+        void api()
+          ?.workspace.set(session.workspace)
+          .then(() => useChatStore.getState().bumpWorkspace())
+          .catch(() => {
+            /* folder may be gone */
+          });
+      }
     },
     [],
   );

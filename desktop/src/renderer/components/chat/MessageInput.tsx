@@ -416,6 +416,13 @@ export function MessageInput(): JSX.Element {
           sessionId = s.id;
           store.setCurrentSessionId(s.id);
           store.bumpSessions();
+          // A new chat adopts the current working directory as its own.
+          void bridge.workspace
+            .get()
+            .then((ws) => {
+              if (ws) void bridge.sessions.setWorkspace(s.id, ws);
+            })
+            .catch(() => {});
         }
       } catch {
         /* offline */

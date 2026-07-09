@@ -74,6 +74,9 @@ interface ChatStore {
   currentSessionId?: string;
   /** Bumped whenever sessions change, so the sidebar reloads. */
   sessionsVersion: number;
+  /** Bumped when the effective working directory changes (e.g. a chat with
+   * its own saved folder was opened) so WorkspacePicker refreshes. */
+  workspaceVersion: number;
   /** Incognito: the conversation is kept in memory only — never written to the
    * session DB, never shown in Recents. */
   incognito: boolean;
@@ -97,6 +100,7 @@ interface ChatStore {
   requestOpenFile: (path: string | null) => void;
   setSpace: (v: string) => void;
   bumpSessions: () => void;
+  bumpWorkspace: () => void;
   /** Seed a session's message list (e.g. loaded from the DB). Does NOT clobber
    * a session that's currently streaming in the background. */
   loadSessionMessages: (id: string, messages: ChatMessage[]) => void;
@@ -325,6 +329,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     usage: null,
     currentSessionId: undefined,
     sessionsVersion: 0,
+    workspaceVersion: 0,
     incognito: false,
     composerDraft: "",
     openFileRequest: null,
@@ -351,6 +356,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
     setSpace: (v) => set({ space: v }),
     bumpSessions: () =>
       set((s) => ({ sessionsVersion: s.sessionsVersion + 1 })),
+    bumpWorkspace: () =>
+      set((s) => ({ workspaceVersion: s.workspaceVersion + 1 })),
 
     loadSessionMessages: (id, messages) => {
       const existing = get().sessions[id];

@@ -165,6 +165,8 @@ const electronAPI = {
       ipcRenderer.invoke("sessions:setArchived", id, archived),
     setPinned: (id: string, pinned: boolean): Promise<void> =>
       ipcRenderer.invoke("sessions:setPinned", id, pinned),
+    setWorkspace: (id: string, workspace: string): Promise<void> =>
+      ipcRenderer.invoke("sessions:setWorkspace", id, workspace),
   },
 
   stats: {

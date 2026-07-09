@@ -22,6 +22,8 @@ export interface Session {
   messageCount: number;
   archived?: boolean;
   pinned?: boolean;
+  /** Per-chat working directory (restored when the chat is opened). */
+  workspace?: string;
 }
 
 export interface ChatMessage {
@@ -64,6 +66,7 @@ interface SessionRow {
   message_count: number;
   archived?: number;
   pinned?: number;
+  workspace?: string | null;
 }
 
 function rowToSession(r: SessionRow): Session {
@@ -75,6 +78,7 @@ function rowToSession(r: SessionRow): Session {
     messageCount: r.message_count,
     archived: !!r.archived,
     pinned: !!r.pinned,
+    workspace: r.workspace ?? undefined,
   };
 }
 
@@ -137,6 +141,9 @@ function getDb(): ReturnType<typeof Database> {
       db.exec(
         "ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
       );
+    // Per-chat working directory: each session remembers its own folder.
+    if (!has("workspace"))
+      db.exec("ALTER TABLE sessions ADD COLUMN workspace TEXT");
   }
   return db;
 }
@@ -168,6 +175,7 @@ export class SessionStore {
           created_at: string;
           updated_at: string;
           message_count: number;
+          workspace?: string | null;
         }
       | undefined;
     if (!s) return null;
@@ -190,6 +198,7 @@ export class SessionStore {
       createdAt: s.created_at,
       updatedAt: s.updated_at,
       messageCount: s.message_count,
+      workspace: s.workspace ?? undefined,
       messages: msgs.map((m) => ({
         id: m.id,
         role: m.role as ChatMessage["role"],
@@ -198,6 +207,13 @@ export class SessionStore {
         toolCall: m.tool_call ? JSON.parse(m.tool_call) : undefined,
       })),
     };
+  }
+
+  /** Remember a chat's working directory. */
+  setWorkspace(id: string, workspace: string): void {
+    getDb()
+      .prepare("UPDATE sessions SET workspace = ? WHERE id = ?")
+      .run(workspace, id);
   }
 
   save(session: SessionWithMessages): void {
