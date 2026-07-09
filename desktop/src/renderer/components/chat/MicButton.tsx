@@ -60,7 +60,15 @@ async function blobToPCM16k(blob: Blob): Promise<Float32Array> {
 
 // ── Local Whisper worker (shared across MicButton instances) ─────────────
 type WorkerMsg =
-  | { id: number; type: "progress"; file: string; progress: number }
+  | {
+      id: number;
+      type: "progress";
+      /** Overall percentage aggregated across all model files. */
+      progress: number;
+      /** Bytes downloaded / total, summed over the files seen so far. */
+      loaded: number;
+      total: number;
+    }
   | { id: number; type: "status"; text: string }
   | { id: number; type: "result"; text: string }
   | { id: number; type: "error"; error: string };
@@ -91,7 +99,10 @@ function transcribeLocal(
       const msg = e.data;
       if (msg.id !== id) return;
       if (msg.type === "progress") {
-        onStatus(`Downloading model… ${msg.progress}%`);
+        const mb = (n: number): string => (n / 1048576).toFixed(0);
+        onStatus(
+          `Downloading model… ${msg.progress}% (${mb(msg.loaded)} / ${mb(msg.total)} MB)`,
+        );
       } else if (msg.type === "status") {
         onStatus(msg.text);
       } else if (msg.type === "result") {

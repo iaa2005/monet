@@ -9,8 +9,9 @@
  *
  * Protocol:
  *   in : { id, audio: Float32Array(16kHz mono), model, language? }
- *   out: { id, type: "progress", file, progress }   // model download
- *        { id, type: "status", text }               // phase changes
+ *   out: { id, type: "progress", progress, loaded, total } // model download,
+ *              aggregated across all files (bytes)
+ *        { id, type: "status", text }                      // phase changes
  *        { id, type: "result", text }
  *        { id, type: "error", error }
  */
@@ -55,16 +56,39 @@ async function createPipeline(
   id: number,
   model: string,
 ): Promise<AsrPipeline> {
+  // The hub downloads several files in parallel (tokenizer, encoder/decoder
+  // ONNX…) and reports per-file percentages — showing those raw makes the
+  // number jump around (3 → 50 → 30). Aggregate bytes across every file seen
+  // so far and report ONE overall percentage.
+  const files = new Map<string, { loaded: number; total: number }>();
+  let lastPct = -1;
   const progress_callback = (p: unknown): void => {
-    const info = p as { status?: string; file?: string; progress?: number };
-    if (info.status === "progress" && typeof info.progress === "number") {
-      post({
-        id,
-        type: "progress",
-        file: info.file ?? "",
-        progress: Math.round(info.progress),
-      });
+    const info = p as {
+      status?: string;
+      file?: string;
+      loaded?: number;
+      total?: number;
+    };
+    if (
+      info.status !== "progress" ||
+      !info.file ||
+      typeof info.loaded !== "number" ||
+      typeof info.total !== "number" ||
+      info.total <= 0
+    ) {
+      return;
     }
+    files.set(info.file, { loaded: info.loaded, total: info.total });
+    let loaded = 0;
+    let total = 0;
+    for (const f of files.values()) {
+      loaded += f.loaded;
+      total += f.total;
+    }
+    const pct = Math.min(100, Math.floor((loaded / total) * 100));
+    if (pct === lastPct) return; // don't spam the UI thread
+    lastPct = pct;
+    post({ id, type: "progress", progress: pct, loaded, total });
   };
   const attempts: Record<string, unknown>[] = [
     { dtype: "q8", device: "webgpu", progress_callback },
