@@ -110,9 +110,24 @@ function readAsBase64(file: File): Promise<string> {
 interface AttachmentPayload {
   name: string;
   mediaType: string;
-  kind: "text" | "image";
+  kind: "text" | "image" | "audio" | "video" | "file";
   text?: string;
   dataBase64?: string;
+}
+
+/** Binary attachments over this get replaced by a placeholder — base64 blows
+ * them up ~1.37x and everything travels through IPC + the LLM API. */
+const BINARY_CAP = 20 * 1024 * 1024;
+
+/** Which input modality a staged file needs from the model. */
+export function fileModality(
+  file: File,
+): "image" | "audio" | "video" | "file" | null {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("audio/")) return "audio";
+  if (file.type.startsWith("video/")) return "video";
+  if (file.type === "application/pdf") return "file";
+  return null;
 }
 
 async function buildAttachments(
@@ -121,11 +136,26 @@ async function buildAttachments(
   const out: AttachmentPayload[] = [];
   for (const { file } of files) {
     try {
-      if (file.type.startsWith("image/")) {
+      const modality = fileModality(file);
+      if (modality && file.size > BINARY_CAP) {
+        out.push({
+          name: file.name,
+          mediaType: file.type,
+          kind: "text",
+          text: `[${modality} file too large to attach: ${file.name}]`,
+        });
+      } else if (modality === "image") {
         out.push({
           name: file.name,
           mediaType: file.type,
           kind: "image",
+          dataBase64: await readAsBase64(file),
+        });
+      } else if (modality === "audio" || modality === "video" || modality === "file") {
+        out.push({
+          name: file.name,
+          mediaType: file.type,
+          kind: modality,
           dataBase64: await readAsBase64(file),
         });
       } else if (isTextFile(file)) {
@@ -361,12 +391,12 @@ export function MessageInput(): JSX.Element {
     // Respect the active model's input modalities and budget BEFORE clearing
     // the composer, so a rejected send loses nothing.
     const mods = activeModel?.modalities ?? ["text"];
-    if (
-      files.some((f) => f.file.type.startsWith("image/")) &&
-      !mods.includes("image")
-    ) {
+    const unsupported = files
+      .map((f) => fileModality(f.file))
+      .find((k) => k && !mods.includes(k));
+    if (unsupported) {
       setError(
-        `${modelLabel} doesn't accept images — remove the attachments or switch to a vision model.`,
+        `${modelLabel} doesn't accept ${unsupported} attachments — remove them or switch to a model with that modality.`,
       );
       return;
     }

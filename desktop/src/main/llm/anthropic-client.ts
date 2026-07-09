@@ -6,8 +6,31 @@
  */
 
 import type { LLMProvider } from "../provider/types.js";
-import type { LLMAdapter, LLMEvent, LLMRequest } from "./adapter.js";
+import type {
+  LLMAdapter,
+  LLMContentBlock,
+  LLMEvent,
+  LLMRequest,
+} from "./adapter.js";
 import { sanitizeMaxTokens } from "./adapter.js";
+
+/** Anthropic accepts text/image/document blocks natively; audio and video
+ * have no equivalent — degrade those to a text placeholder. */
+function toAnthropicContent(
+  content: string | LLMContentBlock[],
+): string | unknown[] {
+  if (typeof content === "string") return content;
+  return content.map((b) => {
+    if (b.type === "audio" || b.type === "video") {
+      return {
+        type: "text",
+        text: `[${b.type} attachment${b.name ? ` "${b.name}"` : ""} — not supported by this provider]`,
+      };
+    }
+    if (b.type === "document") return { type: "document", source: b.source };
+    return b;
+  });
+}
 
 interface AnthropicSSEEvent {
   type:
@@ -81,7 +104,7 @@ export class AnthropicClient implements LLMAdapter {
       system: request.system,
       messages: request.messages.map((m) => ({
         role: m.role,
-        content: m.content,
+        content: toAnthropicContent(m.content),
       })),
       tools: tools && tools.length > 0 ? tools : undefined,
       stream: true,
@@ -346,7 +369,7 @@ export class AnthropicClient implements LLMAdapter {
       system: request.system,
       messages: request.messages.map((m) => ({
         role: m.role,
-        content: m.content,
+        content: toAnthropicContent(m.content),
       })),
       stream: false,
     };

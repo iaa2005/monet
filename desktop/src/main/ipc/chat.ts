@@ -20,10 +20,10 @@ import type { LLMContentBlock } from "../llm/adapter.js";
 interface ChatAttachment {
   name: string;
   mediaType: string;
-  kind: "text" | "image";
+  kind: "text" | "image" | "audio" | "video" | "file";
   /** For text files: the file contents. */
   text?: string;
-  /** For images: raw base64 (no data: prefix). */
+  /** For binary kinds: raw base64 (no data: prefix). */
   dataBase64?: string;
 }
 
@@ -37,13 +37,14 @@ interface ChatSendPayload {
   attachments?: ChatAttachment[];
 }
 
-function providerSupportsVision(): boolean {
+/** Input modalities of the ACTIVE MODEL (Settings → Providers → model).
+ * Legacy configs without flags fall back to the old vision heuristic. */
+function activeModalities(): Set<string> {
   const p = getProviderManager().getActive();
-  if (!p) return false;
-  // The active MODEL's modality flags decide (Settings → Providers → model).
-  if (p.modalities) return p.modalities.includes("image");
-  // Legacy configs without modality flags: old heuristic.
-  return /anthropic\.com/i.test(p.baseURL) || p.kind === "openrouter";
+  if (!p) return new Set(["text"]);
+  if (p.modalities) return new Set(p.modalities);
+  const vision = /anthropic\.com/i.test(p.baseURL) || p.kind === "openrouter";
+  return new Set(vision ? ["text", "image"] : ["text"]);
 }
 
 function buildUserContent(
@@ -52,36 +53,70 @@ function buildUserContent(
 ): string | LLMContentBlock[] {
   if (!attachments || attachments.length === 0) return message;
 
-  const vision = providerSupportsVision();
+  const mods = activeModalities();
   const textParts: string[] = message ? [message] : [];
-  const imageBlocks: LLMContentBlock[] = [];
+  const mediaBlocks: LLMContentBlock[] = [];
+
+  const src = (
+    a: ChatAttachment,
+    fallbackMT: string,
+  ): { type: "base64"; media_type: string; data: string } => ({
+    type: "base64",
+    media_type: a.mediaType || fallbackMT,
+    data: a.dataBase64 ?? "",
+  });
 
   for (const a of attachments) {
     if (a.kind === "text" && a.text != null) {
       textParts.push(`\n\n----- ${a.name} -----\n${a.text}`);
     } else if (a.kind === "image" && a.dataBase64) {
-      if (vision) {
-        imageBlocks.push({
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: a.mediaType || "image/png",
-            data: a.dataBase64,
-          },
-        });
-      } else {
+      if (mods.has("image"))
+        mediaBlocks.push({ type: "image", source: src(a, "image/png") });
+      else
         textParts.push(
           `\n\n[Attached image: ${a.name} — the current model can't view images]`,
         );
-      }
+    } else if (a.kind === "audio" && a.dataBase64) {
+      if (mods.has("audio"))
+        mediaBlocks.push({
+          type: "audio",
+          source: src(a, "audio/mpeg"),
+          name: a.name,
+        });
+      else
+        textParts.push(
+          `\n\n[Attached audio: ${a.name} — the current model can't hear audio]`,
+        );
+    } else if (a.kind === "video" && a.dataBase64) {
+      if (mods.has("video"))
+        mediaBlocks.push({
+          type: "video",
+          source: src(a, "video/mp4"),
+          name: a.name,
+        });
+      else
+        textParts.push(
+          `\n\n[Attached video: ${a.name} — the current model can't watch video]`,
+        );
+    } else if (a.kind === "file" && a.dataBase64) {
+      if (mods.has("file"))
+        mediaBlocks.push({
+          type: "document",
+          source: src(a, "application/pdf"),
+          name: a.name,
+        });
+      else
+        textParts.push(
+          `\n\n[Attached document: ${a.name} — the current model can't read files]`,
+        );
     } else {
       textParts.push(`\n\n[Attached file: ${a.name}]`);
     }
   }
 
   const text = textParts.join("");
-  if (imageBlocks.length === 0) return text;
-  return [{ type: "text", text }, ...imageBlocks];
+  if (mediaBlocks.length === 0) return text;
+  return [{ type: "text", text }, ...mediaBlocks];
 }
 
 // The composer now sends a permission level (matching the vendor PermissionMode

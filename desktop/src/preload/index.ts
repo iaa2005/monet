@@ -23,7 +23,7 @@ const electronAPI = {
       attachments?: {
         name: string;
         mediaType: string;
-        kind: "text" | "image";
+        kind: "text" | "image" | "audio" | "video" | "file";
         text?: string;
         dataBase64?: string;
       }[];

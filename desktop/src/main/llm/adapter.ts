@@ -14,6 +14,24 @@ export type LLMContentBlock =
       source: { type: "base64"; media_type: string; data: string };
     }
   | {
+      /** Audio clip (models with the audio modality; OpenAI input_audio). */
+      type: "audio";
+      source: { type: "base64"; media_type: string; data: string };
+      name?: string;
+    }
+  | {
+      /** Document, e.g. PDF (Anthropic document block / OpenAI file part). */
+      type: "document";
+      source: { type: "base64"; media_type: string; data: string };
+      name?: string;
+    }
+  | {
+      /** Video clip (passed as a file part to providers that accept it). */
+      type: "video";
+      source: { type: "base64"; media_type: string; data: string };
+      name?: string;
+    }
+  | {
       type: "tool_use";
       id: string;
       name: string;

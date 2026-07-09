@@ -114,6 +114,29 @@ function toOpenAIMessages(
             url: `data:${b.source.media_type};base64,${b.source.data}`,
           },
         });
+      } else if (b.type === "audio") {
+        // OpenAI-style input_audio (gpt-4o-audio, OpenRouter audio models).
+        const mt = b.source.media_type;
+        const format = /wav/i.test(mt)
+          ? "wav"
+          : /mpeg|mp3/i.test(mt)
+            ? "mp3"
+            : (mt.split("/")[1] ?? "mp3");
+        parts.push({
+          type: "input_audio",
+          input_audio: { data: b.source.data, format },
+        });
+      } else if (b.type === "document" || b.type === "video") {
+        // File part with a data URL — OpenRouter forwards these to models
+        // with document/video understanding (Gemini, Mistral OCR, …).
+        parts.push({
+          type: "file",
+          file: {
+            filename:
+              b.name || (b.type === "video" ? "video.mp4" : "document.pdf"),
+            file_data: `data:${b.source.media_type};base64,${b.source.data}`,
+          },
+        });
       }
     }
     if (parts.length === 1 && parts[0].type === "text") {
