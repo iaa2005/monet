@@ -399,13 +399,20 @@ export default function App(): JSX.Element {
   return (
     <div className="flex h-screen flex-col bg-sidebar text-foreground">
       {/* ── Custom title bar ── */}
-      <header className="app-drag flex h-11 shrink-0 items-center gap-2 pl-2">
-        <IconBtn
-          title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-          onClick={() => setSidebarOpen((o) => !o)}
-        >
-          <PanelLeft className="size-4" />
-        </IconBtn>
+      <header
+        className={cn(
+          "app-drag flex h-11 shrink-0 items-center gap-2 pl-2",
+          chatStore.incognito && "bg-card text-card-foreground rounded-t-xl",
+        )}
+      >
+        {!chatStore.incognito && (
+          <IconBtn
+            title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+            onClick={() => setSidebarOpen((o) => !o)}
+          >
+            <PanelLeft className="size-4" />
+          </IconBtn>
+        )}
 
         <div className="app-no-drag flex items-center gap-2">
           <span className="font-[Copernicus] text-[15px] font-semibold tracking-tight text-foreground">
@@ -414,6 +421,13 @@ export default function App(): JSX.Element {
         </div>
 
         <div className="flex-1" />
+
+        {chatStore.incognito && (
+          <span className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
+            <Ghost className="size-4" />
+            Incognito
+          </span>
+        )}
 
         <div className="app-no-drag flex items-center gap-0.5 pr-1.5">
           {appMode === "code" && (
@@ -443,164 +457,181 @@ export default function App(): JSX.Element {
               </IconBtn>
             </>
           )}
-          <BackgroundTasks
-            onOpen={openBackgroundTask}
-            currentSessionId={currentSessionId}
-          />
-          <IconBtn
-            title={
-              chatStore.incognito
-                ? "Incognito on — this chat isn't saved"
-                : "Incognito mode"
-            }
-            active={chatStore.incognito}
-            onClick={() => {
-              const store = useChatStore.getState();
-              if (store.currentSessionId)
-                void api()?.chat.reset(store.currentSessionId);
-              store.clearMessages();
-              store.setCurrentSessionId(undefined);
-              setCurrentSessionId(undefined);
-              store.setIncognito(!store.incognito);
-              setView("chat");
-            }}
-          >
-            <Ghost className="size-4" />
-          </IconBtn>
+          {!chatStore.incognito && (
+            <BackgroundTasks
+              onOpen={openBackgroundTask}
+              currentSessionId={currentSessionId}
+            />
+          )}
+          {appMode === "home" && (
+            <IconBtn
+              title={chatStore.incognito ? "Exit incognito" : "Incognito mode"}
+              active={chatStore.incognito}
+              onClick={() => {
+                const store = useChatStore.getState();
+                if (store.currentSessionId)
+                  void api()?.chat.reset(store.currentSessionId);
+                store.clearMessages();
+                store.setCurrentSessionId(undefined);
+                setCurrentSessionId(undefined);
+                store.setIncognito(!store.incognito);
+                setView("chat");
+              }}
+            >
+              {chatStore.incognito ? (
+                <X className="size-4" />
+              ) : (
+                <Ghost className="size-4" />
+              )}
+            </IconBtn>
+          )}
 
-          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                title="More"
-                aria-label="More"
-                className="app-no-drag flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
-              >
-                <MoreVertical className="size-4" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem
-                onClick={() => {
-                  toggleRight("artifacts");
-                  setMenuOpen(false);
-                }}
-              >
-                <Blocks className="size-4" />
-                Artifacts
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  toggleRight("files");
-                  setMenuOpen(false);
-                }}
-              >
-                <PanelRight className="size-4" />
-                Files
-                <DropdownMenuShortcut>Ctrl+^+F</DropdownMenuShortcut>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  setAppMode("code");
-                  setTerminalOpen(true);
-                  setMenuOpen(false);
-                }}
-              >
-                <TerminalIcon className="size-4" />
-                Terminal
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  setAppMode("code");
-                  toggleRight("files");
-                  setMenuOpen(false);
-                }}
-              >
-                <Columns2 className="size-4" />
-                Split view
-              </DropdownMenuItem>
+          {!chatStore.incognito && (
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  title="More"
+                  aria-label="More"
+                  className="app-no-drag flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+                >
+                  <MoreVertical className="size-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem
+                  onClick={() => {
+                    toggleRight("artifacts");
+                    setMenuOpen(false);
+                  }}
+                >
+                  <Blocks className="size-4" />
+                  Artifacts
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    toggleRight("files");
+                    setMenuOpen(false);
+                  }}
+                >
+                  <PanelRight className="size-4" />
+                  Files
+                  <DropdownMenuShortcut>Ctrl+^+F</DropdownMenuShortcut>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setAppMode("code");
+                    setTerminalOpen(true);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <TerminalIcon className="size-4" />
+                  Terminal
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setAppMode("code");
+                    toggleRight("files");
+                    setMenuOpen(false);
+                  }}
+                >
+                  <Columns2 className="size-4" />
+                  Split view
+                </DropdownMenuItem>
 
-              <DropdownMenuSeparator />
+                <DropdownMenuSeparator />
 
-              <DropdownMenuItem
-                onClick={() => {
-                  setRenameTargetId(undefined);
-                  setRenameValue(sessionTitle || "");
-                  setRenameOpen(true);
-                  setMenuOpen(false);
-                }}
-              >
-                <Pencil className="size-4" />
-                Rename
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  setMenuOpen(false);
-                  void handleFork();
-                }}
-              >
-                <GitFork className="size-4" />
-                Fork
-              </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setRenameTargetId(undefined);
+                    setRenameValue(sessionTitle || "");
+                    setRenameOpen(true);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <Pencil className="size-4" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void handleFork();
+                  }}
+                >
+                  <GitFork className="size-4" />
+                  Fork
+                </DropdownMenuItem>
 
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <FileText className="size-4" />
-                  Transcript view
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {(
-                    [
-                      "normal",
-                      "thinking",
-                      "verbose",
-                      "summary",
-                    ] as TranscriptMode[]
-                  ).map((m) => (
-                    <DropdownMenuItem
-                      key={m}
-                      onClick={() => {
-                        setTranscriptMode(m);
-                        setMenuOpen(false);
-                      }}
-                    >
-                      <span
-                        className={m === transcriptMode ? "font-medium" : ""}
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <FileText className="size-4" />
+                    Transcript view
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {(
+                      [
+                        "normal",
+                        "thinking",
+                        "verbose",
+                        "summary",
+                      ] as TranscriptMode[]
+                    ).map((m) => (
+                      <DropdownMenuItem
+                        key={m}
+                        onClick={() => {
+                          setTranscriptMode(m);
+                          setMenuOpen(false);
+                        }}
                       >
-                        {m.charAt(0).toUpperCase() + m.slice(1)}
-                      </span>
-                      {m === transcriptMode && (
-                        <span className="ml-auto size-1.5 rounded-full bg-link" />
-                      )}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
+                        <span
+                          className={m === transcriptMode ? "font-medium" : ""}
+                        >
+                          {m.charAt(0).toUpperCase() + m.slice(1)}
+                        </span>
+                        {m === transcriptMode && (
+                          <span className="ml-auto size-1.5 rounded-full bg-link" />
+                        )}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
 
-              <DropdownMenuSeparator />
+                <DropdownMenuSeparator />
 
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => {
-                  setMenuOpen(false);
-                  const id = useChatStore.getState().currentSessionId;
-                  if (id) void handleDeleteSession(id);
-                }}
-              >
-                <Trash2 className="size-4" />
-                Delete chat
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    const id = useChatStore.getState().currentSessionId;
+                    if (id) void handleDeleteSession(id);
+                  }}
+                >
+                  <Trash2 className="size-4" />
+                  Delete chat
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         <WindowControls />
       </header>
 
       {/* ── Body ── */}
-      <div className="flex min-h-0 flex-1 p-2">
-        <ResizablePanelGroup direction="horizontal" className="gap-1">
-          {sidebarOpen && (
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 p-2",
+          chatStore.incognito && "bg-card text-card-foreground",
+        )}
+      >
+        <ResizablePanelGroup
+          direction="horizontal"
+          className={cn(
+            "gap-1",
+            chatStore.incognito && "rounded-xl bg-sidebar p-1",
+          )}
+        >
+          {sidebarOpen && !chatStore.incognito && (
             <>
               <ResizablePanel
                 defaultSize={18}
