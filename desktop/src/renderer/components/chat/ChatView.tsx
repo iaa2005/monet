@@ -138,6 +138,99 @@ function groupMessages(
   return out;
 }
 
+interface TurnSummary {
+  id: string;
+  /** The user request that opened the turn (null for a leading assistant turn). */
+  request: string | null;
+  /** Distinct tool names used in the turn, in first-use order. */
+  toolNames: string[];
+  /** Number of tool calls in the turn. */
+  stepCount: number;
+  /** The assistant's final answer text for the turn. */
+  answer: string;
+  answerIsError: boolean;
+}
+
+/**
+ * Summary mode: fold each user→assistant exchange into one card. We keep the
+ * request and the final answer (the useful "output") and collapse every
+ * intermediate tool call into a single "N steps · tools used" line.
+ */
+function summarizeTurns(msgs: ChatMessage[]): TurnSummary[] {
+  const turns: TurnSummary[] = [];
+  let cur: TurnSummary | null = null;
+  const flush = (): void => {
+    if (cur) turns.push(cur);
+    cur = null;
+  };
+  msgs.forEach((m, i) => {
+    if (m.role === "user") {
+      flush();
+      cur = {
+        id: m.id || `turn-${i}`,
+        request: m.content,
+        toolNames: [],
+        stepCount: 0,
+        answer: "",
+        answerIsError: false,
+      };
+      return;
+    }
+    if (!cur) {
+      cur = {
+        id: m.id || `turn-${i}`,
+        request: null,
+        toolNames: [],
+        stepCount: 0,
+        answer: "",
+        answerIsError: false,
+      };
+    }
+    if (m.role === "tool" && m.toolCall) {
+      cur.stepCount++;
+      const name = m.toolCall.name;
+      if (name && !cur.toolNames.includes(name)) cur.toolNames.push(name);
+    } else if (m.role === "assistant" && m.content?.trim()) {
+      cur.answer = m.content;
+      cur.answerIsError = !!m.isError;
+    }
+  });
+  flush();
+  return turns;
+}
+
+function SummaryTurnCard({ turn }: { turn: TurnSummary }): JSX.Element {
+  return (
+    <div className="rounded-xl border border-border bg-card/40 px-4 py-3">
+      {turn.request != null && (
+        <div className="mb-2 flex gap-2">
+          <span className="mt-0.5 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            You
+          </span>
+          <p className="line-clamp-3 whitespace-pre-wrap text-[13px] text-foreground">
+            {turn.request}
+          </p>
+        </div>
+      )}
+      {turn.stepCount > 0 && (
+        <div className="mb-2 text-[11px] text-muted-foreground">
+          {turn.stepCount} {turn.stepCount === 1 ? "step" : "steps"}
+          {turn.toolNames.length > 0 && <> · {turn.toolNames.join(", ")}</>}
+        </div>
+      )}
+      {turn.answer ? (
+        <div className={cn(turn.answerIsError && "text-destructive")}>
+          <MarkdownViewer content={turn.answer} />
+        </div>
+      ) : (
+        <div className="text-[13px] italic text-muted-foreground">
+          No response yet.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function pickGreeting(isFirstRun: boolean): {
   title: string;
   subtitle: string;
@@ -197,6 +290,8 @@ export function ChatView({
   const greeting = useMemo(() => pickGreeting(isFirstRun), [isFirstRun]);
 
   const grouped = groupMessages(messages, transcriptMode);
+  const summaryTurns =
+    transcriptMode === "summary" ? summarizeTurns(messages) : null;
 
   const last = messages[messages.length - 1];
   const activeText =
@@ -253,7 +348,19 @@ export function ChatView({
             <MessageScroller className="flex-1">
               <MessageScrollerViewport>
                 <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-2 px-4 py-4">
-                  {grouped.map((item, i) => {
+                  {summaryTurns
+                    ? summaryTurns.map((t, i) => (
+                        <MessageScrollerItem
+                          key={t.id}
+                          messageId={t.id}
+                          scrollAnchor={
+                            !showWorking && i === summaryTurns.length - 1
+                          }
+                        >
+                          <SummaryTurnCard turn={t} />
+                        </MessageScrollerItem>
+                      ))
+                    : grouped.map((item, i) => {
                     if ("type" in item && item.type === "tool-group") {
                       return (
                         <MessageScrollerItem
