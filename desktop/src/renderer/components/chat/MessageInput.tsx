@@ -384,7 +384,6 @@ export function MessageInput(): JSX.Element {
               onText={(t) =>
                 setInput((prev) => (prev ? prev.trimEnd() + " " : "") + t)
               }
-              onError={setError}
             />
 
             <div className="flex-1" />

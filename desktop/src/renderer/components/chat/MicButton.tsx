@@ -34,9 +34,9 @@ const LS_LOCAL_MODEL = "stt-local-model";
 const LS_LANGUAGE = "stt-language"; // "" (auto) | "ru" | "en"
 
 const LOCAL_MODELS = [
-  { id: "Xenova/whisper-tiny", label: "Fast (~40 MB)" },
-  { id: "Xenova/whisper-base", label: "Balanced (~80 MB)" },
-  { id: "Xenova/whisper-small", label: "Accurate (~250 MB)" },
+  { id: "Xenova/whisper-tiny", label: "Fast (~147 MB)" },
+  { id: "Xenova/whisper-base", label: "Balanced (~280 MB)" },
+  { id: "Xenova/whisper-small", label: "Accurate (~926 MB)" },
 ];
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -79,11 +79,9 @@ type WorkerMsg =
 let sttWorker: Worker | null = null;
 let sttSeq = 0;
 
-function getSttWorker(): Worker {
+function getSttWorker(model: string): Worker {
   if (!sttWorker) {
     sttWorker = new SttWorker();
-    // Surface load/parse failures — an unloadable worker otherwise swallows
-    // every postMessage and the UI waits on nothing.
     sttWorker.addEventListener("error", (e: ErrorEvent) => {
       console.error(
         `[stt] worker error: ${e.message} (${e.filename}:${e.lineno})`,
@@ -96,13 +94,28 @@ function getSttWorker(): Worker {
   return sttWorker;
 }
 
+function releaseSttWorker(reason: string): void {
+  if (!sttWorker) return;
+  console.log(`[stt] terminating worker: ${reason}`);
+  sttWorker.terminate();
+  sttWorker = null;
+  sttSeq = 0;
+}
+
+let lastModel: string | null = null;
+
 function transcribeLocal(
   audio: Float32Array,
   model: string,
   language: string,
   onStatus: (text: string) => void,
 ): Promise<string> {
-  const worker = getSttWorker();
+  // If the model changed, kill the old worker — WASM memory isn't freed by GC.
+  if (lastModel && lastModel !== model) {
+    releaseSttWorker(`model switch ${lastModel} → ${model}`);
+  }
+  lastModel = model;
+  const worker = getSttWorker(model);
   const id = ++sttSeq;
   return new Promise((resolve, reject) => {
     // Watchdog: if inference wedges (bad backend, driver issue), fail loudly
@@ -148,18 +161,23 @@ function transcribeLocal(
     };
     worker.addEventListener("message", onMessage);
     worker.addEventListener("error", onWorkerError);
+    console.log(
+      `[stt] postMessage #${id}: ${audio.length} samples, model=${model}`,
+    );
     worker.postMessage({ id, audio, model, language: language || undefined });
+    console.log(`[stt] postMessage #${id} sent`);
   });
 }
 
 interface MicButtonProps {
   /** Called with the transcribed text. */
   onText: (text: string) => void;
-  /** Non-fatal problems (device/transcription errors). */
-  onError: (message: string) => void;
+  /** Non-fatal problems (device/transcription errors).
+   *  @deprecated Errors are now displayed inline near the mic button. */
+  onError?: (message: string) => void;
 }
 
-export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
+export function MicButton({ onText }: MicButtonProps): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -187,6 +205,14 @@ export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
   );
   const [status, setStatus] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+  const errTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  function showError(msg: string): void {
+    setErrMsg(msg);
+    clearTimeout(errTimerRef.current);
+    errTimerRef.current = setTimeout(() => setErrMsg(null), 6000);
+  }
 
   const rootRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -316,7 +342,7 @@ export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
       rec.start();
       setRecording(true);
     } catch {
-      onError("Couldn't start recording — check microphone permissions.");
+      showError("Couldn't start recording — check microphone permissions.");
     }
   }
 
@@ -342,11 +368,17 @@ export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
           const v = Math.abs(pcm[i]);
           if (v > peak) peak = v;
         }
+        const dur = pcm.length / 16000;
         console.log(
-          `[stt] recorded ${(pcm.length / 16000).toFixed(1)}s, peak=${peak.toFixed(3)}, blob=${blob.size}B ${blob.type}`,
+          `[stt] recorded ${dur.toFixed(1)}s, peak=${peak.toFixed(3)}, blob=${blob.size}B ${blob.type}`,
         );
+        // Accidental quick click (< 2 s) — warn, don't transcribe.
+        if (dur < 2) {
+          showError("Recording too short — hold the mic for at least 2 seconds.");
+          return;
+        }
         if (peak < 0.01) {
-          onError(
+          showError(
             "The microphone captured silence — pick another input device in the mic menu (hover the mic → arrow).",
           );
           return;
@@ -355,7 +387,7 @@ export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
         console.log(`[stt] result: ${JSON.stringify(text)}`);
         if (text) onText(text);
         else
-          onError(
+          showError(
             "No speech recognized — try again, a bit longer and closer to the mic.",
           );
       } else {
@@ -369,10 +401,10 @@ export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
           model: model.trim() || undefined,
         });
         if (res?.ok && res.text) onText(res.text);
-        else if (res && !res.ok) onError(res.error || "Transcription failed");
+        else if (res && !res.ok) showError(res.error || "Transcription failed");
       }
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Transcription failed");
+      showError(err instanceof Error ? err.message : "Transcription failed");
     } finally {
       setBusy(false);
       setStatus(null);
@@ -461,6 +493,14 @@ export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
         <div className="absolute bottom-full left-0 z-40 mb-1.5 flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-card px-2 py-1 text-[12px] text-muted-foreground shadow-sm">
           <Loader2 className="size-3 animate-spin" />
           {status}
+        </div>
+      )}
+
+      {/* STT warning pill (auto-dismissed after 6s) — amber, not red;
+          these are recoverable, not chat-critical errors. */}
+      {errMsg && (
+        <div className="absolute bottom-full left-0 z-40 mb-1.5 flex items-center gap-1.5 whitespace-nowrap rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[12px] text-amber-600 shadow-sm dark:text-amber-400">
+          {errMsg}
         </div>
       )}
 

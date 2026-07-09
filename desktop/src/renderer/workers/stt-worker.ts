@@ -98,9 +98,11 @@ async function createPipeline(
   // fails silently AFTER the pipeline is created — the transcription promise
   // just never settles. CPU whisper handles dictation-length clips in a few
   // seconds; revisit WebGPU when onnxruntime-web is more reliable there.
+  // fp32 — avoids ONNX MatMulNBits INT4 quantization bug
+  // (qdq_actions.cc TransposeDQWeightsForMatMulNBits missing scale).
   const attempts: Record<string, unknown>[] = [
-    { dtype: "q8", progress_callback },
-    { dtype: "q8", progress_callback }, // retried with CDN wasm paths
+    { dtype: "fp32", progress_callback },
+    { dtype: "fp32", progress_callback }, // retried with CDN wasm paths
   ];
   let lastErr: unknown;
   for (const options of attempts) {
@@ -135,28 +137,45 @@ async function createPipeline(
 ctx.addEventListener("message", (e: MessageEvent<TranscribeRequest>) => {
   void (async () => {
     const { id, audio, model, language } = e.data;
+    console.log(
+      `[stt-worker] msg #${id} received: ${audio.length} samples, model=${model}, lang=${language || "auto"}`,
+    );
     try {
       if (!asr || loadedModel !== model) {
+        // Drop the old pipeline before loading a different model so the
+        // ONNX WASM heap has room for the new sessions.
+        if (asr && loadedModel !== model) {
+          console.log(
+            `[stt-worker] dropping pipeline for ${loadedModel} to free WASM memory`,
+          );
+          asr = null;
+          loadedModel = "";
+        }
+        console.log("[stt-worker] creating pipeline for model:", model);
         post({ id, type: "status", text: "Loading model…" });
+        const tPipe = Date.now();
         asr = await createPipeline(id, model);
         loadedModel = model;
+        console.log(`[stt-worker] pipeline ready in ${Date.now() - tPipe}ms`);
       }
+      console.log("[stt-worker] calling asr()…");
       post({ id, type: "status", text: "Transcribing…" });
       const t0 = Date.now();
       const out = await asr(audio, {
         chunk_length_s: 30,
         ...(language ? { language, task: "transcribe" } : {}),
       });
+      console.log(`[stt-worker] asr() returned in ${Date.now() - t0}ms`);
       const text = Array.isArray(out)
         ? out.map((o) => o.text ?? "").join(" ")
         : (out.text ?? "");
-      // Diagnostics land in the renderer DevTools console (workers share it).
       console.log(
         `[stt-worker] ${(audio.length / 16000).toFixed(1)}s audio → ${Date.now() - t0}ms, raw=`,
         JSON.stringify(out).slice(0, 300),
       );
       post({ id, type: "result", text: text.trim() });
     } catch (err) {
+      console.error("[stt-worker] error:", err);
       post({
         id,
         type: "error",
