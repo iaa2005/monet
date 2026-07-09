@@ -133,8 +133,18 @@ const electronAPI = {
       offset?: number,
       space?: string,
       status?: string,
+      sort?: string,
+      sortDir?: string,
     ): Promise<unknown[]> =>
-      ipcRenderer.invoke("sessions:list", limit, offset, space, status),
+      ipcRenderer.invoke(
+        "sessions:list",
+        limit,
+        offset,
+        space,
+        status,
+        sort,
+        sortDir,
+      ),
     search: (query: string, limit?: number): Promise<unknown[]> =>
       ipcRenderer.invoke("sessions:search", query, limit),
     deleteById: (id: string): Promise<boolean> =>

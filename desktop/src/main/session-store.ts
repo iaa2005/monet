@@ -266,9 +266,15 @@ export class SessionStore {
     return this.get(sessionId);
   }
 
-  list(limit = 50, offset = 0, space?: string, status = "all"): Session[] {
+  list(
+    limit = 50,
+    offset = 0,
+    space?: string,
+    status = "all",
+    sort = "recency",
+    sortDir = "desc",
+  ): Session[] {
     const d = getDb();
-    // Pinned first, then most-recent.
     let query = "SELECT * FROM sessions WHERE 1=1";
     const params: (string | number)[] = [];
 
@@ -282,7 +288,15 @@ export class SessionStore {
       query += " AND archived = 1";
     }
 
-    query += " ORDER BY pinned DESC, updated_at DESC LIMIT ? OFFSET ?";
+    const dir = sortDir === "asc" ? "ASC" : "DESC";
+    const orderBy =
+      sort === "name"
+        ? `title ${dir}`
+        : sort === "activity"
+          ? `message_count ${dir}, updated_at ${dir}`
+          : `pinned DESC, updated_at ${dir}`;
+
+    query += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
     const rows = d.prepare(query).all(...params) as SessionRow[];

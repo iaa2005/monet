@@ -46,7 +46,13 @@ interface SessionListProps {
   currentSessionId?: string;
   /** Only show sessions from this space (home/code). */
   space?: string;
-  filters?: { status: string; activity: string; group: string; sort: string };
+  filters?: {
+    status: string;
+    activity: string;
+    group: string;
+    sort: string;
+    sortDir: string;
+  };
 }
 
 function api(): ElectronAPI | undefined {
@@ -72,7 +78,16 @@ export function SessionList({
   const loadSessions = async (): Promise<void> => {
     try {
       const status = filters?.status ?? "all";
-      const result = await api()?.sessions.list(50, 0, space, status);
+      const sort = filters?.sort ?? "recency";
+      const sortDir = filters?.sortDir ?? "desc";
+      const result = await api()?.sessions.list(
+        50,
+        0,
+        space,
+        status,
+        sort,
+        sortDir,
+      );
       if (result) setAllSessions(result as SessionSummary[]);
     } catch (err) {
       console.error("Failed to load sessions:", err);
@@ -84,7 +99,7 @@ export function SessionList({
   useEffect(() => {
     loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, space, filters?.status]);
+  }, [version, space, filters?.status, filters?.sort, filters?.sortDir]);
 
   const setArchived = async (id: string, v: boolean): Promise<void> => {
     setOpenMenuId(null);

@@ -118,6 +118,8 @@ export interface ElectronAPI {
       offset?: number,
       space?: string,
       status?: string,
+      sort?: string,
+      sortDir?: string,
     ) => Promise<unknown[]>;
     search: (query: string, limit?: number) => Promise<unknown[]>;
     deleteById: (id: string) => Promise<boolean>;

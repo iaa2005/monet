@@ -202,6 +202,7 @@ export default function App(): JSX.Element {
     activity: "all",
     group: "none",
     sort: "recency",
+    sortDir: "desc" as "asc" | "desc",
   });
   const { theme, setTheme, toggle } = useTheme();
   const chatStore = useChatStore();

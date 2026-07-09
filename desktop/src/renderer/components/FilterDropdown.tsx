@@ -19,6 +19,7 @@ type Filters = {
   activity: string;
   group: string;
   sort: string;
+  sortDir: "asc" | "desc";
 };
 
 const STATUS_OPTS: FilterOption[] = [
@@ -89,7 +90,16 @@ export function FilterDropdown({
   const setStatus = (v: string) => onChange({ ...filters, status: v });
   const setActivity = (v: string) => onChange({ ...filters, activity: v });
   const setGroup = (v: string) => onChange({ ...filters, group: v });
-  const setSort = (v: string) => onChange({ ...filters, sort: v });
+  const setSort = (v: string) => {
+    if (filters.sort === v) {
+      onChange({
+        ...filters,
+        sortDir: filters.sortDir === "asc" ? "desc" : "asc",
+      });
+    } else {
+      onChange({ ...filters, sort: v, sortDir: "desc" });
+    }
+  };
 
   const subs: Submenu[] = [
     {
@@ -122,7 +132,8 @@ export function FilterDropdown({
     filters.status !== "all" ||
     filters.activity !== "all" ||
     filters.group !== "none" ||
-    filters.sort !== "recency";
+    filters.sort !== "recency" ||
+    filters.sortDir !== "desc";
 
   const activeSub = subs.find((s) => s.label === hovered);
 
@@ -159,7 +170,15 @@ export function FilterDropdown({
               <span className="flex items-center gap-1 text-muted-foreground">
                 {(() => {
                   const opt = s.options.find((o) => o.value === s.selected);
-                  return opt ? opt.label : s.selected;
+                  const label = opt ? opt.label : s.selected;
+                  if (s.label === "Sort by") {
+                    return (
+                      <>
+                        {label} {filters.sortDir === "asc" ? "↑" : "↓"}
+                      </>
+                    );
+                  }
+                  return label;
                 })()}
                 <ChevronRight size={10} />
               </span>
@@ -189,7 +208,14 @@ export function FilterDropdown({
                   ) : (
                     <>
                       <span>{o.label}</span>
-                      {activeSub.selected === o.value && <Check size={12} />}
+                      {activeSub.label === "Sort by" &&
+                      activeSub.selected === o.value ? (
+                        <span className="text-muted-foreground">
+                          {filters.sortDir === "asc" ? "↑" : "↓"}
+                        </span>
+                      ) : activeSub.selected === o.value ? (
+                        <Check size={12} />
+                      ) : null}
                     </>
                   )}
                 </button>

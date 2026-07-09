@@ -38,8 +38,10 @@ export function registerSessionsIPC(): void {
       offset?: number,
       space?: string,
       status?: string,
+      sort?: string,
+      sortDir?: string,
     ): Session[] => {
-      return store.list(limit, offset, space, status);
+      return store.list(limit, offset, space, status, sort, sortDir);
     },
   );
 
