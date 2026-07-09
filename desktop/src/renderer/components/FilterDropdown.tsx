@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { Filter, ChevronDown, ChevronRight, Check } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Filter, Check, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type FilterOption = {
@@ -12,6 +12,13 @@ type Submenu = {
   options: FilterOption[];
   selected: string;
   onSelect: (value: string) => void;
+};
+
+type Filters = {
+  status: string;
+  activity: string;
+  group: string;
+  sort: string;
 };
 
 const STATUS_OPTS: FilterOption[] = [
@@ -40,111 +47,154 @@ const SORT_OPTS: FilterOption[] = [
   { label: "Activity", value: "activity" },
 ];
 
-export function FilterDropdown(): JSX.Element {
+interface FilterDropdownProps {
+  filters: Filters;
+  onChange: (f: Filters) => void;
+}
+
+export function FilterDropdown({
+  filters,
+  onChange,
+}: FilterDropdownProps): JSX.Element {
   const [open, setOpen] = useState(false);
-  const [submenu, setSubmenu] = useState<string | null>(null);
-  const [status, setStatus] = useState("all");
-  const [activity, setActivity] = useState("all");
-  const [group, setGroup] = useState("none");
-  const [sort, setSort] = useState("recency");
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [subTop, setSubTop] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node))
+      if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
+        setHovered(null);
+      }
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
+  const handleHover = useCallback(
+    (label: string) => (e: React.MouseEvent<HTMLButtonElement>) => {
+      setHovered(label);
+      if (menuRef.current) {
+        const btn = e.currentTarget;
+        const menuRect = menuRef.current.getBoundingClientRect();
+        const btnRect = btn.getBoundingClientRect();
+        setSubTop(btnRect.top - menuRect.top);
+      }
+    },
+    [],
+  );
+
+  const setStatus = (v: string) => onChange({ ...filters, status: v });
+  const setActivity = (v: string) => onChange({ ...filters, activity: v });
+  const setGroup = (v: string) => onChange({ ...filters, group: v });
+  const setSort = (v: string) => onChange({ ...filters, sort: v });
+
   const subs: Submenu[] = [
     {
       label: "Status",
       options: STATUS_OPTS,
-      selected: status,
+      selected: filters.status,
       onSelect: setStatus,
     },
     {
       label: "Last activity",
       options: ACTIVITY_OPTS,
-      selected: activity,
+      selected: filters.activity,
       onSelect: setActivity,
     },
     {
       label: "Group by",
       options: GROUP_OPTS,
-      selected: group,
+      selected: filters.group,
       onSelect: setGroup,
     },
-    { label: "Sort by", options: SORT_OPTS, selected: sort, onSelect: setSort },
+    {
+      label: "Sort by",
+      options: SORT_OPTS,
+      selected: filters.sort,
+      onSelect: setSort,
+    },
   ];
+
+  const hasActiveFilter =
+    filters.status !== "all" ||
+    filters.activity !== "all" ||
+    filters.group !== "none" ||
+    filters.sort !== "recency";
+
+  const activeSub = subs.find((s) => s.label === hovered);
 
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(!open)}
-        className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+        onClick={() => {
+          setOpen(!open);
+          setHovered(null);
+        }}
+        className="relative rounded p-0.5 text-muted-foreground hover:text-foreground"
       >
         <Filter size={12} />
+        {hasActiveFilter && (
+          <span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-link" />
+        )}
       </button>
       {open && (
-        <div className="absolute right-0 top-6 z-50 w-44 rounded-lg border border-border bg-popover p-1 shadow-md text-xs">
-          {submenu ? (
-            <>
-              <button
-                onClick={() => setSubmenu(null)}
-                className="flex w-full items-center gap-1 rounded px-2 py-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-              >
-                <ChevronRight size={10} className="rotate-180" /> {submenu}
-              </button>
-              <div className="my-1 border-t border-border" />
-              {subs
-                .find((s) => s.label === submenu)
-                ?.options.map((o) => (
-                  <button
-                    key={o.value}
-                    onClick={() => {
-                      if (o.value !== "divider") {
-                        subs
-                          .find((s) => s.label === submenu)
-                          ?.onSelect(o.value);
-                        setSubmenu(null);
-                      }
-                    }}
-                    className={cn(
-                      "flex w-full items-center justify-between rounded px-2 py-1.5 hover:bg-accent hover:text-foreground",
-                      o.value === "divider" && "pointer-events-none",
-                    )}
-                  >
-                    {o.value === "divider" ? (
-                      <span className="w-full border-t border-border my-0.5" />
-                    ) : (
-                      <>
-                        <span>{o.label}</span>
-                        {subs.find((s) => s.label === submenu)?.selected ===
-                          o.value && <Check size={12} />}
-                      </>
-                    )}
-                  </button>
-                ))}
-            </>
-          ) : (
-            subs.map((s) => (
-              <button
-                key={s.label}
-                onClick={() => setSubmenu(s.label)}
-                className="flex w-full items-center justify-between rounded px-2 py-1.5 hover:bg-accent hover:text-foreground"
-              >
-                <span>{s.label}</span>
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  {s.selected !== "all" && s.selected !== "none"
-                    ? s.selected
-                    : "All"}
-                  <ChevronRight size={10} />
-                </span>
-              </button>
-            ))
+        <div
+          ref={menuRef}
+          className="absolute right-0 top-6 z-50 w-40 rounded-lg border border-border bg-popover p-1 shadow-md text-xs"
+        >
+          {subs.map((s) => (
+            <button
+              key={s.label}
+              onMouseEnter={handleHover(s.label)}
+              onClick={handleHover(s.label)}
+              className={cn(
+                "flex w-full items-center justify-between rounded px-2 py-1.5 transition-colors hover:bg-accent hover:text-foreground",
+                hovered === s.label && "bg-accent text-foreground",
+              )}
+            >
+              <span>{s.label}</span>
+              <span className="flex items-center gap-1 text-muted-foreground">
+                {(() => {
+                  const opt = s.options.find((o) => o.value === s.selected);
+                  return opt ? opt.label : s.selected;
+                })()}
+                <ChevronRight size={10} />
+              </span>
+            </button>
+          ))}
+          {/* Flyout submenu — separate card, anchored inside menu */}
+          {activeSub && (
+            <div
+              className="absolute left-full z-50 ml-1 w-36 rounded-lg border border-border bg-popover p-1 shadow-md text-xs"
+              style={{ top: subTop }}
+            >
+              {activeSub.options.map((o) => (
+                <button
+                  key={o.value}
+                  onClick={() => {
+                    if (o.value !== "divider") {
+                      activeSub.onSelect(o.value);
+                    }
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded px-2 py-1.5 transition-colors hover:bg-accent hover:text-foreground",
+                    o.value === "divider" && "pointer-events-none",
+                  )}
+                >
+                  {o.value === "divider" ? (
+                    <span className="w-full border-t border-border my-0.5" />
+                  ) : (
+                    <>
+                      <span>{o.label}</span>
+                      {activeSub.selected === o.value && <Check size={12} />}
+                    </>
+                  )}
+                </button>
+              ))}
+            </div>
           )}
         </div>
       )}

@@ -126,11 +126,17 @@ function getDb(): ReturnType<typeof Database> {
     }[];
     const has = (n: string): boolean => cols.some((c) => c.name === n);
     if (!has("space"))
-      db.exec("ALTER TABLE sessions ADD COLUMN space TEXT NOT NULL DEFAULT 'code'");
+      db.exec(
+        "ALTER TABLE sessions ADD COLUMN space TEXT NOT NULL DEFAULT 'code'",
+      );
     if (!has("archived"))
-      db.exec("ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
+      db.exec(
+        "ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+      );
     if (!has("pinned"))
-      db.exec("ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
+      db.exec(
+        "ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
+      );
   }
   return db;
 }
@@ -260,22 +266,26 @@ export class SessionStore {
     return this.get(sessionId);
   }
 
-  list(limit = 50, offset = 0, space?: string): Session[] {
+  list(limit = 50, offset = 0, space?: string, status = "all"): Session[] {
     const d = getDb();
-    // Non-archived only; pinned first, then most-recent.
-    const rows = (
-      space
-        ? d
-            .prepare(
-              "SELECT * FROM sessions WHERE archived = 0 AND space = ? ORDER BY pinned DESC, updated_at DESC LIMIT ? OFFSET ?",
-            )
-            .all(space, limit, offset)
-        : d
-            .prepare(
-              "SELECT * FROM sessions WHERE archived = 0 ORDER BY pinned DESC, updated_at DESC LIMIT ? OFFSET ?",
-            )
-            .all(limit, offset)
-    ) as SessionRow[];
+    // Pinned first, then most-recent.
+    let query = "SELECT * FROM sessions WHERE 1=1";
+    const params: (string | number)[] = [];
+
+    if (space) {
+      query += " AND space = ?";
+      params.push(space);
+    }
+    if (status === "active") {
+      query += " AND archived = 0";
+    } else if (status === "archived") {
+      query += " AND archived = 1";
+    }
+
+    query += " ORDER BY pinned DESC, updated_at DESC LIMIT ? OFFSET ?";
+    params.push(limit, offset);
+
+    const rows = d.prepare(query).all(...params) as SessionRow[];
     return rows.map(rowToSession);
   }
 
