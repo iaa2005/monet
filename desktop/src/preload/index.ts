@@ -221,6 +221,30 @@ const electronAPI = {
     reconnect: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:reconnect"),
   },
 
+  git: {
+    info: (cwd?: string): Promise<unknown> =>
+      ipcRenderer.invoke("git:info", cwd),
+    diff: (
+      cwd?: string,
+    ): Promise<{
+      ok: boolean;
+      patch?: string;
+      untracked?: string[];
+      error?: string;
+    }> => ipcRenderer.invoke("git:diff", cwd),
+    createPR: (payload: {
+      cwd?: string;
+      mode: "pr" | "draft" | "manual";
+    }): Promise<{ ok: boolean; url?: string; error?: string }> =>
+      ipcRenderer.invoke("git:createPR", payload),
+    showInExplorer: (path: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("git:showInExplorer", path),
+    copy: (text: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("git:copy", text),
+    openTerminal: (path: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("git:openTerminal", path),
+  },
+
   win: {
     minimize: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
     toggleMaximize: (): Promise<boolean> =>

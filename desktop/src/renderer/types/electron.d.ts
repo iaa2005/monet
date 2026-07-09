@@ -37,6 +37,19 @@ export interface McpServerStatus {
   config: McpServerConfig;
 }
 
+export interface GitInfo {
+  isRepo: boolean;
+  root?: string;
+  repoName?: string;
+  branch?: string;
+  webUrl?: string | null;
+  host?: string;
+  added?: number;
+  removed?: number;
+  filesChanged?: number;
+  untracked?: number;
+}
+
 export interface ElectronAPI {
   platform: string;
   versions: { node: string; chrome: string; electron: string };
@@ -190,6 +203,22 @@ export interface ElectronAPI {
       enabled: boolean;
     }) => Promise<McpServerStatus[]>;
     reconnect: () => Promise<McpServerStatus[]>;
+  };
+  git: {
+    info: (cwd?: string) => Promise<GitInfo>;
+    diff: (cwd?: string) => Promise<{
+      ok: boolean;
+      patch?: string;
+      untracked?: string[];
+      error?: string;
+    }>;
+    createPR: (payload: {
+      cwd?: string;
+      mode: "pr" | "draft" | "manual";
+    }) => Promise<{ ok: boolean; url?: string; error?: string }>;
+    showInExplorer: (path: string) => Promise<{ ok: boolean }>;
+    copy: (text: string) => Promise<{ ok: boolean }>;
+    openTerminal: (path: string) => Promise<{ ok: boolean }>;
   };
   win: {
     minimize: () => Promise<void>;

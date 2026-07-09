@@ -4,6 +4,7 @@ import { MarkdownViewer } from "./MarkdownViewer";
 import { ToolCallBubble } from "./ToolCallBubble";
 import { MessageInput } from "./MessageInput";
 import { TodoCard } from "./TodoCard";
+import { GitCard } from "./GitCard";
 import { PermissionDialog } from "./PermissionDialog";
 import {
   MessageScrollerProvider,
@@ -440,6 +441,7 @@ export function ChatView({
               <WorkspacePicker />
             </div>
           )}
+          {!home && <GitCard />}
           <MessageInput />
         </>
       )}
