@@ -7,19 +7,41 @@ import { create } from "zustand";
 
 export type ProviderKind = "anthropic" | "deepseek" | "openai" | "openrouter";
 
+export interface ProviderModel {
+  id: string;
+  /** Model id sent to the API. */
+  name: string;
+  /** Display label (falls back to name). */
+  label?: string;
+  /** Per-model Base URL override. */
+  baseURL?: string;
+  contextLength?: number;
+  maxInputTokens?: number;
+  maxOutputTokens?: number;
+  temperature?: number;
+}
+
 export interface LLMProvider {
   id: string;
   name: string;
   kind: ProviderKind;
   baseURL: string;
   apiKey: string;
-  model: string;
   isActive: boolean;
+  models: ProviderModel[];
+  activeModelId?: string;
+  // Legacy single-model view (main resolves the active model into these).
+  model: string;
   maxTokens: number;
   temperature?: number;
   contextLimit: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** The provider's in-use model (activeModelId, falling back to the first). */
+export function activeModelOf(p: LLMProvider): ProviderModel | undefined {
+  return p.models?.find((m) => m.id === p.activeModelId) ?? p.models?.[0];
 }
 
 export type LLMProviderInput = Omit<
@@ -37,6 +59,7 @@ interface ProviderStore {
   update: (id: string, input: Partial<LLMProviderInput>) => Promise<void>;
   remove: (id: string) => Promise<void>;
   setActive: (id: string) => Promise<void>;
+  setActiveModel: (providerId: string, modelId: string) => Promise<void>;
 }
 
 function api() {
@@ -91,6 +114,16 @@ export const useProviderStore = create<ProviderStore>((set) => ({
   setActive: async (id) => {
     try {
       await api().setActive(id);
+      const providers = await api().list();
+      set({ providers: providers as LLMProvider[] });
+    } catch (err) {
+      set({ error: String(err) });
+    }
+  },
+
+  setActiveModel: async (providerId, modelId) => {
+    try {
+      await api().setActiveModel(providerId, modelId);
       const providers = await api().list();
       set({ providers: providers as LLMProvider[] });
     } catch (err) {

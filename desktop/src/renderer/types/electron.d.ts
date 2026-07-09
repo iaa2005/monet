@@ -97,6 +97,7 @@ export interface ElectronAPI {
     ) => Promise<LLMProvider | null>;
     remove: (id: string) => Promise<boolean>;
     setActive: (id: string) => Promise<boolean>;
+    setActiveModel: (providerId: string, modelId: string) => Promise<boolean>;
   };
   permissions: {
     onRequest: (callback: (request: PermissionRequest) => void) => () => void;

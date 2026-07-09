@@ -38,11 +38,24 @@ interface StagedFile {
   url?: string;
 }
 
+interface ProviderModelEntry {
+  id: string;
+  name: string;
+  label?: string;
+  contextLength?: number;
+}
+
 interface Provider {
   id: string;
   name: string;
   model?: string;
-  contextWindow?: number;
+  contextLimit?: number;
+  models?: ProviderModelEntry[];
+  activeModelId?: string;
+}
+
+function activeModelOf(p: Provider): ProviderModelEntry | undefined {
+  return p.models?.find((m) => m.id === p.activeModelId) ?? p.models?.[0];
 }
 
 function formatSize(bytes: number): string {
@@ -191,14 +204,26 @@ export function MessageInput(): JSX.Element {
   useEffect(loadProviders, []);
 
   const activeProvider = providers.find((p) => p.id === activeId);
-  const modelLabel = activeProvider?.model || activeProvider?.name || "Model";
-  const ctxWindow = activeProvider?.contextWindow ?? 200000;
+  const activeModel = activeProvider ? activeModelOf(activeProvider) : undefined;
+  const modelLabel =
+    activeModel?.label ||
+    activeModel?.name ||
+    activeProvider?.model ||
+    activeProvider?.name ||
+    "Model";
+  // Context meter budget comes from the ACTIVE MODEL's context length.
+  const ctxWindow =
+    activeModel?.contextLength ?? activeProvider?.contextLimit ?? 200000;
   const usedTokens = usage ? usage.input_tokens + usage.output_tokens : 0;
   const ctxPct = Math.min(100, Math.round((usedTokens / ctxWindow) * 100));
 
-  const selectProvider = async (id: string): Promise<void> => {
-    await api()?.providers.setActive(id);
-    setActiveId(id);
+  const selectModel = async (
+    providerId: string,
+    modelId: string,
+  ): Promise<void> => {
+    await api()?.providers.setActiveModel(providerId, modelId);
+    setActiveId(providerId);
+    loadProviders();
   };
 
   const pickMode = (id: PermissionMode): void => {
@@ -406,29 +431,54 @@ export function MessageInput(): JSX.Element {
                   <ChevronDown className="size-3" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="end" className="w-64">
-                <DropdownMenuLabel>Provider</DropdownMenuLabel>
+              <DropdownMenuContent side="top" align="end" className="w-72">
                 {providers.length === 0 && (
                   <div className="px-2.5 py-1.5 text-xs text-muted-foreground">
                     No providers — add one in Settings.
                   </div>
                 )}
-                {providers.map((p) => (
-                  <DropdownMenuItem
-                    key={p.id}
-                    onClick={() => selectProvider(p.id)}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate">{p.name}</div>
-                      {p.model && (
-                        <div className="truncate text-xs text-muted-foreground">
-                          {p.model}
-                        </div>
-                      )}
+                {providers.map((p) => {
+                  const models: ProviderModelEntry[] = p.models?.length
+                    ? p.models
+                    : p.model
+                      ? [{ id: "__flat", name: p.model }]
+                      : [];
+                  const currentId = activeModelOf(p)?.id;
+                  return (
+                    <div key={p.id}>
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">
+                        {p.name}
+                      </DropdownMenuLabel>
+                      {models.map((m) => (
+                        <DropdownMenuItem
+                          key={m.id}
+                          onClick={() =>
+                            m.id === "__flat"
+                              ? void api()
+                                  ?.providers.setActive(p.id)
+                                  .then(() => {
+                                    setActiveId(p.id);
+                                    loadProviders();
+                                  })
+                              : selectModel(p.id, m.id)
+                          }
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate">{m.label || m.name}</div>
+                            {m.label && (
+                              <div className="truncate text-xs text-muted-foreground">
+                                {m.name}
+                              </div>
+                            )}
+                          </div>
+                          {p.id === activeId && m.id === currentId && (
+                            <Check className="size-4" />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
                     </div>
-                    {p.id === activeId && <Check className="size-4" />}
-                  </DropdownMenuItem>
-                ))}
+                  );
+                })}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={loadProviders}>
                   Refresh

@@ -18,4 +18,9 @@ export function registerProvidersIPC(): void {
   )
   ipcMain.handle('providers:remove', (_e, id: string) => pm.remove(id))
   ipcMain.handle('providers:setActive', (_e, id: string) => pm.setActive(id))
+  ipcMain.handle(
+    'providers:setActiveModel',
+    (_e, providerId: string, modelId: string) =>
+      pm.setActiveModel(providerId, modelId),
+  )
 }

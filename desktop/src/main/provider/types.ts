@@ -1,8 +1,32 @@
 /**
  * LLM Provider type definitions.
+ *
+ * A provider (endpoint + API key) can host SEVERAL models, each with its own
+ * parameters — context length, max input/output tokens, temperature, and an
+ * optional per-model Base URL override. The rest of the app never deals with
+ * the hierarchy: resolveProvider() flattens the active model into the legacy
+ * single-model fields (model / maxTokens / temperature / contextLimit).
  */
 
 export type ProviderKind = 'anthropic' | 'deepseek' | 'openai' | 'openrouter'
+
+export interface ProviderModel {
+  /** Internal id (uuid). */
+  id: string
+  /** Model id sent to the API, e.g. "deepseek-v4-pro", "anthropic/claude-sonnet-4". */
+  name: string
+  /** Optional display label (falls back to name). */
+  label?: string
+  /** Override the provider's Base URL for this model. */
+  baseURL?: string
+  /** Total context window in tokens. */
+  contextLength?: number
+  /** Max INPUT tokens (prompt budget). Compaction uses it when set. */
+  maxInputTokens?: number
+  /** Max OUTPUT tokens per request (max_tokens). */
+  maxOutputTokens?: number
+  temperature?: number
+}
 
 export interface LLMProvider {
   id: string
@@ -10,17 +34,45 @@ export interface LLMProvider {
   kind: ProviderKind
   baseURL: string
   apiKey: string // encrypted at rest
-  model: string
   isActive: boolean
+  /** The provider's models; the composer switches between them. */
+  models: ProviderModel[]
+  /** Which model is in use (falls back to the first). */
+  activeModelId?: string
+
+  // ── Effective values (resolved from the active model) ──────────────────
+  // Kept as the single-model view the rest of the app consumes. Stored
+  // configs from before the models[] era carry them directly; loadProviders
+  // migrates those into models[].
+  model: string
   maxTokens: number
   temperature?: number
-  /** Context window size in tokens. Defaults per preset (~200K Anthropic, 1M DeepSeek, 128K OpenAI). */
+  /** Context window size in tokens. */
   contextLimit: number
+  /** Input-token budget (resolved from maxInputTokens; used by compaction). */
+  inputLimit?: number
+
   createdAt: string
   updatedAt: string
 }
 
 export type LLMProviderInput = Omit<LLMProvider, 'id' | 'createdAt' | 'updatedAt'>
+
+/** Flatten the active model's parameters into the legacy single-model view. */
+export function resolveProvider(p: LLMProvider): LLMProvider {
+  const m =
+    p.models?.find((x) => x.id === p.activeModelId) ?? p.models?.[0]
+  if (!m) return p
+  return {
+    ...p,
+    baseURL: m.baseURL?.trim() || p.baseURL,
+    model: m.name,
+    maxTokens: m.maxOutputTokens ?? p.maxTokens ?? 16000,
+    temperature: m.temperature ?? p.temperature,
+    contextLimit: m.contextLength ?? p.contextLimit ?? 200_000,
+    inputLimit: m.maxInputTokens,
+  }
+}
 
 /** Preset providers with defaults (apiKey left empty for user to fill). */
 export const PRESET_PROVIDERS: LLMProviderInput[] = [
@@ -33,6 +85,16 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
     isActive: true,
     maxTokens: 16000,
     contextLimit: 200_000,
+    models: [
+      {
+        id: 'preset-claude-sonnet-4',
+        name: 'claude-sonnet-4-20250514',
+        label: 'Claude Sonnet 4',
+        contextLength: 200_000,
+        maxOutputTokens: 16000,
+      },
+    ],
+    activeModelId: 'preset-claude-sonnet-4',
   },
   {
     name: 'DeepSeek',
@@ -43,18 +105,38 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
     isActive: false,
     maxTokens: 16000,
     contextLimit: 1_000_000,
+    models: [
+      {
+        id: 'preset-deepseek-v4-pro',
+        name: 'deepseek-v4-pro',
+        label: 'DeepSeek V4 Pro',
+        contextLength: 1_000_000,
+        maxOutputTokens: 16000,
+      },
+    ],
+    activeModelId: 'preset-deepseek-v4-pro',
   },
   {
     name: 'OpenRouter',
     kind: 'openrouter',
     baseURL: 'https://openrouter.ai/api/v1',
     apiKey: '',
-    // The auto-router picks a model per request; set a concrete model id
+    // The auto-router picks a model per request; add concrete model ids
     // (e.g. anthropic/claude-sonnet-4) in Settings for agentic tool use.
     model: 'openrouter/auto',
     isActive: false,
     maxTokens: 16000,
     contextLimit: 200_000,
+    models: [
+      {
+        id: 'preset-openrouter-auto',
+        name: 'openrouter/auto',
+        label: 'Auto Router',
+        contextLength: 200_000,
+        maxOutputTokens: 16000,
+      },
+    ],
+    activeModelId: 'preset-openrouter-auto',
   },
   {
     name: 'llama.cpp',
@@ -65,5 +147,15 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
     isActive: false,
     maxTokens: 16000,
     contextLimit: 128_000,
+    models: [
+      {
+        id: 'preset-local-model',
+        name: 'local-model',
+        label: 'Local model',
+        contextLength: 128_000,
+        maxOutputTokens: 16000,
+      },
+    ],
+    activeModelId: 'preset-local-model',
   },
 ]

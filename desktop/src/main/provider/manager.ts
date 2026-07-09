@@ -12,6 +12,7 @@ import { safeStorage } from 'electron'
 import type { LLMProvider, LLMProviderInput } from './types.js'
 import { PRESET_PROVIDERS } from './types.js'
 import { getDataSubdir } from '../data-dir.js'
+import { resolveProvider } from './types.js'
 
 function getStoragePath(): string {
   return join(getDataSubdir('providers'), 'providers.json')
@@ -38,12 +39,37 @@ function loadProviders(): LLMProvider[] {
   if (!existsSync(path)) return []
   try {
     const raw = JSON.parse(readFileSync(path, 'utf-8'))
-    return raw.map((p: LLMProvider) => ({
+    return raw.map((p: LLMProvider) => migrateModels({
       ...p,
       apiKey: decrypt(p.apiKey),
     }))
   } catch {
     return []
+  }
+}
+
+/** Pre-models[] configs stored one flat model per provider — lift those
+ * fields into a single models[] entry so the UI always has a list. */
+function migrateModels(p: LLMProvider): LLMProvider {
+  if (p.models && p.models.length > 0) {
+    if (!p.activeModelId || !p.models.some(m => m.id === p.activeModelId)) {
+      p.activeModelId = p.models[0].id
+    }
+    return p
+  }
+  const id = randomUUID()
+  return {
+    ...p,
+    models: [
+      {
+        id,
+        name: p.model || 'model',
+        contextLength: p.contextLimit,
+        maxOutputTokens: p.maxTokens,
+        temperature: p.temperature,
+      },
+    ],
+    activeModelId: id,
   }
 }
 
@@ -100,18 +126,22 @@ export class ProviderManager {
     return this.providers.find(p => p.id === id)
   }
 
+  /** The active provider with its active model FLATTENED into the legacy
+   * single-model fields (model/maxTokens/temperature/contextLimit/baseURL).
+   * Everything that talks to the LLM consumes this resolved view. */
   getActive(): LLMProvider | undefined {
-    return this.providers.find(p => p.isActive)
+    const p = this.providers.find(p => p.isActive)
+    return p ? resolveProvider(p) : undefined
   }
 
   add(input: LLMProviderInput): LLMProvider {
     const now = new Date().toISOString()
-    const provider: LLMProvider = {
+    const provider: LLMProvider = migrateModels({
       ...input,
       id: randomUUID(),
       createdAt: now,
       updatedAt: now,
-    }
+    })
     this.providers.push(provider)
     saveProviders(this.providers)
     return provider
@@ -121,13 +151,24 @@ export class ProviderManager {
     const idx = this.providers.findIndex(p => p.id === id)
     if (idx === -1) return null
 
-    this.providers[idx] = {
+    this.providers[idx] = migrateModels({
       ...this.providers[idx],
       ...input,
       updatedAt: new Date().toISOString(),
-    }
+    })
     saveProviders(this.providers)
     return this.providers[idx]
+  }
+
+  /** Switch the in-use model — also makes its provider the active one. */
+  setActiveModel(providerId: string, modelId: string): boolean {
+    const provider = this.providers.find(p => p.id === providerId)
+    if (!provider || !provider.models?.some(m => m.id === modelId)) return false
+    provider.activeModelId = modelId
+    provider.updatedAt = new Date().toISOString()
+    this.providers.forEach(p => { p.isActive = p.id === providerId })
+    saveProviders(this.providers)
+    return true
   }
 
   remove(id: string): boolean {

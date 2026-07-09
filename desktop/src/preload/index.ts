@@ -95,6 +95,8 @@ const electronAPI = {
       ipcRenderer.invoke("providers:remove", id),
     setActive: (id: string): Promise<boolean> =>
       ipcRenderer.invoke("providers:setActive", id),
+    setActiveModel: (providerId: string, modelId: string): Promise<boolean> =>
+      ipcRenderer.invoke("providers:setActiveModel", providerId, modelId),
   },
 
   permissions: {

@@ -26,7 +26,11 @@ import {
   type UiPermissionMode,
 } from "./vendor-tools.js";
 import { dropSessionContext, initVendorRuntime } from "./vendor-context.js";
-import { shouldCompact, compactMessages } from "./compaction.js";
+import {
+  shouldCompact,
+  compactMessages,
+  compactionThreshold,
+} from "./compaction.js";
 
 // ─── System prompt ──────────────────────────────────────────────────────
 
@@ -156,7 +160,14 @@ export async function runAgent(
     // window, summarize it and continue from the summary. Best-effort — on
     // failure compactMessages() returns the history unchanged. Mutate in
     // place so the per-session conversations Map keeps the same array ref.
-    if (shouldCompact(messages)) {
+    // Budget comes from the active model: max input tokens if set, else its
+    // context length (resolved by the provider manager).
+    if (
+      shouldCompact(
+        messages,
+        compactionThreshold(provider.inputLimit ?? provider.contextLimit),
+      )
+    ) {
       const compacted = await compactMessages({
         messages,
         adapter,

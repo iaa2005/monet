@@ -47,6 +47,14 @@ export function shouldCompact(
   return messages.length >= 4 && estimateTokens(messages) > threshold
 }
 
+/** Compaction trigger for a model's input budget (its max input tokens or
+ * context length): 70% of the budget, but never above the global default. */
+export function compactionThreshold(budget?: number): number {
+  if (!budget || !Number.isFinite(budget) || budget <= 0)
+    return DEFAULT_THRESHOLD
+  return Math.min(DEFAULT_THRESHOLD, Math.floor(budget * 0.7))
+}
+
 function extractText(msg: LLMMessage): string {
   if (typeof msg.content === 'string') return msg.content
   return msg.content
