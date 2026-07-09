@@ -194,15 +194,21 @@ function FilePathLink({ path }: { path: string }): JSX.Element {
     ).electronAPI;
     api?.files?.openPath?.(path);
   };
+  // Rendered inside the ToolRow header <button>, so this must NOT be a
+  // <button> itself (nested buttons are invalid HTML — React logs an error).
   return (
-    <button
-      type="button"
+    <span
+      role="link"
+      tabIndex={0}
       onClick={handleClick}
-      className="font-mono text-xs text-link hover:underline"
+      onKeyDown={(e) => {
+        if (e.key === "Enter") handleClick(e as unknown as React.MouseEvent);
+      }}
+      className="cursor-pointer font-mono text-xs text-link hover:underline"
       title={path}
     >
       {baseName(path)}
-    </button>
+    </span>
   );
 }
 

@@ -9,6 +9,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { streamText } from 'ai'
 import type { LLMProvider } from '../provider/types.js'
 import type { LLMAdapter, LLMEvent, LLMRequest } from './adapter.js'
+import { sanitizeMaxTokens } from './adapter.js'
 
 export class OpenAIClient implements LLMAdapter {
   readonly providerId: string
@@ -40,7 +41,7 @@ export class OpenAIClient implements LLMAdapter {
           role: m.role as 'user' | 'assistant' | 'system',
           content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
         })),
-        maxTokens: request.max_tokens,
+        maxTokens: sanitizeMaxTokens(request.max_tokens),
         ...(request.temperature != null ? { temperature: request.temperature } : {}),
         abortSignal: signal,
       })
@@ -70,7 +71,7 @@ export class OpenAIClient implements LLMAdapter {
         role: m.role as 'user' | 'assistant' | 'system',
         content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
       })),
-      maxTokens: request.max_tokens,
+      maxTokens: sanitizeMaxTokens(request.max_tokens),
       ...(request.temperature != null ? { temperature: request.temperature } : {}),
     })
 

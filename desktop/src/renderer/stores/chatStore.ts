@@ -164,9 +164,19 @@ export const useChatStore = create<ChatStore>((set, get) => {
         return { ...prev, messages: msgs };
       }
       case "message_stop": {
+        // The provider cut the reply at its output limit — say so instead of
+        // silently showing a message that ends mid-sentence.
+        const truncated = event.stop_reason === "max_tokens";
         const messages = prev.messages
           .filter((m) => !(m.role === "assistant" && !m.content))
-          .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m));
+          .map((m) => {
+            if (!m.isStreaming) return m;
+            const content =
+              truncated && m.role === "assistant" && m.content
+                ? `${m.content}\n\n> ⚠️ Response truncated — the provider's max_tokens output limit was reached.`
+                : m.content;
+            return { ...m, isStreaming: false, content };
+          });
         return {
           ...prev,
           messages,

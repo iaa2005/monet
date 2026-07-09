@@ -178,6 +178,7 @@ export async function runAgent(
     let assistantText = "";
     let streamError: string | null = null;
     let lastUsage: LLMUsage | undefined;
+    let lastStopReason: string | undefined;
 
     try {
       await adapter.stream(
@@ -206,6 +207,7 @@ export async function runAgent(
           // abort). Keep the usage from the latest turn for that final event.
           if (event.type === "message_stop") {
             lastUsage = event.usage;
+            lastStopReason = event.stop_reason;
             return;
           }
           onEvent(event);
@@ -244,7 +246,9 @@ export async function runAgent(
     if (toolCalls.length === 0) {
       onEvent({
         type: "message_stop",
-        stop_reason: "end_turn",
+        // Propagate the turn's real stop_reason (message_delta): the renderer
+        // flags max_tokens so a silently truncated reply is visible.
+        stop_reason: lastStopReason ?? "end_turn",
         usage: lastUsage,
       });
       return;

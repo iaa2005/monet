@@ -7,6 +7,7 @@
 
 import type { LLMProvider } from "../provider/types.js";
 import type { LLMAdapter, LLMEvent, LLMRequest } from "./adapter.js";
+import { sanitizeMaxTokens } from "./adapter.js";
 
 interface AnthropicSSEEvent {
   type:
@@ -76,7 +77,7 @@ export class AnthropicClient implements LLMAdapter {
 
     const body: Record<string, unknown> = {
       model: request.model,
-      max_tokens: request.max_tokens,
+      max_tokens: sanitizeMaxTokens(request.max_tokens),
       system: request.system,
       messages: request.messages.map((m) => ({
         role: m.role,
@@ -179,6 +180,10 @@ export class AnthropicClient implements LLMAdapter {
     const tag = `[stream ${request.model}]`;
     const t0 = Date.now();
     let textLen = 0;
+    // Last ~80 chars of assistant text — logged at stream end so a "response
+    // looks cut off" report can be checked against what the adapter actually
+    // received (UI truncation vs the model/provider stopping early).
+    let textTail = "";
     let sawMessageStop = false;
     let finalStopReason: string | undefined;
     const counts: Record<string, number> = {};
@@ -227,6 +232,7 @@ export class AnthropicClient implements LLMAdapter {
         case "content_block_delta":
           if (event.delta?.type === "text_delta" && event.delta.text) {
             textLen += event.delta.text.length;
+            textTail = (textTail + event.delta.text).slice(-80);
             onEvent({ type: "text_delta", text: event.delta.text });
           } else if (
             event.delta?.type === "input_json_delta" &&
@@ -300,7 +306,7 @@ export class AnthropicClient implements LLMAdapter {
       }
 
       console.error(
-        `${tag} done in ${Date.now() - t0}ms: text=${textLen} chars, stop_reason=${finalStopReason ?? "n/a"}, events=${JSON.stringify(counts)}, leftover=${buffer.trim().length}`,
+        `${tag} done in ${Date.now() - t0}ms: text=${textLen} chars, stop_reason=${finalStopReason ?? "n/a"}, max_tokens=${body.max_tokens}, events=${JSON.stringify(counts)}, leftover=${buffer.trim().length}, tail=${JSON.stringify(textTail.slice(-60))}`,
       );
     } catch (err) {
       // AbortError from guardedRead means user clicked Stop — not a real error
@@ -336,7 +342,7 @@ export class AnthropicClient implements LLMAdapter {
 
     const body: Record<string, unknown> = {
       model: request.model,
-      max_tokens: request.max_tokens,
+      max_tokens: sanitizeMaxTokens(request.max_tokens),
       system: request.system,
       messages: request.messages.map((m) => ({
         role: m.role,

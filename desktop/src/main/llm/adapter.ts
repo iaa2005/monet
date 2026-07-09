@@ -45,6 +45,17 @@ export interface LLMRequest {
   temperature?: number;
 }
 
+/** Highest max_tokens we ever send to a provider. max_tokens is an OUTPUT
+ * limit — if a context-window size (e.g. 380000) gets pasted into the
+ * provider settings, some proxies silently ignore the invalid value and fall
+ * back to a tiny default, which truncates long replies mid-sentence. */
+export const MAX_OUTPUT_TOKENS = 64000;
+
+export function sanitizeMaxTokens(n: number | undefined): number {
+  if (!n || !Number.isFinite(n) || n <= 0) return 16000;
+  return Math.min(Math.floor(n), MAX_OUTPUT_TOKENS);
+}
+
 export type LLMEvent =
   | { type: "text_delta"; text: string }
   | {
