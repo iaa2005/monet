@@ -35,6 +35,32 @@ const EMPTY: SessionState = {
   error: null,
 };
 
+const INTERRUPT_MARK = "\n\n> ⏹️ Generation interrupted.";
+
+/** Finalize all messages and stamp a visible "interrupted" note at the end —
+ * a stopped chat should say so instead of looking like a finished answer. */
+function markInterrupted(msgs: ChatMessage[]): ChatMessage[] {
+  const out = msgs
+    .filter((m) => !(m.role === "assistant" && !m.content))
+    .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m));
+  const last = [...out].reverse().find((m) => m.role === "assistant");
+  if (last?.content && !last.content.endsWith(INTERRUPT_MARK)) {
+    return out.map((m) =>
+      m === last ? { ...m, content: m.content + INTERRUPT_MARK } : m,
+    );
+  }
+  if (!last) {
+    // Aborted before any text (e.g. mid-tools) — add a standalone note.
+    out.push({
+      id: generateId(),
+      role: "assistant",
+      content: "> ⏹️ Generation interrupted.",
+      timestamp: Date.now(),
+    });
+  }
+  return out;
+}
+
 interface ChatStore {
   // Per-session state (keyed by sessionId).
   sessions: Record<string, SessionState>;
@@ -54,6 +80,9 @@ interface ChatStore {
   /** Text to push into the composer (e.g. a Home suggestion chip). Consumed
    * and cleared by MessageInput. */
   composerDraft: string;
+  /** A file the user asked to open in the in-app viewer (tool file links).
+   * Consumed and cleared by App. */
+  openFileRequest: string | null;
   /** Current workspace ("home" | "code") — new chats are tagged with it so
    * Home and Code keep separate Recents. Mirrors App's appMode. */
   space: string;
@@ -65,6 +94,7 @@ interface ChatStore {
   setCurrentSessionId: (id?: string) => void;
   setIncognito: (v: boolean) => void;
   setComposerDraft: (v: string) => void;
+  requestOpenFile: (path: string | null) => void;
   setSpace: (v: string) => void;
   bumpSessions: () => void;
   /** Seed a session's message list (e.g. loaded from the DB). Does NOT clobber
@@ -129,6 +159,30 @@ export const useChatStore = create<ChatStore>((set, get) => {
     } catch {
       /* offline / DB unavailable — keep the in-memory buffer */
     }
+  }
+
+  // ─── Delta batching ───────────────────────────────────────────────────
+  // A long reply arrives as thousands of tiny text_delta IPC events. Applying
+  // each one individually re-renders the whole chat (and re-parses the
+  // streamed markdown every time) — that's what froze the UI during
+  // generation: sluggish text, laggy scrolling, unclickable Stop, slow chat
+  // switching. Buffer text per session and flush at most every FLUSH_MS.
+  const FLUSH_MS = 50;
+  const pendingText = new Map<string, string>();
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Throttle for mid-run checkpoint saves (per session). */
+  const lastCheckpoint = new Map<string, number>();
+
+  function flushPendingFor(sessionId: string): void {
+    const text = pendingText.get(sessionId);
+    if (text) {
+      pendingText.delete(sessionId);
+      mutate(sessionId, (p) => reduce(p, { type: "text_delta", text }));
+    }
+  }
+
+  function flushAllPending(): void {
+    for (const id of [...pendingText.keys()]) flushPendingFor(id);
   }
 
   /** Update one session's state; mirror to the visible fields if it's current. */
@@ -215,6 +269,14 @@ export const useChatStore = create<ChatStore>((set, get) => {
         return { ...prev, messages: msgs };
       }
       case "message_stop": {
+        if (event.stop_reason === "abort") {
+          return {
+            ...prev,
+            messages: markInterrupted(prev.messages),
+            isStreaming: false,
+            usage: event.usage ?? prev.usage,
+          };
+        }
         // The provider cut the reply at its output limit — say so instead of
         // silently showing a message that ends mid-sentence.
         const truncated = event.stop_reason === "max_tokens";
@@ -236,6 +298,15 @@ export const useChatStore = create<ChatStore>((set, get) => {
         };
       }
       case "error": {
+        // A user-initiated Stop is not an error — mark the chat interrupted
+        // instead of flashing a red box.
+        if (event.error === "Aborted") {
+          return {
+            ...prev,
+            messages: markInterrupted(prev.messages),
+            isStreaming: false,
+          };
+        }
         const messages = prev.messages
           .filter((m) => !(m.role === "assistant" && !m.content))
           .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m));
@@ -256,6 +327,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     sessionsVersion: 0,
     incognito: false,
     composerDraft: "",
+    openFileRequest: null,
     space: "home",
 
     isSessionStreaming: (id) => get().sessions[id]?.isStreaming ?? false,
@@ -275,6 +347,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
     setIncognito: (v) => set({ incognito: v }),
     setComposerDraft: (v) => set({ composerDraft: v }),
+    requestOpenFile: (path) => set({ openFileRequest: path }),
     setSpace: (v) => set({ space: v }),
     bumpSessions: () =>
       set((s) => ({ sessionsVersion: s.sessionsVersion + 1 })),
@@ -286,6 +359,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         get().setCurrentSessionId(id);
         return;
       }
+      pendingText.delete(id);
       mutate(id, () => ({ ...EMPTY, messages }));
     },
 
@@ -317,20 +391,52 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
     clearMessages: () => {
       const id = get().currentSessionId;
-      if (id) mutate(id, () => ({ ...EMPTY }));
-      else set({ messages: [], isStreaming: false, usage: null, error: null });
+      if (id) {
+        pendingText.delete(id);
+        mutate(id, () => ({ ...EMPTY }));
+      } else {
+        set({ messages: [], isStreaming: false, usage: null, error: null });
+      }
     },
 
     handleLLMEvent: (sessionId, event) => {
+      // Coalesce the text firehose (see the batching note above).
+      if (event.type === "text_delta") {
+        pendingText.set(
+          sessionId,
+          (pendingText.get(sessionId) ?? "") + event.text,
+        );
+        if (!flushTimer) {
+          flushTimer = setTimeout(() => {
+            flushTimer = null;
+            flushAllPending();
+          }, FLUSH_MS);
+        }
+        return;
+      }
+      // Any other event: apply this session's buffered text FIRST so ordering
+      // within the session is preserved (tool rows, stops, errors).
+      flushPendingFor(sessionId);
       mutate(sessionId, (p) => reduce(p, event));
+
+      const persistable =
+        sessionId && sessionId !== "default" && !sessionId.startsWith("incognito-");
       // End of run → persist this session (ordered with the deltas above).
       if (
-        (event.type === "message_stop" || event.type === "error") &&
-        sessionId &&
-        sessionId !== "default" &&
-        !sessionId.startsWith("incognito-")
+        persistable &&
+        (event.type === "message_stop" || event.type === "error")
       ) {
+        lastCheckpoint.delete(sessionId);
         void persistSession(sessionId);
+      }
+      // Checkpoint on tool results (throttled) so a chat killed mid-run —
+      // app closed, crash — keeps everything up to the last completed tool.
+      if (persistable && event.type === "tool_result") {
+        const now = Date.now();
+        if (now - (lastCheckpoint.get(sessionId) ?? 0) > 3000) {
+          lastCheckpoint.set(sessionId, now);
+          void persistSession(sessionId);
+        }
       }
     },
   };

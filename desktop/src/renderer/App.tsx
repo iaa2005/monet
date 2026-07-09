@@ -205,7 +205,18 @@ export default function App(): JSX.Element {
     sortDir: "desc" as "asc" | "desc",
   });
   const { theme, setTheme, toggle } = useTheme();
-  const chatStore = useChatStore();
+  // Narrow subscriptions only — subscribing to the whole store re-rendered
+  // the entire app on every streaming update (a major lag source).
+  const incognito = useChatStore((s) => s.incognito);
+  const openFileRequest = useChatStore((s) => s.openFileRequest);
+
+  // Tool file links ask to open a file in the in-app viewer.
+  useEffect(() => {
+    if (openFileRequest) {
+      setOpenFilePath(openFileRequest);
+      useChatStore.getState().requestOpenFile(null);
+    }
+  }, [openFileRequest]);
 
   useEffect(() => {
     api()
@@ -289,13 +300,13 @@ export default function App(): JSX.Element {
         useChatStore.getState().bumpSessions();
         if (id === currentSessionId) {
           setCurrentSessionId(undefined);
-          chatStore.clearMessages();
+          useChatStore.getState().clearMessages();
         }
       } catch (err) {
         console.error("Failed to delete session:", err);
       }
     },
-    [currentSessionId, chatStore],
+    [currentSessionId],
   );
 
   const newSession = useCallback(async () => {
@@ -402,10 +413,10 @@ export default function App(): JSX.Element {
       <header
         className={cn(
           "app-drag flex h-11 shrink-0 items-center gap-2 pl-2",
-          chatStore.incognito && "bg-card text-card-foreground rounded-t-xl",
+          incognito && "bg-card text-card-foreground rounded-t-xl",
         )}
       >
-        {!chatStore.incognito && (
+        {!incognito && (
           <IconBtn
             title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
             onClick={() => setSidebarOpen((o) => !o)}
@@ -422,7 +433,7 @@ export default function App(): JSX.Element {
 
         <div className="flex-1" />
 
-        {chatStore.incognito && (
+        {incognito && (
           <span className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
             <Ghost className="size-4" />
             Incognito
@@ -457,7 +468,7 @@ export default function App(): JSX.Element {
               </IconBtn>
             </>
           )}
-          {!chatStore.incognito && (
+          {!incognito && (
             <BackgroundTasks
               onOpen={openBackgroundTask}
               currentSessionId={currentSessionId}
@@ -465,8 +476,8 @@ export default function App(): JSX.Element {
           )}
           {appMode === "home" && (
             <IconBtn
-              title={chatStore.incognito ? "Exit incognito" : "Incognito mode"}
-              active={chatStore.incognito}
+              title={incognito ? "Exit incognito" : "Incognito mode"}
+              active={incognito}
               onClick={() => {
                 const store = useChatStore.getState();
                 if (store.currentSessionId)
@@ -478,7 +489,7 @@ export default function App(): JSX.Element {
                 setView("chat");
               }}
             >
-              {chatStore.incognito ? (
+              {incognito ? (
                 <X className="size-4" />
               ) : (
                 <Ghost className="size-4" />
@@ -486,7 +497,7 @@ export default function App(): JSX.Element {
             </IconBtn>
           )}
 
-          {!chatStore.incognito && (
+          {!incognito && (
             <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <button
@@ -621,17 +632,17 @@ export default function App(): JSX.Element {
       <div
         className={cn(
           "flex min-h-0 flex-1 p-2",
-          chatStore.incognito && "bg-card text-card-foreground",
+          incognito && "bg-card text-card-foreground",
         )}
       >
         <ResizablePanelGroup
           direction="horizontal"
           className={cn(
             "gap-1",
-            chatStore.incognito && "rounded-xl bg-sidebar p-1",
+            incognito && "rounded-xl bg-sidebar p-1",
           )}
         >
-          {sidebarOpen && !chatStore.incognito && (
+          {sidebarOpen && !incognito && (
             <>
               <ResizablePanel
                 defaultSize={18}

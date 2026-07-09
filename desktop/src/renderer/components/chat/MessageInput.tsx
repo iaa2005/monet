@@ -157,8 +157,12 @@ export function MessageInput(): JSX.Element {
   const usage = useChatStore((s) => s.usage);
   const composerDraft = useChatStore((s) => s.composerDraft);
   const setComposerDraft = useChatStore((s) => s.setComposerDraft);
-  const { addUserMessage, startStreaming, setError, isStreaming } =
-    useChatStore();
+  // Narrow subscriptions: a whole-store subscribe re-rendered the composer on
+  // every streaming flush. Actions are stable references in zustand.
+  const isStreaming = useChatStore((s) => s.isStreaming);
+  const addUserMessage = useChatStore((s) => s.addUserMessage);
+  const startStreaming = useChatStore((s) => s.startStreaming);
+  const setError = useChatStore((s) => s.setError);
 
   // A Home suggestion chip (or anything else) can push text into the composer.
   useEffect(() => {

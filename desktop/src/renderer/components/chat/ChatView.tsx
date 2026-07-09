@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, memo } from "react";
 import { useChatStore } from "@/stores/chatStore";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { ToolCallBubble } from "./ToolCallBubble";
@@ -73,39 +73,45 @@ function WorkingRow(): JSX.Element {
   );
 }
 
-function MessageRow({
-  msg,
-  mode,
-}: {
-  msg: ChatMessage;
-  mode?: TranscriptMode;
-}): JSX.Element {
-  if (msg.role === "tool" && msg.toolCall) {
-    return <ToolCallBubble toolCall={msg.toolCall} mode={mode} />;
-  }
+/** Memoized so a streaming flush only re-renders the message that changed —
+ * finished messages keep their object identity in the store, so re-parsing
+ * their markdown (the main scroll-lag source) is skipped entirely. */
+const MessageRow = memo(
+  function MessageRow({
+    msg,
+    mode,
+  }: {
+    msg: ChatMessage;
+    mode?: TranscriptMode;
+  }): JSX.Element {
+    if (msg.role === "tool" && msg.toolCall) {
+      return <ToolCallBubble toolCall={msg.toolCall} mode={mode} />;
+    }
 
-  const isUser = msg.role === "user";
+    const isUser = msg.role === "user";
 
-  return (
-    <Message align={isUser ? "end" : "start"}>
-      <MessageContent>
-        {isUser ? (
-          <Bubble variant="secondary" align="end">
-            <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.08]">
-              {msg.content}
-            </BubbleContent>
-          </Bubble>
-        ) : (
-          <Bubble variant="ghost">
-            <BubbleContent className={cn(msg.isError && "text-destructive")}>
-              {msg.content ? <MarkdownViewer content={msg.content} /> : null}
-            </BubbleContent>
-          </Bubble>
-        )}
-      </MessageContent>
-    </Message>
-  );
-}
+    return (
+      <Message align={isUser ? "end" : "start"}>
+        <MessageContent>
+          {isUser ? (
+            <Bubble variant="secondary" align="end">
+              <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.08]">
+                {msg.content}
+              </BubbleContent>
+            </Bubble>
+          ) : (
+            <Bubble variant="ghost">
+              <BubbleContent className={cn(msg.isError && "text-destructive")}>
+                {msg.content ? <MarkdownViewer content={msg.content} /> : null}
+              </BubbleContent>
+            </Bubble>
+          )}
+        </MessageContent>
+      </Message>
+    );
+  },
+  (prev, next) => prev.msg === next.msg && prev.mode === next.mode,
+);
 
 type GroupedItem =
   ChatMessage | { type: "tool-group"; id: string; calls: ToolCall[] };

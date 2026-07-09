@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   MoreVertical,
   Pin,
@@ -73,7 +73,19 @@ export function SessionList({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const version = useChatStore((s) => s.sessionsVersion);
-  const streamingIds = useChatStore((s) => s.sessions);
+  // Subscribe to the SET of running sessions as a string — subscribing to the
+  // whole sessions map re-rendered the sidebar on every streaming flush.
+  const runningKey = useChatStore((s) =>
+    Object.entries(s.sessions)
+      .filter(([, st]) => st.isStreaming)
+      .map(([id]) => id)
+      .sort()
+      .join(","),
+  );
+  const runningIds = useMemo(
+    () => new Set(runningKey ? runningKey.split(",") : []),
+    [runningKey],
+  );
 
   const loadSessions = async (): Promise<void> => {
     try {
@@ -96,6 +108,13 @@ export function SessionList({
     }
   };
 
+  // Keep a ref to the LATEST loader: the window-focus listener below is bound
+  // once, and calling a stale closure reloaded the list with mount-time
+  // space/filters — that's what emptied Recents after the workspace picker
+  // dialog (or any focus loss) when the visible space had changed since mount.
+  const loadRef = useRef(loadSessions);
+  loadRef.current = loadSessions;
+
   useEffect(() => {
     loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -114,7 +133,7 @@ export function SessionList({
 
   useEffect(() => {
     const onFocus = (): void => {
-      loadSessions();
+      loadRef.current();
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
@@ -178,15 +197,13 @@ export function SessionList({
                   <span
                     className={cn(
                       "size-1.5 shrink-0 rounded-full",
-                      streamingIds[s.id]?.isStreaming
+                      runningIds.has(s.id)
                         ? "animate-pulse bg-emerald-500"
                         : active
                           ? "bg-link"
                           : "bg-transparent",
                     )}
-                    title={
-                      streamingIds[s.id]?.isStreaming ? "Running…" : undefined
-                    }
+                    title={runningIds.has(s.id) ? "Running…" : undefined}
                   />
                   <span className="min-w-0 flex-1">
                     <span

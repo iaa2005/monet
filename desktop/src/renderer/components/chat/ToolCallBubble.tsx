@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import { Check, ChevronRight, Circle, Loader2, X, Wrench } from "lucide-react";
 import type { ToolCall } from "@/types/chat";
 import { cn } from "@/lib/utils";
+import { useChatStore } from "@/stores/chatStore";
 import { CodeBlock } from "./CodeBlock";
 import { InlineDiff, diffStats } from "./InlineDiff";
 
@@ -187,12 +188,9 @@ function ToolDetail({
 function FilePathLink({ path }: { path: string }): JSX.Element {
   const handleClick = (e: React.MouseEvent): void => {
     e.stopPropagation();
-    const api = (
-      window as unknown as {
-        electronAPI?: { files?: { openPath?: (p: string) => void } };
-      }
-    ).electronAPI;
-    api?.files?.openPath?.(path);
+    // Open in the in-app file viewer (App consumes openFileRequest) instead
+    // of handing the file to the OS.
+    useChatStore.getState().requestOpenFile(path);
   };
   // Rendered inside the ToolRow header <button>, so this must NOT be a
   // <button> itself (nested buttons are invalid HTML — React logs an error).
@@ -437,7 +435,7 @@ interface ToolCallBubbleProps {
   mode?: TranscriptMode;
 }
 
-export function ToolCallBubble({
+function ToolCallBubbleImpl({
   toolCall,
   groupMembers,
   mode = "verbose",
@@ -455,3 +453,21 @@ export function ToolCallBubble({
   // Verbose / Thinking: legacy individual items with raw names
   return <ToolCallItem toolCall={toolCall} />;
 }
+
+function sameMembers(a?: ToolCall[], b?: ToolCall[]): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((x, i) => x === b[i]);
+}
+
+/** Memoized by tool-call identity: groupMessages() rebuilds the group arrays
+ * on every streaming flush, but the ToolCall objects themselves only change
+ * when their status/output changes — comparing element-wise keeps finished
+ * tool cards (and their highlighted CodeBlocks) from re-rendering per flush. */
+export const ToolCallBubble = memo(
+  ToolCallBubbleImpl,
+  (prev, next) =>
+    prev.toolCall === next.toolCall &&
+    prev.mode === next.mode &&
+    sameMembers(prev.groupMembers, next.groupMembers),
+);
