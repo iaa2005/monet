@@ -10,6 +10,8 @@ import {
   runAgent,
   resetConversation,
   seedConversation,
+  compactSessionNow,
+  estimateSessionTokens,
 } from "../agent/index.js";
 import { getProviderManager } from "../provider/manager.js";
 import { requestPermissionFromRenderer } from "./permissions.js";
@@ -38,8 +40,9 @@ interface ChatSendPayload {
 function providerSupportsVision(): boolean {
   const p = getProviderManager().getActive();
   if (!p) return false;
-  // Real Anthropic endpoints, and OpenRouter (the OpenAI-compat client sends
-  // image blocks as image_url parts; vision-capable models handle them).
+  // The active MODEL's modality flags decide (Settings → Providers → model).
+  if (p.modalities) return p.modalities.includes("image");
+  // Legacy configs without modality flags: old heuristic.
   return /anthropic\.com/i.test(p.baseURL) || p.kind === "openrouter";
 }
 
@@ -172,5 +175,26 @@ export function registerChatIPC(): void {
   ipcMain.handle("chat:reset", (_event, sessionId?: string) => {
     resetConversation(sessionId || "default");
     return { ok: true };
+  });
+
+  // Manual compaction — used when switching to a model with a smaller
+  // context window than the current conversation.
+  ipcMain.handle("chat:compact", async (_e, sessionId?: string) => {
+    try {
+      const result = await compactSessionNow(sessionId || "default");
+      return result
+        ? { ok: true, ...result }
+        : { ok: false, error: "Nothing to compact" };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : "Compaction failed",
+      };
+    }
+  });
+
+  // Rough token estimate of a session's in-memory history.
+  ipcMain.handle("chat:estimate", (_e, sessionId?: string) => {
+    return { tokens: estimateSessionTokens(sessionId || "default") };
   });
 }

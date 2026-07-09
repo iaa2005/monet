@@ -56,6 +56,13 @@ export interface ElectronAPI {
     }) => Promise<{ ok: boolean }>;
     abort: (sessionId?: string) => Promise<{ ok: boolean }>;
     reset: (sessionId?: string) => Promise<{ ok: boolean }>;
+    compact: (sessionId?: string) => Promise<{
+      ok: boolean;
+      before?: number;
+      after?: number;
+      error?: string;
+    }>;
+    estimate: (sessionId?: string) => Promise<{ tokens: number }>;
     onToken: (
       callback: (payload: { sessionId: string; event: LLMEvent }) => void,
     ) => () => void;

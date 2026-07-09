@@ -32,6 +32,12 @@ const electronAPI = {
       ipcRenderer.invoke("chat:abort", sessionId),
     reset: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:reset", sessionId),
+    compact: (
+      sessionId?: string,
+    ): Promise<{ ok: boolean; before?: number; after?: number; error?: string }> =>
+      ipcRenderer.invoke("chat:compact", sessionId),
+    estimate: (sessionId?: string): Promise<{ tokens: number }> =>
+      ipcRenderer.invoke("chat:estimate", sessionId),
     onToken: (
       callback: (payload: { sessionId: string; event: LLMEvent }) => void,
     ): (() => void) => {

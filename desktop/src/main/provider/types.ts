@@ -10,6 +10,9 @@
 
 export type ProviderKind = 'anthropic' | 'deepseek' | 'openai' | 'openrouter'
 
+/** What a model can accept as input. */
+export type Modality = 'text' | 'image' | 'audio' | 'file' | 'video'
+
 export interface ProviderModel {
   /** Internal id (uuid). */
   id: string
@@ -26,6 +29,10 @@ export interface ProviderModel {
   /** Max OUTPUT tokens per request (max_tokens). */
   maxOutputTokens?: number
   temperature?: number
+  /** Input modalities the model accepts. Defaults to ['text']. */
+  modalities?: Modality[]
+  /** Hidden models don't show in the composer's model picker. */
+  hidden?: boolean
 }
 
 export interface LLMProvider {
@@ -51,6 +58,8 @@ export interface LLMProvider {
   contextLimit: number
   /** Input-token budget (resolved from maxInputTokens; used by compaction). */
   inputLimit?: number
+  /** Input modalities of the active model (resolved). */
+  modalities?: Modality[]
 
   createdAt: string
   updatedAt: string
@@ -71,6 +80,7 @@ export function resolveProvider(p: LLMProvider): LLMProvider {
     temperature: m.temperature ?? p.temperature,
     contextLimit: m.contextLength ?? p.contextLimit ?? 200_000,
     inputLimit: m.maxInputTokens,
+    modalities: m.modalities ?? ['text'],
   }
 }
 
@@ -92,6 +102,7 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
         label: 'Claude Sonnet 4',
         contextLength: 200_000,
         maxOutputTokens: 16000,
+        modalities: ['text', 'image', 'file'],
       },
     ],
     activeModelId: 'preset-claude-sonnet-4',
@@ -112,6 +123,7 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
         label: 'DeepSeek V4 Pro',
         contextLength: 1_000_000,
         maxOutputTokens: 16000,
+        modalities: ['text'],
       },
     ],
     activeModelId: 'preset-deepseek-v4-pro',
@@ -134,6 +146,7 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
         label: 'Auto Router',
         contextLength: 200_000,
         maxOutputTokens: 16000,
+        modalities: ['text', 'image'],
       },
     ],
     activeModelId: 'preset-openrouter-auto',

@@ -7,6 +7,9 @@ import { create } from "zustand";
 
 export type ProviderKind = "anthropic" | "deepseek" | "openai" | "openrouter";
 
+/** What a model accepts as input. */
+export type Modality = "text" | "image" | "audio" | "file" | "video";
+
 export interface ProviderModel {
   id: string;
   /** Model id sent to the API. */
@@ -19,6 +22,10 @@ export interface ProviderModel {
   maxInputTokens?: number;
   maxOutputTokens?: number;
   temperature?: number;
+  /** Input modalities the model accepts (defaults to text-only). */
+  modalities?: Modality[];
+  /** Hidden models don't show in the composer's model picker. */
+  hidden?: boolean;
 }
 
 export interface LLMProvider {

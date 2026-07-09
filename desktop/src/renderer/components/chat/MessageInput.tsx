@@ -3,6 +3,8 @@ import {
   ArrowUp,
   ChevronDown,
   Check,
+  Eye,
+  EyeOff,
   Plus,
   Square,
   X,
@@ -11,6 +13,8 @@ import {
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import { MicButton } from "./MicButton";
+import { ModalityBadges } from "@/components/providers/ModalityBadges";
+import type { Modality } from "@/stores/providerStore";
 import {
   Attachment,
   AttachmentMedia,
@@ -43,6 +47,9 @@ interface ProviderModelEntry {
   name: string;
   label?: string;
   contextLength?: number;
+  maxInputTokens?: number;
+  modalities?: string[];
+  hidden?: boolean;
 }
 
 interface Provider {
@@ -161,8 +168,26 @@ export function MessageInput(): JSX.Element {
       (localStorage.getItem("permission-mode") as PermissionMode | null) ||
       "default",
   );
+  // Model-switch guard: set when the conversation exceeds ~80% of the target
+  // model's context window — the banner offers to compact first.
+  const [switchAsk, setSwitchAsk] = useState<{
+    providerId: string;
+    modelId: string;
+    model: ProviderModelEntry;
+    est: number;
+    target: number;
+  } | null>(null);
+  // Transient info line under the composer (compaction result, modality note).
+  const [notice, setNotice] = useState<string | null>(null);
+  const [showHiddenModels, setShowHiddenModels] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 8000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   const usage = useChatStore((s) => s.usage);
   const composerDraft = useChatStore((s) => s.composerDraft);
@@ -217,12 +242,88 @@ export function MessageInput(): JSX.Element {
   const usedTokens = usage ? usage.input_tokens + usage.output_tokens : 0;
   const ctxPct = Math.min(100, Math.round((usedTokens / ctxWindow) * 100));
 
-  const selectModel = async (
+  const fmtTok = (n: number): string =>
+    n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+
+  const applyModel = async (
     providerId: string,
     modelId: string,
+    m?: ProviderModelEntry,
   ): Promise<void> => {
     await api()?.providers.setActiveModel(providerId, modelId);
     setActiveId(providerId);
+    loadProviders();
+    // The agent only sends what the model accepts — say so out loud when
+    // switching to a model that will drop images from the context.
+    const mods = m?.modalities ?? ["text"];
+    if (!mods.includes("image")) {
+      setNotice(
+        `${m?.label || m?.name || "This model"} is text-only — images in the conversation won't be sent to it.`,
+      );
+    }
+  };
+
+  /** Switching models must respect what's already in the context: if the
+   * conversation is larger than ~80% of the target model's window, offer to
+   * compact it first. */
+  const selectModel = async (
+    p: Provider,
+    m: ProviderModelEntry,
+  ): Promise<void> => {
+    const sessionId = useChatStore.getState().currentSessionId;
+    const target = m.contextLength;
+    if (target && sessionId) {
+      try {
+        const { tokens } = (await api()?.chat.estimate(sessionId)) ?? {
+          tokens: 0,
+        };
+        if (tokens > target * 0.8) {
+          setSwitchAsk({
+            providerId: p.id,
+            modelId: m.id,
+            model: m,
+            est: tokens,
+            target,
+          });
+          return;
+        }
+      } catch {
+        /* estimate is best-effort */
+      }
+    }
+    await applyModel(p.id, m.id, m);
+  };
+
+  const compactAndSwitch = async (): Promise<void> => {
+    const ask = switchAsk;
+    if (!ask) return;
+    setSwitchAsk(null);
+    setNotice("Compacting context…");
+    const res = await api()?.chat.compact(
+      useChatStore.getState().currentSessionId,
+    );
+    await applyModel(ask.providerId, ask.modelId, ask.model);
+    if (res?.ok && res.before != null && res.after != null) {
+      setNotice(
+        `Context compacted: ~${fmtTok(res.before)} → ~${fmtTok(res.after)} tokens.`,
+      );
+    } else {
+      setNotice(
+        res?.error === "Nothing to compact"
+          ? "Nothing to compact yet — switched anyway."
+          : `Compaction failed (${res?.error ?? "unknown"}) — switched anyway.`,
+      );
+    }
+  };
+
+  const toggleModelHidden = async (
+    p: Provider,
+    m: ProviderModelEntry,
+  ): Promise<void> => {
+    const models = (p.models ?? []).map((x) =>
+      x.id === m.id ? { ...x, hidden: !x.hidden } : x,
+    );
+    await api()?.providers.update(p.id, { models } as never);
     loadProviders();
   };
 
@@ -256,6 +357,35 @@ export function MessageInput(): JSX.Element {
   const send = async (): Promise<void> => {
     const text = input.trim();
     if (!text || isStreaming) return;
+
+    // Respect the active model's input modalities and budget BEFORE clearing
+    // the composer, so a rejected send loses nothing.
+    const mods = activeModel?.modalities ?? ["text"];
+    if (
+      files.some((f) => f.file.type.startsWith("image/")) &&
+      !mods.includes("image")
+    ) {
+      setError(
+        `${modelLabel} doesn't accept images — remove the attachments or switch to a vision model.`,
+      );
+      return;
+    }
+    const inputBudget =
+      activeModel?.maxInputTokens ?? activeModel?.contextLength;
+    if (inputBudget) {
+      const attachedChars = files.reduce(
+        (sum, f) => (isTextFile(f.file) ? sum + Math.min(f.file.size, 200000) : sum),
+        0,
+      );
+      const estIn = Math.ceil((text.length + attachedChars) / 4);
+      if (estIn > inputBudget) {
+        setError(
+          `The message is ~${fmtTok(estIn)} tokens — over ${modelLabel}'s ~${fmtTok(inputBudget)} input budget. Trim it or switch models.`,
+        );
+        return;
+      }
+    }
+
     const staged = files;
     setInput("");
     setFiles([]);
@@ -332,6 +462,45 @@ export function MessageInput(): JSX.Element {
   return (
     <div className="pb-4">
       <div className="mx-auto w-full max-w-3xl px-4">
+        {switchAsk && (
+          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[13px]">
+            <span className="min-w-0 flex-1">
+              The conversation is ~{fmtTok(switchAsk.est)} tokens —{" "}
+              {switchAsk.model.label || switchAsk.model.name} fits{" "}
+              {fmtTok(switchAsk.target)}. Compact the context first?
+            </span>
+            <button
+              type="button"
+              onClick={() => void compactAndSwitch()}
+              className="rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background transition-opacity hover:opacity-90"
+            >
+              Compact & switch
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const ask = switchAsk;
+                setSwitchAsk(null);
+                if (ask) void applyModel(ask.providerId, ask.modelId, ask.model);
+              }}
+              className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Switch anyway
+            </button>
+            <button
+              type="button"
+              onClick={() => setSwitchAsk(null)}
+              className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+        {notice && (
+          <div className="mb-2 rounded-lg bg-black/[0.04] px-3 py-1.5 text-[12px] text-muted-foreground dark:bg-white/[0.06]">
+            {notice}
+          </div>
+        )}
         {files.length > 0 && (
           <div className="mb-2 flex gap-2 overflow-x-auto scrollbar-none">
             {files.map((f) => {
@@ -431,7 +600,7 @@ export function MessageInput(): JSX.Element {
                   <ChevronDown className="size-3" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="end" className="w-72">
+              <DropdownMenuContent side="top" align="end" className="w-80">
                 {providers.length === 0 && (
                   <div className="px-2.5 py-1.5 text-xs text-muted-foreground">
                     No providers — add one in Settings.
@@ -443,15 +612,20 @@ export function MessageInput(): JSX.Element {
                     : p.model
                       ? [{ id: "__flat", name: p.model }]
                       : [];
+                  const visible = models.filter(
+                    (m) => showHiddenModels || !m.hidden,
+                  );
+                  if (visible.length === 0) return null;
                   const currentId = activeModelOf(p)?.id;
                   return (
                     <div key={p.id}>
                       <DropdownMenuLabel className="text-xs text-muted-foreground">
                         {p.name}
                       </DropdownMenuLabel>
-                      {models.map((m) => (
+                      {visible.map((m) => (
                         <DropdownMenuItem
                           key={m.id}
+                          className={cn("group/model", m.hidden && "opacity-60")}
                           onClick={() =>
                             m.id === "__flat"
                               ? void api()
@@ -460,19 +634,48 @@ export function MessageInput(): JSX.Element {
                                     setActiveId(p.id);
                                     loadProviders();
                                   })
-                              : selectModel(p.id, m.id)
+                              : void selectModel(p, m)
                           }
                         >
                           <div className="min-w-0 flex-1">
-                            <div className="truncate">{m.label || m.name}</div>
-                            {m.label && (
-                              <div className="truncate text-xs text-muted-foreground">
-                                {m.name}
-                              </div>
-                            )}
+                            <div className="flex items-center gap-1.5">
+                              <span className="truncate">
+                                {m.label || m.name}
+                              </span>
+                              <ModalityBadges
+                                modalities={m.modalities as Modality[]}
+                              />
+                            </div>
+                            <div className="truncate text-xs text-muted-foreground">
+                              {m.label ? `${m.name} · ` : ""}
+                              {m.contextLength
+                                ? `${fmtTok(m.contextLength)} ctx`
+                                : "ctx —"}
+                            </div>
                           </div>
+                          {m.id !== "__flat" && (
+                            <button
+                              type="button"
+                              title={
+                                m.hidden
+                                  ? "Show in this list"
+                                  : "Hide from this list"
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void toggleModelHidden(p, m);
+                              }}
+                              className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition hover:text-foreground group-hover/model:opacity-100"
+                            >
+                              {m.hidden ? (
+                                <EyeOff className="size-3" />
+                              ) : (
+                                <Eye className="size-3" />
+                              )}
+                            </button>
+                          )}
                           {p.id === activeId && m.id === currentId && (
-                            <Check className="size-4" />
+                            <Check className="size-4 shrink-0" />
                           )}
                         </DropdownMenuItem>
                       ))}
@@ -480,6 +683,29 @@ export function MessageInput(): JSX.Element {
                   );
                 })}
                 <DropdownMenuSeparator />
+                {(() => {
+                  const hiddenCount = providers.reduce(
+                    (n, p) =>
+                      n + (p.models?.filter((m) => m.hidden).length ?? 0),
+                    0,
+                  );
+                  return hiddenCount > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowHiddenModels((v) => !v)}
+                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+                    >
+                      {showHiddenModels ? (
+                        <EyeOff className="size-3" />
+                      ) : (
+                        <Eye className="size-3" />
+                      )}
+                      {showHiddenModels
+                        ? "Hide hidden models"
+                        : `Show hidden (${hiddenCount})`}
+                    </button>
+                  ) : null;
+                })()}
                 <DropdownMenuItem onClick={loadProviders}>
                   Refresh
                 </DropdownMenuItem>

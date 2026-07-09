@@ -30,6 +30,7 @@ import {
   shouldCompact,
   compactMessages,
   compactionThreshold,
+  estimateTokens,
 } from "./compaction.js";
 
 // ─── System prompt ──────────────────────────────────────────────────────
@@ -96,6 +97,39 @@ export function seedConversation(
     sessionId,
     priorText.filter((m) => m.content).map((m) => ({ ...m })),
   );
+}
+
+/**
+ * Compact a session's in-memory history on demand (e.g. before switching to a
+ * model with a smaller context window). Returns the token estimates, or null
+ * when there's nothing to compact / no provider.
+ */
+export async function compactSessionNow(
+  sessionId: string,
+): Promise<{ before: number; after: number } | null> {
+  const messages = conversations.get(sessionId);
+  if (!messages || messages.length < 2) return null;
+  const provider = getProviderManager().getActive();
+  if (!provider) return null;
+  const adapter = createAdapter(provider);
+  const before = estimateTokens(messages);
+  const compacted = await compactMessages({
+    messages,
+    adapter,
+    model: provider.model,
+    maxTokens: provider.maxTokens || 16000,
+  });
+  if (compacted !== messages) {
+    messages.length = 0;
+    messages.push(...compacted);
+  }
+  return { before, after: estimateTokens(messages) };
+}
+
+/** Rough input-token estimate of a session's in-memory history. */
+export function estimateSessionTokens(sessionId: string): number {
+  const messages = conversations.get(sessionId);
+  return messages ? estimateTokens(messages) : 0;
 }
 
 export async function runAgent(
