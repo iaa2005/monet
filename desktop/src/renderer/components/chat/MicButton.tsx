@@ -17,6 +17,9 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2, Mic, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
+// Vite-native worker import — more dependable than `new Worker(new URL(...))`
+// in electron-vite dev mode (a worker that fails to LOAD dies silently).
+import SttWorker from "../../workers/stt-worker?worker";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -78,10 +81,17 @@ let sttSeq = 0;
 
 function getSttWorker(): Worker {
   if (!sttWorker) {
-    sttWorker = new Worker(
-      new URL("../../workers/stt-worker.ts", import.meta.url),
-      { type: "module" },
-    );
+    sttWorker = new SttWorker();
+    // Surface load/parse failures — an unloadable worker otherwise swallows
+    // every postMessage and the UI waits on nothing.
+    sttWorker.addEventListener("error", (e: ErrorEvent) => {
+      console.error(
+        `[stt] worker error: ${e.message} (${e.filename}:${e.lineno})`,
+      );
+    });
+    sttWorker.addEventListener("messageerror", (e) => {
+      console.error("[stt] worker messageerror:", e);
+    });
   }
   return sttWorker;
 }
@@ -97,14 +107,27 @@ function transcribeLocal(
   return new Promise((resolve, reject) => {
     // Watchdog: if inference wedges (bad backend, driver issue), fail loudly
     // instead of leaving the mic spinner stuck forever.
-    const timeout = setTimeout(() => {
+    const cleanup = (): void => {
+      clearTimeout(timeout);
       worker.removeEventListener("message", onMessage);
+      worker.removeEventListener("error", onWorkerError);
+    };
+    const timeout = setTimeout(() => {
+      cleanup();
       reject(
         new Error(
           "Local transcription timed out — try the Fast model or the cloud engine.",
         ),
       );
     }, 120_000);
+    const onWorkerError = (e: ErrorEvent): void => {
+      cleanup();
+      reject(
+        new Error(
+          `Voice engine failed to load: ${e.message || "worker error"}`,
+        ),
+      );
+    };
     const onMessage = (e: MessageEvent<WorkerMsg>): void => {
       const msg = e.data;
       if (msg.id !== id) return;
@@ -116,16 +139,15 @@ function transcribeLocal(
       } else if (msg.type === "status") {
         onStatus(msg.text);
       } else if (msg.type === "result") {
-        clearTimeout(timeout);
-        worker.removeEventListener("message", onMessage);
+        cleanup();
         resolve(msg.text);
       } else if (msg.type === "error") {
-        clearTimeout(timeout);
-        worker.removeEventListener("message", onMessage);
+        cleanup();
         reject(new Error(msg.error));
       }
     };
     worker.addEventListener("message", onMessage);
+    worker.addEventListener("error", onWorkerError);
     worker.postMessage({ id, audio, model, language: language || undefined });
   });
 }

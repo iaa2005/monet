@@ -40,6 +40,10 @@ try {
   /* env shape changed — defaults are fine */
 }
 
+// Load beacon: if this line never shows in DevTools, the worker module
+// itself failed to load (bundling/import problem), not the model.
+console.log("[stt-worker] module loaded");
+
 type AsrPipeline = (
   audio: Float32Array,
   options?: Record<string, unknown>,
