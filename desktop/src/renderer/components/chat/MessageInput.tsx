@@ -334,6 +334,9 @@ export function MessageInput(): JSX.Element {
       if (!bridge) return;
       // Events stream back through the app-level onToken listener (routed by
       // sessionId), so the run keeps updating even if the user switches chats.
+      // Persistence happens in the chatStore on message_stop — saving here
+      // after the invoke resolves raced the last chat:token events (the reply
+      // travels a different IPC path) and clipped the tail of long replies.
       await bridge.chat.send({
         sessionId,
         message: text,
@@ -341,18 +344,6 @@ export function MessageInput(): JSX.Element {
         mode,
         attachments,
       });
-
-      if (sessionId && !incognito) {
-        // Save THIS session's buffer (not the visible one — the user may have
-        // switched away while it ran).
-        const msgs =
-          useChatStore.getState().sessions[sessionId]?.messages ?? [];
-        const title =
-          msgs.find((m) => m.role === "user")?.content?.slice(0, 60) ??
-          "New Session";
-        await bridge.sessions.save({ id: sessionId, title, messages: msgs });
-        useChatStore.getState().bumpSessions();
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send message");
     }

@@ -79,7 +79,58 @@ interface ChatStore {
   handleLLMEvent: (sessionId: string, event: LLMEvent) => void;
 }
 
+interface SessionsBridge {
+  sessions?: {
+    getById: (id: string) => Promise<unknown>;
+    save: (session: unknown) => Promise<void>;
+  };
+}
+
+function sessionsApi(): SessionsBridge["sessions"] {
+  return (window as unknown as { electronAPI?: SessionsBridge }).electronAPI
+    ?.sessions;
+}
+
 export const useChatStore = create<ChatStore>((set, get) => {
+  /**
+   * Persist a session's buffer to the DB when its run ends.
+   *
+   * This runs on message_stop/error from the SAME ordered chat:token stream
+   * as the text deltas, so the snapshot provably contains every delta sent
+   * before the stop. Saving after `chat.send()` resolves (the old way, in
+   * MessageInput) races the tail of that stream — the invoke reply travels a
+   * different IPC path than webContents.send and can overtake the last few
+   * token events, clipping the end of long replies (observed: adapter emitted
+   * 12303 chars, the DB copy had 12294).
+   */
+  async function persistSession(sessionId: string): Promise<void> {
+    const api = sessionsApi();
+    if (!api) return;
+    const msgs = get().sessions[sessionId]?.messages ?? [];
+    if (msgs.length === 0) return;
+    try {
+      // Keep a user-chosen title (Rename); auto-title fresh sessions from the
+      // first user message.
+      const existing = (await api.getById(sessionId)) as
+        | { title?: string }
+        | null
+        | undefined;
+      const derived =
+        msgs.find((m) => m.role === "user")?.content?.slice(0, 60) ??
+        "New Session";
+      const title =
+        existing?.title && existing.title !== "New Session"
+          ? existing.title
+          : derived;
+      // Re-read the buffer AFTER the awaits — more deltas may have landed.
+      const latest = get().sessions[sessionId]?.messages ?? msgs;
+      await api.save({ id: sessionId, title, messages: latest });
+      get().bumpSessions();
+    } catch {
+      /* offline / DB unavailable — keep the in-memory buffer */
+    }
+  }
+
   /** Update one session's state; mirror to the visible fields if it's current. */
   function mutate(
     sessionId: string,
@@ -272,6 +323,15 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
     handleLLMEvent: (sessionId, event) => {
       mutate(sessionId, (p) => reduce(p, event));
+      // End of run → persist this session (ordered with the deltas above).
+      if (
+        (event.type === "message_stop" || event.type === "error") &&
+        sessionId &&
+        sessionId !== "default" &&
+        !sessionId.startsWith("incognito-")
+      ) {
+        void persistSession(sessionId);
+      }
     },
   };
 });
