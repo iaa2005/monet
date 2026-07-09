@@ -74,6 +74,12 @@ export interface CodeBlockProps {
   maxHeight?: number | string;
 }
 
+// Big tool outputs (e.g. ReadFile on a large file) froze the UI: Prism
+// tokenizes the ENTIRE string and produces a huge DOM. Show a preview and
+// expand on demand; past a hard cap, skip highlighting altogether.
+const PREVIEW_LINES = 300;
+const HIGHLIGHT_CHAR_LIMIT = 60_000;
+
 export function CodeBlock({
   code,
   language = "",
@@ -83,8 +89,18 @@ export function CodeBlock({
   maxHeight,
 }: CodeBlockProps): JSX.Element {
   const dark = useIsDark();
+  const [expanded, setExpanded] = useState(false);
   const lang = language.toLowerCase();
   const displayLang = PLAIN.has(lang) ? "" : lang;
+
+  const lines = code.split("\n");
+  // Small hysteresis so we never truncate for a measly few lines.
+  const truncatable = lines.length > PREVIEW_LINES + 60;
+  const shown =
+    truncatable && !expanded
+      ? lines.slice(0, PREVIEW_LINES).join("\n")
+      : code;
+  const plain = shown.length > HIGHLIGHT_CHAR_LIMIT;
 
   return (
     <div
@@ -102,28 +118,52 @@ export function CodeBlock({
         </div>
       )}
       <div className="overflow-auto" style={maxHeight ? { maxHeight } : undefined}>
-        <SyntaxHighlighter
-          language={displayLang || "text"}
-          style={dark ? oneDark : oneLight}
-          showLineNumbers={showLineNumbers}
-          wrapLongLines={false}
-          customStyle={{
-            margin: 0,
-            padding: "0.75rem",
-            background: "transparent",
-            fontSize: "12.5px",
-            lineHeight: "1.6",
-          }}
-          codeTagProps={{
-            style: {
+        {plain ? (
+          <pre
+            className="m-0 whitespace-pre p-3"
+            style={{
               fontFamily: "var(--font-mono)",
+              fontSize: "12.5px",
+              lineHeight: "1.6",
+            }}
+          >
+            {shown}
+          </pre>
+        ) : (
+          <SyntaxHighlighter
+            language={displayLang || "text"}
+            style={dark ? oneDark : oneLight}
+            showLineNumbers={showLineNumbers}
+            wrapLongLines={false}
+            customStyle={{
+              margin: 0,
+              padding: "0.75rem",
               background: "transparent",
-            },
-          }}
-        >
-          {code}
-        </SyntaxHighlighter>
+              fontSize: "12.5px",
+              lineHeight: "1.6",
+            }}
+            codeTagProps={{
+              style: {
+                fontFamily: "var(--font-mono)",
+                background: "transparent",
+              },
+            }}
+          >
+            {shown}
+          </SyntaxHighlighter>
+        )}
       </div>
+      {truncatable && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="block w-full border-t border-border bg-muted/40 px-3 py-1.5 text-left text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {expanded
+            ? "Collapse"
+            : `Show ${lines.length - PREVIEW_LINES} more lines`}
+        </button>
+      )}
     </div>
   );
 }

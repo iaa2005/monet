@@ -428,6 +428,19 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }): JSX.Element {
   );
 }
 
+/** A lone tool call in Normal mode — expandable just like grouped ones
+ * (the old version hardcoded open={false} with a no-op toggle). */
+function SingleToolRow({ toolCall }: { toolCall: ToolCall }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  return (
+    <ToolRow
+      toolCall={toolCall}
+      open={open}
+      onToggle={() => setOpen((o) => !o)}
+    />
+  );
+}
+
 interface ToolCallBubbleProps {
   toolCall: ToolCall;
   /** When in a grouped set (consecutive tool calls), group members are provided. */
@@ -447,7 +460,7 @@ function ToolCallBubbleImpl({
   }
 
   if (mode === "normal") {
-    return <ToolRow toolCall={toolCall} open={false} onToggle={() => {}} />;
+    return <SingleToolRow toolCall={toolCall} />;
   }
 
   // Verbose / Thinking: legacy individual items with raw names

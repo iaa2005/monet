@@ -7,6 +7,7 @@ import {
   FolderOpen,
   BookMarked,
   Plug,
+  Search,
 } from "lucide-react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { SkillsSettings } from "@/components/settings/SkillsSettings";
@@ -188,12 +189,38 @@ export function SettingsPanel({
   setTheme: (t: "light" | "dark") => void;
 }): JSX.Element {
   const [section, setSection] = useState<Section>("general");
+  const [query, setQuery] = useState("");
+
+  const q = query.trim().toLowerCase();
+  const groups = NAV.map((g) => ({
+    ...g,
+    items: g.items.filter(
+      (it) =>
+        !q ||
+        it.label.toLowerCase().includes(q) ||
+        g.group.toLowerCase().includes(q),
+    ),
+  })).filter((g) => g.items.length > 0);
 
   return (
     <div className="flex h-full min-h-0">
       <nav className="w-52 shrink-0 overflow-y-auto border-r border-border bg-sidebar/60 p-3">
-        <div className="px-2 pt-1 pb-3 text-sm font-semibold">Settings</div>
-        {NAV.map((g) => (
+        {/* Search instead of the old "Settings" heading. */}
+        <div className="mb-3 flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1.5">
+          <Search className="size-3.5 shrink-0 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search settings"
+            className="w-full bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+          />
+        </div>
+        {groups.length === 0 && (
+          <div className="px-2 py-1 text-xs text-muted-foreground">
+            Nothing matches.
+          </div>
+        )}
+        {groups.map((g) => (
           <div key={g.group} className="mb-3">
             <div className="px-2 py-1 text-[11px] font-medium tracking-wide text-muted-foreground">
               {g.group}
@@ -218,7 +245,9 @@ export function SettingsPanel({
         ))}
       </nav>
 
-      <div className="min-w-0 flex-1 overflow-y-auto p-6">
+      {/* Extra top padding keeps the first title/buttons clear of the
+          dialog's close button in the top-right corner. */}
+      <div className="min-w-0 flex-1 overflow-y-auto px-6 pb-6 pt-12">
         {section === "general" && (
           <GeneralSection theme={theme} setTheme={setTheme} />
         )}
