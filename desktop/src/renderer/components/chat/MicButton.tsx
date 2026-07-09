@@ -95,6 +95,16 @@ function transcribeLocal(
   const worker = getSttWorker();
   const id = ++sttSeq;
   return new Promise((resolve, reject) => {
+    // Watchdog: if inference wedges (bad backend, driver issue), fail loudly
+    // instead of leaving the mic spinner stuck forever.
+    const timeout = setTimeout(() => {
+      worker.removeEventListener("message", onMessage);
+      reject(
+        new Error(
+          "Local transcription timed out — try the Fast model or the cloud engine.",
+        ),
+      );
+    }, 120_000);
     const onMessage = (e: MessageEvent<WorkerMsg>): void => {
       const msg = e.data;
       if (msg.id !== id) return;
@@ -106,9 +116,11 @@ function transcribeLocal(
       } else if (msg.type === "status") {
         onStatus(msg.text);
       } else if (msg.type === "result") {
+        clearTimeout(timeout);
         worker.removeEventListener("message", onMessage);
         resolve(msg.text);
       } else if (msg.type === "error") {
+        clearTimeout(timeout);
         worker.removeEventListener("message", onMessage);
         reject(new Error(msg.error));
       }
@@ -301,8 +313,29 @@ export function MicButton({ onText, onError }: MicButtonProps): JSX.Element {
         // the panel), later runs are offline.
         setStatus("Preparing audio…");
         const pcm = await blobToPCM16k(blob);
+        // Peak level check: silence in → garbage/nothing out. Catch a wrong
+        // or muted input device before wasting an inference pass.
+        let peak = 0;
+        for (let i = 0; i < pcm.length; i += 50) {
+          const v = Math.abs(pcm[i]);
+          if (v > peak) peak = v;
+        }
+        console.log(
+          `[stt] recorded ${(pcm.length / 16000).toFixed(1)}s, peak=${peak.toFixed(3)}, blob=${blob.size}B ${blob.type}`,
+        );
+        if (peak < 0.01) {
+          onError(
+            "The microphone captured silence — pick another input device in the mic menu (hover the mic → arrow).",
+          );
+          return;
+        }
         const text = await transcribeLocal(pcm, localModel, language, setStatus);
+        console.log(`[stt] result: ${JSON.stringify(text)}`);
         if (text) onText(text);
+        else
+          onError(
+            "No speech recognized — try again, a bit longer and closer to the mic.",
+          );
       } else {
         setStatus("Transcribing…");
         const audioBase64 = await blobToBase64(blob);

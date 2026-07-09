@@ -90,12 +90,16 @@ async function createPipeline(
     lastPct = pct;
     post({ id, type: "progress", progress: pct, loaded, total });
   };
+  // WASM only, on purpose: WebGPU inference on some Windows GPUs hangs or
+  // fails silently AFTER the pipeline is created — the transcription promise
+  // just never settles. CPU whisper handles dictation-length clips in a few
+  // seconds; revisit WebGPU when onnxruntime-web is more reliable there.
   const attempts: Record<string, unknown>[] = [
-    { dtype: "q8", device: "webgpu", progress_callback },
     { dtype: "q8", progress_callback },
+    { dtype: "q8", progress_callback }, // retried with CDN wasm paths
   ];
   let lastErr: unknown;
-  for (const [i, options] of attempts.entries()) {
+  for (const options of attempts) {
     try {
       return (await pipeline(
         "automatic-speech-recognition",
@@ -104,7 +108,6 @@ async function createPipeline(
       )) as unknown as AsrPipeline;
     } catch (err) {
       lastErr = err;
-      if (i === 0) post({ id, type: "status", text: "WebGPU unavailable — using CPU (WASM)" });
       // Bundled wasm assets can fail to resolve under some bundlers — point
       // the ONNX runtime at the CDN copies and let the next attempt retry.
       try {
@@ -135,6 +138,7 @@ ctx.addEventListener("message", (e: MessageEvent<TranscribeRequest>) => {
         loadedModel = model;
       }
       post({ id, type: "status", text: "Transcribing…" });
+      const t0 = Date.now();
       const out = await asr(audio, {
         chunk_length_s: 30,
         ...(language ? { language, task: "transcribe" } : {}),
@@ -142,6 +146,11 @@ ctx.addEventListener("message", (e: MessageEvent<TranscribeRequest>) => {
       const text = Array.isArray(out)
         ? out.map((o) => o.text ?? "").join(" ")
         : (out.text ?? "");
+      // Diagnostics land in the renderer DevTools console (workers share it).
+      console.log(
+        `[stt-worker] ${(audio.length / 16000).toFixed(1)}s audio → ${Date.now() - t0}ms, raw=`,
+        JSON.stringify(out).slice(0, 300),
+      );
       post({ id, type: "result", text: text.trim() });
     } catch (err) {
       post({
