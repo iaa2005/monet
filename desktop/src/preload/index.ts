@@ -274,6 +274,10 @@ const electronAPI = {
       path: string,
     ): Promise<{ ok: boolean; content?: string; error?: string }> =>
       ipcRenderer.invoke("artifacts:readText", path),
+    readBytes: (
+      path: string,
+    ): Promise<{ ok: boolean; base64?: string; error?: string }> =>
+      ipcRenderer.invoke("artifacts:readBytes", path),
     download: (
       path: string,
       name?: string,

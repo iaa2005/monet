@@ -104,6 +104,9 @@ interface ChatStore {
     path?: string;
     mediaType: string;
     kind: string;
+    /** In-memory preview (e.g. an attachment that was never saved to disk —
+     * incognito); the viewer prefers it over re-reading the path. */
+    dataUrl?: string;
   } | null;
   /** Current workspace ("home" | "code") — new chats are tagged with it so
    * Home and Code keep separate Recents. Mirrors App's appMode. */
@@ -125,6 +128,7 @@ interface ChatStore {
       path?: string;
       mediaType: string;
       kind: string;
+      dataUrl?: string;
     } | null,
   ) => void;
   setSpace: (v: string) => void;

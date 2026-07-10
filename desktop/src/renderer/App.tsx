@@ -530,7 +530,7 @@ export default function App(): JSX.Element {
               currentSessionId={currentSessionId}
             />
           )}
-          {appMode === "home" && !incognito && (
+          {appMode === "home" && (
             <IconBtn
               title="Artifacts"
               active={rightTab === "artifacts"}
@@ -831,7 +831,7 @@ export default function App(): JSX.Element {
                     )}
                   </div>
                 </ResizablePanel>
-                {rightTab === "artifacts" && !incognito && (
+                {rightTab === "artifacts" && (
                   <>
                     <ResizableHandle withHandle />
                     <ResizablePanel

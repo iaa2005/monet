@@ -188,7 +188,12 @@ function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
-export function MessageInput(): JSX.Element {
+export function MessageInput({
+  flush = false,
+}: {
+  /** No horizontal padding — for the centered Home empty state. */
+  flush?: boolean;
+} = {}): JSX.Element {
   // The composer text lives in the store PER CHAT (keyed by sessionId, or
   // "new:<space>" for a blank chat) — switching chats and coming back
   // restores what you were typing. setInput keeps the useState call shape.
@@ -618,24 +623,22 @@ export function MessageInput(): JSX.Element {
   const pillBtn =
     "flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]";
 
-  const isHome = useChatStore((s) => s.space === "home");
-
   return (
     <div className="pb-4">
-      {/* Home drops the horizontal padding (the composer aligns with the
-          centered content there); Code keeps px-4 so the input doesn't grow
-          wider than the transcript column. */}
+      {/* flush: the centered Home empty state has no px-4 around its content,
+          so the composer drops it too. Everywhere else (active chats in BOTH
+          spaces) the transcript column has px-4 — keep the composer aligned. */}
       <div
         className={cn(
           "relative mx-auto w-full max-w-3xl",
-          isHome ? "px-0" : "px-4",
+          flush ? "px-0" : "px-4",
         )}
       >
         {slashOpen && (
           <div
             className={cn(
               "absolute bottom-full z-50 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-lg",
-              isHome ? "left-0 right-0" : "left-4 right-4",
+              flush ? "left-0 right-0" : "left-4 right-4",
             )}
           >
             {(["Commands", "Skills"] as const).map((section) => {

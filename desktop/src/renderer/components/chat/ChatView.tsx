@@ -452,7 +452,7 @@ export function ChatView({
             </p>
           </div>
           <div className="mt-6 w-full max-w-2xl">
-            <MessageInput />
+            <MessageInput flush />
           </div>
           <div className="w-full max-w-2xl">
             <div className="mb-2 text-left text-xs font-medium text-muted-foreground">

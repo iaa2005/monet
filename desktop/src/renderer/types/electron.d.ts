@@ -244,6 +244,9 @@ export interface ElectronAPI {
     readText: (
       path: string,
     ) => Promise<{ ok: boolean; content?: string; error?: string }>;
+    readBytes: (
+      path: string,
+    ) => Promise<{ ok: boolean; base64?: string; error?: string }>;
     download: (
       path: string,
       name?: string,

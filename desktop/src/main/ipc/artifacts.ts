@@ -108,6 +108,29 @@ export function registerArtifactsIPC(): void {
     return { ok: true };
   });
 
+  // Raw bytes (base64) for document previews (pdf/docx/xlsx) in the viewer.
+  ipcMain.handle(
+    "artifacts:readBytes",
+    (
+      _e,
+      path: string,
+    ): { ok: boolean; base64?: string; error?: string } => {
+      try {
+        if (!insideArtifacts(path))
+          return { ok: false, error: "outside artifacts dir" };
+        const buf = readFileSync(path);
+        if (buf.length > 40 * 1024 * 1024)
+          return { ok: false, error: "File is too large to preview (40MB)" };
+        return { ok: true, base64: buf.toString("base64") };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "read failed",
+        };
+      }
+    },
+  );
+
   // Read a text/code artifact for the in-app viewer.
   ipcMain.handle(
     "artifacts:readText",

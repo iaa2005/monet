@@ -38,6 +38,7 @@ export function viewArtifact(a: {
   path?: string;
   mediaType: string;
   kind: string;
+  dataUrl?: string;
 }): void {
   useChatStore.getState().openArtifactViewer(a);
 }
