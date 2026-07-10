@@ -51,7 +51,12 @@ export const RunPythonTool = buildTool({
       "- Print results you want to report with print().",
       "- To return a file, WRITE it in the current directory (e.g.",
       "  plt.savefig('chart.png'), df.to_csv('data.csv')); saved files are shown",
-      "  to the user and attached to the chat automatically.",
+      "  to the user and attached to the chat automatically. Do NOT call",
+      "  plt.show().",
+      "- To DISPLAY a generated image in your written reply, embed it as markdown",
+      "  using the exact filename you saved: ![short description](chart.png).",
+      "  The app resolves that filename to the real image — never invent a URL or",
+      "  a data URI.",
       "- Common libraries (numpy, pandas, matplotlib, python-docx, openpyxl) are",
       "  available; the first use may take a moment to load.",
     ].join("\n");

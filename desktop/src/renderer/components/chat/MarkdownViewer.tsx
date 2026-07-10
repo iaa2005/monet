@@ -10,6 +10,8 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./CodeBlock";
+import { ArtifactThumb, openArtifact } from "@/components/ArtifactsPanel";
+import { baseName, useSessionArtifacts } from "@/lib/sessionArtifacts";
 
 interface MarkdownViewerProps {
   content: string;
@@ -20,6 +22,9 @@ export function MarkdownViewer({
   content,
   className,
 }: MarkdownViewerProps): JSX.Element {
+  // Resolve images the model embeds by filename (![chart](chart.png)) to the
+  // real sandbox artifact — the model has no URL for generated files.
+  const { byName } = useSessionArtifacts();
   return (
     <div
       className={cn(
@@ -87,6 +92,48 @@ export function MarkdownViewer({
           hr: ({ node: _n, ...p }) => (
             <hr className="my-4 border-border" {...p} />
           ),
+          img: ({ node: _n, ...p }) => {
+            const src = (p as { src?: string }).src ?? "";
+            const alt = (p as { alt?: string }).alt ?? "";
+            // Real URLs / data URIs render directly.
+            if (/^(https?:|data:)/i.test(src)) {
+              return (
+                <img
+                  {...p}
+                  className="my-2 max-h-[28rem] max-w-full rounded-lg border border-border"
+                />
+              );
+            }
+            // Otherwise resolve a generated artifact by filename (or alt).
+            const item =
+              (src && byName.get(baseName(src))) ||
+              (alt && byName.get(baseName(alt)));
+            if (item && (item.path || item.dataUrl)) {
+              return item.kind === "image" ? (
+                <ArtifactThumb
+                  a={item}
+                  className="my-2 max-h-[28rem] max-w-full cursor-pointer rounded-lg border border-border object-contain"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => openArtifact(item.path)}
+                  className="my-1 inline-flex items-center gap-1 rounded-md bg-link/10 px-1.5 py-0.5 font-mono text-[0.9em] text-link"
+                >
+                  {item.name}
+                </button>
+              );
+            }
+            // Unresolved (e.g. no src at all) — show the alt text, not a broken
+            // image icon.
+            return alt ? (
+              <span className="text-[13px] text-muted-foreground italic">
+                [{alt}]
+              </span>
+            ) : (
+              <></>
+            );
+          },
           // Unwrap the default <pre> — CodeBlock supplies its own container, so
           // this prevents a nested <pre><pre> for fenced blocks.
           pre: ({ node: _n, children }) => <>{children}</>,
