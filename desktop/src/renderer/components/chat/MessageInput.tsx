@@ -466,7 +466,18 @@ export function MessageInput(): JSX.Element {
         content: m.content,
       }));
 
-    addUserMessage(text);
+    // Show what was attached on the user bubble (image thumbnails come from
+    // the already-encoded base64; other kinds render as chips).
+    const displayAttachments = attachments?.map((a) => ({
+      name: a.name,
+      mediaType: a.mediaType,
+      kind: a.kind,
+      dataUrl:
+        a.kind === "image" && a.dataBase64
+          ? `data:${a.mediaType || "image/png"};base64,${a.dataBase64}`
+          : undefined,
+    }));
+    addUserMessage(text, displayAttachments);
     startStreaming();
 
     try {

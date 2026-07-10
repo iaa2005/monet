@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
+import { ArtifactsPanel } from "@/components/ArtifactsPanel";
 import { BackgroundTasks } from "@/components/BackgroundTasks";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { FilterDropdown } from "@/components/FilterDropdown";
@@ -903,9 +904,7 @@ export default function App(): JSX.Element {
                           <div
                             className={rightTab === "artifacts" ? "" : "hidden"}
                           >
-                            <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
-                              Artifacts published in this session appear here.
-                            </div>
+                            <ArtifactsPanel />
                           </div>
                         </div>
                       </Panel>

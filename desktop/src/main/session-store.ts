@@ -38,6 +38,8 @@ export interface ChatMessage {
     output?: string;
     status: string;
   };
+  /** Attachment metadata (name/kind only — binary data is never stored). */
+  attachments?: { name: string; mediaType: string; kind: string }[];
   isStreaming?: boolean;
   isError?: boolean;
 }
@@ -144,8 +146,26 @@ function getDb(): ReturnType<typeof Database> {
     // Per-chat working directory: each session remembers its own folder.
     if (!has("workspace"))
       db.exec("ALTER TABLE sessions ADD COLUMN workspace TEXT");
+    // Attachment metadata on messages (JSON array of {name,mediaType,kind}).
+    const msgCols = db.prepare("PRAGMA table_info(messages)").all() as {
+      name: string;
+    }[];
+    if (!msgCols.some((c) => c.name === "attachments"))
+      db.exec("ALTER TABLE messages ADD COLUMN attachments TEXT");
   }
   return db;
+}
+
+/** Strip preview data before persisting — only the meta goes to the DB. */
+function attachmentsJson(m: ChatMessage): string | null {
+  if (!m.attachments || m.attachments.length === 0) return null;
+  return JSON.stringify(
+    m.attachments.map((a) => ({
+      name: a.name,
+      mediaType: a.mediaType,
+      kind: a.kind,
+    })),
+  );
 }
 
 export class SessionStore {
@@ -190,6 +210,7 @@ export class SessionStore {
       content: string;
       timestamp: number;
       tool_call: string | null;
+      attachments: string | null;
     }>;
 
     return {
@@ -205,6 +226,7 @@ export class SessionStore {
         content: m.content,
         timestamp: m.timestamp,
         toolCall: m.tool_call ? JSON.parse(m.tool_call) : undefined,
+        attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
       })),
     };
   }
@@ -227,7 +249,7 @@ export class SessionStore {
       // Replace messages
       d.prepare("DELETE FROM messages WHERE session_id = ?").run(session.id);
       const insert = d.prepare(
-        "INSERT INTO messages (id, session_id, role, content, timestamp, tool_call) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO messages (id, session_id, role, content, timestamp, tool_call, attachments) VALUES (?, ?, ?, ?, ?, ?, ?)",
       );
       for (const m of session.messages) {
         insert.run(
@@ -237,6 +259,7 @@ export class SessionStore {
           m.content,
           m.timestamp,
           m.toolCall ? JSON.stringify(m.toolCall) : null,
+          attachmentsJson(m),
         );
       }
     });
@@ -262,7 +285,7 @@ export class SessionStore {
     if (!s) return null;
 
     d.prepare(
-      "INSERT INTO messages (id, session_id, role, content, timestamp, tool_call) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO messages (id, session_id, role, content, timestamp, tool_call, attachments) VALUES (?, ?, ?, ?, ?, ?, ?)",
     ).run(
       message.id || randomUUID(),
       sessionId,
@@ -270,6 +293,7 @@ export class SessionStore {
       message.content,
       message.timestamp,
       message.toolCall ? JSON.stringify(message.toolCall) : null,
+      attachmentsJson(message),
     );
 
     const count = d

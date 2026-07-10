@@ -4,12 +4,22 @@
 
 export type ChatRole = 'user' | 'assistant' | 'system' | 'tool'
 
+/** Attachment metadata shown on a user message. `dataUrl` (image thumbnails)
+ * lives only in the current session — the DB stores just the meta. */
+export interface ChatAttachmentMeta {
+  name: string
+  mediaType: string
+  kind: 'text' | 'image' | 'audio' | 'video' | 'file'
+  dataUrl?: string
+}
+
 export interface ChatMessage {
   id: string
   role: ChatRole
   content: string
   timestamp: number
   toolCall?: ToolCall
+  attachments?: ChatAttachmentMeta[]
   isStreaming?: boolean
   isError?: boolean
 }

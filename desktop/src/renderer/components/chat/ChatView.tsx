@@ -20,10 +20,15 @@ import { Shimmer } from "@/components/ui/shimmer";
 import { StatsDashboard } from "@/components/StatsDashboard";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import {
+  AudioLines,
   Bug,
   FileSearch,
+  FileText,
   FlaskConical,
   GitPullRequest,
+  Image as ImageIcon,
+  Paperclip,
+  Video,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -75,6 +80,48 @@ function WorkingRow(): JSX.Element {
   );
 }
 
+/** Attachment chips / thumbnails shown on a user message. */
+function AttachmentChips({
+  attachments,
+}: {
+  attachments: NonNullable<ChatMessage["attachments"]>;
+}): JSX.Element {
+  return (
+    <div className="mb-1 flex flex-wrap justify-end gap-1.5">
+      {attachments.map((a, i) =>
+        a.kind === "image" && a.dataUrl ? (
+          <img
+            key={`${i}-${a.name}`}
+            src={a.dataUrl}
+            alt={a.name}
+            title={a.name}
+            className="max-h-44 max-w-60 rounded-lg border border-border object-cover"
+          />
+        ) : (
+          <span
+            key={`${i}-${a.name}`}
+            title={a.name}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 text-[11px] text-muted-foreground"
+          >
+            {a.kind === "audio" ? (
+              <AudioLines className="size-3 shrink-0 text-violet-500" />
+            ) : a.kind === "video" ? (
+              <Video className="size-3 shrink-0 text-orange-500" />
+            ) : a.kind === "file" ? (
+              <Paperclip className="size-3 shrink-0 text-rose-500" />
+            ) : a.kind === "image" ? (
+              <ImageIcon className="size-3 shrink-0 text-emerald-500" />
+            ) : (
+              <FileText className="size-3 shrink-0" />
+            )}
+            <span className="max-w-44 truncate">{a.name}</span>
+          </span>
+        ),
+      )}
+    </div>
+  );
+}
+
 /** Memoized so a streaming flush only re-renders the message that changed —
  * finished messages keep their object identity in the store, so re-parsing
  * their markdown (the main scroll-lag source) is skipped entirely. */
@@ -96,11 +143,16 @@ const MessageRow = memo(
       <Message align={isUser ? "end" : "start"}>
         <MessageContent>
           {isUser ? (
-            <Bubble variant="secondary" align="end">
-              <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.08]">
-                {msg.content}
-              </BubbleContent>
-            </Bubble>
+            <>
+              {msg.attachments && msg.attachments.length > 0 && (
+                <AttachmentChips attachments={msg.attachments} />
+              )}
+              <Bubble variant="secondary" align="end">
+                <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.08]">
+                  {msg.content}
+                </BubbleContent>
+              </Bubble>
+            </>
           ) : (
             <Bubble variant="ghost">
               <BubbleContent className={cn(msg.isError && "text-destructive")}>

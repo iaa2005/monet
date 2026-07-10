@@ -10,7 +10,12 @@
  */
 
 import { create } from "zustand";
-import type { ChatMessage, LLMEvent, ToolCall } from "@/types/chat";
+import type {
+  ChatAttachmentMeta,
+  ChatMessage,
+  LLMEvent,
+  ToolCall,
+} from "@/types/chat";
 
 function generateId(): string {
   return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -104,7 +109,10 @@ interface ChatStore {
   /** Seed a session's message list (e.g. loaded from the DB). Does NOT clobber
    * a session that's currently streaming in the background. */
   loadSessionMessages: (id: string, messages: ChatMessage[]) => void;
-  addUserMessage: (content: string) => ChatMessage;
+  addUserMessage: (
+    content: string,
+    attachments?: ChatAttachmentMeta[],
+  ) => ChatMessage;
   startStreaming: () => void;
   finishStreaming: (usage?: ChatUsage) => void;
   setError: (error: string) => void;
@@ -370,12 +378,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
       mutate(id, () => ({ ...EMPTY, messages }));
     },
 
-    addUserMessage: (content) => {
+    addUserMessage: (content, attachments) => {
       const msg: ChatMessage = {
         id: generateId(),
         role: "user",
         content,
         timestamp: Date.now(),
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
       };
       mutate(targetId(), (p) => ({
         ...p,
