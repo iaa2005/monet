@@ -1,10 +1,95 @@
-import { useState, memo } from "react";
+import { useMemo, useState, memo } from "react";
 import { Check, ChevronRight, Circle, Loader2, X, Wrench } from "lucide-react";
 import type { ToolCall } from "@/types/chat";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import { CodeBlock } from "./CodeBlock";
 import { InlineDiff, diffStats } from "./InlineDiff";
+import {
+  ArtifactThumb,
+  KindIcon,
+  openArtifact,
+} from "@/components/ArtifactsPanel";
+
+// Sandbox tool output carries one line per produced file:
+//   [sandbox-file] <mediaType> <name> :: <absolute path>
+const SANDBOX_FILE_RE = /^\[sandbox-file\]\s+(\S+)\s+(.+?)\s+::\s+(.+)$/;
+
+function kindOfMime(mime: string): "image" | "audio" | "video" | "file" {
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("video/")) return "video";
+  return "file";
+}
+
+/** Split RunPython output into produced files + the remaining text log. */
+function parseSandboxOutput(output: string): {
+  files: { name: string; mediaType: string; path: string }[];
+  text: string;
+} {
+  const files: { name: string; mediaType: string; path: string }[] = [];
+  const rest: string[] = [];
+  for (const line of output.split("\n")) {
+    const m = SANDBOX_FILE_RE.exec(line.trim());
+    if (m) files.push({ mediaType: m[1], name: m[2], path: m[3] });
+    else rest.push(line);
+  }
+  return { files, text: rest.join("\n").trim() };
+}
+
+function SandboxOutput({
+  output,
+  inGroup,
+}: {
+  output: string;
+  inGroup?: boolean;
+}): JSX.Element {
+  const { files, text } = useMemo(() => parseSandboxOutput(output), [output]);
+  return (
+    <div className="space-y-2">
+      {text && (
+        <CodeBlock
+          code={text}
+          language="text"
+          maxHeight={280}
+          bare={inGroup}
+          className={inGroup ? "border-none bg-transparent my-0" : ""}
+        />
+      )}
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {files.map((f, i) => {
+            const kind = kindOfMime(f.mediaType);
+            const meta = {
+              name: f.name,
+              mediaType: f.mediaType,
+              kind,
+              path: f.path,
+            };
+            return kind === "image" ? (
+              <ArtifactThumb
+                key={`${i}-${f.name}`}
+                a={meta}
+                className="max-h-72 max-w-full cursor-pointer rounded-lg border border-border object-contain"
+              />
+            ) : (
+              <button
+                key={`${i}-${f.name}`}
+                type="button"
+                onClick={() => openArtifact(f.path)}
+                title={`Open ${f.name}`}
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-[12px] transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+              >
+                <KindIcon kind={kind} />
+                <span className="max-w-52 truncate">{f.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
@@ -24,6 +109,7 @@ const HUMAN_NAMES: Record<string, string> = {
   Glob: "Found files",
   TodoWrite: "Updated plan",
   Task: "Delegated task",
+  RunPython: "Ran Python",
 };
 
 function humanName(name: string): string {
@@ -146,6 +232,22 @@ function ToolDetail({
 
   if (name === "Write" && str("content") != null) {
     return <InlineDiff oldText="" newText={str("content") ?? ""} />;
+  }
+
+  if (name === "RunPython") {
+    return (
+      <div className="space-y-2">
+        {str("code") && (
+          <CodeBlock
+            code={str("code") ?? ""}
+            language="python"
+            bare={inGroup}
+            className={inGroup ? "border-none bg-transparent my-0" : ""}
+          />
+        )}
+        {output && <SandboxOutput output={output} inGroup={inGroup} />}
+      </div>
+    );
   }
 
   const shellLang =
