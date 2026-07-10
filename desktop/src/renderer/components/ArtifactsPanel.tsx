@@ -129,9 +129,14 @@ function ArtifactRow({ a }: { a: ArtifactItem }): JSX.Element {
   );
 }
 
-/** Compact end-of-conversation strip of produced artifacts (click → viewer). */
-export function ArtifactsStrip(): JSX.Element | null {
-  const { output } = useSessionArtifacts();
+/** Compact strip of the artifacts ONE turn produced — rendered right after
+ * the model reply that created them (click → viewer). */
+export function ArtifactsStrip({
+  items,
+}: {
+  items: ArtifactItem[];
+}): JSX.Element | null {
+  const output = items;
   if (output.length === 0) return null;
   return (
     <div className="rounded-xl border border-border bg-card/50 p-2.5">

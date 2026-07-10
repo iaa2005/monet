@@ -39,6 +39,28 @@ export function baseName(p: string): string {
   return p.split(/[/\\]/).pop() ?? p;
 }
 
+/** Files a single RunPython result produced (from its [sandbox-file] lines). */
+export function sandboxFilesFromOutput(
+  output: string,
+  ts: number,
+): ArtifactItem[] {
+  const items: ArtifactItem[] = [];
+  for (const line of output.split("\n")) {
+    const m = SANDBOX_FILE_RE.exec(line.trim());
+    if (m) {
+      items.push({
+        name: m[2],
+        mediaType: m[1],
+        kind: kindOfMime(m[1]),
+        path: m[3],
+        ts,
+        source: "output",
+      });
+    }
+  }
+  return items;
+}
+
 export interface SessionArtifacts {
   content: ArtifactItem[];
   output: ArtifactItem[];
@@ -62,21 +84,7 @@ export function collectArtifacts(messages: ChatMessage[]): SessionArtifacts {
       });
     }
     const out = m.toolCall?.name === "RunPython" ? m.toolCall.output : undefined;
-    if (out) {
-      for (const line of out.split("\n")) {
-        const mm = SANDBOX_FILE_RE.exec(line.trim());
-        if (mm) {
-          output.push({
-            name: mm[2],
-            mediaType: mm[1],
-            kind: kindOfMime(mm[1]),
-            path: mm[3],
-            ts: m.timestamp,
-            source: "output",
-          });
-        }
-      }
-    }
+    if (out) output.push(...sandboxFilesFromOutput(out, m.timestamp));
   }
 
   // Newest of each name wins; output registered last so a generated file

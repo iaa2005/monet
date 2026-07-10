@@ -32,6 +32,10 @@ import {
   KindIcon,
   viewArtifact,
 } from "@/components/ArtifactsPanel";
+import {
+  sandboxFilesFromOutput,
+  type ArtifactItem,
+} from "@/lib/sessionArtifacts";
 import { cn } from "@/lib/utils";
 import greetings from "@/data/greetings.json";
 import type { ElectronAPI, PermissionRequest } from "@/types/electron";
@@ -163,30 +167,68 @@ const MessageRow = memo(
 );
 
 type GroupedItem =
-  ChatMessage | { type: "tool-group"; id: string; calls: ToolCall[] };
+  | ChatMessage
+  | { type: "tool-group"; id: string; calls: ToolCall[] }
+  | { type: "artifact-strip"; id: string; items: ArtifactItem[] };
 
-/** In Normal mode, consecutive tool messages become a single group card. */
+/** Artifacts produced per TURN, keyed by the index of the turn's last
+ * message — the strip renders right after that message, like the official
+ * app's document card under the reply that created it. */
+function stripIndexes(msgs: ChatMessage[]): Map<number, ArtifactItem[]> {
+  const strips = new Map<number, ArtifactItem[]>();
+  let acc = new Map<string, ArtifactItem>(); // dedupe by name, last wins
+  let lastIdx = -1;
+  const flush = (): void => {
+    if (acc.size > 0 && lastIdx >= 0) strips.set(lastIdx, [...acc.values()]);
+    acc = new Map();
+    lastIdx = -1;
+  };
+  msgs.forEach((m, i) => {
+    if (m.role === "user") {
+      flush();
+      return;
+    }
+    lastIdx = i;
+    const out = m.toolCall?.name === "RunPython" ? m.toolCall.output : undefined;
+    if (out)
+      for (const f of sandboxFilesFromOutput(out, m.timestamp))
+        acc.set(f.name, f);
+  });
+  flush();
+  return strips;
+}
+
+/** In Normal mode, consecutive tool messages become a single group card.
+ * In every mode, a turn that produced sandbox files gets an artifact strip
+ * right after its last message. */
 function groupMessages(
   msgs: ChatMessage[],
   mode: TranscriptMode,
 ): GroupedItem[] {
-  if (mode !== "normal") return msgs;
-
+  const strips = stripIndexes(msgs);
   const out: GroupedItem[] = [];
   let i = 0;
   while (i < msgs.length) {
     const m = msgs[i];
-    if (m.role === "tool" && m.toolCall) {
+    if (mode === "normal" && m.role === "tool" && m.toolCall) {
       const group: ToolCall[] = [m.toolCall];
+      let stripItems = strips.get(i);
       let j = i + 1;
       while (j < msgs.length && msgs[j].role === "tool" && msgs[j].toolCall) {
         group.push(msgs[j].toolCall!);
+        stripItems = strips.get(j) ?? stripItems;
         j++;
       }
       out.push({ type: "tool-group", id: `tg-${i}`, calls: group });
+      // The turn ended INSIDE this group (e.g. interrupted after a tool).
+      if (stripItems)
+        out.push({ type: "artifact-strip", id: `as-${i}`, items: stripItems });
       i = j;
     } else {
       out.push(m);
+      const stripItems = strips.get(i);
+      if (stripItems)
+        out.push({ type: "artifact-strip", id: `as-${i}`, items: stripItems });
       i++;
     }
   }
@@ -446,6 +488,19 @@ export function ChatView({
                         </MessageScrollerItem>
                       );
                     }
+                    if ("type" in item && item.type === "artifact-strip") {
+                      return (
+                        <MessageScrollerItem
+                          key={item.id}
+                          messageId={item.id}
+                          scrollAnchor={
+                            !showWorking && i === grouped.length - 1
+                          }
+                        >
+                          <ArtifactsStrip items={item.items} />
+                        </MessageScrollerItem>
+                      );
+                    }
                     return (
                       <MessageScrollerItem
                         key={item.id}
@@ -465,8 +520,6 @@ export function ChatView({
                       <WorkingRow />
                     </MessageScrollerItem>
                   )}
-
-                  {!showWorking && <ArtifactsStrip />}
 
                   {error && (
                     <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
