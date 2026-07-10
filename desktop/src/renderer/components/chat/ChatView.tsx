@@ -30,7 +30,7 @@ import {
   ArtifactThumb,
   ArtifactsStrip,
   KindIcon,
-  openArtifact,
+  viewArtifact,
 } from "@/components/ArtifactsPanel";
 import { cn } from "@/lib/utils";
 import greetings from "@/data/greetings.json";
@@ -96,14 +96,15 @@ function AttachmentChips({
           <ArtifactThumb
             key={`${i}-${a.name}`}
             a={a}
-            className="max-h-44 max-w-60 cursor-pointer rounded-lg border border-border object-cover"
+            onClick={() => viewArtifact(a)}
+            className="max-h-44 max-w-60 rounded-lg border border-border object-cover"
           />
         ) : (
           <button
             key={`${i}-${a.name}`}
             type="button"
-            title={a.path ? `Open ${a.name}` : a.name}
-            onClick={() => openArtifact(a.path)}
+            title={a.path ? `View ${a.name}` : a.name}
+            onClick={() => viewArtifact(a)}
             disabled={!a.path}
             className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 text-[11px] text-muted-foreground transition-colors enabled:hover:text-foreground disabled:cursor-default"
           >

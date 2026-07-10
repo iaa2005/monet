@@ -8,7 +8,7 @@ import { InlineDiff, diffStats } from "./InlineDiff";
 import {
   ArtifactThumb,
   KindIcon,
-  openArtifact,
+  viewArtifact,
 } from "@/components/ArtifactsPanel";
 
 // Sandbox tool output carries one line per produced file:
@@ -70,14 +70,15 @@ function SandboxOutput({
               <ArtifactThumb
                 key={`${i}-${f.name}`}
                 a={meta}
-                className="max-h-72 max-w-full cursor-pointer rounded-lg border border-border object-contain"
+                onClick={() => viewArtifact(meta)}
+                className="max-h-72 max-w-full rounded-lg border border-border object-contain"
               />
             ) : (
               <button
                 key={`${i}-${f.name}`}
                 type="button"
-                onClick={() => openArtifact(f.path)}
-                title={`Open ${f.name}`}
+                onClick={() => viewArtifact(meta)}
+                title={`View ${f.name}`}
                 className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-[12px] transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
               >
                 <KindIcon kind={kind} />

@@ -21,6 +21,7 @@ import {
   type ArtifactItem,
 } from "@/lib/sessionArtifacts";
 import { useChatStore } from "@/stores/chatStore";
+import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -64,9 +65,13 @@ export function KindIcon({
 export function ArtifactThumb({
   a,
   className,
+  onClick,
 }: {
   a: { dataUrl?: string; path?: string; name: string; mediaType: string };
   className?: string;
+  /** Click handler. Nothing opens in the OS unless the caller asks for it —
+   * clicking a preview should open the in-app viewer, not the OS app. */
+  onClick?: () => void;
 }): JSX.Element | null {
   const [url, setUrl] = useState<string | null>(a.dataUrl ?? null);
 
@@ -91,8 +96,8 @@ export function ArtifactThumb({
       src={url}
       alt={a.name}
       title={a.name}
-      onClick={() => openArtifact(a.path)}
-      className={className ?? "max-h-40 w-full cursor-pointer object-cover"}
+      onClick={onClick}
+      className={cn(className ?? "max-h-40 w-full object-cover", onClick && "cursor-pointer")}
     />
   );
 }
@@ -101,13 +106,7 @@ function ArtifactRow({ a }: { a: ArtifactItem }): JSX.Element {
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
       {a.kind === "image" && (a.dataUrl || a.path) && (
-        <button
-          type="button"
-          onClick={() => viewArtifact(a)}
-          className="block w-full"
-        >
-          <ArtifactThumb a={a} />
-        </button>
+        <ArtifactThumb a={a} onClick={() => viewArtifact(a)} />
       )}
       <button
         type="button"

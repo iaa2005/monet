@@ -10,7 +10,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./CodeBlock";
-import { ArtifactThumb, openArtifact } from "@/components/ArtifactsPanel";
+import { ArtifactThumb, viewArtifact } from "@/components/ArtifactsPanel";
 import { baseName, useSessionArtifacts } from "@/lib/sessionArtifacts";
 
 interface MarkdownViewerProps {
@@ -112,12 +112,13 @@ export function MarkdownViewer({
               return item.kind === "image" ? (
                 <ArtifactThumb
                   a={item}
-                  className="my-2 max-h-[28rem] max-w-full cursor-pointer rounded-lg border border-border object-contain"
+                  onClick={() => viewArtifact(item)}
+                  className="my-2 max-h-[28rem] max-w-full rounded-lg border border-border object-contain"
                 />
               ) : (
                 <button
                   type="button"
-                  onClick={() => openArtifact(item.path)}
+                  onClick={() => viewArtifact(item)}
                   className="my-1 inline-flex items-center gap-1 rounded-md bg-link/10 px-1.5 py-0.5 font-mono text-[0.9em] text-link"
                 >
                   {item.name}
