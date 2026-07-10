@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, memo } from "react";
+import { useEffect, useState, useMemo, useRef, memo } from "react";
 import { useChatStore } from "@/stores/chatStore";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { ToolCallBubble } from "./ToolCallBubble";
@@ -397,8 +397,47 @@ export function ChatView({
     last?.role === "assistant" && last.isStreaming && !!last.content;
   const showWorking = isStreaming && !activeText;
 
+  // Drag-and-drop anywhere over the chat stages the files as attachments.
+  // Counter-based tracking: enter/leave fire for every child crossed.
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepth = useRef(0);
+  const isFileDrag = (e: React.DragEvent): boolean =>
+    Array.from(e.dataTransfer.types).includes("Files");
+
   return (
-    <div className="flex h-full flex-col">
+    <div
+      className="relative flex h-full flex-col"
+      onDragEnter={(e) => {
+        if (!isFileDrag(e)) return;
+        e.preventDefault();
+        dragDepth.current++;
+        setDragOver(true);
+      }}
+      onDragOver={(e) => {
+        if (isFileDrag(e)) e.preventDefault();
+      }}
+      onDragLeave={(e) => {
+        if (!isFileDrag(e)) return;
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) setDragOver(false);
+      }}
+      onDrop={(e) => {
+        if (!isFileDrag(e)) return;
+        e.preventDefault();
+        dragDepth.current = 0;
+        setDragOver(false);
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length > 0)
+          useChatStore.getState().setDroppedFiles(files);
+      }}
+    >
+      {dragOver && (
+        <div className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-link bg-link/5">
+          <span className="rounded-lg bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-sm">
+            Drop files to attach
+          </span>
+        </div>
+      )}
       {isEmpty && home ? (
         /* Home empty state: greeting + composer centered VERTICALLY, with the
            idea chips under the input. No working directory here — Home is a

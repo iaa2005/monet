@@ -92,6 +92,9 @@ interface ChatStore {
    * switching chats and coming back restores what you were typing.
    * Keys: sessionId, or "new:<space>" for a fresh chat. */
   drafts: Record<string, string>;
+  /** Files dropped onto the chat window, waiting for the composer to stage
+   * them as attachments (consumed and cleared by MessageInput). */
+  droppedFiles: File[] | null;
   /** A file the user asked to open in the in-app viewer (tool file links).
    * Consumed and cleared by App. */
   openFileRequest: string | null;
@@ -114,6 +117,7 @@ interface ChatStore {
   setIncognito: (v: boolean) => void;
   setComposerDraft: (v: string) => void;
   setDraft: (key: string, text: string) => void;
+  setDroppedFiles: (files: File[] | null) => void;
   requestOpenFile: (path: string | null) => void;
   openArtifactViewer: (
     item: {
@@ -366,6 +370,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     incognito: false,
     composerDraft: "",
     drafts: {},
+    droppedFiles: null,
     openFileRequest: null,
     viewerArtifact: null,
     space: "home",
@@ -389,6 +394,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     setComposerDraft: (v) => set({ composerDraft: v }),
     setDraft: (key, text) =>
       set((s) => ({ drafts: { ...s.drafts, [key]: text } })),
+    setDroppedFiles: (files) => set({ droppedFiles: files }),
     requestOpenFile: (path) => set({ openFileRequest: path }),
     openArtifactViewer: (item) => set({ viewerArtifact: item }),
     setSpace: (v) => set({ space: v }),

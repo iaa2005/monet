@@ -384,7 +384,7 @@ export function MessageInput(): JSX.Element {
     localStorage.setItem("permission-mode", id);
   };
 
-  const stageFiles = (list: FileList | null): void => {
+  const stageFiles = (list: FileList | File[] | null): void => {
     if (!list) return;
     setFiles((prev) => [
       ...prev,
@@ -397,6 +397,16 @@ export function MessageInput(): JSX.Element {
       })),
     ]);
   };
+
+  // Files dropped anywhere over the chat window (ChatView catches the drop).
+  const droppedFiles = useChatStore((s) => s.droppedFiles);
+  useEffect(() => {
+    if (droppedFiles && droppedFiles.length > 0) {
+      stageFiles(droppedFiles);
+      useChatStore.getState().setDroppedFiles(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [droppedFiles]);
 
   const removeFile = (id: string): void => {
     setFiles((prev) => {
@@ -608,11 +618,26 @@ export function MessageInput(): JSX.Element {
   const pillBtn =
     "flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]";
 
+  const isHome = useChatStore((s) => s.space === "home");
+
   return (
     <div className="pb-4">
-      <div className="relative mx-auto w-full max-w-3xl px-4">
+      {/* Home drops the horizontal padding (the composer aligns with the
+          centered content there); Code keeps px-4 so the input doesn't grow
+          wider than the transcript column. */}
+      <div
+        className={cn(
+          "relative mx-auto w-full max-w-3xl",
+          isHome ? "px-0" : "px-4",
+        )}
+      >
         {slashOpen && (
-          <div className="absolute bottom-full left-4 right-4 z-50 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-lg">
+          <div
+            className={cn(
+              "absolute bottom-full z-50 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-lg",
+              isHome ? "left-0 right-0" : "left-4 right-4",
+            )}
+          >
             {(["Commands", "Skills"] as const).map((section) => {
               const items = slashFlat.filter((i) => i.section === section);
               if (items.length === 0) return null;
