@@ -31,18 +31,22 @@ function sessionDir(sessionId: string): string {
   return dir;
 }
 
-function listFiles(dir: string): string[] {
+/** name → `${size}:${mtimeMs}` for every regular file in dir. */
+function snapshotFiles(dir: string): Map<string, string> {
+  const map = new Map<string, string>();
   try {
-    return readdirSync(dir).filter((f) => {
+    for (const f of readdirSync(dir)) {
       try {
-        return statSync(join(dir, f)).isFile();
+        const st = statSync(join(dir, f));
+        if (st.isFile()) map.set(f, `${st.size}:${st.mtimeMs}`);
       } catch {
-        return false;
+        /* skip */
       }
-    });
+    }
   } catch {
-    return [];
+    /* empty */
   }
+  return map;
 }
 
 /** First working interpreter from the candidates, else null. */
@@ -93,7 +97,7 @@ export async function runSubprocess(
   code: string,
 ): Promise<EngineResult> {
   const dir = sessionDir(sessionId);
-  const before = new Set(listFiles(dir));
+  const before = snapshotFiles(dir);
   const ext = language === "python" ? "py" : "mjs";
   const scriptName = `_run_${Date.now()}.${ext}`;
   writeFileSync(join(dir, scriptName), code, "utf-8");
@@ -118,12 +122,12 @@ export async function runSubprocess(
     result = await run(process.execPath, [scriptName], dir);
   }
 
-  // New files this run produced.
-  const created = listFiles(dir).filter(
-    (f) => !before.has(f) && f !== scriptName,
-  );
+  // Files this run created OR modified (the working dir persists per chat).
+  const after = snapshotFiles(dir);
   const files: SandboxFile[] = [];
-  for (const name of created) {
+  for (const [name, sig] of after) {
+    if (name === scriptName || name.startsWith("_run_")) continue;
+    if (before.get(name) === sig) continue;
     try {
       files.push({ name, bytes: readFileSync(join(dir, name)) });
     } catch {

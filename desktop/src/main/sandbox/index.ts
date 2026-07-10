@@ -43,7 +43,7 @@ export async function runInSandbox(
   const raw =
     engine === "subprocess"
       ? await runSubprocess(sessionId, "python", code)
-      : await runPyodide(code); // pyodide default; docker reserved → pyodide
+      : await runPyodide(sessionId, code); // pyodide default; docker reserved → pyodide
 
   const files = raw.files.map((f) => ({
     name: f.name,
