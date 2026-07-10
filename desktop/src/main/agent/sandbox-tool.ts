@@ -60,8 +60,13 @@ export const RunPythonTool = buildTool({
       "  using the exact filename you saved: ![short description](chart.png).",
       "  The app resolves that filename to the real image — never invent a URL or",
       "  a data URI.",
-      "- Common libraries (numpy, pandas, matplotlib, python-docx, openpyxl) are",
-      "  available; the first use may take a moment to load.",
+      "- numpy/pandas/matplotlib load natively; missing pure-Python packages",
+      "  (python-docx, openpyxl, python-pptx, deep-translator, …) install",
+      "  AUTOMATICALLY from PyPI on first import — binary document formats",
+      "  (.docx/.xlsx/.pptx/.pdf) fully work here, never claim otherwise. The",
+      "  first use of a package may take a moment to download.",
+      "- There is NO pip CLI and NO subprocess in this sandbox. For an explicit",
+      "  install use: import micropip; await micropip.install('name').",
     ].join("\n");
   },
   async description() {

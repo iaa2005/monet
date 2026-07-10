@@ -74,6 +74,65 @@ async function getPy(cacheDir: string): Promise<Py> {
 const clip = (s: string): string =>
   s.length > MAX_STREAM_CHARS ? s.slice(0, MAX_STREAM_CHARS) + "\n…(truncated)" : s;
 
+// Import-name → PyPI-name for packages whose module ≠ distribution name.
+const PIP_NAME: Record<string, string> = {
+  docx: "python-docx",
+  pptx: "python-pptx",
+  PIL: "pillow",
+  cv2: "opencv-python",
+  sklearn: "scikit-learn",
+  bs4: "beautifulsoup4",
+  yaml: "pyyaml",
+  dateutil: "python-dateutil",
+  fitz: "pymupdf",
+  Crypto: "pycryptodome",
+};
+
+/**
+ * Run code; on ModuleNotFoundError auto-install the missing package via
+ * micropip and retry (micropip installs live in THIS interpreter only, so a
+ * fresh worker "forgets" e.g. python-docx — that made the model wrongly
+ * conclude that binary formats don't work in the sandbox at all).
+ * Returns "" on success, the error text otherwise.
+ */
+async function execWithAutoInstall(
+  py: Py,
+  code: string,
+  note: (s: string) => void,
+): Promise<string> {
+  const tried = new Set<string>();
+  for (;;) {
+    try {
+      await py.runPythonAsync(code);
+      return "";
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const m =
+        /ModuleNotFoundError: No module named ['"]([A-Za-z0-9_.]+)['"]/.exec(
+          msg,
+        );
+      const mod = m?.[1]?.split(".")[0];
+      if (!mod || tried.has(mod) || tried.size >= 3) return msg;
+      tried.add(mod);
+      const pipName = PIP_NAME[mod] ?? mod;
+      note(`[sandbox] installing ${pipName} via micropip…`);
+      try {
+        await py.loadPackagesFromImports("import micropip");
+        await py.runPythonAsync(
+          `import micropip; await micropip.install(${JSON.stringify(pipName)})`,
+        );
+      } catch (ie) {
+        return (
+          msg +
+          `\n[sandbox] auto-install of ${pipName} failed: ${
+            ie instanceof Error ? ie.message : String(ie)
+          }`
+        );
+      }
+    }
+  }
+}
+
 function snapshotDir(py: Py, dir: string): Map<string, string> {
   const map = new Map<string, string>();
   let names: string[] = [];
@@ -162,11 +221,10 @@ async function run(msg: RunMsg): Promise<void> {
   } catch {
     /* a missing package surfaces as an ImportError when the code runs */
   }
-  try {
-    await py.runPythonAsync(msg.code);
-  } catch (e) {
-    errText += (e instanceof Error ? e.message : String(e)) + "\n";
-  }
+  const failure = await execWithAutoInstall(py, msg.code, (s) => {
+    out += s + "\n";
+  });
+  if (failure) errText += failure + "\n";
 
   const after = snapshotDir(py, msg.memDir);
   const files: { name: string; bytes: ArrayBuffer }[] = [];
