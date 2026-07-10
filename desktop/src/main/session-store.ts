@@ -22,6 +22,8 @@ export interface Session {
   messageCount: number;
   archived?: boolean;
   pinned?: boolean;
+  /** Which space the chat belongs to ("home" | "code"). */
+  space?: string;
   /** Per-chat working directory (restored when the chat is opened). */
   workspace?: string;
 }
@@ -201,6 +203,7 @@ export class SessionStore {
           created_at: string;
           updated_at: string;
           message_count: number;
+          space?: string | null;
           workspace?: string | null;
         }
       | undefined;
@@ -225,6 +228,7 @@ export class SessionStore {
       createdAt: s.created_at,
       updatedAt: s.updated_at,
       messageCount: s.message_count,
+      space: s.space ?? undefined,
       workspace: s.workspace ?? undefined,
       messages: msgs.map((m) => ({
         id: m.id,
@@ -248,9 +252,21 @@ export class SessionStore {
     const d = getDb();
     const now = new Date().toISOString();
     const tx = d.transaction(() => {
+      // Include space on INSERT so a session first written via save() (the
+      // persist-on-message_stop path) lands in the right space instead of the
+      // 'code' column default — that leaked Home chats into Code. On CONFLICT
+      // we deliberately do NOT touch space: a chat's space is set once and
+      // never changed by a later save.
       d.prepare(
-        "INSERT INTO sessions (id, title, created_at, updated_at, message_count) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at, message_count = excluded.message_count",
-      ).run(session.id, session.title, now, now, session.messages.length);
+        "INSERT INTO sessions (id, title, created_at, updated_at, message_count, space) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at, message_count = excluded.message_count",
+      ).run(
+        session.id,
+        session.title,
+        now,
+        now,
+        session.messages.length,
+        session.space || "code",
+      );
 
       // Replace messages
       d.prepare("DELETE FROM messages WHERE session_id = ?").run(session.id);

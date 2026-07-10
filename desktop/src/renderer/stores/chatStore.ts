@@ -154,7 +154,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // Keep a user-chosen title (Rename); auto-title fresh sessions from the
       // first user message.
       const existing = (await api.getById(sessionId)) as
-        | { title?: string }
+        | { title?: string; space?: string }
         | null
         | undefined;
       const derived =
@@ -164,9 +164,14 @@ export const useChatStore = create<ChatStore>((set, get) => {
         existing?.title && existing.title !== "New Session"
           ? existing.title
           : derived;
+      // Preserve the chat's space from the DB row (set at create()); only fall
+      // back to the current visible space if the row doesn't exist yet. Using
+      // the DB value keeps a Home chat that persists while a Code chat is on
+      // screen (background run) from being reclassified.
+      const space = existing?.space ?? get().space;
       // Re-read the buffer AFTER the awaits — more deltas may have landed.
       const latest = get().sessions[sessionId]?.messages ?? msgs;
-      await api.save({ id: sessionId, title, messages: latest });
+      await api.save({ id: sessionId, title, messages: latest, space });
       get().bumpSessions();
     } catch {
       /* offline / DB unavailable — keep the in-memory buffer */
