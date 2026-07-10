@@ -38,8 +38,13 @@ export interface ChatMessage {
     output?: string;
     status: string;
   };
-  /** Attachment metadata (name/kind only — binary data is never stored). */
-  attachments?: { name: string; mediaType: string; kind: string }[];
+  /** Attachment metadata (name/kind/artifact path — never the binary data). */
+  attachments?: {
+    name: string;
+    mediaType: string;
+    kind: string;
+    path?: string;
+  }[];
   isStreaming?: boolean;
   isError?: boolean;
 }
@@ -156,7 +161,7 @@ function getDb(): ReturnType<typeof Database> {
   return db;
 }
 
-/** Strip preview data before persisting — only the meta goes to the DB. */
+/** Strip preview data before persisting — meta + artifact path only. */
 function attachmentsJson(m: ChatMessage): string | null {
   if (!m.attachments || m.attachments.length === 0) return null;
   return JSON.stringify(
@@ -164,6 +169,7 @@ function attachmentsJson(m: ChatMessage): string | null {
       name: a.name,
       mediaType: a.mediaType,
       kind: a.kind,
+      ...(a.path ? { path: a.path } : {}),
     })),
   );
 }

@@ -228,6 +228,22 @@ const electronAPI = {
     }> => ipcRenderer.invoke("commands:list"),
   },
 
+  artifacts: {
+    save: (payload: {
+      sessionId: string;
+      name: string;
+      dataBase64: string;
+    }): Promise<{ ok: boolean; path?: string; error?: string }> =>
+      ipcRenderer.invoke("artifacts:save", payload),
+    readImage: (
+      path: string,
+      mediaType?: string,
+    ): Promise<{ ok: boolean; dataUrl?: string; error?: string }> =>
+      ipcRenderer.invoke("artifacts:readImage", path, mediaType),
+    open: (path: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("artifacts:open", path),
+  },
+
   git: {
     info: (cwd?: string): Promise<unknown> =>
       ipcRenderer.invoke("git:info", cwd),

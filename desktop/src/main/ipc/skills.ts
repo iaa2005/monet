@@ -98,7 +98,8 @@ function readSkill(slug: string): SkillInfo | null {
   }
 }
 
-function listSkills(): SkillInfo[] {
+/** All user skills from the skills dir (also used by the "/" command menu). */
+export function listSkillInfos(): SkillInfo[] {
   const base = skillsDir();
   const out: SkillInfo[] = [];
   for (const entry of readdirSync(base, { withFileTypes: true })) {
@@ -108,6 +109,7 @@ function listSkills(): SkillInfo[] {
   }
   return out.sort((a, b) => b.updatedAt - a.updatedAt);
 }
+const listSkills = listSkillInfos;
 
 function refreshSkillCaches(): void {
   // Vendor memoizes skill-dir discovery; our tool set caches the catalog.

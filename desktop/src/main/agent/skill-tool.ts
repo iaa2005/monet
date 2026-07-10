@@ -39,16 +39,35 @@ export async function expandSlashCommand(
   if (!m) return null
   try {
     initVendorRuntime()
-    const commands = await getCommands(getProjectRoot())
-    const command = findCommand(m[1], commands)
-    if (!command || command.type !== 'prompt') return null
+    const root = getProjectRoot()
+    // SKILL.md skills live in the skill catalog, not the command registry —
+    // search both so "/my-skill" expands too.
+    const [commands, skillCmds] = await Promise.all([
+      getCommands(root),
+      getSkillToolCommands(root).catch(() => [] as Command[]),
+    ])
+    const command =
+      findCommand(m[1], commands) ?? skillCmds.find(c => c.name === m[1])
+    if (
+      !command ||
+      typeof (command as { getPromptForCommand?: unknown })
+        .getPromptForCommand !== 'function'
+    )
+      return null
     // Minimal context: prompt expanders mostly read cwd/args; the abort
     // controller satisfies the common interface bits.
     const ctx = {
       abortController: new AbortController(),
       options: { commands, tools: [], debug: false },
     } as unknown as ToolUseContext
-    const blocks = await command.getPromptForCommand(m[2] ?? '', ctx)
+    const blocks = await (
+      command as {
+        getPromptForCommand: (
+          args: string,
+          ctx: ToolUseContext,
+        ) => Promise<ContentBlockParam[]>
+      }
+    ).getPromptForCommand(m[2] ?? '', ctx)
     const text = flattenBlocks(blocks)
     if (!text) return null
     return (

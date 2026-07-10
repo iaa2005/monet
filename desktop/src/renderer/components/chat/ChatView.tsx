@@ -20,17 +20,17 @@ import { Shimmer } from "@/components/ui/shimmer";
 import { StatsDashboard } from "@/components/StatsDashboard";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import {
-  AudioLines,
   Bug,
   FileSearch,
-  FileText,
   FlaskConical,
   GitPullRequest,
-  Image as ImageIcon,
-  Paperclip,
-  Video,
   type LucideIcon,
 } from "lucide-react";
+import {
+  ArtifactThumb,
+  KindIcon,
+  openArtifact,
+} from "@/components/ArtifactsPanel";
 import { cn } from "@/lib/utils";
 import greetings from "@/data/greetings.json";
 import type { ElectronAPI, PermissionRequest } from "@/types/electron";
@@ -80,7 +80,9 @@ function WorkingRow(): JSX.Element {
   );
 }
 
-/** Attachment chips / thumbnails shown on a user message. */
+/** Attachment chips / thumbnails shown on a user message. Image previews
+ * re-read the on-disk artifact when the in-memory data URL is gone; clicking
+ * anything with a saved path opens it with the OS. */
 function AttachmentChips({
   attachments,
 }: {
@@ -89,33 +91,24 @@ function AttachmentChips({
   return (
     <div className="mb-1 flex flex-wrap justify-end gap-1.5">
       {attachments.map((a, i) =>
-        a.kind === "image" && a.dataUrl ? (
-          <img
+        a.kind === "image" && (a.dataUrl || a.path) ? (
+          <ArtifactThumb
             key={`${i}-${a.name}`}
-            src={a.dataUrl}
-            alt={a.name}
-            title={a.name}
-            className="max-h-44 max-w-60 rounded-lg border border-border object-cover"
+            a={a}
+            className="max-h-44 max-w-60 cursor-pointer rounded-lg border border-border object-cover"
           />
         ) : (
-          <span
+          <button
             key={`${i}-${a.name}`}
-            title={a.name}
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 text-[11px] text-muted-foreground"
+            type="button"
+            title={a.path ? `Open ${a.name}` : a.name}
+            onClick={() => openArtifact(a.path)}
+            disabled={!a.path}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 text-[11px] text-muted-foreground transition-colors enabled:hover:text-foreground disabled:cursor-default"
           >
-            {a.kind === "audio" ? (
-              <AudioLines className="size-3 shrink-0 text-violet-500" />
-            ) : a.kind === "video" ? (
-              <Video className="size-3 shrink-0 text-orange-500" />
-            ) : a.kind === "file" ? (
-              <Paperclip className="size-3 shrink-0 text-rose-500" />
-            ) : a.kind === "image" ? (
-              <ImageIcon className="size-3 shrink-0 text-emerald-500" />
-            ) : (
-              <FileText className="size-3 shrink-0" />
-            )}
+            <KindIcon kind={a.kind} className="size-3" />
             <span className="max-w-44 truncate">{a.name}</span>
-          </span>
+          </button>
         ),
       )}
     </div>

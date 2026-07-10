@@ -210,6 +210,18 @@ export interface ElectronAPI {
       skills: { name: string; description: string }[];
     }>;
   };
+  artifacts: {
+    save: (payload: {
+      sessionId: string;
+      name: string;
+      dataBase64: string;
+    }) => Promise<{ ok: boolean; path?: string; error?: string }>;
+    readImage: (
+      path: string,
+      mediaType?: string,
+    ) => Promise<{ ok: boolean; dataUrl?: string; error?: string }>;
+    open: (path: string) => Promise<{ ok: boolean }>;
+  };
   git: {
     info: (cwd?: string) => Promise<GitInfo>;
     diff: (cwd?: string) => Promise<{

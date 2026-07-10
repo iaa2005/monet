@@ -16,6 +16,7 @@ import { registerMcpIPC } from "./mcp.js";
 import { registerSttIPC } from "./stt.js";
 import { registerGitIPC } from "./git.js";
 import { registerCommandsIPC } from "./commands.js";
+import { registerArtifactsIPC } from "./artifacts.js";
 
 export function registerAllIPC(): void {
   registerChatIPC();
@@ -32,4 +33,5 @@ export function registerAllIPC(): void {
   registerSttIPC();
   registerGitIPC();
   registerCommandsIPC();
+  registerArtifactsIPC();
 }

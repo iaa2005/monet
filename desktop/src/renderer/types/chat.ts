@@ -5,12 +5,15 @@
 export type ChatRole = 'user' | 'assistant' | 'system' | 'tool'
 
 /** Attachment metadata shown on a user message. `dataUrl` (image thumbnails)
- * lives only in the current session — the DB stores just the meta. */
+ * lives only in the current session; `path` points at the artifact saved on
+ * disk (<dataDir>/artifacts/<sessionId>/…) and IS persisted, so previews can
+ * be re-read after a reload and files opened with the OS. */
 export interface ChatAttachmentMeta {
   name: string
   mediaType: string
   kind: 'text' | 'image' | 'audio' | 'video' | 'file'
   dataUrl?: string
+  path?: string
 }
 
 export interface ChatMessage {

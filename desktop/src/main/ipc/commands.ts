@@ -13,6 +13,7 @@ import { getCommands, getSkillToolCommands } from "@vendor/commands.js";
 import { getProjectRoot } from "@vendor/bootstrap/state.js";
 import type { Command } from "@vendor/types/command.js";
 import { initVendorRuntime } from "../agent/vendor-context.js";
+import { listSkillInfos } from "./skills.js";
 
 export interface SlashCommandInfo {
   name: string;
@@ -45,15 +46,35 @@ export function registerCommandsIPC(): void {
           getCommands(root),
           getSkillToolCommands(root).catch(() => [] as Command[]),
         ]);
-        const skillNames = new Set(skillCmds.map((s) => s.name));
-        const prompts = all.filter((c) => c.type === "prompt" && !hidden(c));
+        // Skills come straight from the skill catalog — SKILL.md skills are
+        // NOT in the slash-command registry, so intersecting the two lists
+        // (the previous approach) always produced an empty Skills section.
+        const skillMap = new Map<string, SlashCommandInfo>();
+        for (const s of skillCmds) {
+          if (!hidden(s))
+            skillMap.set(s.name, { name: s.name, description: describe(s) });
+        }
+        // Fallback/merge with our own skills dir (Settings-managed).
+        try {
+          for (const s of listSkillInfos()) {
+            if (!skillMap.has(s.slug))
+              skillMap.set(s.slug, { name: s.slug, description: s.description });
+          }
+        } catch {
+          /* skills dir unavailable */
+        }
         const toInfo = (c: Command): SlashCommandInfo => ({
           name: c.name,
           description: describe(c),
         });
         return {
-          commands: prompts.filter((c) => !skillNames.has(c.name)).map(toInfo),
-          skills: prompts.filter((c) => skillNames.has(c.name)).map(toInfo),
+          commands: all
+            .filter(
+              (c) =>
+                c.type === "prompt" && !hidden(c) && !skillMap.has(c.name),
+            )
+            .map(toInfo),
+          skills: [...skillMap.values()],
         };
       } catch (err) {
         console.warn(

@@ -391,10 +391,17 @@ export function MessageInput(): JSX.Element {
     });
   };
 
-  // Menu is visible while the input is exactly "/<partial-name>" — a space
-  // (arguments) or newline closes it.
-  const slashMatch = /^\/([A-Za-z0-9_:./-]*)$/.exec(input);
-  const slashQuery = slashMatch?.[1] ?? null;
+  // "/" opens the menu ANYWHERE in the prompt: track the caret and look for a
+  // slash-token right before it (slash at start of input or after whitespace,
+  // followed by name characters only). A space closes it (arguments begin).
+  const [caret, setCaret] = useState(0);
+  const slashTok = useMemo(() => {
+    const upto = input.slice(0, caret);
+    const m = /(?:^|\s)\/([A-Za-z0-9_:./-]*)$/.exec(upto);
+    if (!m) return null;
+    return { query: m[1], start: caret - m[1].length - 1 };
+  }, [input, caret]);
+  const slashQuery = slashTok?.query ?? null;
 
   useEffect(() => {
     if (slashQuery == null) {
@@ -430,8 +437,16 @@ export function MessageInput(): JSX.Element {
     slashQuery != null && !slashDismissed && slashFlat.length > 0;
 
   const pickSlash = (name: string): void => {
-    setInput(`/${name} `);
-    taRef.current?.focus();
+    if (!slashTok) return;
+    const before = input.slice(0, slashTok.start);
+    const after = input.slice(caret);
+    setInput(`${before}/${name} ${after}`);
+    const pos = before.length + name.length + 2;
+    requestAnimationFrame(() => {
+      taRef.current?.focus();
+      taRef.current?.setSelectionRange(pos, pos);
+      setCaret(pos);
+    });
   };
 
   const send = async (): Promise<void> => {
@@ -526,7 +541,27 @@ export function MessageInput(): JSX.Element {
         a.kind === "image" && a.dataBase64
           ? `data:${a.mediaType || "image/png"};base64,${a.dataBase64}`
           : undefined,
+      path: undefined as string | undefined,
     }));
+    // Persist binaries as artifacts on disk so previews survive chat
+    // switches/reloads and files can be opened later (incognito excluded).
+    if (bridge && sessionId && !incognito && attachments && displayAttachments) {
+      await Promise.all(
+        attachments.map(async (a, i) => {
+          if (!a.dataBase64) return;
+          try {
+            const r = await bridge.artifacts.save({
+              sessionId,
+              name: a.name,
+              dataBase64: a.dataBase64,
+            });
+            if (r.ok && r.path) displayAttachments[i].path = r.path;
+          } catch {
+            /* preview-only */
+          }
+        }),
+      );
+    }
     addUserMessage(text, displayAttachments);
     startStreaming();
 
@@ -676,7 +711,13 @@ export function MessageInput(): JSX.Element {
           <textarea
             ref={taRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              setCaret(e.target.selectionStart ?? e.target.value.length);
+            }}
+            onSelect={(e) =>
+              setCaret(e.currentTarget.selectionStart ?? 0)
+            }
             onKeyDown={(e) => {
               // "/" menu navigation takes priority while it's open.
               if (slashOpen) {
