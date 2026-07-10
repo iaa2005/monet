@@ -226,6 +226,9 @@ export interface ElectronAPI {
       skills: { name: string; description: string }[];
     }>;
   };
+  incognito: {
+    purge: (sessionId: string) => Promise<{ ok: boolean }>;
+  };
   sandbox: {
     getConfig: () => Promise<{ engine: string }>;
     setConfig: (patch: { engine?: string }) => Promise<{ engine: string }>;

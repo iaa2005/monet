@@ -194,6 +194,7 @@ export default function App(): JSX.Element {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [renameTargetId, setRenameTargetId] = useState<string | undefined>();
+  const [incognitoCloseOpen, setIncognitoCloseOpen] = useState(false);
   const [transcriptMode, setTranscriptMode] =
     useState<TranscriptMode>("normal");
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -348,6 +349,23 @@ export default function App(): JSX.Element {
       setView("chat");
     }
   }, [appMode, handleSelectSession]);
+
+  // Confirmed incognito exit: purge every trace of the session (artifacts,
+  // sandbox, main-process history), then leave incognito.
+  const closeIncognito = useCallback(() => {
+    const store = useChatStore.getState();
+    const sid = store.currentSessionId;
+    if (sid) {
+      void api()?.chat.reset(sid);
+      void api()?.incognito.purge(sid);
+    }
+    store.clearMessages();
+    store.setCurrentSessionId(undefined);
+    setCurrentSessionId(undefined);
+    store.setIncognito(false);
+    setIncognitoCloseOpen(false);
+    setView("chat");
+  }, []);
 
   const handleDeleteSession = useCallback(
     async (id: string) => {
@@ -545,12 +563,17 @@ export default function App(): JSX.Element {
               active={incognito}
               onClick={() => {
                 const store = useChatStore.getState();
+                if (store.incognito) {
+                  // Exiting DESTROYS the chat's data — confirm first.
+                  setIncognitoCloseOpen(true);
+                  return;
+                }
                 if (store.currentSessionId)
                   void api()?.chat.reset(store.currentSessionId);
                 store.clearMessages();
                 store.setCurrentSessionId(undefined);
                 setCurrentSessionId(undefined);
-                store.setIncognito(!store.incognito);
+                store.setIncognito(true);
                 setView("chat");
               }}
             >
@@ -1017,6 +1040,39 @@ export default function App(): JSX.Element {
         className="h-[80vh] max-w-4xl"
       >
         <SettingsPanel theme={theme} setTheme={setTheme} />
+      </Modal>
+
+      <Modal
+        open={incognitoCloseOpen}
+        onClose={() => setIncognitoCloseOpen(false)}
+      >
+        <div className="p-5">
+          <div className="flex items-center gap-2">
+            <Ghost className="size-4 text-muted-foreground" />
+            <h3 className="text-base font-semibold">Close incognito chat?</h3>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Everything from this chat will be deleted permanently — the
+            conversation, sandbox files and generated artifacts. If you need a
+            file, download it before closing.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIncognitoCloseOpen(false)}
+              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={closeIncognito}
+              className="rounded-lg bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground transition-opacity hover:opacity-90"
+            >
+              Close & delete
+            </button>
+          </div>
+        </div>
       </Modal>
 
       <Modal open={renameOpen} onClose={() => setRenameOpen(false)}>

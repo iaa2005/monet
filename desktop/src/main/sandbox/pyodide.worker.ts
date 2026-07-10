@@ -51,6 +51,11 @@ interface MirrorMsg {
   bytes: ArrayBuffer;
 }
 
+interface WipeMsg {
+  type: "wipe";
+  memDir: string;
+}
+
 interface PyFS {
   readdir: (p: string) => string[];
   stat: (p: string) => { mode: number; size: number; mtime: Date | number };
@@ -266,7 +271,7 @@ async function run(msg: RunMsg): Promise<void> {
   );
 }
 
-parentPort!.on("message", (msg: RunMsg | MirrorMsg) => {
+parentPort!.on("message", (msg: RunMsg | MirrorMsg | WipeMsg) => {
   if (msg.type === "mirror") {
     if (!pyodide) return; // cold worker: the seeder will pick it up from disk
     try {
@@ -274,6 +279,18 @@ parentPort!.on("message", (msg: RunMsg | MirrorMsg) => {
         `import os; os.makedirs(${JSON.stringify(msg.memDir)}, exist_ok=True)`,
       );
       pyodide.FS.writeFile(`${msg.memDir}/${msg.name}`, new Uint8Array(msg.bytes));
+    } catch {
+      /* best-effort */
+    }
+    return;
+  }
+  if (msg.type === "wipe") {
+    // Incognito hygiene: drop the session's in-memory files entirely.
+    if (!pyodide) return;
+    try {
+      pyodide.runPython(
+        `import shutil; shutil.rmtree(${JSON.stringify(msg.memDir)}, ignore_errors=True)`,
+      );
     } catch {
       /* best-effort */
     }

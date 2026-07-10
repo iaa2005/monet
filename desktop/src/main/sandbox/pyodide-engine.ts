@@ -113,6 +113,13 @@ export async function runPyodide(
   });
 }
 
+/** Wipe a session's in-memory files in the LIVE worker (incognito purge).
+ * No-op when the worker is cold — there is nothing in memory then. */
+export function wipePyodideSession(sessionId: string): void {
+  if (!worker) return;
+  worker.postMessage({ type: "wipe", memDir: sessionDirFor(sessionId) });
+}
+
 /** Push a file into the LIVE worker's session dir (no-op when the worker is
  * cold — the seeder picks the file up from disk on the next run). */
 export function mirrorToPyodideSession(

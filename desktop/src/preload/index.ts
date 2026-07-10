@@ -249,6 +249,11 @@ const electronAPI = {
     }> => ipcRenderer.invoke("commands:list"),
   },
 
+  incognito: {
+    purge: (sessionId: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("incognito:purge", sessionId),
+  },
+
   sandbox: {
     getConfig: (): Promise<{ engine: string }> =>
       ipcRenderer.invoke("sandbox:getConfig"),
