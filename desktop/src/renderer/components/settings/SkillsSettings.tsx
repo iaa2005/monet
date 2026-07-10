@@ -130,16 +130,59 @@ function UploadSkillModal({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const handleFile = async (file: File): Promise<void> => {
+  /** Dropped item: a skill FOLDER imports whole; a .md file imports as
+   * before. Reading a dropped directory with file.text() throws a DOM
+   * NotFoundError — never do that, route through the path first. */
+  const handleDropped = async (file: File): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
+      const path = api()?.getPathForFile?.(file);
+      if (path) {
+        const r = await api()?.skills.importFolder(path);
+        if (r?.ok) {
+          onCreated();
+          onClose();
+          return;
+        }
+        // A real folder with a problem (e.g. no SKILL.md) — report it.
+        if (r?.error && r.error !== "Not a folder") {
+          setError(r.error);
+          setBusy(false);
+          return;
+        }
+      }
+      if (!/\.(md|markdown|skill)$/i.test(file.name)) {
+        setError("Drop a skill folder (containing SKILL.md) or a .md file.");
+        setBusy(false);
+        return;
+      }
       const content = await file.text();
       await api()?.skills.importFile({ filename: file.name, content });
       onCreated();
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to import skill");
+      setBusy(false);
+    }
+  };
+
+  const pickFolder = async (): Promise<void> => {
+    setError(null);
+    const dir = await api()?.files.pickDirectory();
+    if (!dir) return;
+    setBusy(true);
+    try {
+      const r = await api()?.skills.importFolder(dir);
+      if (r?.ok) {
+        onCreated();
+        onClose();
+      } else {
+        setError(r?.error ?? "Failed to import folder");
+        setBusy(false);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to import folder");
       setBusy(false);
     }
   };
@@ -154,13 +197,13 @@ function UploadSkillModal({
         onDrop={(e) => {
           e.preventDefault();
           const f = e.dataTransfer.files[0];
-          if (f) void handleFile(f);
+          if (f) void handleDropped(f);
         }}
         className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-10 text-center transition-colors hover:bg-muted/50 disabled:opacity-50"
       >
         <Upload className="size-6 text-muted-foreground" />
         <span className="text-sm text-muted-foreground">
-          Drag and drop or click to upload
+          Drag & drop a skill folder or a .md file — or click to pick a file
         </span>
       </button>
       <input
@@ -170,18 +213,32 @@ function UploadSkillModal({
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
-          if (f) void handleFile(f);
+          if (f) void handleDropped(f);
         }}
       />
 
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void pickFolder()}
+        className="mt-2 w-full rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] disabled:opacity-50 dark:hover:bg-white/[0.05]"
+      >
+        Choose a skill folder…
+      </button>
+
       <div className="mt-4 text-xs text-muted-foreground">
-        <div className="mb-1 font-medium text-foreground">File requirements</div>
+        <div className="mb-1 font-medium text-foreground">Requirements</div>
         <ul className="list-disc space-y-1 pl-4">
           <li>
-            A <span className="font-mono">.md</span> file with the skill name and
-            description in YAML frontmatter.
+            A skill <span className="font-medium">folder</span> must contain{" "}
+            <span className="font-mono">SKILL.md</span>; the folder name
+            becomes the skill (name collisions get a numeric suffix).
           </li>
-          <li>The rest of the file is the skill&apos;s instructions.</li>
+          <li>
+            A lone <span className="font-mono">.md</span> file needs the skill
+            name and description in YAML frontmatter; the rest is the
+            instructions.
+          </li>
         </ul>
       </div>
 
