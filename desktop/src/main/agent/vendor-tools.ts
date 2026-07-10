@@ -239,6 +239,20 @@ export function resetVendorTools(): void {
   apiToolsCache.clear();
 }
 
+/**
+ * Space-filtered toolset. Home is FULLY isolated from the machine: only the
+ * sandboxed subset exists there (RunPython/TodoWrite/Skill/WebFetch/WebSearch).
+ * Code gets everything except RunPython (it has real shells). Used for BOTH
+ * the API tool list and the system prompt, so the model never even hears
+ * about Bash/FileEdit while in Home.
+ */
+export function getVendorToolsForSpace(space?: string): Tools {
+  const all = getVendorTools();
+  return space === "home"
+    ? all.filter((t) => HOME_TOOL_NAMES.has(t.name))
+    : all.filter((t) => t.name !== "RunPython");
+}
+
 // ─── API schema conversion (adapter-facing) ─────────────────────────────
 
 const apiToolsCache = new Map<string, LLMTool[]>();
@@ -247,15 +261,7 @@ const apiToolsCache = new Map<string, LLMTool[]>();
 // hoisting via TDZ is satisfied because getVendorTools runs post-init)
 
 export async function getVendorApiTools(space?: string): Promise<LLMTool[]> {
-  const allTools = getVendorTools();
-  // Home advertises only the sandboxed subset (RunPython + web/todo/skill);
-  // Code gets everything EXCEPT RunPython (it has real Bash/PowerShell). The
-  // execution path can still run any tool by name — this only gates what the
-  // model is told about.
-  const tools =
-    space === "home"
-      ? allTools.filter((t) => HOME_TOOL_NAMES.has(t.name))
-      : allTools.filter((t) => t.name !== "RunPython");
+  const tools = getVendorToolsForSpace(space);
   const cacheKey = tools.map((t) => t.name).join(",");
   let base = apiToolsCache.get(cacheKey);
   if (!base) {
@@ -282,6 +288,10 @@ export async function getVendorApiTools(space?: string): Promise<LLMTool[]> {
     );
     apiToolsCache.set(cacheKey, base);
   }
+
+  // Home is fully isolated — no MCP there either (connectors reach out to
+  // the user's machine and services).
+  if (space === "home") return base;
 
   // Append live MCP tools. Not cached with the vendor tools — connections
   // (and thus the tool list) change as servers connect/disconnect.
@@ -340,6 +350,8 @@ export async function executeVendorTool(opts: {
   requestPermission?: RequestPermission;
   signal?: AbortSignal;
   onProgress?: (text: string) => void;
+  /** Workspace ("home" | "code"). Home HARD-BLOCKS non-sandbox tools. */
+  space?: string;
 }): Promise<VendorToolResult> {
   const {
     sessionId,
@@ -351,8 +363,22 @@ export async function executeVendorTool(opts: {
     requestPermission,
     signal,
     onProgress,
+    space,
   } = opts;
   initVendorRuntime();
+
+  // Isolation gate, enforced at EXECUTION time (not just advertisement): in
+  // Home nothing may touch the machine — no shells, no file tools, no MCP.
+  // Even if the model names a tool it learned elsewhere, it gets refused.
+  if (space === "home" && (isMcpToolName(name) || !HOME_TOOL_NAMES.has(name))) {
+    return {
+      content:
+        `Tool "${name}" is not available in Home — this space is fully isolated ` +
+        `from the computer. Run Python in the sandbox (RunPython) instead; ` +
+        `files it writes are attached to the chat automatically.`,
+      isError: true,
+    };
+  }
 
   // MCP tools (mcp__<server>__<tool>) are served by the connection manager,
   // not the vendor tool pipeline. Auto/bypass modes run them without asking;

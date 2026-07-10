@@ -21,6 +21,7 @@ import {
   executeVendorTool,
   getVendorApiTools,
   getVendorTools,
+  getVendorToolsForSpace,
   clearSessionGrants,
   type RequestPermission,
   type UiPermissionMode,
@@ -40,11 +41,16 @@ import {
  * per-tool guidance). Falls back to the local facade if the vendor prompt
  * builder trips over a CLI-only dependency at runtime.
  */
-async function buildSystemPrompt(model: string): Promise<string> {
+async function buildSystemPrompt(
+  model: string,
+  space?: string,
+): Promise<string> {
   initVendorRuntime();
   try {
     const { getSystemPrompt } = await import("@vendor/constants/prompts.js");
-    const sections = await getSystemPrompt(getVendorTools(), model);
+    // Space-filtered: in Home the prompt must not even MENTION Bash/FileEdit —
+    // a model that reads about a tool will try to call it.
+    const sections = await getSystemPrompt(getVendorToolsForSpace(space), model);
     const prompt = sections.filter(Boolean).join("\n\n");
     if (prompt.trim().length > 0) return prompt;
     throw new Error("vendor system prompt came back empty");
@@ -56,6 +62,15 @@ async function buildSystemPrompt(model: string): Promise<string> {
     return getFallbackSystemPrompt();
   }
 }
+
+/** Prepended in Home so the model knows the ground rules of the space. */
+const HOME_DIRECTIVE = [
+  "You are in HOME: an isolated chat with NO access to the user's filesystem,",
+  "shell, or system. Never propose shell commands or file paths on the user's",
+  "machine. To compute, analyse data, or produce documents/charts, use the",
+  "RunPython tool — it runs in a sandbox, and any file it writes is attached",
+  "to the conversation automatically.",
+].join(" ");
 
 // ─── Agent loop ─────────────────────────────────────────────────────────
 
@@ -164,7 +179,7 @@ export async function runAgent(
   try {
     [tools, basePrompt] = await Promise.all([
       getVendorApiTools(space),
-      buildSystemPrompt(provider.model),
+      buildSystemPrompt(provider.model, space),
     ]);
   } catch (err) {
     onEvent({
@@ -175,9 +190,14 @@ export async function runAgent(
     return;
   }
 
-  const systemPrompt = modeDirective
-    ? `${modeDirective}\n\n${basePrompt}`
-    : basePrompt;
+  const directives = [
+    ...(space === "home" ? [HOME_DIRECTIVE] : []),
+    ...(modeDirective ? [modeDirective] : []),
+  ];
+  const systemPrompt =
+    directives.length > 0
+      ? `${directives.join("\n\n")}\n\n${basePrompt}`
+      : basePrompt;
 
   let messages = conversations.get(sessionId);
   if (!messages) {
@@ -329,6 +349,7 @@ export async function runAgent(
         permissionMode,
         requestPermission,
         signal,
+        space,
         onProgress: (text) => {
           onEvent({
             type: "tool_result",
