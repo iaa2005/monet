@@ -248,6 +248,13 @@ const electronAPI = {
     }> => ipcRenderer.invoke("commands:list"),
   },
 
+  sandbox: {
+    getConfig: (): Promise<{ engine: string }> =>
+      ipcRenderer.invoke("sandbox:getConfig"),
+    setConfig: (patch: { engine?: string }): Promise<{ engine: string }> =>
+      ipcRenderer.invoke("sandbox:setConfig", patch),
+  },
+
   artifacts: {
     save: (payload: {
       sessionId: string;

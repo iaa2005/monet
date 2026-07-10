@@ -8,6 +8,8 @@ import {
   BookMarked,
   Plug,
   Search,
+  FlaskConical,
+  AlertTriangle,
 } from "lucide-react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { SkillsSettings } from "@/components/settings/SkillsSettings";
@@ -68,7 +70,13 @@ function StorageSection(): JSX.Element {
   );
 }
 
-type Section = "general" | "providers" | "skills" | "connectors" | "about";
+type Section =
+  | "general"
+  | "providers"
+  | "sandbox"
+  | "skills"
+  | "connectors"
+  | "about";
 
 const NAV: {
   group: string;
@@ -79,6 +87,7 @@ const NAV: {
     items: [
       { id: "general", label: "General", icon: Settings2 },
       { id: "providers", label: "Providers", icon: Boxes },
+      { id: "sandbox", label: "Sandbox", icon: FlaskConical },
     ],
   },
   {
@@ -90,6 +99,123 @@ const NAV: {
   },
   { group: "About", items: [{ id: "about", label: "About", icon: Info }] },
 ];
+
+const SANDBOX_ENGINES: {
+  id: string;
+  title: string;
+  blurb: string;
+  warn?: boolean;
+  disabled?: boolean;
+}[] = [
+  {
+    id: "pyodide",
+    title: "Pyodide (Python in WebAssembly)",
+    blurb:
+      "Default. Python and JavaScript run inside the app, fully isolated — no access to your files or network. Great for documents, tables and charts (pandas, matplotlib, python-docx, openpyxl).",
+  },
+  {
+    id: "subprocess",
+    title: "Local subprocess (real Python / Node)",
+    blurb:
+      "Runs real python/node in a per-chat temp folder. Full power, but code executes on your machine WITHOUT hard isolation — use only with models you trust.",
+    warn: true,
+  },
+  {
+    id: "docker",
+    title: "Docker container",
+    blurb: "Strongest isolation in a real environment. Coming later.",
+    disabled: true,
+  },
+];
+
+function SandboxSection(): JSX.Element {
+  const [engine, setEngine] = useState<string>("pyodide");
+
+  useEffect(() => {
+    api()
+      ?.sandbox.getConfig()
+      .then((c) => setEngine(c.engine))
+      .catch(() => {});
+  }, []);
+
+  const choose = (id: string): void => {
+    setEngine(id);
+    void api()?.sandbox.setConfig({ engine: id });
+  };
+
+  return (
+    <div className="space-y-4">
+      <section>
+        <h3 className="text-base font-semibold">Sandbox</h3>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Where Home runs generated code (Python and scripts for documents,
+          tables and charts). Home is isolated from your project — Code mode
+          works directly with your files instead.
+        </p>
+      </section>
+
+      <div className="space-y-2">
+        {SANDBOX_ENGINES.map((e) => {
+          const active = engine === e.id;
+          return (
+            <button
+              key={e.id}
+              type="button"
+              disabled={e.disabled}
+              onClick={() => !e.disabled && choose(e.id)}
+              className={cn(
+                "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors",
+                active
+                  ? "border-foreground/40 ring-1 ring-foreground/20"
+                  : "border-border hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
+                e.disabled && "cursor-not-allowed opacity-55 hover:bg-transparent",
+              )}
+            >
+              <span
+                className={cn(
+                  "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
+                  active
+                    ? "border-transparent bg-foreground text-background"
+                    : "border-border",
+                )}
+              >
+                {active && <Check className="size-3" />}
+              </span>
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  {e.title}
+                  {e.warn && (
+                    <AlertTriangle className="size-3.5 text-amber-500" />
+                  )}
+                  {e.disabled && (
+                    <span className="rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground dark:bg-white/[0.08]">
+                      soon
+                    </span>
+                  )}
+                </span>
+                <span className="mt-0.5 block text-[13px] text-muted-foreground">
+                  {e.blurb}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {engine === "subprocess" && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-[13px]">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+          <span>
+            <span className="font-medium">Heads up:</span> local subprocess runs
+            model-generated code on your computer without a hard sandbox. It can
+            read and write files and reach the network. Only use it with models
+            you trust.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function GeneralSection({
   theme,
@@ -252,6 +378,7 @@ export function SettingsPanel({
           <GeneralSection theme={theme} setTheme={setTheme} />
         )}
         {section === "providers" && <ProviderSettings />}
+        {section === "sandbox" && <SandboxSection />}
         {section === "skills" && <SkillsSettings />}
         {section === "connectors" && <ConnectorsSettings />}
         {section === "about" && <AboutSection />}

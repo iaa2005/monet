@@ -17,6 +17,7 @@ import { registerSttIPC } from "./stt.js";
 import { registerGitIPC } from "./git.js";
 import { registerCommandsIPC } from "./commands.js";
 import { registerArtifactsIPC } from "./artifacts.js";
+import { registerSandboxIPC } from "./sandbox.js";
 
 export function registerAllIPC(): void {
   registerChatIPC();
@@ -34,4 +35,5 @@ export function registerAllIPC(): void {
   registerGitIPC();
   registerCommandsIPC();
   registerArtifactsIPC();
+  registerSandboxIPC();
 }

@@ -225,6 +225,10 @@ export interface ElectronAPI {
       skills: { name: string; description: string }[];
     }>;
   };
+  sandbox: {
+    getConfig: () => Promise<{ engine: string }>;
+    setConfig: (patch: { engine?: string }) => Promise<{ engine: string }>;
+  };
   artifacts: {
     save: (payload: {
       sessionId: string;
