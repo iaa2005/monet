@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   ArrowUp,
   ChevronDown,
@@ -210,6 +210,13 @@ export function MessageInput(): JSX.Element {
   // Transient info line under the composer (compaction result, modality note).
   const [notice, setNotice] = useState<string | null>(null);
   const [showHiddenModels, setShowHiddenModels] = useState(false);
+  // "/" command menu: vendor slash commands + skills, loaded on first use.
+  const [slashItems, setSlashItems] = useState<{
+    commands: { name: string; description: string }[];
+    skills: { name: string; description: string }[];
+  } | null>(null);
+  const [slashIndex, setSlashIndex] = useState(0);
+  const [slashDismissed, setSlashDismissed] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -384,6 +391,49 @@ export function MessageInput(): JSX.Element {
     });
   };
 
+  // Menu is visible while the input is exactly "/<partial-name>" — a space
+  // (arguments) or newline closes it.
+  const slashMatch = /^\/([A-Za-z0-9_:./-]*)$/.exec(input);
+  const slashQuery = slashMatch?.[1] ?? null;
+
+  useEffect(() => {
+    if (slashQuery == null) {
+      setSlashDismissed(false);
+      return;
+    }
+    setSlashIndex(0);
+    if (!slashItems) {
+      api()
+        ?.commands.list()
+        .then(setSlashItems)
+        .catch(() => setSlashItems({ commands: [], skills: [] }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slashQuery]);
+
+  const slashFlat = useMemo(() => {
+    if (slashQuery == null || !slashItems) return [];
+    const q = slashQuery.toLowerCase();
+    const match = (c: { name: string }): boolean =>
+      c.name.toLowerCase().includes(q);
+    return [
+      ...slashItems.commands
+        .filter(match)
+        .map((c) => ({ ...c, section: "Commands" as const })),
+      ...slashItems.skills
+        .filter(match)
+        .map((c) => ({ ...c, section: "Skills" as const })),
+    ];
+  }, [slashQuery, slashItems]);
+
+  const slashOpen =
+    slashQuery != null && !slashDismissed && slashFlat.length > 0;
+
+  const pickSlash = (name: string): void => {
+    setInput(`/${name} `);
+    taRef.current?.focus();
+  };
+
   const send = async (): Promise<void> => {
     const text = input.trim();
     if (!text || isStreaming) return;
@@ -509,7 +559,47 @@ export function MessageInput(): JSX.Element {
 
   return (
     <div className="pb-4">
-      <div className="mx-auto w-full max-w-3xl px-4">
+      <div className="relative mx-auto w-full max-w-3xl px-4">
+        {slashOpen && (
+          <div className="absolute bottom-full left-4 right-4 z-50 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-lg">
+            {(["Commands", "Skills"] as const).map((section) => {
+              const items = slashFlat.filter((i) => i.section === section);
+              if (items.length === 0) return null;
+              return (
+                <div key={section}>
+                  <div className="px-2 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {section}
+                  </div>
+                  {items.map((item) => {
+                    const idx = slashFlat.indexOf(item);
+                    return (
+                      <button
+                        key={`${section}-${item.name}`}
+                        type="button"
+                        onMouseEnter={() => setSlashIndex(idx)}
+                        onClick={() => pickSlash(item.name)}
+                        className={cn(
+                          "flex w-full items-baseline gap-2 rounded-md px-2 py-1 text-left transition-colors",
+                          idx === slashIndex &&
+                            "bg-black/[0.06] dark:bg-white/[0.08]",
+                        )}
+                      >
+                        <span className="shrink-0 font-mono text-[13px]">
+                          /{item.name}
+                        </span>
+                        {item.description && (
+                          <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+                            {item.description}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
         {switchAsk && (
           <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[13px]">
             <span className="min-w-0 flex-1">
@@ -588,6 +678,31 @@ export function MessageInput(): JSX.Element {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
+              // "/" menu navigation takes priority while it's open.
+              if (slashOpen) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setSlashIndex((i) => (i + 1) % slashFlat.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setSlashIndex(
+                    (i) => (i - 1 + slashFlat.length) % slashFlat.length,
+                  );
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  pickSlash(slashFlat[slashIndex]?.name ?? slashQuery ?? "");
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setSlashDismissed(true);
+                  return;
+                }
+              }
               // Enter inserts a newline; Ctrl/Cmd+Enter sends.
               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();

@@ -13,6 +13,7 @@ import {
   compactSessionNow,
   estimateSessionTokens,
 } from "../agent/index.js";
+import { expandSlashCommand } from "../agent/skill-tool.js";
 import { getProviderManager } from "../provider/manager.js";
 import { requestPermissionFromRenderer } from "./permissions.js";
 import type { LLMContentBlock } from "../llm/adapter.js";
@@ -162,10 +163,18 @@ export function registerChatIPC(): void {
             | "bypassPermissions")
         : "default";
 
+    // Slash commands expand client-side, like the CLI: "/name args" becomes
+    // the command's prompt. Unknown commands go through as plain text.
+    let message = payload.message;
+    if (message.trimStart().startsWith("/")) {
+      const expanded = await expandSlashCommand(message.trim());
+      if (expanded) message = expanded;
+    }
+
     try {
       await runAgent(
         sessionId,
-        buildUserContent(payload.message, payload.attachments),
+        buildUserContent(message, payload.attachments),
         (event) => {
           // Tag every event with its session so the renderer routes it to the
           // right chat even after the user switched away.

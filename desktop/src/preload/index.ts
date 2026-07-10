@@ -221,6 +221,13 @@ const electronAPI = {
     reconnect: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:reconnect"),
   },
 
+  commands: {
+    list: (): Promise<{
+      commands: { name: string; description: string }[];
+      skills: { name: string; description: string }[];
+    }> => ipcRenderer.invoke("commands:list"),
+  },
+
   git: {
     info: (cwd?: string): Promise<unknown> =>
       ipcRenderer.invoke("git:info", cwd),

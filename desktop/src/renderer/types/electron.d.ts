@@ -204,6 +204,12 @@ export interface ElectronAPI {
     }) => Promise<McpServerStatus[]>;
     reconnect: () => Promise<McpServerStatus[]>;
   };
+  commands: {
+    list: () => Promise<{
+      commands: { name: string; description: string }[];
+      skills: { name: string; description: string }[];
+    }>;
+  };
   git: {
     info: (cwd?: string) => Promise<GitInfo>;
     diff: (cwd?: string) => Promise<{

@@ -25,6 +25,45 @@ import { findCommand, getCommands, getSkillToolCommands } from '@vendor/commands
 import { getProjectRoot } from '@vendor/bootstrap/state.js'
 import type { Command } from '@vendor/types/command.js'
 import { lazySchema } from '@vendor/utils/lazySchema.js'
+import { initVendorRuntime } from './vendor-context.js'
+
+/**
+ * Expand a user-typed slash command ("/name args") into its prompt text —
+ * the same client-side expansion the CLI does. Returns null when the input
+ * isn't a known prompt command, so the caller can send the raw text instead.
+ */
+export async function expandSlashCommand(
+  message: string,
+): Promise<string | null> {
+  const m = message.match(/^\/([A-Za-z0-9_:./-]+)(?:\s+([\s\S]*))?$/)
+  if (!m) return null
+  try {
+    initVendorRuntime()
+    const commands = await getCommands(getProjectRoot())
+    const command = findCommand(m[1], commands)
+    if (!command || command.type !== 'prompt') return null
+    // Minimal context: prompt expanders mostly read cwd/args; the abort
+    // controller satisfies the common interface bits.
+    const ctx = {
+      abortController: new AbortController(),
+      options: { commands, tools: [], debug: false },
+    } as unknown as ToolUseContext
+    const blocks = await command.getPromptForCommand(m[2] ?? '', ctx)
+    const text = flattenBlocks(blocks)
+    if (!text) return null
+    return (
+      `<command name="/${m[1]}"${m[2] ? ` args=${JSON.stringify(m[2])}` : ''}>\n` +
+      `${text}\n</command>\n\n` +
+      `Follow the command instructions above.`
+    )
+  } catch (err) {
+    console.warn(
+      '[slash] expansion failed:',
+      err instanceof Error ? err.message : err,
+    )
+    return null
+  }
+}
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
