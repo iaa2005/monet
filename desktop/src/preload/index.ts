@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { LLMEvent } from "../main/llm/adapter.js";
 import type { LLMProvider, LLMProviderInput } from "../main/provider/types.js";
 import type {
@@ -196,7 +196,27 @@ const electronAPI = {
     }): Promise<unknown> => ipcRenderer.invoke("skills:import", payload),
     deleteBySlug: (slug: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("skills:delete", slug),
+    files: (slug: string): Promise<{ path: string; isDir: boolean }[]> =>
+      ipcRenderer.invoke("skills:files", slug),
+    readFile: (
+      slug: string,
+      rel: string,
+    ): Promise<{ ok: boolean; content?: string; error?: string }> =>
+      ipcRenderer.invoke("skills:readFile", slug, rel),
+    writeFile: (
+      slug: string,
+      rel: string,
+      content: string,
+    ): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("skills:writeFile", slug, rel, content),
+    importFolder: (
+      path: string,
+    ): Promise<{ ok: boolean; skill?: unknown; error?: string }> =>
+      ipcRenderer.invoke("skills:importFolder", path),
   },
+
+  // Absolute filesystem path for a dropped File (webUtils bridge).
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   stt: {
     transcribe: (payload: {

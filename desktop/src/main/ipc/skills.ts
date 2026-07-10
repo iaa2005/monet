@@ -10,6 +10,7 @@
 
 import { ipcMain } from "electron";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -18,7 +19,7 @@ import {
   statSync,
   writeFileSync,
 } from "fs";
-import { join } from "path";
+import { basename, join, resolve, sep } from "path";
 import { getDataDir } from "../data-dir.js";
 
 export interface SkillInfo {
@@ -187,4 +188,107 @@ export function registerSkillsIPC(): void {
     refreshSkillCaches();
     return { ok: true };
   });
+
+  // ── Skill folder browsing / editing ─────────────────────────────────────
+
+  // A relative path may only resolve INSIDE the skill's folder.
+  const safeSkillPath = (slug: string, rel: string): string | null => {
+    const base = resolve(join(skillsDir(), slug));
+    const full = resolve(join(base, rel));
+    return full === base || full.startsWith(base + sep) ? full : null;
+  };
+
+  ipcMain.handle(
+    "skills:files",
+    (_e, slug: string): { path: string; isDir: boolean }[] => {
+      const base = join(skillsDir(), slug);
+      if (!existsSync(base)) return [];
+      const out: { path: string; isDir: boolean }[] = [];
+      const walk = (dir: string, rel: string, depth: number): void => {
+        if (depth > 6 || out.length > 500) return;
+        for (const ent of readdirSync(dir, { withFileTypes: true })) {
+          const r = rel ? `${rel}/${ent.name}` : ent.name;
+          if (ent.isDirectory()) {
+            out.push({ path: r, isDir: true });
+            walk(join(dir, ent.name), r, depth + 1);
+          } else {
+            out.push({ path: r, isDir: false });
+          }
+        }
+      };
+      walk(base, "", 0);
+      return out;
+    },
+  );
+
+  ipcMain.handle(
+    "skills:readFile",
+    (
+      _e,
+      slug: string,
+      rel: string,
+    ): { ok: boolean; content?: string; error?: string } => {
+      const full = safeSkillPath(slug, rel);
+      if (!full || !existsSync(full)) return { ok: false, error: "Not found" };
+      const st = statSync(full);
+      if (st.isDirectory()) return { ok: false, error: "That's a folder" };
+      if (st.size > 400_000)
+        return { ok: false, error: "File is too large to preview" };
+      const buf = readFileSync(full);
+      if (buf.includes(0)) return { ok: false, error: "Binary file" };
+      return { ok: true, content: buf.toString("utf-8") };
+    },
+  );
+
+  ipcMain.handle(
+    "skills:writeFile",
+    (
+      _e,
+      slug: string,
+      rel: string,
+      content: string,
+    ): { ok: boolean; error?: string } => {
+      const full = safeSkillPath(slug, rel);
+      if (!full) return { ok: false, error: "Invalid path" };
+      try {
+        writeFileSync(full, content, "utf-8");
+        refreshSkillCaches();
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "write failed",
+        };
+      }
+    },
+  );
+
+  // Import a whole skill FOLDER (drag-and-drop): the folder name becomes the
+  // skill slug; name collisions get a numeric suffix.
+  ipcMain.handle(
+    "skills:importFolder",
+    (
+      _e,
+      srcPath: string,
+    ): { ok: boolean; skill?: SkillInfo; error?: string } => {
+      try {
+        if (!existsSync(srcPath) || !statSync(srcPath).isDirectory())
+          return { ok: false, error: "Not a folder" };
+        if (!existsSync(join(srcPath, "SKILL.md")))
+          return { ok: false, error: "The folder must contain SKILL.md" };
+        const base = slugify(basename(srcPath));
+        let slug = base;
+        for (let n = 2; existsSync(join(skillsDir(), slug)); n++)
+          slug = `${base}-${n}`;
+        cpSync(srcPath, join(skillsDir(), slug), { recursive: true });
+        refreshSkillCaches();
+        return { ok: true, skill: readSkill(slug) ?? undefined };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "import failed",
+        };
+      }
+    },
+  );
 }

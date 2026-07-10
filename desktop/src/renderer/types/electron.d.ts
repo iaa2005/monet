@@ -180,7 +180,22 @@ export interface ElectronAPI {
       content: string;
     }) => Promise<SkillInfo>;
     deleteBySlug: (slug: string) => Promise<{ ok: boolean }>;
+    files: (slug: string) => Promise<{ path: string; isDir: boolean }[]>;
+    readFile: (
+      slug: string,
+      rel: string,
+    ) => Promise<{ ok: boolean; content?: string; error?: string }>;
+    writeFile: (
+      slug: string,
+      rel: string,
+      content: string,
+    ) => Promise<{ ok: boolean; error?: string }>;
+    importFolder: (
+      path: string,
+    ) => Promise<{ ok: boolean; skill?: SkillInfo; error?: string }>;
   };
+  /** Absolute filesystem path for a dropped/picked File. */
+  getPathForFile: (file: File) => string;
   stt: {
     transcribe: (payload: {
       audioBase64: string;
