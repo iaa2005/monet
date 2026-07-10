@@ -490,6 +490,15 @@ export default function App(): JSX.Element {
               currentSessionId={currentSessionId}
             />
           )}
+          {appMode === "home" && !incognito && (
+            <IconBtn
+              title="Artifacts"
+              active={rightTab === "artifacts"}
+              onClick={() => toggleRight("artifacts")}
+            >
+              <Blocks className="size-4" />
+            </IconBtn>
+          )}
           {appMode === "home" && (
             <IconBtn
               title={incognito ? "Exit incognito" : "Incognito mode"}
@@ -763,22 +772,55 @@ export default function App(): JSX.Element {
           <ResizablePanel defaultSize={sidebarOpen ? 82 : 100} minSize={30}>
             {appMode === "home" ? (
               // Home: a plain, centered chat — no IDE chrome (terminal, files,
-              // changes, resizable splits). The greeting/tamagotchi lives in
-              // ChatView's empty state.
-              <div className="h-full min-h-0 overflow-hidden">
-                {openFilePath ? (
-                  <FileViewer
-                    path={openFilePath}
-                    onClose={() => setOpenFilePath(null)}
-                  />
-                ) : (
-                  <ChatView
-                    transcriptMode={transcriptMode}
-                    sessionTitle={sessionTitle}
-                    home
-                  />
+              // changes). It CAN open the Artifacts panel on the right, since
+              // Home produces files in the sandbox.
+              <ResizablePanelGroup direction="horizontal" className="gap-1">
+                <ResizablePanel minSize={30}>
+                  <div className="h-full min-h-0 overflow-hidden">
+                    {openFilePath ? (
+                      <FileViewer
+                        path={openFilePath}
+                        onClose={() => setOpenFilePath(null)}
+                      />
+                    ) : (
+                      <ChatView
+                        transcriptMode={transcriptMode}
+                        sessionTitle={sessionTitle}
+                        home
+                      />
+                    )}
+                  </div>
+                </ResizablePanel>
+                {rightTab === "artifacts" && !incognito && (
+                  <>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel
+                      defaultSize={30}
+                      minSize={18}
+                      maxSize={55}
+                    >
+                      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
+                        <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Artifacts
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setRightTab(null)}
+                            aria-label="Close panel"
+                            className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+                          >
+                            <X className="size-4" />
+                          </button>
+                        </div>
+                        <div className="min-h-0 flex-1 overflow-auto">
+                          <ArtifactsPanel />
+                        </div>
+                      </div>
+                    </ResizablePanel>
+                  </>
                 )}
-              </div>
+              </ResizablePanelGroup>
             ) : (
               <ResizablePanelGroup direction="horizontal" className="gap-1">
                 <ResizablePanel defaultSize={72} minSize={25}>

@@ -1,13 +1,14 @@
 /**
- * Artifacts panel — everything attached in the current chat, newest first.
+ * Artifacts panel — the current chat's files, in two groups:
+ *   Artifacts — output the sandbox produced (charts, docs, data).
+ *   Content   — input the user attached to their messages.
  *
- * Attachments are saved on disk (<dataDir>/artifacts/<sessionId>/…) when a
- * message is sent; image previews are re-read lazily from the artifact path,
- * so they survive chat switches and app restarts. Clicking an item opens the
- * file with the OS default app.
+ * Files live on disk (<dataDir>/artifacts/<sessionId>/…); image previews are
+ * re-read lazily from the artifact path, so they survive chat switches and
+ * restarts. Clicking an item opens it with the OS default app.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AudioLines,
   FileText,
@@ -15,8 +16,10 @@ import {
   Paperclip,
   Video,
 } from "lucide-react";
-import { useChatStore } from "@/stores/chatStore";
-import type { ChatAttachmentMeta } from "@/types/chat";
+import {
+  useSessionArtifacts,
+  type ArtifactItem,
+} from "@/lib/sessionArtifacts";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -31,7 +34,7 @@ export function KindIcon({
   kind,
   className = "size-3.5",
 }: {
-  kind: ChatAttachmentMeta["kind"];
+  kind: ArtifactItem["kind"];
   className?: string;
 }): JSX.Element {
   if (kind === "audio")
@@ -51,7 +54,7 @@ export function ArtifactThumb({
   a,
   className,
 }: {
-  a: ChatAttachmentMeta;
+  a: { dataUrl?: string; path?: string; name: string; mediaType: string };
   className?: string;
 }): JSX.Element | null {
   const [url, setUrl] = useState<string | null>(a.dataUrl ?? null);
@@ -83,55 +86,72 @@ export function ArtifactThumb({
   );
 }
 
-export function ArtifactsPanel(): JSX.Element {
-  const messages = useChatStore((s) => s.messages);
-
-  const items = useMemo(
-    () =>
-      messages
-        .flatMap((m) =>
-          (m.attachments ?? []).map((a) => ({ ...a, ts: m.timestamp })),
-        )
-        .reverse(),
-    [messages],
+function ArtifactRow({ a }: { a: ArtifactItem }): JSX.Element {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      {a.kind === "image" && (a.dataUrl || a.path) && <ArtifactThumb a={a} />}
+      <button
+        type="button"
+        onClick={() => openArtifact(a.path)}
+        disabled={!a.path}
+        title={a.path ? "Open file" : a.name}
+        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors enabled:hover:bg-black/[0.03] disabled:cursor-default dark:enabled:hover:bg-white/[0.04]"
+      >
+        <KindIcon kind={a.kind} />
+        <span className="min-w-0 flex-1 truncate text-[12px]" title={a.name}>
+          {a.name}
+        </span>
+        <span className="shrink-0 text-[10px] text-muted-foreground">
+          {new Date(a.ts).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </span>
+      </button>
+    </div>
   );
+}
 
-  if (items.length === 0) {
+function Group({
+  label,
+  items,
+}: {
+  label: string;
+  items: ArtifactItem[];
+}): JSX.Element | null {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <div className="mb-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label} · {items.length}
+      </div>
+      <div className="space-y-1.5">
+        {items.map((a, i) => (
+          <ArtifactRow key={`${a.source}-${a.ts}-${i}-${a.name}`} a={a} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function ArtifactsPanel(): JSX.Element {
+  const { content, output } = useSessionArtifacts();
+  const outputNewest = [...output].reverse();
+  const contentNewest = [...content].reverse();
+
+  if (content.length === 0 && output.length === 0) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
-        Files, images, audio and video attached in this chat appear here.
+        Files the sandbox produces (Artifacts) and files you attach (Content)
+        appear here.
       </div>
     );
   }
 
   return (
-    <div className="space-y-1.5 p-3">
-      {items.map((a, i) => (
-        <div
-          key={`${a.ts}-${i}-${a.name}`}
-          className="overflow-hidden rounded-lg border border-border bg-card"
-        >
-          {a.kind === "image" && <ArtifactThumb a={a} />}
-          <button
-            type="button"
-            onClick={() => openArtifact(a.path)}
-            disabled={!a.path}
-            title={a.path ? "Open file" : a.name}
-            className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors enabled:hover:bg-black/[0.03] disabled:cursor-default dark:enabled:hover:bg-white/[0.04]"
-          >
-            <KindIcon kind={a.kind} />
-            <span className="min-w-0 flex-1 truncate text-[12px]" title={a.name}>
-              {a.name}
-            </span>
-            <span className="shrink-0 text-[10px] text-muted-foreground">
-              {new Date(a.ts).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
-          </button>
-        </div>
-      ))}
+    <div className="space-y-4 p-3">
+      <Group label="Artifacts" items={outputNewest} />
+      <Group label="Content" items={contentNewest} />
     </div>
   );
 }
