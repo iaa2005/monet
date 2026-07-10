@@ -200,6 +200,97 @@ function parseDdg(html: string, limit = 8): SearchResult[] {
   return results;
 }
 
+/** lite.duckduckgo.com markup: bare result links + result-snippet cells. */
+function parseDdgLite(html: string, limit = 8): SearchResult[] {
+  const results: SearchResult[] = [];
+  const linkRe = /<a[^>]*rel="nofollow"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const snippetRe = /<td[^>]*class=['"]result-snippet['"][^>]*>([\s\S]*?)<\/td>/gi;
+  const snippets: string[] = [];
+  let sm: RegExpExecArray | null;
+  while ((sm = snippetRe.exec(html))) snippets.push(stripTags(sm[1]));
+  let lm: RegExpExecArray | null;
+  let i = 0;
+  while ((lm = linkRe.exec(html)) && results.length < limit) {
+    const url = decodeDdgHref(lm[1]);
+    const title = stripTags(lm[2]);
+    if (!title || !url || /duckduckgo\.com/i.test(url)) continue;
+    results.push({ title, url, snippet: snippets[i] ?? "" });
+    i++;
+  }
+  return results;
+}
+
+/** True when the response is an anti-bot/captcha interstitial, not results. */
+function looksBlocked(html: string): boolean {
+  return /anomaly-modal|challenge-form|verifying you are human|captcha|detected unusual traffic/i.test(
+    html.slice(0, 6000),
+  );
+}
+
+/**
+ * DDG anti-bot behaviour changes per endpoint/method (verified live):
+ * html+lite POST → 202 interstitial; lite GET with browser-ish headers →
+ * real results. Try in reliability order and DISTINGUISH "blocked" from
+ * "genuinely nothing found" so the model reacts correctly instead of
+ * concluding the information doesn't exist.
+ */
+async function ddgSearch(
+  query: string,
+): Promise<{ results: SearchResult[]; blocked: boolean }> {
+  const q = encodeURIComponent(query);
+  const browserish = {
+    Accept: "text/html,application/xhtml+xml",
+    "Accept-Language": "en-US,en;q=0.9",
+  };
+  const attempts: {
+    url: string;
+    init?: RequestInit;
+    parse: (h: string) => SearchResult[];
+  }[] = [
+    {
+      url: `https://lite.duckduckgo.com/lite/?q=${q}`,
+      init: { headers: browserish },
+      parse: parseDdgLite,
+    },
+    {
+      url: `https://html.duckduckgo.com/html/?q=${q}`,
+      init: { headers: browserish },
+      parse: parseDdg,
+    },
+    {
+      url: "https://html.duckduckgo.com/html/",
+      init: {
+        method: "POST",
+        headers: {
+          ...browserish,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: `q=${q}`,
+      },
+      parse: parseDdg,
+    },
+  ];
+  let blocked = false;
+  for (const attempt of attempts) {
+    try {
+      const res = await fetchText(attempt.url, attempt.init);
+      if (!res.ok) {
+        if (res.status === 403 || res.status === 429) blocked = true;
+        continue;
+      }
+      if (looksBlocked(res.body)) {
+        blocked = true;
+        continue;
+      }
+      const results = attempt.parse(res.body);
+      if (results.length > 0) return { results, blocked: false };
+    } catch {
+      /* try the next endpoint */
+    }
+  }
+  return { results: [], blocked };
+}
+
 export const WebSearchTool = buildTool({
   name: "WebSearch",
   searchHint: "search the web (DuckDuckGo)",
@@ -227,17 +318,16 @@ export const WebSearchTool = buildTool({
   },
   async call({ query }: z.infer<SearchSchema>) {
     try {
-      const res = await fetchText(
-        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-      );
-      if (!res.ok) {
-        return {
-          data: { text: `Error: search failed (HTTP ${res.status})`, isError: true },
-        };
-      }
-      const results = parseDdg(res.body);
+      const { results, blocked } = await ddgSearch(query);
       if (results.length === 0) {
-        return { data: { text: `No results for "${query}".`, isError: false } };
+        return {
+          data: {
+            text: blocked
+              ? `Search backend rate-limited the request for "${query}" (not a lack of results). Do NOT retry immediately with variations — wait, batch what you know, or use WebFetch on a likely source (Wikipedia, official docs, a news site) instead.`
+              : `No results for "${query}". Try shorter/simpler keywords (English often works best), without quotes or operators.`,
+            isError: blocked,
+          },
+        };
       }
       const text =
         `Search results for "${query}":\n\n` +

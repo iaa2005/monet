@@ -28,6 +28,7 @@ import {
   SandboxReadTool,
   SandboxWriteTool,
 } from "./sandbox-file-tools.js";
+import { ensurePosixShell } from "./shell-env.js";
 
 /** Tools advertised to Home (isolated space): no host filesystem/shell —
  * file access is scoped to the CHAT's sandbox via the Sandbox* tools. */
@@ -249,7 +250,13 @@ export function getVendorTools(): Tools {
     SandboxReadTool,
     SandboxWriteTool,
   ] as unknown as Tool[];
-  cachedTools = all.filter((t) => t.isEnabled());
+  // Without a POSIX shell the vendor Bash tool errors on every call — drop
+  // it so the model goes straight to PowerShell. (ensurePosixShell also
+  // exports SHELL when git-bash exists, which makes Bash actually WORK.)
+  const posixShell = ensurePosixShell();
+  cachedTools = all.filter(
+    (t) => t.isEnabled() && (posixShell !== null || t.name !== "Bash"),
+  );
   return cachedTools;
 }
 
