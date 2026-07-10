@@ -23,14 +23,31 @@ import { InlineSkillTool } from "./skill-tool.js";
 import { AgentTaskTool } from "./agent-tool.js";
 import { WebFetchTool, WebSearchTool } from "./web-tools.js";
 import { RunPythonTool } from "./sandbox-tool.js";
+import {
+  SandboxListTool,
+  SandboxReadTool,
+  SandboxWriteTool,
+} from "./sandbox-file-tools.js";
 
-/** Tools advertised to Home (isolated space): no host filesystem/shell. */
+/** Tools advertised to Home (isolated space): no host filesystem/shell —
+ * file access is scoped to the CHAT's sandbox via the Sandbox* tools. */
 const HOME_TOOL_NAMES = new Set([
   "RunPython",
+  "SandboxList",
+  "SandboxRead",
+  "SandboxWrite",
   "TodoWrite",
   "Skill",
   "WebFetch",
   "WebSearch",
+]);
+
+/** Sandbox-scoped tools make no sense in Code (it has the real filesystem). */
+const SANDBOX_ONLY_NAMES = new Set([
+  "RunPython",
+  "SandboxList",
+  "SandboxRead",
+  "SandboxWrite",
 ]);
 import {
   callMcpTool,
@@ -228,6 +245,9 @@ export function getVendorTools(): Tools {
     WebFetchTool,
     WebSearchTool,
     RunPythonTool,
+    SandboxListTool,
+    SandboxReadTool,
+    SandboxWriteTool,
   ] as unknown as Tool[];
   cachedTools = all.filter((t) => t.isEnabled());
   return cachedTools;
@@ -250,7 +270,7 @@ export function getVendorToolsForSpace(space?: string): Tools {
   const all = getVendorTools();
   return space === "home"
     ? all.filter((t) => HOME_TOOL_NAMES.has(t.name))
-    : all.filter((t) => t.name !== "RunPython");
+    : all.filter((t) => !SANDBOX_ONLY_NAMES.has(t.name));
 }
 
 // ─── API schema conversion (adapter-facing) ─────────────────────────────

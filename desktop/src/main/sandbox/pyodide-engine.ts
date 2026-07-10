@@ -124,6 +124,25 @@ function seedFromArtifacts(py: Py, sessionId: string, dir: string): void {
   }
 }
 
+/** Push a file into the LIVE Pyodide session dir (no-op when Pyodide isn't
+ * loaded yet — the seeder will pick the file up from disk on first run). */
+export function mirrorToPyodideSession(
+  sessionId: string,
+  name: string,
+  bytes: Uint8Array,
+): void {
+  if (!pyodide) return;
+  try {
+    const dir = sessionDirFor(sessionId);
+    pyodide.runPython(
+      `import os; os.makedirs(${JSON.stringify(dir)}, exist_ok=True)`,
+    );
+    pyodide.FS.writeFile(`${dir}/${name}`, bytes);
+  } catch {
+    /* best-effort */
+  }
+}
+
 export async function runPyodide(
   sessionId: string,
   code: string,

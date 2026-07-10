@@ -83,7 +83,9 @@ export function collectArtifacts(messages: ChatMessage[]): SessionArtifacts {
         source: "content",
       });
     }
-    const out = m.toolCall?.name === "RunPython" ? m.toolCall.output : undefined;
+    const producing =
+      m.toolCall?.name === "RunPython" || m.toolCall?.name === "SandboxWrite";
+    const out = producing ? m.toolCall?.output : undefined;
     if (out) output.push(...sandboxFilesFromOutput(out, m.timestamp));
   }
 

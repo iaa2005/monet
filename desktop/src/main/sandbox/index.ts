@@ -31,7 +31,7 @@ const MIME: Record<string, string> = {
   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
 
-function mediaTypeOf(name: string): string {
+export function mediaTypeOf(name: string): string {
   return MIME[extname(name).toLowerCase()] ?? "application/octet-stream";
 }
 

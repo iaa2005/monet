@@ -111,6 +111,9 @@ const HUMAN_NAMES: Record<string, string> = {
   TodoWrite: "Updated plan",
   Task: "Delegated task",
   RunPython: "Ran Python",
+  SandboxList: "Listed sandbox files",
+  SandboxRead: "Read sandbox file",
+  SandboxWrite: "Wrote sandbox file",
 };
 
 function humanName(name: string): string {
@@ -137,6 +140,7 @@ function inputPreview(name: string, input: Record<string, unknown>): string {
   const first =
     str("file_path") ??
     str("path") ??
+    str("name") ??
     str("command") ??
     str("pattern") ??
     str("query") ??
@@ -235,13 +239,22 @@ function ToolDetail({
     return <InlineDiff oldText="" newText={str("content") ?? ""} />;
   }
 
-  if (name === "RunPython") {
+  if (name === "RunPython" || name === "SandboxWrite") {
     return (
       <div className="space-y-2">
-        {str("code") && (
+        {name === "RunPython" && str("code") && (
           <CodeBlock
             code={str("code") ?? ""}
             language="python"
+            bare={inGroup}
+            className={inGroup ? "border-none bg-transparent my-0" : ""}
+          />
+        )}
+        {name === "SandboxWrite" && str("content") && (
+          <CodeBlock
+            code={str("content") ?? ""}
+            language={langFromPath(str("name") ?? "")}
+            maxHeight={280}
             bare={inGroup}
             className={inGroup ? "border-none bg-transparent my-0" : ""}
           />

@@ -67,9 +67,11 @@ async function buildSystemPrompt(
 const HOME_DIRECTIVE = [
   "You are in HOME: an isolated chat with NO access to the user's filesystem,",
   "shell, or system. Never propose shell commands or file paths on the user's",
-  "machine. To compute, analyse data, or produce documents/charts, use the",
-  "RunPython tool — it runs in a sandbox, and any file it writes is attached",
-  "to the conversation automatically.",
+  "machine. This chat has its OWN flat sandbox of files (user attachments +",
+  "files you produce): SandboxList shows them, SandboxRead/SandboxWrite handle",
+  "text files, and RunPython executes Python in the same directory — use it",
+  "for computation, data analysis and binary documents (charts, docx, xlsx).",
+  "Every file written there is attached to the conversation automatically.",
 ].join(" ");
 
 // ─── Agent loop ─────────────────────────────────────────────────────────
