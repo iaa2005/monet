@@ -122,8 +122,9 @@ const SANDBOX_ENGINES: {
   },
   {
     id: "docker",
-    title: "Docker container",
-    blurb: "Strongest isolation in a real environment. Coming later.",
+    title: "Docker / Podman container",
+    blurb:
+      "Strongest isolation in a real environment (Podman preferred: rootless, daemonless). Coming later.",
     disabled: true,
   },
 ];

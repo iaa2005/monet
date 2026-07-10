@@ -61,6 +61,16 @@ export default defineConfig({
     resolve: {
       alias: vendorAliases,
     },
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve('src/main/index.ts'),
+          // Sandbox Python runs in a worker_thread so heavy computations
+          // never freeze the app. Loaded via new Worker(new URL(...)).
+          'pyodide-worker': resolve('src/main/sandbox/pyodide.worker.ts'),
+        },
+      },
+    },
     // Bare `require('yaml')` etc. in vendor code paths are served by the
     // per-chunk `createRequire` shim electron-vite injects into ESM output.
     define: vendorMacroDefine,

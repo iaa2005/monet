@@ -1,209 +1,134 @@
 /**
- * Pyodide engine — Python in WebAssembly, the default (isolated) sandbox.
+ * Pyodide engine PROXY — the actual Python runs in a worker_thread
+ * (pyodide.worker.ts), so heavy computations never freeze the app.
  *
- * Runs in the main process via a lazily-loaded singleton. Pyodide's core is
- * bundled in node_modules; science packages (numpy/pandas/matplotlib) are
- * fetched on first use and cached under <dataDir>/pyodide-cache so later runs
- * (and sessions) are offline-friendly. Isolated by construction: the code
- * sees only Pyodide's in-memory FS, never the host filesystem.
- *
- * FILES PERSIST PER CHAT: each session works in /sessions/<id>, which is kept
- * between runs (so a chart from run 1 can be embedded into a .docx in run 2)
- * and re-seeded from the chat's on-disk artifacts after an app restart.
- * Results are detected by diffing the dir before/after the run.
+ * The worker owns the Pyodide instance and the per-chat in-memory FS
+ * (/sessions/<id>, persisted between runs and re-seeded from the chat's
+ * on-disk artifacts after a restart). This proxy manages the worker
+ * lifecycle, one pending promise per run, and a hard timeout that restarts
+ * the worker if Python wedges (files survive on disk via the artifacts).
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-} from "fs";
+import { Worker } from "worker_threads";
 import { join } from "path";
 import { getDataDir } from "../data-dir.js";
 import { artifactSessionDir } from "../ipc/artifacts.js";
-import {
-  MAX_STREAM_CHARS,
-  type EngineResult,
-  type SandboxFile,
-} from "./types.js";
+import type { EngineResult, SandboxFile } from "./types.js";
 
-interface PyFS {
-  readdir: (p: string) => string[];
-  stat: (p: string) => { mode: number; size: number; mtime: Date | number };
-  isFile: (mode: number) => boolean;
-  readFile: (p: string) => Uint8Array;
-  writeFile: (p: string, data: Uint8Array) => void;
+const RUN_TIMEOUT_MS = 240_000;
+
+interface WorkerResult {
+  type: "result";
+  id: number;
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+  error?: string;
+  files: { name: string; bytes: ArrayBuffer }[];
 }
 
-interface Py {
-  setStdout: (o: { batched: (s: string) => void }) => void;
-  setStderr: (o: { batched: (s: string) => void }) => void;
-  runPython: (c: string) => unknown;
-  runPythonAsync: (c: string) => Promise<unknown>;
-  loadPackagesFromImports: (c: string) => Promise<unknown>;
-  FS: PyFS;
-}
-
-let pyodide: Py | null = null;
-let loading: Promise<unknown> | null = null;
-
-async function getPyodide(): Promise<Py> {
-  if (pyodide) return pyodide;
-  if (!loading) {
-    const cacheDir = join(getDataDir(), "pyodide-cache");
-    if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
-    loading = import("pyodide").then(async (m) => {
-      pyodide = (await m.loadPyodide({
-        packageCacheDir: cacheDir,
-      })) as unknown as Py;
-      return pyodide;
-    });
-  }
-  await loading;
-  return pyodide!;
-}
-
-const clip = (s: string): string =>
-  s.length > MAX_STREAM_CHARS ? s.slice(0, MAX_STREAM_CHARS) + "\n…(truncated)" : s;
+let worker: Worker | null = null;
+let seq = 0;
+const pending = new Map<number, (r: EngineResult) => void>();
 
 function sessionDirFor(sessionId: string): string {
   return "/sessions/" + (sessionId.replace(/[^a-zA-Z0-9_-]/g, "_") || "session");
 }
 
-/** name → `${size}:${mtimeMs}` for every regular file in dir. */
-function snapshotDir(py: Py, dir: string): Map<string, string> {
-  const map = new Map<string, string>();
-  let names: string[] = [];
-  try {
-    names = py.FS.readdir(dir);
-  } catch {
-    return map;
-  }
-  for (const n of names) {
-    if (n === "." || n === "..") continue;
-    try {
-      const st = py.FS.stat(`${dir}/${n}`);
-      if (py.FS.isFile(st.mode))
-        map.set(n, `${st.size}:${Number(new Date(st.mtime as Date))}`);
-    } catch {
-      /* skip */
-    }
-  }
-  return map;
+function failAllPending(error: string): void {
+  for (const [, resolve] of pending)
+    resolve({ ok: false, stdout: "", stderr: "", files: [], error });
+  pending.clear();
 }
 
-/** After a restart the in-memory FS is empty — reload the chat's artifacts
- * (newest per original name; the on-disk copies are "<timestamp>-<name>"). */
-function seedFromArtifacts(py: Py, sessionId: string, dir: string): void {
-  try {
-    const host = artifactSessionDir(sessionId);
-    const newest = new Map<string, { ts: number; full: string }>();
-    for (const f of readdirSync(host)) {
-      const m = /^(\d+)-(.+)$/.exec(f);
-      const name = m ? m[2] : f;
-      const ts = m ? Number(m[1]) : 0;
-      const cur = newest.get(name);
-      if (!cur || ts > cur.ts) newest.set(name, { ts, full: join(host, f) });
-    }
-    for (const [name, { full }] of newest) {
-      const target = `${dir}/${name}`;
-      let exists = true;
-      try {
-        py.FS.stat(target);
-      } catch {
-        exists = false;
-      }
-      if (exists) continue;
-      if (statSync(full).size > 30 * 1024 * 1024) continue;
-      py.FS.writeFile(target, readFileSync(full));
-    }
-  } catch {
-    /* best-effort */
-  }
-}
-
-/** Push a file into the LIVE Pyodide session dir (no-op when Pyodide isn't
- * loaded yet — the seeder will pick the file up from disk on first run). */
-export function mirrorToPyodideSession(
-  sessionId: string,
-  name: string,
-  bytes: Uint8Array,
-): void {
-  if (!pyodide) return;
-  try {
-    const dir = sessionDirFor(sessionId);
-    pyodide.runPython(
-      `import os; os.makedirs(${JSON.stringify(dir)}, exist_ok=True)`,
-    );
-    pyodide.FS.writeFile(`${dir}/${name}`, bytes);
-  } catch {
-    /* best-effort */
-  }
+function getWorker(): Worker {
+  if (worker) return worker;
+  worker = new Worker(new URL("./pyodide-worker.js", import.meta.url));
+  worker.on("message", (msg: WorkerResult) => {
+    if (msg.type !== "result") return;
+    const resolve = pending.get(msg.id);
+    if (!resolve) return; // timed out earlier
+    pending.delete(msg.id);
+    const files: SandboxFile[] = msg.files.map((f) => ({
+      name: f.name,
+      bytes: new Uint8Array(f.bytes),
+    }));
+    resolve({
+      ok: msg.ok,
+      stdout: msg.stdout,
+      stderr: msg.stderr,
+      files,
+      error: msg.error,
+    });
+  });
+  worker.on("error", (err) => {
+    failAllPending(`Sandbox worker crashed: ${err.message}`);
+    worker = null;
+  });
+  worker.on("exit", () => {
+    failAllPending("Sandbox worker exited unexpectedly.");
+    worker = null;
+  });
+  return worker;
 }
 
 export async function runPyodide(
   sessionId: string,
   code: string,
 ): Promise<EngineResult> {
-  let py: Py;
-  try {
-    py = await getPyodide();
-  } catch (err) {
-    return {
-      ok: false,
-      stdout: "",
-      stderr: "",
-      files: [],
-      error: `Pyodide failed to load: ${err instanceof Error ? err.message : String(err)}`,
-    };
-  }
+  const w = getWorker();
+  const id = ++seq;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      if (!pending.has(id)) return;
+      pending.delete(id);
+      // A wedged interpreter can't be interrupted — replace the worker.
+      // Session files live on disk (artifacts) and re-seed on the next run.
+      try {
+        void worker?.terminate();
+      } catch {
+        /* already gone */
+      }
+      worker = null;
+      resolve({
+        ok: false,
+        stdout: "",
+        stderr: "",
+        files: [],
+        error: `Python run timed out after ${RUN_TIMEOUT_MS / 1000}s — the sandbox was restarted (saved files are preserved).`,
+      });
+    }, RUN_TIMEOUT_MS);
+    pending.set(id, (r) => {
+      clearTimeout(timer);
+      resolve(r);
+    });
+    w.postMessage({
+      type: "run",
+      id,
+      code,
+      memDir: sessionDirFor(sessionId),
+      artifactsDir: artifactSessionDir(sessionId),
+      cacheDir: join(getDataDir(), "pyodide-cache"),
+    });
+  });
+}
 
-  let out = "";
-  let err = "";
-  py.setStdout({ batched: (s: string) => (out += s + "\n") });
-  py.setStderr({ batched: (s: string) => (err += s + "\n") });
-
-  const dir = sessionDirFor(sessionId);
-  // Persistent per-chat working dir (NO wipe between runs) + a headless
-  // matplotlib backend (plt.show() in the default backend wants `window`).
-  py.runPython(
-    [
-      "import os",
-      `os.makedirs(${JSON.stringify(dir)}, exist_ok=True)`,
-      `os.chdir(${JSON.stringify(dir)})`,
-      "os.environ.setdefault('MPLBACKEND', 'Agg')",
-    ].join("\n"),
+/** Push a file into the LIVE worker's session dir (no-op when the worker is
+ * cold — the seeder picks the file up from disk on the next run). */
+export function mirrorToPyodideSession(
+  sessionId: string,
+  name: string,
+  bytes: Uint8Array,
+): void {
+  if (!worker) return;
+  const copy = bytes.slice();
+  worker.postMessage(
+    {
+      type: "mirror",
+      memDir: sessionDirFor(sessionId),
+      name,
+      bytes: copy.buffer,
+    },
+    [copy.buffer],
   );
-  seedFromArtifacts(py, sessionId, dir);
-
-  const before = snapshotDir(py, dir);
-
-  try {
-    await py.loadPackagesFromImports(code);
-  } catch {
-    /* a missing package surfaces as an ImportError when the code runs */
-  }
-
-  try {
-    await py.runPythonAsync(code);
-  } catch (e) {
-    err += (e instanceof Error ? e.message : String(e)) + "\n";
-  }
-
-  // Report files this run CREATED or MODIFIED (older ones were already
-  // reported by the runs that made them).
-  const after = snapshotDir(py, dir);
-  const files: SandboxFile[] = [];
-  for (const [name, sig] of after) {
-    if (before.get(name) === sig) continue;
-    try {
-      files.push({ name, bytes: py.FS.readFile(`${dir}/${name}`) });
-    } catch {
-      /* skip unreadable */
-    }
-  }
-
-  return { ok: err.trim().length === 0, stdout: clip(out), stderr: clip(err), files };
 }
