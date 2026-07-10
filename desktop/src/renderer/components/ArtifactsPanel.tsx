@@ -20,6 +20,7 @@ import {
   useSessionArtifacts,
   type ArtifactItem,
 } from "@/lib/sessionArtifacts";
+import { useChatStore } from "@/stores/chatStore";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -28,6 +29,16 @@ function api(): ElectronAPI | undefined {
 
 export function openArtifact(path?: string): void {
   if (path) void api()?.artifacts.open(path);
+}
+
+/** Open a file in the in-app viewer drawer. */
+export function viewArtifact(a: {
+  name: string;
+  path?: string;
+  mediaType: string;
+  kind: string;
+}): void {
+  useChatStore.getState().openArtifactViewer(a);
 }
 
 export function KindIcon({
@@ -89,13 +100,20 @@ export function ArtifactThumb({
 function ArtifactRow({ a }: { a: ArtifactItem }): JSX.Element {
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
-      {a.kind === "image" && (a.dataUrl || a.path) && <ArtifactThumb a={a} />}
+      {a.kind === "image" && (a.dataUrl || a.path) && (
+        <button
+          type="button"
+          onClick={() => viewArtifact(a)}
+          className="block w-full"
+        >
+          <ArtifactThumb a={a} />
+        </button>
+      )}
       <button
         type="button"
-        onClick={() => openArtifact(a.path)}
-        disabled={!a.path}
-        title={a.path ? "Open file" : a.name}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors enabled:hover:bg-black/[0.03] disabled:cursor-default dark:enabled:hover:bg-white/[0.04]"
+        onClick={() => viewArtifact(a)}
+        title={`View ${a.name}`}
+        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
       >
         <KindIcon kind={a.kind} />
         <span className="min-w-0 flex-1 truncate text-[12px]" title={a.name}>
@@ -108,6 +126,33 @@ function ArtifactRow({ a }: { a: ArtifactItem }): JSX.Element {
           })}
         </span>
       </button>
+    </div>
+  );
+}
+
+/** Compact end-of-conversation strip of produced artifacts (click → viewer). */
+export function ArtifactsStrip(): JSX.Element | null {
+  const { output } = useSessionArtifacts();
+  if (output.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-border bg-card/50 p-2.5">
+      <div className="mb-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Artifacts · {output.length}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {output.map((a, i) => (
+          <button
+            key={`${a.ts}-${i}-${a.name}`}
+            type="button"
+            onClick={() => viewArtifact(a)}
+            title={`View ${a.name}`}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 text-[12px] transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+          >
+            <KindIcon kind={a.kind} className="size-3.5" />
+            <span className="max-w-52 truncate">{a.name}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

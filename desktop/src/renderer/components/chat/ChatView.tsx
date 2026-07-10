@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import {
   ArtifactThumb,
+  ArtifactsStrip,
   KindIcon,
   openArtifact,
 } from "@/components/ArtifactsPanel";
@@ -463,6 +464,8 @@ export function ChatView({
                       <WorkingRow />
                     </MessageScrollerItem>
                   )}
+
+                  {!showWorking && <ArtifactsStrip />}
 
                   {error && (
                     <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">

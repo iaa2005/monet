@@ -35,6 +35,7 @@ import {
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import { ArtifactsPanel } from "@/components/ArtifactsPanel";
+import { ArtifactViewer } from "@/components/ArtifactViewer";
 import { BackgroundTasks } from "@/components/BackgroundTasks";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { FilterDropdown } from "@/components/FilterDropdown";
@@ -958,6 +959,8 @@ export default function App(): JSX.Element {
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+
+      <ArtifactViewer />
 
       <Modal
         open={aboutOpen}

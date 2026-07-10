@@ -270,6 +270,15 @@ const electronAPI = {
       ipcRenderer.invoke("artifacts:readImage", path, mediaType),
     open: (path: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("artifacts:open", path),
+    readText: (
+      path: string,
+    ): Promise<{ ok: boolean; content?: string; error?: string }> =>
+      ipcRenderer.invoke("artifacts:readText", path),
+    download: (
+      path: string,
+      name?: string,
+    ): Promise<{ ok: boolean; savedTo?: string; error?: string }> =>
+      ipcRenderer.invoke("artifacts:download", path, name),
   },
 
   git: {

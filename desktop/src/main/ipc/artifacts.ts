@@ -7,8 +7,14 @@
  * and messages persist the file path; thumbnails are re-read on demand.
  */
 
-import { ipcMain, shell } from "electron";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { ipcMain, shell, dialog, BrowserWindow } from "electron";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "fs";
 import { join, basename, resolve } from "path";
 import { getDataSubdir } from "../data-dir.js";
 
@@ -101,4 +107,52 @@ export function registerArtifactsIPC(): void {
     if (insideArtifacts(path)) void shell.openPath(path);
     return { ok: true };
   });
+
+  // Read a text/code artifact for the in-app viewer.
+  ipcMain.handle(
+    "artifacts:readText",
+    (_e, path: string): { ok: boolean; content?: string; error?: string } => {
+      try {
+        if (!insideArtifacts(path))
+          return { ok: false, error: "outside artifacts dir" };
+        const buf = readFileSync(path);
+        if (buf.length > 2 * 1024 * 1024)
+          return { ok: false, error: "File is too large to preview" };
+        if (buf.includes(0)) return { ok: false, error: "Binary file" };
+        return { ok: true, content: buf.toString("utf-8") };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "read failed",
+        };
+      }
+    },
+  );
+
+  // Save-as: copy an artifact to a user-chosen location.
+  ipcMain.handle(
+    "artifacts:download",
+    async (
+      _e,
+      path: string,
+      name?: string,
+    ): Promise<{ ok: boolean; savedTo?: string; error?: string }> => {
+      try {
+        if (!insideArtifacts(path) || !existsSync(path))
+          return { ok: false, error: "not found" };
+        const win = BrowserWindow.getFocusedWindow() ?? undefined;
+        const res = await dialog.showSaveDialog(win!, {
+          defaultPath: name || basename(path).replace(/^\d+-/, ""),
+        });
+        if (res.canceled || !res.filePath) return { ok: false };
+        copyFileSync(path, res.filePath);
+        return { ok: true, savedTo: res.filePath };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "download failed",
+        };
+      }
+    },
+  );
 }

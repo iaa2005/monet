@@ -91,6 +91,13 @@ interface ChatStore {
   /** A file the user asked to open in the in-app viewer (tool file links).
    * Consumed and cleared by App. */
   openFileRequest: string | null;
+  /** Artifact currently shown in the in-app viewer drawer (null = closed). */
+  viewerArtifact: {
+    name: string;
+    path?: string;
+    mediaType: string;
+    kind: string;
+  } | null;
   /** Current workspace ("home" | "code") — new chats are tagged with it so
    * Home and Code keep separate Recents. Mirrors App's appMode. */
   space: string;
@@ -103,6 +110,14 @@ interface ChatStore {
   setIncognito: (v: boolean) => void;
   setComposerDraft: (v: string) => void;
   requestOpenFile: (path: string | null) => void;
+  openArtifactViewer: (
+    item: {
+      name: string;
+      path?: string;
+      mediaType: string;
+      kind: string;
+    } | null,
+  ) => void;
   setSpace: (v: string) => void;
   bumpSessions: () => void;
   bumpWorkspace: () => void;
@@ -346,6 +361,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     incognito: false,
     composerDraft: "",
     openFileRequest: null,
+    viewerArtifact: null,
     space: "home",
 
     isSessionStreaming: (id) => get().sessions[id]?.isStreaming ?? false,
@@ -366,6 +382,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     setIncognito: (v) => set({ incognito: v }),
     setComposerDraft: (v) => set({ composerDraft: v }),
     requestOpenFile: (path) => set({ openFileRequest: path }),
+    openArtifactViewer: (item) => set({ viewerArtifact: item }),
     setSpace: (v) => set({ space: v }),
     bumpSessions: () =>
       set((s) => ({ sessionsVersion: s.sessionsVersion + 1 })),

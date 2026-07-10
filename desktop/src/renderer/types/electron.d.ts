@@ -241,6 +241,13 @@ export interface ElectronAPI {
       mediaType?: string,
     ) => Promise<{ ok: boolean; dataUrl?: string; error?: string }>;
     open: (path: string) => Promise<{ ok: boolean }>;
+    readText: (
+      path: string,
+    ) => Promise<{ ok: boolean; content?: string; error?: string }>;
+    download: (
+      path: string,
+      name?: string,
+    ) => Promise<{ ok: boolean; savedTo?: string; error?: string }>;
   };
   git: {
     info: (cwd?: string) => Promise<GitInfo>;
