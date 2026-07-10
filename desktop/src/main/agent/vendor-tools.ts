@@ -22,6 +22,16 @@ import { zodToJsonSchema } from "@vendor/utils/zodToJsonSchema.js";
 import { InlineSkillTool } from "./skill-tool.js";
 import { AgentTaskTool } from "./agent-tool.js";
 import { WebFetchTool, WebSearchTool } from "./web-tools.js";
+import { RunPythonTool } from "./sandbox-tool.js";
+
+/** Tools advertised to Home (isolated space): no host filesystem/shell. */
+const HOME_TOOL_NAMES = new Set([
+  "RunPython",
+  "TodoWrite",
+  "Skill",
+  "WebFetch",
+  "WebSearch",
+]);
 import {
   callMcpTool,
   ensureConnected,
@@ -217,6 +227,7 @@ export function getVendorTools(): Tools {
     AgentTaskTool,
     WebFetchTool,
     WebSearchTool,
+    RunPythonTool,
   ] as unknown as Tool[];
   cachedTools = all.filter((t) => t.isEnabled());
   return cachedTools;
@@ -235,8 +246,16 @@ const apiToolsCache = new Map<string, LLMTool[]>();
 // (declared before getVendorTools uses it at runtime — module-level const
 // hoisting via TDZ is satisfied because getVendorTools runs post-init)
 
-export async function getVendorApiTools(): Promise<LLMTool[]> {
-  const tools = getVendorTools();
+export async function getVendorApiTools(space?: string): Promise<LLMTool[]> {
+  const allTools = getVendorTools();
+  // Home advertises only the sandboxed subset (RunPython + web/todo/skill);
+  // Code gets everything EXCEPT RunPython (it has real Bash/PowerShell). The
+  // execution path can still run any tool by name — this only gates what the
+  // model is told about.
+  const tools =
+    space === "home"
+      ? allTools.filter((t) => HOME_TOOL_NAMES.has(t.name))
+      : allTools.filter((t) => t.name !== "RunPython");
   const cacheKey = tools.map((t) => t.name).join(",");
   let base = apiToolsCache.get(cacheKey);
   if (!base) {
@@ -371,6 +390,8 @@ export async function executeVendorTool(opts: {
     signal,
   });
   (context as { toolUseId?: string }).toolUseId = toolUseID;
+  // Custom tools (e.g. RunPython) read the sessionId off the context.
+  (context as { sessionId?: string }).sessionId = sessionId;
   if (onProgress)
     (context as Record<string, unknown>)._subAgentOnProgress = onProgress;
 

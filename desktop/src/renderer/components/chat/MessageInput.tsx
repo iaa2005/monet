@@ -577,6 +577,7 @@ export function MessageInput(): JSX.Element {
         message: text,
         seed,
         mode,
+        space: store.space,
         attachments,
       });
     } catch (err) {

@@ -68,6 +68,8 @@ export interface AgentRunOptions {
   permissionMode?: UiPermissionMode;
   /** Called when a tool needs the user's approval (routes to the UI dialog). */
   requestPermission?: RequestPermission;
+  /** Workspace ("home" | "code") — selects the advertised toolset. */
+  space?: string;
 }
 
 /**
@@ -154,13 +156,14 @@ export async function runAgent(
     modeDirective,
     permissionMode = "default",
     requestPermission,
+    space,
   } = options;
 
   let tools;
   let basePrompt;
   try {
     [tools, basePrompt] = await Promise.all([
-      getVendorApiTools(),
+      getVendorApiTools(space),
       buildSystemPrompt(provider.model),
     ]);
   } catch (err) {

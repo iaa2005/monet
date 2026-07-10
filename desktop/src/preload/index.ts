@@ -20,6 +20,7 @@ const electronAPI = {
       message: string;
       seed?: { role: "user" | "assistant"; content: string }[];
       mode?: string;
+      space?: string;
       attachments?: {
         name: string;
         mediaType: string;

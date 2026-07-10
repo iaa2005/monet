@@ -36,6 +36,8 @@ interface ChatSendPayload {
   /** Chat mode ("auto" | "plan" | "concise"). */
   mode?: string;
   attachments?: ChatAttachment[];
+  /** Workspace ("home" | "code") — selects the advertised toolset. */
+  space?: string;
 }
 
 /** Input modalities of the ACTIVE MODEL (Settings → Providers → model).
@@ -185,6 +187,7 @@ export function registerChatIPC(): void {
           modeDirective: MODE_DIRECTIVES[mode],
           permissionMode: mode,
           requestPermission: (ask) => requestPermissionFromRenderer(win, ask),
+          space: payload.space,
         },
       );
     } catch (err) {

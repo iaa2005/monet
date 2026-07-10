@@ -18,11 +18,24 @@ function artifactsRoot(): string {
   return dir;
 }
 
-function sessionDir(sessionId: string): string {
+export function artifactSessionDir(sessionId: string): string {
   const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_") || "session";
   const dir = join(artifactsRoot(), safe);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   return dir;
+}
+const sessionDir = artifactSessionDir;
+
+/** Save arbitrary bytes as a session artifact; returns the file path. */
+export function saveArtifactBuffer(
+  sessionId: string,
+  name: string,
+  bytes: Uint8Array,
+): string {
+  const safeName = basename(name).replace(/[<>:"/\\|?*]/g, "_") || "file";
+  const file = join(sessionDir(sessionId), `${Date.now()}-${safeName}`);
+  writeFileSync(file, Buffer.from(bytes));
+  return file;
 }
 
 /** Only paths inside the artifacts folder are ever read back. */
