@@ -67,6 +67,15 @@ export const RunPythonTool = buildTool({
       "  first use of a package may take a moment to download.",
       "- There is NO pip CLI and NO subprocess in this sandbox. For an explicit",
       "  install use: import micropip; await micropip.install('name').",
+      "- Networking from Python is unreliable here (requests/urllib3 can fail).",
+      "  For a simple HTTP GET use: from pyodide.http import pyfetch;",
+      "  resp = await pyfetch(url); text = await resp.text(). Prefer the",
+      "  WebFetch/WebSearch tools for reading the web.",
+      "- Content transformation (translation, rewriting, summarising) is YOUR",
+      "  job — never call online translator APIs (GoogleTranslator etc.).",
+      "  Workflow: extract the text with RunPython (print it), transform it",
+      "  yourself, then write the new file with the transformed strings",
+      "  embedded in the code.",
     ].join("\n");
   },
   async description() {

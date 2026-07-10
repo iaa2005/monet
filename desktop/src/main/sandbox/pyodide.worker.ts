@@ -16,6 +16,19 @@
 import { parentPort } from "worker_threads";
 import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
+import v8 from "v8";
+
+// Python-side SYNC networking (urllib3/requests) needs WebAssembly JSPI,
+// which must be enabled at process start — setting it here didn't take even
+// on Node 24 (verified). Kept as best-effort for future runtimes; the
+// SUPPORTED path is async pyfetch (works today; the RunPython prompt teaches
+// it), and content transformation is the model's own job anyway.
+try {
+  v8.setFlagsFromString("--experimental-wasm-stack-switching");
+  v8.setFlagsFromString("--experimental-wasm-jspi");
+} catch {
+  /* flag unavailable — pyfetch guidance still applies */
+}
 
 const MAX_STREAM_CHARS = 60_000;
 
