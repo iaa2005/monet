@@ -88,6 +88,10 @@ interface ChatStore {
   /** Text to push into the composer (e.g. a Home suggestion chip). Consumed
    * and cleared by MessageInput. */
   composerDraft: string;
+  /** Unsent composer text PER CHAT (and per space for the blank chat), so
+   * switching chats and coming back restores what you were typing.
+   * Keys: sessionId, or "new:<space>" for a fresh chat. */
+  drafts: Record<string, string>;
   /** A file the user asked to open in the in-app viewer (tool file links).
    * Consumed and cleared by App. */
   openFileRequest: string | null;
@@ -109,6 +113,7 @@ interface ChatStore {
   setCurrentSessionId: (id?: string) => void;
   setIncognito: (v: boolean) => void;
   setComposerDraft: (v: string) => void;
+  setDraft: (key: string, text: string) => void;
   requestOpenFile: (path: string | null) => void;
   openArtifactViewer: (
     item: {
@@ -360,6 +365,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     workspaceVersion: 0,
     incognito: false,
     composerDraft: "",
+    drafts: {},
     openFileRequest: null,
     viewerArtifact: null,
     space: "home",
@@ -381,6 +387,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
     setIncognito: (v) => set({ incognito: v }),
     setComposerDraft: (v) => set({ composerDraft: v }),
+    setDraft: (key, text) =>
+      set((s) => ({ drafts: { ...s.drafts, [key]: text } })),
     requestOpenFile: (path) => set({ openFileRequest: path }),
     openArtifactViewer: (item) => set({ viewerArtifact: item }),
     setSpace: (v) => set({ space: v }),

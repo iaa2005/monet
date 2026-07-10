@@ -2,6 +2,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useRef,
   lazy,
   Suspense,
   type ReactNode,
@@ -309,6 +310,44 @@ export default function App(): JSX.Element {
   useEffect(() => {
     useChatStore.getState().setSpace(appMode);
   }, [appMode]);
+
+  // Home and Code are separate worlds: each keeps its own current chat.
+  // Switching restores the last chat of the target space, or a blank chat
+  // if none was open there.
+  const lastSessionBySpace = useRef<Record<string, string | undefined>>({});
+  const prevSpaceRef = useRef(appMode);
+  useEffect(() => {
+    const prev = prevSpaceRef.current;
+    if (prev === appMode) return;
+    lastSessionBySpace.current[prev] =
+      useChatStore.getState().currentSessionId;
+    prevSpaceRef.current = appMode;
+
+    const target = lastSessionBySpace.current[appMode];
+    if (target) {
+      void api()
+        ?.sessions.getById(target)
+        .then((s) => {
+          if (s)
+            handleSelectSession(
+              s as {
+                id: string;
+                title: string;
+                messages: ChatMessage[];
+                workspace?: string;
+              },
+            );
+        })
+        .catch(() => {});
+    } else {
+      const store = useChatStore.getState();
+      store.setCurrentSessionId(undefined);
+      store.clearMessages();
+      setCurrentSessionId(undefined);
+      setSessionTitle("New session");
+      setView("chat");
+    }
+  }, [appMode, handleSelectSession]);
 
   const handleDeleteSession = useCallback(
     async (id: string) => {

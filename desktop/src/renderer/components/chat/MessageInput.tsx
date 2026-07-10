@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import {
   ArrowUp,
   ChevronDown,
@@ -189,7 +189,22 @@ function api(): ElectronAPI | undefined {
 }
 
 export function MessageInput(): JSX.Element {
-  const [input, setInput] = useState("");
+  // The composer text lives in the store PER CHAT (keyed by sessionId, or
+  // "new:<space>" for a blank chat) — switching chats and coming back
+  // restores what you were typing. setInput keeps the useState call shape.
+  const draftKey = useChatStore(
+    (s) => s.currentSessionId ?? `new:${s.space}`,
+  );
+  const input = useChatStore((s) => s.drafts[draftKey] ?? "");
+  const setInput = useCallback(
+    (v: string | ((prev: string) => string)): void => {
+      const st = useChatStore.getState();
+      const key = st.currentSessionId ?? `new:${st.space}`;
+      const cur = st.drafts[key] ?? "";
+      st.setDraft(key, typeof v === "function" ? v(cur) : v);
+    },
+    [],
+  );
   const [files, setFiles] = useState<StagedFile[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [activeId, setActiveId] = useState<string>("");
