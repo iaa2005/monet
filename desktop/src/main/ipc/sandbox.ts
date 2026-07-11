@@ -10,6 +10,7 @@ import {
   type SandboxConfig,
 } from "../sandbox/config.js";
 import { resetVendorTools } from "../agent/vendor-tools.js";
+import { ensurePodmanBinary } from "../sandbox/podman-binary.js";
 
 export function registerSandboxIPC(): void {
   ipcMain.handle("sandbox:getConfig", (): SandboxConfig => getSandboxConfig());
@@ -19,7 +20,19 @@ export function registerSandboxIPC(): void {
       const next = setSandboxConfig(patch);
       // The RunPython prompt is engine-specific and cached with the toolset.
       resetVendorTools();
+      // Switching to Podman: provision the portable CLI in the background so
+      // the user installs nothing (the first run won't stall on the download).
+      if (next.engine === "docker") void ensurePodmanBinary();
       return next;
+    },
+  );
+
+  // Explicit "prepare Podman now" for the Settings UI (download + machine
+  // start can take a while — the UI can show progress / errors).
+  ipcMain.handle(
+    "sandbox:preparePodman",
+    async (): Promise<{ ok: boolean; error?: string }> => {
+      return ensurePodmanBinary();
     },
   );
 }

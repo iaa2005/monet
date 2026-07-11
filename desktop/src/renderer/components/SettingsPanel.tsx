@@ -128,12 +128,13 @@ const SANDBOX_ENGINES: {
     id: "docker",
     title: "Podman container",
     blurb:
-      "Real Python + Node + LaTeX (tectonic) in an isolated container. Requires Podman (on Windows: podman machine init && start). The shared image builds once on first use (~400MB); chats add only copy-on-write layers, not gigabytes.",
+      "Real Python + Node + LaTeX (tectonic) in an isolated container. The portable Podman CLI is provisioned automatically — no manual install. The Linux backend (WSL2) and the shared image build once on first use; chats then add only copy-on-write layers, not gigabytes.",
   },
 ];
 
 function SandboxSection(): JSX.Element {
   const [engine, setEngine] = useState<string>("pyodide");
+  const [podmanStatus, setPodmanStatus] = useState<string | null>(null);
 
   useEffect(() => {
     api()
@@ -145,6 +146,17 @@ function SandboxSection(): JSX.Element {
   const choose = (id: string): void => {
     setEngine(id);
     void api()?.sandbox.setConfig({ engine: id });
+    if (id === "docker") void preparePodman();
+  };
+
+  const preparePodman = async (): Promise<void> => {
+    setPodmanStatus("Provisioning portable Podman… (first time downloads the CLI)");
+    const r = await api()?.sandbox.preparePodman();
+    setPodmanStatus(
+      r?.ok
+        ? "Podman CLI ready. The Linux backend starts on first run."
+        : `Podman setup: ${r?.error ?? "failed"}`,
+    );
   };
 
   return (
@@ -215,6 +227,22 @@ function SandboxSection(): JSX.Element {
             read and write files and reach the network. Only use it with models
             you trust.
           </span>
+        </div>
+      )}
+
+      {engine === "docker" && (
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-[13px]">
+          <span className="min-w-0 text-muted-foreground">
+            {podmanStatus ??
+              "Podman is provisioned automatically on first use."}
+          </span>
+          <button
+            type="button"
+            onClick={() => void preparePodman()}
+            className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+          >
+            Prepare now
+          </button>
         </div>
       )}
     </div>

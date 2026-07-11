@@ -246,6 +246,7 @@ export interface ElectronAPI {
   sandbox: {
     getConfig: () => Promise<{ engine: string }>;
     setConfig: (patch: { engine?: string }) => Promise<{ engine: string }>;
+    preparePodman: () => Promise<{ ok: boolean; error?: string }>;
   };
   artifacts: {
     save: (payload: {

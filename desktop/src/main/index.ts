@@ -112,6 +112,17 @@ app.whenReady().then(() => {
   // Ship the built-in skills (created only when missing).
   ensureBuiltinSkills();
 
+  // Put a bundled/previously-downloaded portable Podman on PATH so the engine
+  // finds it; if Podman is the selected sandbox, provision it in the
+  // background so the first run doesn't stall on the download.
+  void import("./sandbox/podman-binary.js")
+    .then(async (m) => {
+      m.addPodmanToPath();
+      const { getSandboxConfig } = await import("./sandbox/config.js");
+      if (getSandboxConfig().engine === "docker") await m.ensurePodmanBinary();
+    })
+    .catch(() => {});
+
   // Custom window controls (frameless title bar).
   ipcMain.handle("window:minimize", () => mainWindow?.minimize());
   ipcMain.handle("window:toggleMaximize", () => {
