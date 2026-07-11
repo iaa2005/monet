@@ -264,6 +264,13 @@ const electronAPI = {
       ipcRenderer.invoke("incognito:purge", sessionId),
   },
 
+  browser: {
+    getConfig: (): Promise<{ enabled: boolean }> =>
+      ipcRenderer.invoke("browser:getConfig"),
+    setConfig: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
+      ipcRenderer.invoke("browser:setConfig", patch),
+  },
+
   sandbox: {
     getConfig: (): Promise<{ engine: string }> =>
       ipcRenderer.invoke("sandbox:getConfig"),

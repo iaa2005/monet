@@ -29,6 +29,15 @@ import {
   SandboxWriteTool,
 } from "./sandbox-file-tools.js";
 import { ensurePosixShell } from "./shell-env.js";
+import {
+  BrowserClickTool,
+  BrowserNavigateTool,
+  BrowserReadPageTool,
+  BrowserScreenshotTool,
+  BrowserScrollTool,
+  BrowserTypeTool,
+} from "./browser-tools.js";
+import { getBrowserConfig } from "../browser/config.js";
 
 /** Tools advertised to Home (isolated space): no host filesystem/shell —
  * file access is scoped to the CHAT's sandbox via the Sandbox* tools. */
@@ -49,6 +58,16 @@ const SANDBOX_ONLY_NAMES = new Set([
   "SandboxList",
   "SandboxRead",
   "SandboxWrite",
+]);
+
+/** Browser Use tools — Code-only, and only when the user enabled Browser Use. */
+const BROWSER_TOOL_NAMES = new Set([
+  "BrowserNavigate",
+  "BrowserReadPage",
+  "BrowserClick",
+  "BrowserType",
+  "BrowserScroll",
+  "BrowserScreenshot",
 ]);
 import {
   callMcpTool,
@@ -249,6 +268,12 @@ export function getVendorTools(): Tools {
     SandboxListTool,
     SandboxReadTool,
     SandboxWriteTool,
+    BrowserNavigateTool,
+    BrowserReadPageTool,
+    BrowserClickTool,
+    BrowserTypeTool,
+    BrowserScrollTool,
+    BrowserScreenshotTool,
   ] as unknown as Tool[];
   // Without a POSIX shell the vendor Bash tool errors on every call — drop
   // it so the model goes straight to PowerShell. (ensurePosixShell also
@@ -275,9 +300,16 @@ export function resetVendorTools(): void {
  */
 export function getVendorToolsForSpace(space?: string): Tools {
   const all = getVendorTools();
-  return space === "home"
-    ? all.filter((t) => HOME_TOOL_NAMES.has(t.name))
-    : all.filter((t) => !SANDBOX_ONLY_NAMES.has(t.name));
+  if (space === "home")
+    return all.filter((t) => HOME_TOOL_NAMES.has(t.name));
+  // Code: everything except sandbox-scoped tools, and Browser Use only when
+  // the user turned it on (launching Chrome is opt-in).
+  const browserOn = getBrowserConfig().enabled;
+  return all.filter(
+    (t) =>
+      !SANDBOX_ONLY_NAMES.has(t.name) &&
+      (browserOn || !BROWSER_TOOL_NAMES.has(t.name)),
+  );
 }
 
 // ─── API schema conversion (adapter-facing) ─────────────────────────────

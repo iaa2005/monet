@@ -137,6 +137,13 @@ app.whenReady().then(() => {
   });
 });
 
+app.on("will-quit", () => {
+  // Kill the managed Browser Use instance so it doesn't outlive the app.
+  void import("./browser/chrome.js")
+    .then((m) => m.shutdownBrowser())
+    .catch(() => {});
+});
+
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();

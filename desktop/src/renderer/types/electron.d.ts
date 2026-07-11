@@ -232,6 +232,10 @@ export interface ElectronAPI {
   incognito: {
     purge: (sessionId: string) => Promise<{ ok: boolean }>;
   };
+  browser: {
+    getConfig: () => Promise<{ enabled: boolean }>;
+    setConfig: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
+  };
   sandbox: {
     getConfig: () => Promise<{ engine: string }>;
     setConfig: (patch: { engine?: string }) => Promise<{ engine: string }>;
