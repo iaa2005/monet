@@ -913,13 +913,12 @@ export function MessageInput({
 
             <div className="flex-1" />
 
-            {usedTokens > 0 && (
+            {activeModel && (
               <ContextMeter
                 sessionId={currentSessionId ?? null}
                 space={space}
                 usedTokens={usedTokens}
                 ctxWindow={ctxWindow}
-                ctxPct={ctxPct}
               />
             )}
 

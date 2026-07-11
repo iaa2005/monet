@@ -183,6 +183,8 @@ export async function computeContextBreakdown(
   let systemTokens = 0;
   let toolTokens = 0;
   let mcpToolTokens = 0;
+  let skillTokens = 0;
+  let memoryTokens = 0;
   try {
     const [apiTools, basePrompt] = await Promise.all([
       getVendorApiTools(space),
@@ -192,23 +194,58 @@ export async function computeContextBreakdown(
     const systemPrompt = [...directives, basePrompt]
       .filter(Boolean)
       .join("\n\n");
-    systemTokens = Math.ceil(systemPrompt.length / 4);
+    const systemTotal = Math.ceil(systemPrompt.length / 4);
+
     for (const t of apiTools) {
       const size = Math.ceil(JSON.stringify(t).length / 4);
       if (t.name.startsWith("mcp__")) mcpToolTokens += size;
       else toolTokens += size;
     }
+
+    // Skills (the Skill tool's catalog) and memory (CLAUDE.md) both live INSIDE
+    // the system prompt, so estimate each and carve them out of it — this keeps
+    // the categories mutually exclusive and the total honest.
+    try {
+      const { listSkillInfos } = await import("../ipc/skills.js");
+      skillTokens = Math.ceil(
+        listSkillInfos().reduce(
+          (n, s) => n + s.name.length + s.description.length + 12,
+          0,
+        ) / 4,
+      );
+    } catch {
+      /* ignore */
+    }
+    try {
+      const { loadClaudeMd } = await import("../claude-md.js");
+      const { getWorkspacePath } = await import("../ipc/workspace.js");
+      const md = loadClaudeMd(getWorkspacePath());
+      memoryTokens = md ? Math.ceil(md.length / 4) : 0;
+    } catch {
+      /* ignore */
+    }
+    skillTokens = Math.min(skillTokens, systemTotal);
+    memoryTokens = Math.min(memoryTokens, systemTotal - skillTokens);
+    systemTokens = systemTotal - skillTokens - memoryTokens;
   } catch {
     /* best-effort */
   }
 
-  const used = messageTokens + systemTokens + toolTokens + mcpToolTokens;
+  const used =
+    messageTokens +
+    systemTokens +
+    toolTokens +
+    mcpToolTokens +
+    skillTokens +
+    memoryTokens;
   const free = Math.max(0, budget - used);
   const categories: ContextCategory[] = [
     { key: "messages", label: "Messages", tokens: messageTokens },
     { key: "system", label: "System prompt", tokens: systemTokens },
     { key: "tools", label: "System tools", tokens: toolTokens },
     { key: "mcp", label: "MCP tools", tokens: mcpToolTokens },
+    { key: "skills", label: "Skills", tokens: skillTokens },
+    { key: "memory", label: "Memory files", tokens: memoryTokens },
     { key: "free", label: "Free space", tokens: free },
   ];
   return { budget, used, free, categories };
