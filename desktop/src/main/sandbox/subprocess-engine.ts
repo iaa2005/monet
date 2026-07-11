@@ -65,7 +65,17 @@ function run(
     let stdout = "";
     let stderr = "";
     let done = false;
-    const child = spawn(cmd, args, { cwd, windowsHide: true });
+    const child = spawn(cmd, args, {
+      cwd,
+      windowsHide: true,
+      // Force UTF-8 pipes: on Russian Windows, Python defaults piped stdout
+      // to cp1251 while we decode UTF-8 — Cyrillic became mojibake dots.
+      env: {
+        ...process.env,
+        PYTHONIOENCODING: "utf-8",
+        PYTHONUTF8: "1",
+      },
+    });
     const timer = setTimeout(() => {
       if (!done) {
         stderr += `\n[sandbox] killed after ${SANDBOX_TIMEOUT_MS / 1000}s`;
@@ -104,11 +114,15 @@ export async function runSubprocess(
 
   let result: Awaited<ReturnType<typeof run>> | null = null;
   if (language === "python") {
+    let python: string | null = null;
     for (const cmd of pythonCandidates()) {
       result = await run(cmd, [scriptName], dir);
-      if (!result.spawnError) break; // interpreter found
+      if (!result.spawnError) {
+        python = cmd;
+        break; // interpreter found
+      }
     }
-    if (result?.spawnError) {
+    if (result?.spawnError || !python) {
       return {
         ok: false,
         stdout: "",
@@ -117,6 +131,41 @@ export async function runSubprocess(
         error:
           "No Python interpreter found on PATH. Install Python, or switch the Sandbox engine to Pyodide.",
       };
+    }
+    // Auto-install missing packages (same UX as the Pyodide engine): catch
+    // ModuleNotFoundError, `python -m pip install` the mapped name, retry.
+    const PIP_NAME: Record<string, string> = {
+      docx: "python-docx",
+      pptx: "python-pptx",
+      PIL: "pillow",
+      cv2: "opencv-python",
+      sklearn: "scikit-learn",
+      bs4: "beautifulsoup4",
+      yaml: "pyyaml",
+      dateutil: "python-dateutil",
+      fitz: "pymupdf",
+      Crypto: "pycryptodome",
+    };
+    const tried = new Set<string>();
+    while (result && result.code !== 0 && tried.size < 3) {
+      const m = /ModuleNotFoundError: No module named ['"]([A-Za-z0-9_.]+)['"]/.exec(
+        result.stderr,
+      );
+      const mod = m?.[1]?.split(".")[0];
+      if (!mod || tried.has(mod)) break;
+      tried.add(mod);
+      const pipName = PIP_NAME[mod] ?? mod;
+      const install = await run(
+        python,
+        ["-m", "pip", "install", "--quiet", pipName],
+        dir,
+      );
+      if (install.code !== 0) {
+        result.stderr += `\n[sandbox] auto-install of ${pipName} failed:\n${install.stderr.slice(-400)}`;
+        break;
+      }
+      result = await run(python, [scriptName], dir);
+      result.stdout = `[sandbox] installed ${pipName} via pip\n` + result.stdout;
     }
   } else {
     result = await run(process.execPath, [scriptName], dir);
