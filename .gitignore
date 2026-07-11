@@ -9,3 +9,5 @@ test_*
 *.log
 
 .monet
+.monet-prod
+.monet-dev
