@@ -2,12 +2,42 @@
  * Sessions IPC handler — CRUD for chat sessions.
  */
 
-import { ipcMain } from "electron";
+import { BrowserWindow, ipcMain } from "electron";
 import {
   getSessionStore,
   type Session,
   type SessionWithMessages,
 } from "../session-store.js";
+import { createAdapter } from "../llm/adapter.js";
+import { getProviderManager } from "../provider/manager.js";
+
+async function generateSessionTitle(
+  session: SessionWithMessages,
+): Promise<string | null> {
+  const provider = getProviderManager().getActive();
+  if (!provider) return null;
+
+  const conversation = session.messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => `${message.role}: ${message.content}`)
+    .join("\n\n")
+    .slice(0, 4000);
+  if (!conversation) return null;
+
+  const result = await createAdapter(provider).complete({
+    model: provider.model,
+    system:
+      "Name this chat. Reply with ONLY a concise 3-6 word title in the language of the conversation. No quotes, no trailing punctuation.",
+    messages: [{ role: "user", content: conversation }],
+    max_tokens: 24,
+  });
+  const title = (typeof result.content === "string" ? result.content : "")
+    .trim()
+    .replace(/^['\"«]+|['\"»]+$/g, "")
+    .split("\n")[0]
+    .slice(0, 60);
+  return title || null;
+}
 
 export function registerSessionsIPC(): void {
   const store = getSessionStore();
@@ -83,8 +113,22 @@ export function registerSessionsIPC(): void {
 
   ipcMain.handle(
     "sessions:updateTitle",
-    (_e, id: string, title: string): SessionWithMessages | null => {
-      return store.updateTitle(id, title);
+    async (_e, id: string, title: string): Promise<SessionWithMessages | null> => {
+      const session = store.get(id);
+      if (!session) return null;
+
+      const nextTitle = title.trim()
+        ? title.trim().slice(0, 60)
+        : await generateSessionTitle(session);
+      if (!nextTitle) return session;
+
+      const updated = store.updateTitle(id, nextTitle);
+      const win = BrowserWindow.getAllWindows()[0];
+      win?.webContents.send("sessions:titleChanged", {
+        sessionId: id,
+        title: nextTitle,
+      });
+      return updated;
     },
   );
 }

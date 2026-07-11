@@ -529,13 +529,10 @@ export function MessageInput({
         setNotice("Nothing to rename yet — send a message first.");
         return;
       }
-      if (!arg) {
-        setNotice("Usage: /rename New chat title");
-        return;
-      }
-      await api()?.sessions.updateTitle(sid, arg.slice(0, 60));
+      const title = arg.slice(0, 60);
+      await api()?.sessions.updateTitle(sid, title);
       store.bumpSessions();
-      setNotice(`Renamed to “${arg.slice(0, 60)}”.`);
+      setNotice(title ? `Renamed to “${title}”.` : "Chat title regenerated.");
     }
   };
 
