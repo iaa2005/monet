@@ -512,11 +512,11 @@ export function ChatView({
         </div>
       ) : isEmpty ? (
         <div className="flex-1 overflow-auto">
-          <div className="mx-auto flex w-full max-w-2xl flex-col items-center px-4 pt-16 text-center">
-            <h2 className="font-[Copernicus] text-3xl font-medium text-foreground">
+          <div className="mx-auto flex w-full max-w-3xl flex-col items-center px-4 pt-16 text-left">
+            <h2 className="font-[Copernicus] w-full text-3xl font-medium text-foreground">
               {greeting.title}
             </h2>
-            <p className="mt-2 max-w-md text-base leading-relaxed text-muted-foreground">
+            <p className="mt-2 w-full text-base leading-relaxed text-muted-foreground">
               {greeting.subtitle}
             </p>
           </div>
