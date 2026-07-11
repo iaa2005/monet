@@ -401,14 +401,13 @@ export default function App(): JSX.Element {
         await api()?.sessions.deleteById(id);
         useChatStore.getState().bumpSessions();
         if (id === currentSessionId) {
-          setCurrentSessionId(undefined);
-          useChatStore.getState().clearMessages();
+          await newSession();
         }
       } catch (err) {
         console.error("Failed to delete session:", err);
       }
     },
-    [currentSessionId],
+    [currentSessionId, newSession],
   );
 
   const newSession = useCallback(async () => {
