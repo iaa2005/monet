@@ -302,26 +302,31 @@ export function resetVendorTools(): void {
  * the API tool list and the system prompt, so the model never even hears
  * about Bash/FileEdit while in Home.
  */
-export function getVendorToolsForSpace(space?: string): Tools {
-  const all = getVendorTools();
-  if (space === "home")
-    return all.filter((t) => HOME_TOOL_NAMES.has(t.name));
-  // Code: everything except sandbox-scoped tools; Browser Use / Computer Use
-  // only when opted in. Computer Use also needs a multimodal model (it works
-  // by reading screenshots), so hide it from text-only models.
-  const browserOn = getBrowserConfig().enabled;
+function activeModelSeesImages(): boolean {
   const active = getProviderManager().getActive();
-  const modelSeesImages = active?.modalities
+  return active?.modalities
     ? active.modalities.includes("image")
     : /anthropic\.com/i.test(active?.baseURL ?? "") ||
-      active?.kind === "openrouter";
-  const computerOn = getComputerConfig().enabled && modelSeesImages;
-  return all.filter(
-    (t) =>
-      !SANDBOX_ONLY_NAMES.has(t.name) &&
-      (browserOn || !BROWSER_TOOL_NAMES.has(t.name)) &&
-      (computerOn || t.name !== "computer"),
-  );
+        active?.kind === "openrouter";
+}
+
+/**
+ * Whether a tool may be advertised AND executed in a space. Browser Use and
+ * Computer Use work in BOTH Home and Code when the user enabled them (Computer
+ * Use also needs a multimodal model — it reads screenshots). Everything else
+ * follows the space: Home = the sandbox subset only (no MCP, no shell/fs);
+ * Code = everything except the sandbox-scoped tools.
+ */
+export function isSpaceToolAllowed(name: string, space?: string): boolean {
+  if (BROWSER_TOOL_NAMES.has(name)) return getBrowserConfig().enabled;
+  if (name === "computer")
+    return getComputerConfig().enabled && activeModelSeesImages();
+  if (space === "home") return HOME_TOOL_NAMES.has(name);
+  return !SANDBOX_ONLY_NAMES.has(name);
+}
+
+export function getVendorToolsForSpace(space?: string): Tools {
+  return getVendorTools().filter((t) => isSpaceToolAllowed(t.name, space));
 }
 
 // ─── API schema conversion (adapter-facing) ─────────────────────────────
@@ -360,8 +365,9 @@ export async function getVendorApiTools(space?: string): Promise<LLMTool[]> {
     apiToolsCache.set(cacheKey, base);
   }
 
-  // Home is fully isolated — no MCP there either (connectors reach out to
-  // the user's machine and services).
+  // Home's sandbox is isolated — no MCP there (connectors reach out to the
+  // machine and services). Browser/Computer Use, when enabled, are already
+  // included above via isSpaceToolAllowed.
   if (space === "home") return base;
 
   // Append live MCP tools. Not cached with the vendor tools — connections
@@ -441,15 +447,24 @@ export async function executeVendorTool(opts: {
   } = opts;
   initVendorRuntime();
 
-  // Isolation gate, enforced at EXECUTION time (not just advertisement): in
-  // Home nothing may touch the machine — no shells, no file tools, no MCP.
-  // Even if the model names a tool it learned elsewhere, it gets refused.
-  if (space === "home" && (isMcpToolName(name) || !HOME_TOOL_NAMES.has(name))) {
+  // Isolation gate, enforced at EXECUTION time (not just advertisement). MCP is
+  // handled below; anything the space disallows (Home's sandbox subset, or a
+  // disabled Browser/Computer tool) is refused even if the model names it from
+  // memory. Browser/Computer Use, when enabled, ARE allowed in both spaces.
+  const mcp = isMcpToolName(name);
+  if (!mcp && !isSpaceToolAllowed(name, space)) {
     return {
       content:
-        `Tool "${name}" is not available in Home — this space is fully isolated ` +
-        `from the computer. Run Python in the sandbox (RunPython) instead; ` +
-        `files it writes are attached to the chat automatically.`,
+        `Tool "${name}" is not available here. In Home, use RunPython / the ` +
+        `Sandbox* tools for files and computation; Browser Use and Computer ` +
+        `Use must be enabled in Settings → Automation.`,
+      isError: true,
+    };
+  }
+  // Home never gets MCP (connectors reach the machine and services).
+  if (mcp && space === "home") {
+    return {
+      content: `MCP tools aren't available in Home. Switch to Code to use connectors.`,
       isError: true,
     };
   }

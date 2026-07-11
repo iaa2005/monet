@@ -87,8 +87,8 @@ export function AutomationSettings(): JSX.Element {
       <section>
         <h3 className="text-base font-semibold">Automation</h3>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Let the Code agent act outside the chat. These reach the real world,
-          so they are opt-in.
+          Let the agent act outside the chat — available in both Home and Code.
+          These reach the real world, so they are opt-in.
         </p>
       </section>
 
