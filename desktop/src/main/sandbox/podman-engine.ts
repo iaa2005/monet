@@ -418,15 +418,28 @@ export async function runPodmanCommand(
   const image = await ensureImage();
   if (!image.ok) return { ok: false, stdout: "", stderr: "", files: [], error: image.error };
   const dir = sessionDir(sessionId);
+  const before = snapshotFiles(dir);
   const result = await run([
     "run", "--rm", "-v", `${dir}:/work`, "-v", "monet-pip-cache:/root/.cache/pip",
     "-w", "/work", IMAGE_TAG, "sh", "-lc", command,
   ]);
+  // Surface any files the command wrote into /work, same as RunPython — so
+  // e.g. `python3 -c "...save('out.png')"` shows up as an artifact.
+  const after = snapshotFiles(dir);
+  const files: SandboxFile[] = [];
+  for (const [name, sig] of after) {
+    if (before.get(name) === sig) continue;
+    try {
+      files.push({ name, bytes: readFileSync(join(dir, name)) });
+    } catch {
+      /* skip */
+    }
+  }
   return {
     ok: result.code === 0,
     stdout: image.log + result.stdout,
     stderr: result.stderr,
-    files: [],
+    files,
     error: result.spawnError,
   };
 }

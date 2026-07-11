@@ -23,6 +23,8 @@ import { InlineSkillTool } from "./skill-tool.js";
 import { AgentTaskTool } from "./agent-tool.js";
 import { WebFetchTool, WebSearchTool } from "./web-tools.js";
 import { RunPythonTool } from "./sandbox-tool.js";
+import { RunCommandTool } from "./podman-command-tool.js";
+import { getSandboxConfig } from "../sandbox/config.js";
 import {
   SandboxListTool,
   SandboxReadTool,
@@ -46,6 +48,7 @@ import { getProviderManager } from "../provider/manager.js";
  * file access is scoped to the CHAT's sandbox via the Sandbox* tools. */
 const HOME_TOOL_NAMES = new Set([
   "RunPython",
+  "RunCommand",
   "SandboxList",
   "SandboxRead",
   "SandboxWrite",
@@ -58,6 +61,7 @@ const HOME_TOOL_NAMES = new Set([
 /** Sandbox-scoped tools make no sense in Code (it has the real filesystem). */
 const SANDBOX_ONLY_NAMES = new Set([
   "RunPython",
+  "RunCommand",
   "SandboxList",
   "SandboxRead",
   "SandboxWrite",
@@ -268,6 +272,7 @@ export function getVendorTools(): Tools {
     WebFetchTool,
     WebSearchTool,
     RunPythonTool,
+    RunCommandTool,
     SandboxListTool,
     SandboxReadTool,
     SandboxWriteTool,
@@ -318,6 +323,14 @@ function activeModelSeesImages(): boolean {
  * Code = everything except the sandbox-scoped tools.
  */
 export function isSpaceToolAllowed(name: string, space?: string): boolean {
+  if (name === "RunPython" || name === "RunCommand") {
+    if (space !== "home") return false;
+    // Don't gate on live Podman readiness — the tools provision/repair Podman
+    // lazily and report errors, so hiding them on a transient wedge (which is
+    // common: the WSL2 machine idles) would silently strip Home's ability to
+    // run code. RunCommand needs the Podman engine; RunPython works on any.
+    return getSandboxConfig().engine === "docker" || name === "RunPython";
+  }
   if (BROWSER_TOOL_NAMES.has(name)) return getBrowserConfig().enabled;
   if (name === "computer")
     return getComputerConfig().enabled && activeModelSeesImages();

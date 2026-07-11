@@ -11,7 +11,7 @@ import { extname } from "path";
 import { getSandboxConfig } from "./config.js";
 import { runPyodide } from "./pyodide-engine.js";
 import { runSubprocess } from "./subprocess-engine.js";
-import { runPodman } from "./podman-engine.js";
+import { runPodman, runPodmanCommand } from "./podman-engine.js";
 import { saveArtifactBuffer } from "../ipc/artifacts.js";
 import type { SandboxRunResult } from "./types.js";
 
@@ -65,6 +65,31 @@ export async function runInSandbox(
   return {
     ok: raw.ok,
     engine: engineName,
+    stdout: raw.stdout,
+    stderr: raw.stderr,
+    files,
+    error: raw.error,
+  };
+}
+
+/**
+ * Run a raw shell command in the Podman sandbox (RunCommand tool), persisting
+ * any files it wrote — mirrors runInSandbox so RunCommand surfaces artifacts
+ * exactly like RunPython. Podman-only; the tool guards the engine.
+ */
+export async function runCommandInSandbox(
+  sessionId: string,
+  command: string,
+): Promise<SandboxRunResult> {
+  const raw = await runPodmanCommand(sessionId, command);
+  const files = raw.files.map((f) => ({
+    name: f.name,
+    path: saveArtifactBuffer(sessionId, f.name, f.bytes),
+    mediaType: mediaTypeOf(f.name),
+  }));
+  return {
+    ok: raw.ok,
+    engine: "podman",
     stdout: raw.stdout,
     stderr: raw.stderr,
     files,
