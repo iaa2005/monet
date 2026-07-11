@@ -1,0 +1,12 @@
+{
+  "name": "monet-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix desktop run dev",
+    "build": "npm --prefix desktop run build",
+    "package": "npm --prefix desktop run package",
+    "preview": "npm --prefix desktop run preview",
+    "typecheck": "npm --prefix desktop run typecheck",
+    "smoke:agent": "npm --prefix desktop run smoke:agent"
+  }
+}
