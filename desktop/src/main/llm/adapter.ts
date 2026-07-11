@@ -40,7 +40,17 @@ export type LLMContentBlock =
   | {
       type: "tool_result";
       tool_use_id: string;
-      content: string;
+      /** Text, or a block array (text + image) — Computer Use returns a
+       * screenshot the model must SEE. */
+      content:
+        | string
+        | Array<
+            | { type: "text"; text: string }
+            | {
+                type: "image";
+                source: { type: "base64"; media_type: string; data: string };
+              }
+          >;
       is_error?: boolean;
     };
 

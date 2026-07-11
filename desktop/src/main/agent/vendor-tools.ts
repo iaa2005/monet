@@ -38,6 +38,9 @@ import {
   BrowserTypeTool,
 } from "./browser-tools.js";
 import { getBrowserConfig } from "../browser/config.js";
+import { ComputerTool } from "./computer-tools.js";
+import { getComputerConfig } from "../computer/config.js";
+import { getProviderManager } from "../provider/manager.js";
 
 /** Tools advertised to Home (isolated space): no host filesystem/shell —
  * file access is scoped to the CHAT's sandbox via the Sandbox* tools. */
@@ -274,6 +277,7 @@ export function getVendorTools(): Tools {
     BrowserTypeTool,
     BrowserScrollTool,
     BrowserScreenshotTool,
+    ComputerTool,
   ] as unknown as Tool[];
   // Without a POSIX shell the vendor Bash tool errors on every call — drop
   // it so the model goes straight to PowerShell. (ensurePosixShell also
@@ -302,13 +306,21 @@ export function getVendorToolsForSpace(space?: string): Tools {
   const all = getVendorTools();
   if (space === "home")
     return all.filter((t) => HOME_TOOL_NAMES.has(t.name));
-  // Code: everything except sandbox-scoped tools, and Browser Use only when
-  // the user turned it on (launching Chrome is opt-in).
+  // Code: everything except sandbox-scoped tools; Browser Use / Computer Use
+  // only when opted in. Computer Use also needs a multimodal model (it works
+  // by reading screenshots), so hide it from text-only models.
   const browserOn = getBrowserConfig().enabled;
+  const active = getProviderManager().getActive();
+  const modelSeesImages = active?.modalities
+    ? active.modalities.includes("image")
+    : /anthropic\.com/i.test(active?.baseURL ?? "") ||
+      active?.kind === "openrouter";
+  const computerOn = getComputerConfig().enabled && modelSeesImages;
   return all.filter(
     (t) =>
       !SANDBOX_ONLY_NAMES.has(t.name) &&
-      (browserOn || !BROWSER_TOOL_NAMES.has(t.name)),
+      (browserOn || !BROWSER_TOOL_NAMES.has(t.name)) &&
+      (computerOn || t.name !== "computer"),
   );
 }
 
@@ -387,6 +399,9 @@ function flattenToolResultContent(
 export interface VendorToolResult {
   content: string;
   isError: boolean;
+  /** Optional image to show the MODEL in the tool result (Computer Use
+   * screenshots). Base64, no data: prefix. */
+  image?: { base64: string; mediaType: string };
 }
 
 /** The tool.call() canUseTool hook — gating already happened in gatePermission
@@ -534,9 +549,23 @@ export async function executeVendorTool(opts: {
       result.data,
       toolUseID,
     );
+    // A tool may attach an image for the model to SEE (Computer Use
+    // screenshots) via imageBase64/imageMediaType on its result data.
+    const data = result.data as {
+      imageBase64?: string;
+      imageMediaType?: string;
+    };
+    const image =
+      data && typeof data.imageBase64 === "string"
+        ? {
+            base64: data.imageBase64,
+            mediaType: data.imageMediaType || "image/png",
+          }
+        : undefined;
     return {
       content: flattenToolResultContent(block.content),
       isError: block.is_error === true,
+      image,
     };
   } catch (err) {
     if (signal?.aborted) {

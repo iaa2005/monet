@@ -114,6 +114,13 @@ const HUMAN_NAMES: Record<string, string> = {
   SandboxList: "Listed sandbox files",
   SandboxRead: "Read sandbox file",
   SandboxWrite: "Wrote sandbox file",
+  BrowserNavigate: "Opened page",
+  BrowserReadPage: "Read page",
+  BrowserClick: "Clicked",
+  BrowserType: "Typed",
+  BrowserScroll: "Scrolled",
+  BrowserScreenshot: "Screenshot",
+  computer: "Computer",
 };
 
 function humanName(name: string): string {
@@ -279,7 +286,11 @@ function ToolDetail({
           className={inGroup ? "border-none bg-transparent my-0" : ""}
         />
       )}
-      {output ? (
+      {output && output.includes("[sandbox-file]") ? (
+        // Any tool that produced files (Computer/Browser screenshots, sandbox
+        // writes) renders them as thumbnails instead of raw marker lines.
+        <SandboxOutput output={output} inGroup={inGroup} />
+      ) : output ? (
         <CodeBlock
           code={output}
           language={outLang}

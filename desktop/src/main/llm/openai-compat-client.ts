@@ -95,12 +95,17 @@ function toOpenAIMessages(
     // assistant tool_calls message, each as its own role:"tool" message.
     for (const b of m.content) {
       if (b.type === "tool_result") {
-        out.push({
-          role: "tool",
-          tool_call_id: b.tool_use_id,
-          content:
-            typeof b.content === "string" ? b.content : JSON.stringify(b.content),
-        });
+        // Array content (Computer Use: text + screenshot image) — OpenAI's
+        // tool role takes text only, so keep the text and note the image.
+        const content =
+          typeof b.content === "string"
+            ? b.content
+            : b.content
+                .map((p) =>
+                  p.type === "text" ? p.text : "[screenshot omitted]",
+                )
+                .join("\n");
+        out.push({ role: "tool", tool_call_id: b.tool_use_id, content });
       }
     }
     const parts: Record<string, unknown>[] = [];

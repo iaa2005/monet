@@ -329,6 +329,7 @@ export async function runAgent(
       tool_use_id: string;
       content: string;
       is_error?: boolean;
+      image?: { base64: string; mediaType: string };
     }[] = [];
     for (const tc of toolCalls) {
       if (signal?.aborted) {
@@ -371,6 +372,7 @@ export async function runAgent(
         tool_use_id: tc.id,
         content: result.content,
         is_error: result.isError || undefined,
+        image: result.image,
       });
     }
 
@@ -379,7 +381,20 @@ export async function runAgent(
       content: results.map((r) => ({
         type: "tool_result" as const,
         tool_use_id: r.tool_use_id,
-        content: r.content,
+        // A screenshot is attached as an image block so the model can see it.
+        content: r.image
+          ? [
+              { type: "text" as const, text: r.content },
+              {
+                type: "image" as const,
+                source: {
+                  type: "base64" as const,
+                  media_type: r.image.mediaType,
+                  data: r.image.base64,
+                },
+              },
+            ]
+          : r.content,
         is_error: r.is_error,
       })),
     });

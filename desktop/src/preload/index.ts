@@ -271,6 +271,16 @@ const electronAPI = {
       ipcRenderer.invoke("browser:setConfig", patch),
   },
 
+  computer: {
+    getConfig: (): Promise<{ enabled: boolean; deniedApps: string[] }> =>
+      ipcRenderer.invoke("computer:getConfig"),
+    setConfig: (patch: {
+      enabled?: boolean;
+      deniedApps?: string[];
+    }): Promise<{ enabled: boolean; deniedApps: string[] }> =>
+      ipcRenderer.invoke("computer:setConfig", patch),
+  },
+
   sandbox: {
     getConfig: (): Promise<{ engine: string }> =>
       ipcRenderer.invoke("sandbox:getConfig"),

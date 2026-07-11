@@ -236,6 +236,13 @@ export interface ElectronAPI {
     getConfig: () => Promise<{ enabled: boolean }>;
     setConfig: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
   };
+  computer: {
+    getConfig: () => Promise<{ enabled: boolean; deniedApps: string[] }>;
+    setConfig: (patch: {
+      enabled?: boolean;
+      deniedApps?: string[];
+    }) => Promise<{ enabled: boolean; deniedApps: string[] }>;
+  };
   sandbox: {
     getConfig: () => Promise<{ engine: string }>;
     setConfig: (patch: { engine?: string }) => Promise<{ engine: string }>;

@@ -20,6 +20,7 @@ import { registerArtifactsIPC } from "./artifacts.js";
 import { registerSandboxIPC } from "./sandbox.js";
 import { registerIncognitoIPC } from "../incognito.js";
 import { registerBrowserIPC } from "./browser.js";
+import { registerComputerIPC } from "./computer.js";
 
 export function registerAllIPC(): void {
   registerChatIPC();
@@ -40,4 +41,5 @@ export function registerAllIPC(): void {
   registerSandboxIPC();
   registerIncognitoIPC();
   registerBrowserIPC();
+  registerComputerIPC();
 }
