@@ -36,6 +36,7 @@ import {
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import { ArtifactsPanel } from "@/components/ArtifactsPanel";
+import { SandboxFilesPanel } from "@/components/SandboxFilesPanel";
 import { ArtifactViewer } from "@/components/ArtifactViewer";
 import { BackgroundTasks } from "@/components/BackgroundTasks";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
@@ -811,6 +812,12 @@ export default function App(): JSX.Element {
                       onClick={newSession}
                     />
                     <NavRow
+                      icon={FileText}
+                      label="Files"
+                      active={rightTab === "files"}
+                      onClick={() => toggleRight("files")}
+                    />
+                    <NavRow
                       icon={Blocks}
                       label="Artifacts"
                       active={rightTab === "artifacts"}
@@ -886,7 +893,7 @@ export default function App(): JSX.Element {
                     )}
                   </div>
                 </ResizablePanel>
-                {rightTab === "artifacts" && (
+                {rightTab && (
                   <>
                     <ResizableHandle withHandle />
                     <ResizablePanel
@@ -895,10 +902,32 @@ export default function App(): JSX.Element {
                       maxSize={55}
                     >
                       <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
-                        <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-                          <span className="text-xs font-medium text-muted-foreground">
+                        <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setRightTab("files")}
+                            className={cn(
+                              "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                              rightTab === "files"
+                                ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            Files
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRightTab("artifacts")}
+                            className={cn(
+                              "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                              rightTab === "artifacts"
+                                ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                          >
                             Artifacts
-                          </span>
+                          </button>
+                          <div className="flex-1" />
                           <button
                             type="button"
                             onClick={() => setRightTab(null)}
@@ -909,7 +938,11 @@ export default function App(): JSX.Element {
                           </button>
                         </div>
                         <div className="min-h-0 flex-1 overflow-auto">
-                          <ArtifactsPanel />
+                          {rightTab === "files" ? (
+                            <SandboxFilesPanel />
+                          ) : (
+                            <ArtifactsPanel />
+                          )}
                         </div>
                       </div>
                     </ResizablePanel>

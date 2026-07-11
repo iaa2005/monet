@@ -301,6 +301,17 @@ const electronAPI = {
       ipcRenderer.invoke("sandbox:checkPodman"),
     isPodmanReady: (): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("sandbox:isPodmanReady"),
+    listFiles: (
+      sessionId?: string,
+    ): Promise<
+      {
+        name: string;
+        size: number;
+        mtimeMs: number;
+        path: string;
+        mediaType: string;
+      }[]
+    > => ipcRenderer.invoke("sandbox:listFiles", sessionId),
   },
 
   artifacts: {

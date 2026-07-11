@@ -11,6 +11,14 @@ import type {
 
 export type { PermissionRequest, PermissionDecision };
 
+export interface SandboxFileEntry {
+  name: string;
+  size: number;
+  mtimeMs: number;
+  path: string;
+  mediaType: string;
+}
+
 export interface ContextBreakdown {
   budget: number;
   used: number;
@@ -260,6 +268,7 @@ export interface ElectronAPI {
     preparePodman: () => Promise<{ ok: boolean; error?: string; needsWsl?: boolean }>;
     checkPodman: () => Promise<{ ok: boolean; error?: string; needsWsl?: boolean }>;
     isPodmanReady: () => Promise<{ ok: boolean }>;
+    listFiles: (sessionId?: string) => Promise<SandboxFileEntry[]>;
   };
   artifacts: {
     save: (payload: {

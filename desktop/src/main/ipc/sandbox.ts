@@ -12,6 +12,8 @@ import {
 import { resetVendorTools } from "../agent/vendor-tools.js";
 import { ensurePodmanBinary } from "../sandbox/podman-binary.js";
 import { checkPodmanReady, podmanLikelyReady } from "../sandbox/podman-engine.js";
+import { listSandboxFiles } from "../sandbox/files.js";
+import { mediaTypeOf } from "../sandbox/index.js";
 
 export function registerSandboxIPC(): void {
   ipcMain.handle("sandbox:getConfig", (): SandboxConfig => getSandboxConfig());
@@ -54,5 +56,14 @@ export function registerSandboxIPC(): void {
   ipcMain.handle(
     "sandbox:isPodmanReady",
     async (): Promise<{ ok: boolean }> => ({ ok: await podmanLikelyReady() }),
+  );
+
+  // All files in a chat's sandbox (the /work dir), for the Home Files panel —
+  // the full on-disk set, not just files surfaced in the transcript.
+  ipcMain.handle("sandbox:listFiles", (_e, sessionId?: string) =>
+    listSandboxFiles(sessionId || "default").map((f) => ({
+      ...f,
+      mediaType: mediaTypeOf(f.name),
+    })),
   );
 }
