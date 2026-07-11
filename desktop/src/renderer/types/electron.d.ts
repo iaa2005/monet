@@ -11,6 +11,13 @@ import type {
 
 export type { PermissionRequest, PermissionDecision };
 
+export interface ContextBreakdown {
+  budget: number;
+  used: number;
+  free: number;
+  categories: { key: string; label: string; tokens: number }[];
+}
+
 export interface SkillInfo {
   slug: string;
   name: string;
@@ -77,6 +84,10 @@ export interface ElectronAPI {
       error?: string;
     }>;
     estimate: (sessionId?: string) => Promise<{ tokens: number }>;
+    contextBreakdown: (
+      sessionId?: string,
+      space?: string,
+    ) => Promise<ContextBreakdown>;
     onToken: (
       callback: (payload: { sessionId: string; event: LLMEvent }) => void,
     ) => () => void;

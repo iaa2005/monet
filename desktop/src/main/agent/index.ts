@@ -153,6 +153,67 @@ export function estimateSessionTokens(sessionId: string): number {
   return messages ? estimateTokens(messages) : 0;
 }
 
+export interface ContextCategory {
+  key: string;
+  label: string;
+  tokens: number;
+}
+export interface ContextBreakdown {
+  budget: number;
+  used: number;
+  free: number;
+  categories: ContextCategory[];
+}
+
+/**
+ * Estimate what currently fills the model's context window, by category — the
+ * same pieces runAgent sends (system prompt, tool schemas, conversation). Token
+ * counts are rough (chars/4), matching estimateTokens; the point is the mix,
+ * not exact accounting. Best-effort: a partial breakdown still renders.
+ */
+export async function computeContextBreakdown(
+  sessionId: string,
+  space?: string,
+): Promise<ContextBreakdown> {
+  const provider = getProviderManager().getActive();
+  const budget = provider?.inputLimit ?? provider?.contextLimit ?? 200_000;
+  const messages = conversations.get(sessionId) ?? [];
+  const messageTokens = estimateTokens(messages);
+
+  let systemTokens = 0;
+  let toolTokens = 0;
+  let mcpToolTokens = 0;
+  try {
+    const [apiTools, basePrompt] = await Promise.all([
+      getVendorApiTools(space),
+      provider ? buildSystemPrompt(provider.model, space) : Promise.resolve(""),
+    ]);
+    const directives = space === "home" ? [HOME_DIRECTIVE] : [];
+    const systemPrompt = [...directives, basePrompt]
+      .filter(Boolean)
+      .join("\n\n");
+    systemTokens = Math.ceil(systemPrompt.length / 4);
+    for (const t of apiTools) {
+      const size = Math.ceil(JSON.stringify(t).length / 4);
+      if (t.name.startsWith("mcp__")) mcpToolTokens += size;
+      else toolTokens += size;
+    }
+  } catch {
+    /* best-effort */
+  }
+
+  const used = messageTokens + systemTokens + toolTokens + mcpToolTokens;
+  const free = Math.max(0, budget - used);
+  const categories: ContextCategory[] = [
+    { key: "messages", label: "Messages", tokens: messageTokens },
+    { key: "system", label: "System prompt", tokens: systemTokens },
+    { key: "tools", label: "System tools", tokens: toolTokens },
+    { key: "mcp", label: "MCP tools", tokens: mcpToolTokens },
+    { key: "free", label: "Free space", tokens: free },
+  ];
+  return { budget, used, free, categories };
+}
+
 export async function runAgent(
   sessionId: string,
   userContent: string | LLMContentBlock[],

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import { MicButton } from "./MicButton";
+import { ContextMeter } from "./ContextMeter";
 import { ModalityBadges } from "@/components/providers/ModalityBadges";
 import type { Modality } from "@/stores/providerStore";
 import {
@@ -404,6 +405,8 @@ export function MessageInput({
   };
 
   const isHomeSpace = useChatStore((s) => s.space === "home");
+  const space = useChatStore((s) => s.space);
+  const currentSessionId = useChatStore((s) => s.currentSessionId);
 
   // Files dropped anywhere over the chat window (ChatView catches the drop).
   const droppedFiles = useChatStore((s) => s.droppedFiles);
@@ -911,13 +914,13 @@ export function MessageInput({
             <div className="flex-1" />
 
             {usedTokens > 0 && (
-              <span
-                className="flex items-center gap-1 px-1.5 text-[11px] text-muted-foreground"
-                title={`${usedTokens.toLocaleString()} tokens of ~${ctxWindow.toLocaleString()} context`}
-              >
-                <Gauge className="size-3" />
-                {formatTokens(usedTokens)} · {ctxPct}%
-              </span>
+              <ContextMeter
+                sessionId={currentSessionId ?? null}
+                space={space}
+                usedTokens={usedTokens}
+                ctxWindow={ctxWindow}
+                ctxPct={ctxPct}
+              />
             )}
 
             {/* Model / provider */}

@@ -39,6 +39,15 @@ const electronAPI = {
       ipcRenderer.invoke("chat:compact", sessionId),
     estimate: (sessionId?: string): Promise<{ tokens: number }> =>
       ipcRenderer.invoke("chat:estimate", sessionId),
+    contextBreakdown: (
+      sessionId?: string,
+      space?: string,
+    ): Promise<{
+      budget: number;
+      used: number;
+      free: number;
+      categories: { key: string; label: string; tokens: number }[];
+    }> => ipcRenderer.invoke("chat:contextBreakdown", sessionId, space),
     onToken: (
       callback: (payload: { sessionId: string; event: LLMEvent }) => void,
     ): (() => void) => {

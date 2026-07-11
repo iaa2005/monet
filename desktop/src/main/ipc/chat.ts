@@ -12,6 +12,7 @@ import {
   seedConversation,
   compactSessionNow,
   estimateSessionTokens,
+  computeContextBreakdown,
 } from "../agent/index.js";
 import { expandSlashCommand } from "../agent/skill-tool.js";
 import { getSessionStore } from "../session-store.js";
@@ -300,4 +301,11 @@ export function registerChatIPC(): void {
   ipcMain.handle("chat:estimate", (_e, sessionId?: string) => {
     return { tokens: estimateSessionTokens(sessionId || "default") };
   });
+
+  // Per-category breakdown of what fills the context window right now.
+  ipcMain.handle(
+    "chat:contextBreakdown",
+    (_e, sessionId?: string, space?: string) =>
+      computeContextBreakdown(sessionId || "default", space),
+  );
 }
