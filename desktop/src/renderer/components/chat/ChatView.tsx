@@ -193,10 +193,10 @@ function stripIndexes(msgs: ChatMessage[]): Map<number, ArtifactItem[]> {
       return;
     }
     lastIdx = i;
-    const producing =
-      m.toolCall?.name === "RunPython" || m.toolCall?.name === "SandboxWrite";
-    const out = producing ? m.toolCall?.output : undefined;
-    if (out)
+    // Any tool whose result carries [sandbox-file] markers contributes to the
+    // turn's strip (RunPython, RunCommand, SandboxWrite, screenshots …).
+    const out = m.toolCall?.output;
+    if (out && out.includes("[sandbox-file]"))
       for (const f of sandboxFilesFromOutput(out, m.timestamp))
         acc.set(f.name, f);
   });
