@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ClipboardList,
   FileCheck,
+  Hand,
   Shield,
   ShieldAlert,
   Sparkles,
@@ -85,18 +86,42 @@ export const PERMISSION_MODES: ModeDef[] = [
   },
 ];
 
+/** Home has no filesystem/shell — permissions collapse to two choices,
+ * mirroring the official Claude Desktop wording. */
+export const HOME_MODES: ModeDef[] = [
+  {
+    id: "default",
+    label: "Manually approve",
+    hint: "Claude pauses so you can approve each action.",
+    icon: Hand,
+    tone: "text-muted-foreground",
+  },
+  {
+    id: "bypassPermissions",
+    label: "Skip all approvals",
+    hint: "Claude never pauses, even for unsafe actions.",
+    icon: AlertTriangle,
+    tone: "text-destructive",
+    confirm: "bypass",
+  },
+];
+
 const AUTO_CONFIRMED_KEY = "auto-mode-confirmed";
 
 export function PermissionModeMenu({
   mode,
   onChange,
+  home = false,
 }: {
   mode: PermissionMode;
   onChange: (mode: PermissionMode) => void;
+  /** Home shows only Manually approve / Skip all approvals. */
+  home?: boolean;
 }): JSX.Element {
   const [confirm, setConfirm] = useState<null | "auto" | "bypass">(null);
-  const current =
-    PERMISSION_MODES.find((m) => m.id === mode) ?? PERMISSION_MODES[0];
+  const modes = home ? HOME_MODES : PERMISSION_MODES;
+  // A Code-only mode (plan/acceptEdits/auto) displays as the first Home mode.
+  const current = modes.find((m) => m.id === mode) ?? modes[0];
 
   const pick = (m: ModeDef): void => {
     if (m.confirm === "auto") {
@@ -133,7 +158,7 @@ export function PermissionModeMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="start" className="w-72">
           <DropdownMenuLabel>Permission mode</DropdownMenuLabel>
-          {PERMISSION_MODES.map((m) => (
+          {modes.map((m) => (
             <DropdownMenuItem
               key={m.id}
               onClick={() => pick(m)}

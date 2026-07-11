@@ -403,6 +403,8 @@ export function MessageInput({
     ]);
   };
 
+  const isHomeSpace = useChatStore((s) => s.space === "home");
+
   // Files dropped anywhere over the chat window (ChatView catches the drop).
   const droppedFiles = useChatStore((s) => s.droppedFiles);
   useEffect(() => {
@@ -442,7 +444,27 @@ export function MessageInput({
     if (!slashItems) {
       api()
         ?.commands.list()
-        .then(setSlashItems)
+        .then((r) =>
+          setSlashItems({
+            // App-level commands run in the composer, not on the model.
+            commands: [
+              {
+                name: "compact",
+                description: "Compact this chat's context (summarize old turns)",
+              },
+              {
+                name: "clear",
+                description: "Clear this chat's conversation history",
+              },
+              {
+                name: "rename",
+                description: "Rename this chat: /rename New title",
+              },
+              ...r.commands,
+            ],
+            skills: r.skills,
+          }),
+        )
         .catch(() => setSlashItems({ commands: [], skills: [] }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -479,9 +501,55 @@ export function MessageInput({
     });
   };
 
+  /** App-level commands handled in the composer, never sent to the model. */
+  const runLocalCommand = async (
+    cmd: string,
+    arg: string,
+  ): Promise<void> => {
+    const store = useChatStore.getState();
+    const sid = store.currentSessionId;
+    if (cmd === "compact") {
+      setNotice("Compacting context…");
+      const r = await api()?.chat.compact(sid);
+      setNotice(
+        r?.ok && r.before != null && r.after != null
+          ? `Context compacted: ~${fmtTok(r.before)} → ~${fmtTok(r.after)} tokens.`
+          : (r?.error ?? "Nothing to compact yet."),
+      );
+      return;
+    }
+    if (cmd === "clear") {
+      if (sid) void api()?.chat.reset(sid);
+      store.clearMessages();
+      setNotice("Conversation history cleared.");
+      return;
+    }
+    if (cmd === "rename") {
+      if (!sid) {
+        setNotice("Nothing to rename yet — send a message first.");
+        return;
+      }
+      if (!arg) {
+        setNotice("Usage: /rename New chat title");
+        return;
+      }
+      await api()?.sessions.updateTitle(sid, arg.slice(0, 60));
+      store.bumpSessions();
+      setNotice(`Renamed to “${arg.slice(0, 60)}”.`);
+    }
+  };
+
   const send = async (): Promise<void> => {
     const text = input.trim();
     if (!text || isStreaming) return;
+
+    // Intercept app-level slash commands before anything reaches the model.
+    const local = /^\/(compact|clear|rename)(?:\s+([\s\S]*))?$/.exec(text);
+    if (local) {
+      setInput("");
+      void runLocalCommand(local[1], local[2]?.trim() ?? "");
+      return;
+    }
 
     // Respect the active model's input modalities and budget BEFORE clearing
     // the composer, so a rejected send loses nothing.
@@ -602,11 +670,17 @@ export function MessageInput({
       // Persistence happens in the chatStore on message_stop — saving here
       // after the invoke resolves raced the last chat:token events (the reply
       // travels a different IPC path) and clipped the tail of long replies.
+      // Home only knows approve/skip — a Code-only mode saved in prefs
+      // (plan/acceptEdits/auto) degrades to manual approval there.
+      const effectiveMode =
+        store.space === "home" && mode !== "bypassPermissions"
+          ? "default"
+          : mode;
       await bridge.chat.send({
         sessionId,
         message: text,
         seed,
-        mode,
+        mode: effectiveMode,
         space: store.space,
         attachments,
       });
@@ -820,8 +894,12 @@ export function MessageInput({
               <Plus className="size-4" />
             </button>
 
-            {/* Permission mode */}
-            <PermissionModeMenu mode={mode} onChange={pickMode} />
+            {/* Permission mode (Home: only approve/skip — no fs/shell there) */}
+            <PermissionModeMenu
+              mode={mode}
+              onChange={pickMode}
+              home={isHomeSpace}
+            />
 
             <MicButton
               onText={(t) =>
