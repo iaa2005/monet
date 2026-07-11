@@ -10,10 +10,12 @@ import {
   Search,
   FlaskConical,
   AlertTriangle,
+  MousePointerClick,
 } from "lucide-react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { SkillsSettings } from "@/components/settings/SkillsSettings";
 import { ConnectorsSettings } from "@/components/settings/ConnectorsSettings";
+import { AutomationSettings } from "@/components/settings/AutomationSettings";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -74,6 +76,7 @@ type Section =
   | "general"
   | "providers"
   | "sandbox"
+  | "automation"
   | "skills"
   | "connectors"
   | "about";
@@ -88,6 +91,7 @@ const NAV: {
       { id: "general", label: "General", icon: Settings2 },
       { id: "providers", label: "Providers", icon: Boxes },
       { id: "sandbox", label: "Sandbox", icon: FlaskConical },
+      { id: "automation", label: "Automation", icon: MousePointerClick },
     ],
   },
   {
@@ -379,6 +383,7 @@ export function SettingsPanel({
         )}
         {section === "providers" && <ProviderSettings />}
         {section === "sandbox" && <SandboxSection />}
+        {section === "automation" && <AutomationSettings />}
         {section === "skills" && <SkillsSettings />}
         {section === "connectors" && <ConnectorsSettings />}
         {section === "about" && <AboutSection />}
