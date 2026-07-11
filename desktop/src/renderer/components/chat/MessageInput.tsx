@@ -582,6 +582,10 @@ export function MessageInput({
 
     const bridge = api();
     const store = useChatStore.getState();
+    // NOTE: no Podman readiness gate here. The Home banner (ChatView) already
+    // warns when it isn't ready, and RunPython provisions it lazily and surfaces
+    // any error in the tool result. Gating the send here silently dropped the
+    // message (input was already cleared) and its heavy check wedged the VM.
     const attachments = staged.length
       ? await buildAttachments(staged)
       : undefined;
@@ -695,7 +699,7 @@ export function MessageInput({
     "flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]";
 
   return (
-    <div className="pb-4">
+    <div className="">
       {/* flush: the centered Home empty state has no px-4 around its content,
           so the composer drops it too. Everywhere else (active chats in BOTH
           spaces) the transcript column has px-4 — keep the composer aligned. */}

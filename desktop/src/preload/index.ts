@@ -290,6 +290,8 @@ const electronAPI = {
       ipcRenderer.invoke("sandbox:preparePodman"),
     checkPodman: (): Promise<{ ok: boolean; error?: string; needsWsl?: boolean }> =>
       ipcRenderer.invoke("sandbox:checkPodman"),
+    isPodmanReady: (): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("sandbox:isPodmanReady"),
   },
 
   artifacts: {

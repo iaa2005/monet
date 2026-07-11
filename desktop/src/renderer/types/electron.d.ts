@@ -248,6 +248,7 @@ export interface ElectronAPI {
     setConfig: (patch: { engine?: string }) => Promise<{ engine: string }>;
     preparePodman: () => Promise<{ ok: boolean; error?: string; needsWsl?: boolean }>;
     checkPodman: () => Promise<{ ok: boolean; error?: string; needsWsl?: boolean }>;
+    isPodmanReady: () => Promise<{ ok: boolean }>;
   };
   artifacts: {
     save: (payload: {

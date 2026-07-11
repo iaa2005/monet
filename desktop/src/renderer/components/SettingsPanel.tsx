@@ -12,6 +12,7 @@ import {
   FlaskConical,
   AlertTriangle,
   MousePointerClick,
+  Loader2,
 } from "lucide-react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { SkillsSettings } from "@/components/settings/SkillsSettings";
@@ -138,6 +139,7 @@ function SandboxSection(): JSX.Element {
   const [podmanStatus, setPodmanStatus] = useState<string | null>(null);
   const [podmanReady, setPodmanReady] = useState<boolean | null>(null);
   const [needsWsl, setNeedsWsl] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const copyInstallCommand = async (): Promise<void> => {
@@ -146,11 +148,15 @@ function SandboxSection(): JSX.Element {
     window.setTimeout(() => setCopied(false), 1500);
   };
 
-  const checkPodman = async (): Promise<void> => {
-    const r = await api()?.sandbox.checkPodman();
+  // Non-destructive status refresh — must NOT run the heavy checkPodman (which
+  // inits/starts/restarts the machine) just because Settings opened.
+  const refreshReady = async (): Promise<void> => {
+    const r = await api()?.sandbox.isPodmanReady();
     setPodmanReady(!!r?.ok);
-    setNeedsWsl(!!r?.needsWsl);
-    if (r && !r.ok) setPodmanStatus(r.error ?? "Podman is not ready.");
+    if (r?.ok) {
+      setNeedsWsl(false);
+      setPodmanStatus(null);
+    }
   };
 
   useEffect(() => {
@@ -158,7 +164,7 @@ function SandboxSection(): JSX.Element {
       ?.sandbox.getConfig()
       .then((c) => {
         setEngine(c.engine);
-        if (c.engine === "docker") void checkPodman();
+        if (c.engine === "docker") void refreshReady();
       })
       .catch(() => {});
   }, []);
@@ -169,24 +175,29 @@ function SandboxSection(): JSX.Element {
     if (id === "docker") {
       setPodmanReady(null);
       setPodmanStatus(null);
-      void checkPodman();
+      void refreshReady();
     }
   };
 
   const preparePodman = async (): Promise<void> => {
+    setPreparing(true);
     setPodmanStatus(
       "Provisioning Podman… (first time: downloads the CLI and starts the Linux backend — this can take a few minutes)",
     );
-    const r = await api()?.sandbox.preparePodman();
-    setPodmanReady(!!r?.ok);
-    setNeedsWsl(!!r?.needsWsl);
-    setPodmanStatus(
-      r?.ok
-        ? "Podman is ready. Run Python will work in new sessions."
-        : r?.needsWsl
-          ? "WSL2 isn't installed yet — run wsl.exe --install, then click Install / prepare again."
-          : `Podman setup failed: ${r?.error ?? "unknown error"}`,
-    );
+    try {
+      const r = await api()?.sandbox.preparePodman();
+      setPodmanReady(!!r?.ok);
+      setNeedsWsl(!!r?.needsWsl);
+      setPodmanStatus(
+        r?.ok
+          ? "Podman is ready. Run Python will work in new sessions."
+          : r?.needsWsl
+            ? "WSL2 isn't installed yet — run wsl.exe --install, then click Install / prepare again."
+            : `Podman setup failed: ${r?.error ?? "unknown error"}`,
+      );
+    } finally {
+      setPreparing(false);
+    }
   };
 
   return (
@@ -304,9 +315,11 @@ function SandboxSection(): JSX.Element {
           <button
             type="button"
             onClick={() => void preparePodman()}
-            className="shrink-0 rounded-md border border-amber-600/40 px-2.5 py-1 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-500/10 dark:text-amber-200 w-fit ml-auto"
+            disabled={preparing}
+            className="flex shrink-0 items-center gap-1.5 rounded-md border border-amber-600/40 px-2.5 py-1 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-70 dark:text-amber-200 w-fit ml-auto"
           >
-            Install / prepare
+            {preparing && <Loader2 className="size-3 animate-spin" />}
+            {preparing ? "Preparing…" : "Install / prepare"}
           </button>
         </div>
       )}

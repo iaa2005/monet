@@ -43,6 +43,10 @@ import type { ChatMessage, ToolCall } from "@/types/chat";
 
 type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
+function api(): ElectronAPI | undefined {
+  return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
+}
+
 /** Home-screen suggestion chips (coding-agent flavored). Clicking one prefills
  * the composer via the store's composerDraft. */
 const IDEAS: { icon: LucideIcon; label: string; prompt: string }[] = [
@@ -364,13 +368,30 @@ export function ChatView({
   transcriptMode = "normal",
   sessionTitle,
   home = false,
+  onOpenSettings,
 }: {
   transcriptMode?: TranscriptMode;
   sessionTitle?: string;
   /** Home mode shows the "Ideas for you" chips; Code mode shows the stats
    * overview instead. */
   home?: boolean;
+  onOpenSettings?: () => void;
 }): JSX.Element {
+  const [podmanWarning, setPodmanWarning] = useState(false);
+
+  useEffect(() => {
+    if (!home) return;
+    void api()
+      ?.sandbox.getConfig()
+      .then(async (config) => {
+        if (config.engine !== "docker") return;
+        // Non-destructive probe — must NOT init/start/restart the machine just
+        // because the user opened a Home chat (that wedged the VM previously).
+        const result = await api()?.sandbox.isPodmanReady();
+        setPodmanWarning(!result?.ok);
+      })
+      .catch(() => setPodmanWarning(true));
+  }, [home]);
   const messages = useChatStore((s) => s.messages);
   const error = useChatStore((s) => s.error);
   const isStreaming = useChatStore((s) => s.isStreaming);
@@ -444,21 +465,37 @@ export function ChatView({
            plain chat (markdown/formulas/tables), not an IDE. */
         <div className="flex flex-1 flex-col items-center justify-center overflow-auto px-4 py-8">
           <div className="w-full max-w-2xl text-center">
-            <h2 className="font-[Copernicus] text-3xl font-medium text-foreground">
+            <h2 className="font-[Copernicus] text-3xl font-medium text-foreground text-left">
               {greeting.title}
             </h2>
-            <p className="mx-auto mt-2 max-w-md text-base leading-relaxed text-muted-foreground">
+            <p className="w-full mt-2 text-base text-left leading-relaxed text-muted-foreground">
               {greeting.subtitle}
             </p>
           </div>
           <div className="mt-6 w-full max-w-2xl">
             <MessageInput flush />
           </div>
-          <div className="w-full max-w-2xl">
+          {podmanWarning && (
+            <div className="-mt-2 mb-3 flex w-full max-w-2xl items-center justify-between gap-3 rounded-b-xl border border-amber-500/50 bg-amber-500/10 px-3 pb-2.5 pt-4.5 text-left text-[13px]">
+              <span className="text-amber-900 dark:text-amber-200">
+                Podman is not ready.
+                <br />
+                Run Python will not work until you install it in Settings → Sandbox.
+              </span>
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="shrink-0 rounded-md border border-amber-600/40 px-2.5 py-1 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-500/10 dark:text-amber-200"
+              >
+                Open settings
+              </button>
+            </div>
+          )}
+          <div className="w-full max-w-2xl mt-4.5">
             <div className="mb-2 text-left text-xs font-medium text-muted-foreground">
               Ideas for you
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="grid grid-cols-2 flex-col gap-1.5">
               {IDEAS.map((idea) => (
                 <button
                   key={idea.label}

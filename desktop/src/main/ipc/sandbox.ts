@@ -11,7 +11,7 @@ import {
 } from "../sandbox/config.js";
 import { resetVendorTools } from "../agent/vendor-tools.js";
 import { ensurePodmanBinary } from "../sandbox/podman-binary.js";
-import { checkPodmanReady } from "../sandbox/podman-engine.js";
+import { checkPodmanReady, podmanLikelyReady } from "../sandbox/podman-engine.js";
 
 export function registerSandboxIPC(): void {
   ipcMain.handle("sandbox:getConfig", (): SandboxConfig => getSandboxConfig());
@@ -47,5 +47,12 @@ export function registerSandboxIPC(): void {
       resetVendorTools();
       return result;
     },
+  );
+
+  // Lightweight, non-destructive readiness probe for passive UI (chat banner,
+  // send path). Never inits/starts/restarts the machine — unlike checkPodman.
+  ipcMain.handle(
+    "sandbox:isPodmanReady",
+    async (): Promise<{ ok: boolean }> => ({ ok: await podmanLikelyReady() }),
   );
 }

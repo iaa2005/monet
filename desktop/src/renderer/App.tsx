@@ -189,6 +189,7 @@ export default function App(): JSX.Element {
   const [sessionTitle, setSessionTitle] = useState("New session");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<"general" | "sandbox">("general");
   const [aboutOpen, setAboutOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -877,6 +878,10 @@ export default function App(): JSX.Element {
                         transcriptMode={transcriptMode}
                         sessionTitle={sessionTitle}
                         home
+                        onOpenSettings={() => {
+                          setSettingsSection("sandbox");
+                          setSettingsOpen(true);
+                        }}
                       />
                     )}
                   </div>
@@ -1066,7 +1071,11 @@ export default function App(): JSX.Element {
         bare
         className="h-[80vh] max-w-4xl"
       >
-        <SettingsPanel theme={theme} setTheme={setTheme} />
+        <SettingsPanel
+          theme={theme}
+          setTheme={setTheme}
+          initialSection={settingsSection}
+        />
       </Modal>
 
       <Modal

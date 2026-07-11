@@ -168,9 +168,37 @@ function wslInstalled(): Promise<boolean> {
 let imageReady = false;
 let podmanReady: Promise<PodmanReadyResult> | null = null;
 let podmanReadyState = false;
+// Latches once Podman has worked this session. The WSL2 VM idle-freezes / the
+// socket forwarder dies between runs, so "socket down right now" doesn't mean
+// "broken" — RunPython restarts it on demand. Passive UI uses this latch to
+// avoid nagging after a successful setup.
+let podmanEverReady = false;
 
 export function isPodmanReady(): boolean {
   return podmanReadyState;
+}
+
+/**
+ * Lightweight, NON-destructive readiness probe: does the API socket answer?
+ * Unlike checkPodmanReady() this never inits/starts/restarts the machine, so
+ * it is safe to call on every chat mount / message send without wedging the VM.
+ */
+export async function podmanInfoOk(): Promise<boolean> {
+  const info = await run(["info"], { timeoutMs: 10_000 });
+  const ok = info.code === 0;
+  podmanReadyState = ok;
+  if (ok) podmanEverReady = true;
+  return ok;
+}
+
+/**
+ * For passive UI (Home banner / Settings status): true if Podman works now, or
+ * worked earlier this session — since RunPython transparently restarts the
+ * wedged/idle machine, an earlier success means it will work again on demand.
+ */
+export async function podmanLikelyReady(): Promise<boolean> {
+  if (podmanEverReady) return true;
+  return podmanInfoOk();
 }
 
 /** Called when user clicks Install/prepare in Settings. Allows broken-machine reset. */
@@ -184,11 +212,23 @@ export async function checkPodmanReady(): Promise<PodmanReadyResult> {
   podmanReady = null;
   const result = await initializePodman({ resetOnBroken: true });
   podmanReadyState = result.ok;
+  if (result.ok) {
+    podmanEverReady = true;
+    podmanReady = Promise.resolve(result);
+  }
   return result;
 }
 
 async function ensurePodman(): Promise<PodmanReadyResult> {
-  if (!podmanReady) podmanReady = initializePodman();
+  // The machine can wedge (running but socket dead) or idle-stop between runs,
+  // so a cached success goes stale. Cheaply re-verify the socket; only fall
+  // through to a full (re)initialize — which stop→start recovers — when gone.
+  if (podmanReady) {
+    const cached = await podmanReady;
+    if (cached.ok && (await podmanInfoOk())) return cached;
+    podmanReady = null;
+  }
+  podmanReady = initializePodman();
   const result = await podmanReady;
   if (!result.ok) podmanReady = null;
   return result;
@@ -304,7 +344,10 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
     // A machine that reports "running" — or has just started — may still have an
     // unconnectable API socket for a few seconds, or be wedged half-started.
     // Poll the socket; if it never comes up, do one clean stop→start recovery.
-    if (!(await waitForPodmanReady(45_000))) {
+    // A machine that already claimed "running" but has a dead socket is wedged,
+    // so give it only a short grace; a freshly started one may need longer.
+    const firstPollMs = running ? 15_000 : 45_000;
+    if (!(await waitForPodmanReady(firstPollMs))) {
       log += "[sandbox] socket unreachable — restarting the Podman machine\n";
       const stopArgs = ["machine", "stop"];
       if (resolvedName) stopArgs.push(resolvedName);
