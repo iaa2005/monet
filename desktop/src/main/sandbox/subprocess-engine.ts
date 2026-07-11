@@ -31,8 +31,9 @@ function sessionDir(sessionId: string): string {
   return dir;
 }
 
-/** name → `${size}:${mtimeMs}` for every regular file in dir. */
-function snapshotFiles(dir: string): Map<string, string> {
+/** name → `${size}:${mtimeMs}` for every regular file in dir.
+ * (Also used by the Podman engine — both work in the same host folder.) */
+export function snapshotFiles(dir: string): Map<string, string> {
   const map = new Map<string, string>();
   try {
     for (const f of readdirSync(dir)) {

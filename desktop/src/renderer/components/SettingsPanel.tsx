@@ -122,10 +122,9 @@ const SANDBOX_ENGINES: {
   },
   {
     id: "docker",
-    title: "Docker / Podman container",
+    title: "Podman container",
     blurb:
-      "Strongest isolation in a real environment (Podman preferred: rootless, daemonless). Coming later.",
-    disabled: true,
+      "Real Python + Node + LaTeX (tectonic) in an isolated container. Requires Podman (on Windows: podman machine init && start). The shared image builds once on first use (~400MB); chats add only copy-on-write layers, not gigabytes.",
   },
 ];
 

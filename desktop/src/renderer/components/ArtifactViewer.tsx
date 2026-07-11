@@ -50,12 +50,15 @@ function langFromName(name: string): string {
     xml: "xml",
     svg: "xml",
     txt: "text",
+    tex: "latex",
+    bib: "latex",
+    sty: "latex",
   };
   return map[ext] ?? "text";
 }
 
 const TEXT_EXT =
-  /\.(txt|md|csv|tsv|json|jsonc|js|mjs|ts|tsx|py|html|css|xml|svg|yaml|yml|log)$/i;
+  /\.(txt|md|csv|tsv|json|jsonc|js|mjs|ts|tsx|py|html|css|xml|svg|yaml|yml|log|tex|bib|sty)$/i;
 
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);

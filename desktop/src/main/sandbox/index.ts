@@ -11,6 +11,7 @@ import { extname } from "path";
 import { getSandboxConfig } from "./config.js";
 import { runPyodide } from "./pyodide-engine.js";
 import { runSubprocess } from "./subprocess-engine.js";
+import { runPodman } from "./podman-engine.js";
 import { saveArtifactBuffer } from "../ipc/artifacts.js";
 import type { SandboxRunResult } from "./types.js";
 
@@ -29,6 +30,7 @@ const MIME: Record<string, string> = {
   ".html": "text/html",
   ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".tex": "text/x-tex",
 };
 
 export function mediaTypeOf(name: string): string {
@@ -43,7 +45,9 @@ export async function runInSandbox(
   const raw =
     engine === "subprocess"
       ? await runSubprocess(sessionId, "python", code)
-      : await runPyodide(sessionId, code); // pyodide default; docker reserved → pyodide
+      : engine === "docker"
+        ? await runPodman(sessionId, code)
+        : await runPyodide(sessionId, code); // pyodide default
 
   const files = raw.files.map((f) => ({
     name: f.name,
@@ -51,9 +55,16 @@ export async function runInSandbox(
     mediaType: mediaTypeOf(f.name),
   }));
 
+  const engineName =
+    engine === "subprocess"
+      ? "subprocess"
+      : engine === "docker"
+        ? "podman"
+        : "pyodide";
+
   return {
     ok: raw.ok,
-    engine: engine === "subprocess" ? "subprocess" : "pyodide",
+    engine: engineName,
     stdout: raw.stdout,
     stderr: raw.stderr,
     files,
