@@ -168,6 +168,16 @@ const electronAPI = {
       ipcRenderer.invoke("sessions:setPinned", id, pinned),
     setWorkspace: (id: string, workspace: string): Promise<void> =>
       ipcRenderer.invoke("sessions:setWorkspace", id, workspace),
+    onTitleChanged: (
+      callback: (p: { sessionId: string; title: string }) => void,
+    ): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        p: { sessionId: string; title: string },
+      ) => callback(p);
+      ipcRenderer.on("sessions:titleChanged", handler);
+      return () => ipcRenderer.removeListener("sessions:titleChanged", handler);
+    },
   },
 
   stats: {

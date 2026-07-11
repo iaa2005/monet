@@ -312,6 +312,34 @@ export default function App(): JSX.Element {
     useChatStore.getState().setSpace(appMode);
   }, [appMode]);
 
+  // Auto-title from main (first completed exchange names the chat) — update
+  // the header when it's the visible chat, refresh the sidebar always.
+  useEffect(() => {
+    const bridge = api();
+    if (!bridge?.sessions?.onTitleChanged) return;
+    return bridge.sessions.onTitleChanged(({ sessionId, title }) => {
+      if (useChatStore.getState().currentSessionId === sessionId)
+        setSessionTitle(title);
+      useChatStore.getState().bumpSessions();
+    });
+  }, []);
+
+  // Header title follows sidebar renames / auto-derived titles: whenever the
+  // session list changes, re-read the visible chat's title. (Renaming from
+  // the sidebar updated the list but left the header on the old name.)
+  const sessionsVersion = useChatStore((s) => s.sessionsVersion);
+  useEffect(() => {
+    const id = useChatStore.getState().currentSessionId;
+    if (!id || id.startsWith("incognito-")) return;
+    void api()
+      ?.sessions.getById(id)
+      .then((s) => {
+        const t = (s as { title?: string } | null | undefined)?.title;
+        if (t) setSessionTitle(t);
+      })
+      .catch(() => {});
+  }, [sessionsVersion]);
+
   // Home and Code are separate worlds: each keeps its own current chat.
   // Switching restores the last chat of the target space, or a blank chat
   // if none was open there.

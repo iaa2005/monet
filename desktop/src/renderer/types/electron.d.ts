@@ -150,6 +150,9 @@ export interface ElectronAPI {
     setArchived: (id: string, archived: boolean) => Promise<void>;
     setPinned: (id: string, pinned: boolean) => Promise<void>;
     setWorkspace: (id: string, workspace: string) => Promise<void>;
+    onTitleChanged: (
+      callback: (p: { sessionId: string; title: string }) => void,
+    ) => () => void;
   };
   stats: {
     get: (rangeDays?: number) => Promise<{

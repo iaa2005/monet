@@ -14,6 +14,8 @@ import {
   estimateSessionTokens,
 } from "../agent/index.js";
 import { expandSlashCommand } from "../agent/skill-tool.js";
+import { getSessionStore } from "../session-store.js";
+import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
 import { requestPermissionFromRenderer } from "./permissions.js";
 import type { LLMContentBlock } from "../llm/adapter.js";
@@ -140,6 +142,56 @@ const MODE_DIRECTIVES: Record<string, string> = {
 // independently, and so switching chats doesn't cancel a background run.
 const aborts = new Map<string, AbortController>();
 
+/**
+ * Auto-name a fresh chat after its first completed exchange: a small
+ * complete() call produces a 3-6 word title (in the user's language), the DB
+ * row is renamed, and the renderer is notified so the header and sidebar
+ * update. Fire-and-forget — a failure just leaves "New Session".
+ */
+async function maybeAutoTitle(
+  win: BrowserWindow,
+  sessionId: string,
+  firstMessage: string,
+): Promise<void> {
+  try {
+    if (
+      !sessionId ||
+      sessionId === "default" ||
+      sessionId.startsWith("incognito-")
+    )
+      return;
+    const store = getSessionStore();
+    const existing = store.get(sessionId);
+    if (!existing || (existing.title && existing.title !== "New Session"))
+      return;
+    const provider = getProviderManager().getActive();
+    if (!provider) return;
+    const adapter = createAdapter(provider);
+    const res = await adapter.complete({
+      model: provider.model,
+      system:
+        "You name chat conversations. Reply with ONLY a concise 3-6 word title in the language of the message. No quotes, no trailing punctuation.",
+      messages: [
+        {
+          role: "user",
+          content: `Name this chat. Its first message:\n\n${firstMessage.slice(0, 500)}`,
+        },
+      ],
+      max_tokens: 24,
+    });
+    const title = (typeof res.content === "string" ? res.content : "")
+      .trim()
+      .replace(/^["'«]+|["'»]+$/g, "")
+      .split("\n")[0]
+      .slice(0, 60);
+    if (!title) return;
+    store.updateTitle(sessionId, title);
+    win.webContents.send("sessions:titleChanged", { sessionId, title });
+  } catch {
+    /* cosmetic — keep "New Session" */
+  }
+}
+
 export function registerChatIPC(): void {
   ipcMain.handle("chat:send", async (_event, payload: ChatSendPayload) => {
     const win = BrowserWindow.getAllWindows()[0];
@@ -199,6 +251,10 @@ export function registerChatIPC(): void {
     } finally {
       if (aborts.get(sessionId) === abort) aborts.delete(sessionId);
     }
+
+    // First completed exchange names the chat (uses the ORIGINAL message,
+    // not the slash-expanded one).
+    void maybeAutoTitle(win, sessionId, payload.message);
 
     return { ok: true };
   });
