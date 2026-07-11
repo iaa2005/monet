@@ -210,5 +210,5 @@ export function resolveIcon(
 ): string {
   const base = iconName(name, isDir, open);
   const theme = dark ? "light" : "base";
-  return `/icons/${theme}/${base}.svg`;
+  return `./icons/${theme}/${base}.svg`;
 }
