@@ -395,21 +395,6 @@ export default function App(): JSX.Element {
     setView("chat");
   }, []);
 
-  const handleDeleteSession = useCallback(
-    async (id: string) => {
-      try {
-        await api()?.sessions.deleteById(id);
-        useChatStore.getState().bumpSessions();
-        if (id === currentSessionId) {
-          await newSession();
-        }
-      } catch (err) {
-        console.error("Failed to delete session:", err);
-      }
-    },
-    [currentSessionId, newSession],
-  );
-
   const newSession = useCallback(async () => {
     try {
       const s = (await api()?.sessions.create(
@@ -426,6 +411,21 @@ export default function App(): JSX.Element {
     }
     setView("chat");
   }, [handleSelectSession]);
+
+  const handleDeleteSession = useCallback(
+    async (id: string) => {
+      try {
+        await api()?.sessions.deleteById(id);
+        useChatStore.getState().bumpSessions();
+        if (id === currentSessionId) {
+          await newSession();
+        }
+      } catch (err) {
+        console.error("Failed to delete session:", err);
+      }
+    },
+    [currentSessionId, newSession],
+  );
 
   const toggleRight = (tab: Exclude<RightTab, null>): void =>
     setRightTab((cur) => (cur === tab ? null : tab));
