@@ -120,17 +120,81 @@ function run(
   });
 }
 
-let imageReady = false;
-let podmanReady: Promise<{ ok: boolean; log: string; error?: string }> | null = null;
+type PodmanReadyResult = {
+  ok: boolean;
+  log: string;
+  error?: string;
+  /** True when the failure is specifically a missing/disabled WSL2 backend. */
+  needsWsl?: boolean;
+};
 
-async function ensurePodman(): Promise<{ ok: boolean; log: string; error?: string }> {
+/** Poll `podman info` until the API socket accepts connections, or timeout. */
+async function waitForPodmanReady(timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const info = await run(["info"], { timeoutMs: 20_000 });
+    if (info.code === 0) return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise((r) => setTimeout(r, 3_000));
+  }
+}
+
+/** Whether the WSL2 backend exists at all (Windows). ENOENT/non-zero ⇒ missing. */
+function wslInstalled(): Promise<boolean> {
+  if (process.platform !== "win32") return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const child = spawn("wsl.exe", ["--status"], {
+      windowsHide: true,
+      env: { ...process.env, WSL_UTF8: "1" },
+    });
+    let settled = false;
+    const finish = (ok: boolean): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(false);
+    }, 15_000);
+    child.on("error", () => finish(false));
+    child.on("close", (code) => finish(code === 0));
+    child.stdout?.on("data", () => {});
+    child.stderr?.on("data", () => {});
+  });
+}
+
+let imageReady = false;
+let podmanReady: Promise<PodmanReadyResult> | null = null;
+let podmanReadyState = false;
+
+export function isPodmanReady(): boolean {
+  return podmanReadyState;
+}
+
+/** Called when user clicks Install/prepare in Settings. Allows broken-machine reset. */
+export async function checkPodmanReady(): Promise<PodmanReadyResult> {
+  const binary = await import("./podman-binary.js").then((m) => m.ensurePodmanBinary());
+  if (!binary.ok) {
+    podmanReadyState = false;
+    return { ...binary, log: "" };
+  }
+  // Drop any cached failure so we re-check from scratch.
+  podmanReady = null;
+  const result = await initializePodman({ resetOnBroken: true });
+  podmanReadyState = result.ok;
+  return result;
+}
+
+async function ensurePodman(): Promise<PodmanReadyResult> {
   if (!podmanReady) podmanReady = initializePodman();
   const result = await podmanReady;
   if (!result.ok) podmanReady = null;
   return result;
 }
 
-async function initializePodman(): Promise<{ ok: boolean; log: string; error?: string }> {
+async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise<PodmanReadyResult> {
   const probe = await run(["--version"], { timeoutMs: 15_000 });
   if (probe.spawnError || probe.code !== 0) {
     return {
@@ -154,48 +218,107 @@ async function initializePodman(): Promise<{ ok: boolean; log: string; error?: s
       };
     }
 
-    const machine = machines.stdout
+    let log = "";
+    let resolvedName: string | undefined;
+    let running = false;
+
+    const parseName = (): string | undefined => {
+      const m = machines.stdout
+        .trim()
+        .split(/\r?\n/)
+        .map((line) => line.split("\t"))
+        .find(([name]) => name);
+      return m?.[0];
+    };
+    resolvedName = parseName();
+    running = machines.stdout
       .trim()
       .split(/\r?\n/)
       .map((line) => line.split("\t"))
-      .find(([name]) => name);
-    let log = "";
-    if (!machine) {
-      const init = await run(["machine", "init"], { timeoutMs: 120_000 });
+      .find(([name]) => name)?.[1]?.toLowerCase() === "true";
+
+    if (!resolvedName) {
+      const init = await run(["machine", "init"], { timeoutMs: 240_000 });
       if (init.code !== 0) {
-        return {
-          ok: false,
-          log: "",
-          error: `Podman machine initialization failed:\n${(init.stderr || init.stdout).slice(-600)}`,
-        };
+        const msg = (init.stderr || init.stdout).toLowerCase();
+        if (msg.includes("already exists")) {
+          // Machine exists but list didn't report it (encoding/format issue). Skip init.
+          resolvedName = "podman-machine-default";
+          log += "[sandbox] Podman machine already present\n";
+        } else {
+          return {
+            ok: false,
+            log: "",
+            error: `Podman machine initialization failed:\n${(init.stderr || init.stdout).slice(-600)}`,
+          };
+        }
+      } else {
+        resolvedName = "podman-machine-default";
+        log += "[sandbox] initialized Podman machine\n";
       }
-      log += "[sandbox] initialized Podman machine\n";
     }
 
-    const machineName = machine?.[0];
-    const running = machine?.[1]?.toLowerCase() === "true";
-    if (!running) {
+    // Classify any hard failure: a missing WSL2 backend gets a specific flag so
+    // the UI can show the right instructions instead of a generic error.
+    const fail = async (error: string): Promise<PodmanReadyResult> => ({
+      ok: false,
+      log,
+      error,
+      needsWsl: !(await wslInstalled()),
+    });
+
+    const tryStart = (): Promise<{ code: number | null; stdout: string; stderr: string; spawnError?: string }> => {
       const startArgs = ["machine", "start"];
-      if (machineName) startArgs.push(machineName);
-      const start = await run(startArgs, { timeoutMs: 120_000 });
-      if (start.code !== 0) {
-        return {
-          ok: false,
-          log: "",
-          error: `Podman machine start failed:\n${(start.stderr || start.stdout).slice(-600)}`,
-        };
+      if (resolvedName) startArgs.push(resolvedName);
+      return run(startArgs, { timeoutMs: 180_000 });
+    };
+
+    // Start the machine unless it already reports running. A non-zero exit here
+    // isn't necessarily fatal — a machine wedged "Currently starting" reports an
+    // error yet can still settle, and the readiness poll below recovers it.
+    let start = running ? { code: 0, stdout: "", stderr: "" } : await tryStart();
+    if (start.code !== 0) {
+      const msg = (start.stderr || start.stdout).toLowerCase();
+      const looksBroken =
+        msg.includes("no such file") ||
+        msg.includes("syntax is incorrect") ||
+        msg.includes("*.json") ||
+        msg.includes("did not find");
+      if (looksBroken) {
+        log += "[sandbox] resetting broken Podman machine\n";
+        await run(["machine", "rm", "-f"], { timeoutMs: 60_000 });
+        resolvedName = undefined;
+        const init = await run(["machine", "init"], { timeoutMs: 240_000 });
+        if (init.code !== 0) {
+          return fail(
+            `Podman machine initialization failed after reset:\n${(init.stderr || init.stdout).slice(-600)}`,
+          );
+        }
+        log += "[sandbox] re-initialized Podman machine\n";
+        start = await tryStart();
+      } else {
+        log += "[sandbox] machine start reported an error; verifying readiness\n";
       }
-      log += "[sandbox] started Podman machine\n";
     }
 
-    const info = await run(["info"], { timeoutMs: 30_000 });
-    if (info.code !== 0) {
-      return {
-        ok: false,
-        log: "",
-        error: `Podman is not ready:\\n${(info.stderr || info.stdout).slice(-600)}`,
-      };
+    // A machine that reports "running" — or has just started — may still have an
+    // unconnectable API socket for a few seconds, or be wedged half-started.
+    // Poll the socket; if it never comes up, do one clean stop→start recovery.
+    if (!(await waitForPodmanReady(45_000))) {
+      log += "[sandbox] socket unreachable — restarting the Podman machine\n";
+      const stopArgs = ["machine", "stop"];
+      if (resolvedName) stopArgs.push(resolvedName);
+      await run(stopArgs, { timeoutMs: 60_000 });
+      const restart = await tryStart();
+      if (!(await waitForPodmanReady(60_000))) {
+        return fail(
+          restart.code !== 0
+            ? `Podman machine failed to start:\n${(restart.stderr || restart.stdout).slice(-600)}`
+            : "Podman started but its API socket never became reachable. Try `podman machine stop` then `podman machine start`, or restart the app.",
+        );
+      }
     }
+    log += "[sandbox] Podman machine ready\n";
     return { ok: true, log };
   }
 
@@ -242,6 +365,26 @@ async function ensureImage(): Promise<{ ok: boolean; log: string; error?: string
   return {
     ok: true,
     log: podman.log + "[sandbox] built container image (one-time)\n",
+  };
+}
+
+export async function runPodmanCommand(
+  sessionId: string,
+  command: string,
+): Promise<EngineResult> {
+  const image = await ensureImage();
+  if (!image.ok) return { ok: false, stdout: "", stderr: "", files: [], error: image.error };
+  const dir = sessionDir(sessionId);
+  const result = await run([
+    "run", "--rm", "-v", `${dir}:/work`, "-v", "monet-pip-cache:/root/.cache/pip",
+    "-w", "/work", IMAGE_TAG, "sh", "-lc", command,
+  ]);
+  return {
+    ok: result.code === 0,
+    stdout: image.log + result.stdout,
+    stderr: result.stderr,
+    files: [],
+    error: result.spawnError,
   };
 }
 

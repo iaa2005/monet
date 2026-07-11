@@ -286,8 +286,10 @@ const electronAPI = {
       ipcRenderer.invoke("sandbox:getConfig"),
     setConfig: (patch: { engine?: string }): Promise<{ engine: string }> =>
       ipcRenderer.invoke("sandbox:setConfig", patch),
-    preparePodman: (): Promise<{ ok: boolean; error?: string }> =>
+    preparePodman: (): Promise<{ ok: boolean; error?: string; needsWsl?: boolean }> =>
       ipcRenderer.invoke("sandbox:preparePodman"),
+    checkPodman: (): Promise<{ ok: boolean; error?: string; needsWsl?: boolean }> =>
+      ipcRenderer.invoke("sandbox:checkPodman"),
   },
 
   artifacts: {

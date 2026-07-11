@@ -11,6 +11,7 @@ import {
 } from "../sandbox/config.js";
 import { resetVendorTools } from "../agent/vendor-tools.js";
 import { ensurePodmanBinary } from "../sandbox/podman-binary.js";
+import { checkPodmanReady } from "../sandbox/podman-engine.js";
 
 export function registerSandboxIPC(): void {
   ipcMain.handle("sandbox:getConfig", (): SandboxConfig => getSandboxConfig());
@@ -31,8 +32,20 @@ export function registerSandboxIPC(): void {
   // start can take a while — the UI can show progress / errors).
   ipcMain.handle(
     "sandbox:preparePodman",
-    async (): Promise<{ ok: boolean; error?: string }> => {
-      return ensurePodmanBinary();
+    async (): Promise<{ ok: boolean; error?: string; needsWsl?: boolean }> => {
+      const binary = await ensurePodmanBinary();
+      if (!binary.ok) return binary;
+      const result = await checkPodmanReady();
+      resetVendorTools();
+      return result;
+    },
+  );
+  ipcMain.handle(
+    "sandbox:checkPodman",
+    async (): Promise<{ ok: boolean; error?: string; needsWsl?: boolean }> => {
+      const result = await checkPodmanReady();
+      resetVendorTools();
+      return result;
     },
   );
 }

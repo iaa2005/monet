@@ -4,6 +4,7 @@ import {
   Boxes,
   Info,
   Check,
+  Copy,
   FolderOpen,
   BookMarked,
   Plug,
@@ -135,27 +136,56 @@ const SANDBOX_ENGINES: {
 function SandboxSection(): JSX.Element {
   const [engine, setEngine] = useState<string>("pyodide");
   const [podmanStatus, setPodmanStatus] = useState<string | null>(null);
+  const [podmanReady, setPodmanReady] = useState<boolean | null>(null);
+  const [needsWsl, setNeedsWsl] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyInstallCommand = async (): Promise<void> => {
+    await navigator.clipboard.writeText("wsl.exe --install");
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  const checkPodman = async (): Promise<void> => {
+    const r = await api()?.sandbox.checkPodman();
+    setPodmanReady(!!r?.ok);
+    setNeedsWsl(!!r?.needsWsl);
+    if (r && !r.ok) setPodmanStatus(r.error ?? "Podman is not ready.");
+  };
 
   useEffect(() => {
     api()
       ?.sandbox.getConfig()
-      .then((c) => setEngine(c.engine))
+      .then((c) => {
+        setEngine(c.engine);
+        if (c.engine === "docker") void checkPodman();
+      })
       .catch(() => {});
   }, []);
 
   const choose = (id: string): void => {
     setEngine(id);
     void api()?.sandbox.setConfig({ engine: id });
-    if (id === "docker") void preparePodman();
+    if (id === "docker") {
+      setPodmanReady(null);
+      setPodmanStatus(null);
+      void checkPodman();
+    }
   };
 
   const preparePodman = async (): Promise<void> => {
-    setPodmanStatus("Provisioning portable Podman… (first time downloads the CLI)");
+    setPodmanStatus(
+      "Provisioning Podman… (first time: downloads the CLI and starts the Linux backend — this can take a few minutes)",
+    );
     const r = await api()?.sandbox.preparePodman();
+    setPodmanReady(!!r?.ok);
+    setNeedsWsl(!!r?.needsWsl);
     setPodmanStatus(
       r?.ok
-        ? "Podman CLI ready. The Linux backend starts on first run."
-        : `Podman setup: ${r?.error ?? "failed"}`,
+        ? "Podman is ready. Run Python will work in new sessions."
+        : r?.needsWsl
+          ? "WSL2 isn't installed yet — run wsl.exe --install, then click Install / prepare again."
+          : `Podman setup failed: ${r?.error ?? "unknown error"}`,
     );
   };
 
@@ -230,19 +260,60 @@ function SandboxSection(): JSX.Element {
         </div>
       )}
 
-      {engine === "docker" && (
-        <div className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2.5 text-[13px]">
-          <span className="min-w-0 text-muted-foreground">
-            {podmanStatus ??
-              "Podman is provisioned automatically on first use."}
-          </span>
+      {engine === "docker" && podmanReady !== true && (
+        <div className="grid gap-3 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2.5 text-[13px]">
+          <div className="min-w-0 text-amber-900 dark:text-amber-200">
+            <div className="font-medium">
+              {needsWsl ? "WSL2 backend required" : "Podman isn't ready yet"}
+            </div>
+            <div className="mt-0.5 text-amber-800/80 dark:text-amber-200/80">
+              {needsWsl ? (
+                <>
+                  Podman needs the WSL2 backend to run Linux containers. Install
+                  it once (below), then click Install / prepare — the portable
+                  Podman CLI and container image are set up automatically.
+                </>
+              ) : (
+                <>
+                  The portable Podman CLI is set up automatically. Click Install /
+                  prepare to download it and start the Linux backend — the first
+                  time can take a few minutes. Run Python works once it's ready.
+                </>
+              )}
+            </div>
+            {needsWsl && (
+              <div className="mt-2 space-y-1.5 text-xs text-amber-800/80 dark:text-amber-200/80">
+                <div className="italic">In an Administrator PowerShell, run:</div>
+                <div className="flex items-center gap-2 rounded-md border border-amber-600/30 bg-amber-500/10 px-2 py-1.5">
+                  <code className="min-w-0 flex-1 font-mono">wsl.exe --install</code>
+                  <button
+                    type="button"
+                    onClick={() => void copyInstallCommand()}
+                    className="flex shrink-0 items-center gap-1 rounded px-1.5 py-1 font-medium hover:bg-amber-500/15"
+                    title="Copy installation command"
+                  >
+                    <Copy className="size-3" />
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <div className="italic">Restart Windows if prompted, then return here and click Install / prepare again.</div>
+              </div>
+            )}
+            {podmanStatus && <div className="mt-2 break-words text-xs italic">{podmanStatus}</div>}
+          </div>
           <button
             type="button"
             onClick={() => void preparePodman()}
-            className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+            className="shrink-0 rounded-md border border-amber-600/40 px-2.5 py-1 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-500/10 dark:text-amber-200 w-fit ml-auto"
           >
-            Prepare now
+            Install / prepare
           </button>
+        </div>
+      )}
+      
+      {engine === "docker" && podmanReady === true && (
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2.5 text-[13px] text-emerald-800 dark:text-emerald-200">
+          Podman is ready. Run Python is available in Home sessions.
         </div>
       )}
     </div>
@@ -342,12 +413,16 @@ function AboutSection(): JSX.Element {
 export function SettingsPanel({
   theme,
   setTheme,
+  initialSection = "general",
 }: {
   theme: "light" | "dark";
   setTheme: (t: "light" | "dark") => void;
+  initialSection?: Section;
 }): JSX.Element {
-  const [section, setSection] = useState<Section>("general");
+  const [section, setSection] = useState<Section>(initialSection);
   const [query, setQuery] = useState("");
+
+  useEffect(() => setSection(initialSection), [initialSection]);
 
   const q = query.trim().toLowerCase();
   const groups = NAV.map((g) => ({
