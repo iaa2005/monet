@@ -83,10 +83,11 @@ export function collectArtifacts(messages: ChatMessage[]): SessionArtifacts {
         source: "content",
       });
     }
-    const producing =
-      m.toolCall?.name === "RunPython" || m.toolCall?.name === "SandboxWrite";
-    const out = producing ? m.toolCall?.output : undefined;
-    if (out) output.push(...sandboxFilesFromOutput(out, m.timestamp));
+    // Any tool whose result carries [sandbox-file] markers contributes files
+    // (RunPython, RunCommand, SandboxWrite, Computer/Browser screenshots …).
+    const out = m.toolCall?.output;
+    if (out && out.includes("[sandbox-file]"))
+      output.push(...sandboxFilesFromOutput(out, m.timestamp));
   }
 
   // Newest of each name wins; output registered last so a generated file

@@ -23,20 +23,23 @@ import {
   type SandboxFile,
 } from "./types.js";
 
-const IMAGE_TAG = "monet-sandbox:latest";
+// Bump the tag when the Containerfile changes — ensureImage() skips the build
+// when the tag already exists, so a new tag forces the updated image.
+const IMAGE_TAG = "monet-sandbox:v2";
 const BUILD_TIMEOUT_MS = 15 * 60_000;
 
 const CONTAINERFILE = `
 FROM docker.io/library/python:3.12-slim
 RUN apt-get update \\
- && apt-get install -y --no-install-recommends nodejs npm curl ca-certificates fontconfig \\
+ && apt-get install -y --no-install-recommends nodejs npm curl ca-certificates \\
+    fontconfig fonts-dejavu fonts-dejavu-extra fonts-liberation \\
  && rm -rf /var/lib/apt/lists/*
 # Tectonic: a self-contained LaTeX engine (~40MB) that fetches TeX packages
 # on demand — full texlive (multi-GB) is deliberately avoided.
 RUN curl -fsSL https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%400.15.0/tectonic-0.15.0-x86_64-unknown-linux-musl.tar.gz \\
     | tar -xz -C /usr/local/bin tectonic \\
  || echo "tectonic install failed - LaTeX unavailable in this image"
-RUN pip install --no-cache-dir fpdf2 python-docx openpyxl matplotlib pandas
+RUN pip install --no-cache-dir fpdf2 python-docx openpyxl matplotlib pandas numpy Pillow
 WORKDIR /work
 `.trimStart();
 
