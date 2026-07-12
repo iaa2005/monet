@@ -10,11 +10,11 @@ import {
   X,
   FileText,
   Gauge,
-  Sparkles,
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import { MicButton } from "./MicButton";
 import { ContextMeter } from "./ContextMeter";
+import { EffortSlider } from "./EffortSlider";
 import { ModalityBadges } from "@/components/providers/ModalityBadges";
 import type { Modality } from "@/stores/providerStore";
 import {
@@ -810,40 +810,39 @@ export function MessageInput({
             {notice}
           </div>
         )}
-        {files.length > 0 && (
-          <div className="mb-2 flex gap-2 overflow-x-auto scrollbar-none">
-            {files.map((f) => {
-              const isImg = f.file.type.startsWith("image/");
-              return (
-                <Attachment key={f.id} size="sm" className="max-w-56">
-                  <AttachmentMedia variant={isImg ? "image" : "icon"}>
-                    {isImg && f.url ? (
-                      <img src={f.url} alt={f.file.name} />
-                    ) : (
-                      <FileText />
-                    )}
-                  </AttachmentMedia>
-                  <AttachmentContent>
-                    <AttachmentTitle>{f.file.name}</AttachmentTitle>
-                    <AttachmentDescription>
-                      {formatSize(f.file.size)}
-                    </AttachmentDescription>
-                  </AttachmentContent>
-                  <AttachmentActions>
-                    <AttachmentAction
-                      aria-label="Remove attachment"
-                      onClick={() => removeFile(f.id)}
-                    >
-                      <X />
-                    </AttachmentAction>
-                  </AttachmentActions>
-                </Attachment>
-              );
-            })}
-          </div>
-        )}
-
         <div className="rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25">
+          {files.length > 0 && (
+            <div className="flex flex-wrap gap-2 px-2 pt-2">
+              {files.map((f) => {
+                const isImg = f.file.type.startsWith("image/");
+                return (
+                  <Attachment key={f.id} size="sm" className="max-w-56">
+                    <AttachmentMedia variant={isImg ? "image" : "icon"}>
+                      {isImg && f.url ? (
+                        <img src={f.url} alt={f.file.name} />
+                      ) : (
+                        <FileText />
+                      )}
+                    </AttachmentMedia>
+                    <AttachmentContent>
+                      <AttachmentTitle>{f.file.name}</AttachmentTitle>
+                      <AttachmentDescription>
+                        {formatSize(f.file.size)}
+                      </AttachmentDescription>
+                    </AttachmentContent>
+                    <AttachmentActions>
+                      <AttachmentAction
+                        aria-label="Remove attachment"
+                        onClick={() => removeFile(f.id)}
+                      >
+                        <X />
+                      </AttachmentAction>
+                    </AttachmentActions>
+                  </Attachment>
+                );
+              })}
+            </div>
+          )}
           <textarea
             ref={taRef}
             value={input}
@@ -892,7 +891,8 @@ export function MessageInput({
             className="max-h-[200px] min-h-[24px] w-full resize-none bg-transparent px-3.5 pt-3 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
           />
 
-          <div className="flex items-center gap-1 px-2 pb-2">
+          {/* Send stays in the composer; the controls sit below it */}
+          <div className="flex items-center justify-end px-2 pb-2">
             <input
               ref={fileRef}
               type="file"
@@ -903,6 +903,35 @@ export function MessageInput({
                 e.target.value = "";
               }}
             />
+            {isStreaming ? (
+              <button
+                type="button"
+                onClick={abort}
+                title="Stop"
+                className="flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity hover:opacity-90"
+              >
+                <Square className="size-3.5 fill-current" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={send}
+                disabled={!input.trim()}
+                title="Send"
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity",
+                  input.trim() ? "hover:opacity-90" : "opacity-30",
+                )}
+              >
+                <ArrowUp className="size-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Controls below the composer: actions on the left, meta on the right */}
+        <div className="mt-1.5 flex items-center justify-between gap-2 px-1">
+          <div className="flex items-center gap-0.5">
             <button
               type="button"
               title="Attach files"
@@ -911,21 +940,20 @@ export function MessageInput({
             >
               <Plus className="size-4" />
             </button>
-
             {/* Permission mode (Home: only approve/skip — no fs/shell there) */}
             <PermissionModeMenu
               mode={mode}
               onChange={pickMode}
               home={isHomeSpace}
             />
-
             <MicButton
               onText={(t) =>
                 setInput((prev) => (prev ? prev.trimEnd() + " " : "") + t)
               }
             />
+          </div>
 
-            <div className="flex-1" />
+          <div className="flex min-w-0 items-center gap-1.5">
 
             {activeModel && (
               <ContextMeter
@@ -938,57 +966,7 @@ export function MessageInput({
 
             {/* Reasoning effort — only for models that expose it */}
             {activeModel?.supportsEffort && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={pillBtn}
-                    title="Reasoning effort (Faster ↔ Smarter)"
-                  >
-                    <Sparkles className="size-3" />
-                    <span>
-                      {effort
-                        ? effort[0].toUpperCase() + effort.slice(1)
-                        : "Effort"}
-                    </span>
-                    <ChevronDown className="size-3" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="end" className="w-48">
-                  <DropdownMenuLabel>Reasoning effort</DropdownMenuLabel>
-                  <div className="flex justify-between px-2 pb-1 text-[10px] text-muted-foreground">
-                    <span>Faster</span>
-                    <span>Smarter</span>
-                  </div>
-                  <DropdownMenuSeparator />
-                  {(
-                    [
-                      { v: null, label: "Off", hint: "default" },
-                      { v: "low", label: "Low", hint: "quick" },
-                      { v: "medium", label: "Medium", hint: "balanced" },
-                      { v: "high", label: "High", hint: "deepest" },
-                    ] as const
-                  ).map((o) => (
-                    <DropdownMenuItem
-                      key={o.label}
-                      onClick={() => setEffort(o.v)}
-                      className="flex items-center justify-between gap-2"
-                    >
-                      <span className="flex items-center gap-2">
-                        {(effort ?? null) === o.v ? (
-                          <Check className="size-3.5" />
-                        ) : (
-                          <span className="size-3.5" />
-                        )}
-                        {o.label}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {o.hint}
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <EffortSlider value={effort} onChange={setEffort} />
             )}
 
             {/* Model / provider */}
@@ -1110,30 +1088,6 @@ export function MessageInput({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-
-            {isStreaming ? (
-              <button
-                type="button"
-                onClick={abort}
-                title="Stop"
-                className="flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity hover:opacity-90"
-              >
-                <Square className="size-3.5 fill-current" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={send}
-                disabled={!input.trim()}
-                title="Send"
-                className={cn(
-                  "flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity",
-                  input.trim() ? "hover:opacity-90" : "opacity-30",
-                )}
-              >
-                <ArrowUp className="size-4" />
-              </button>
-            )}
           </div>
         </div>
       </div>
