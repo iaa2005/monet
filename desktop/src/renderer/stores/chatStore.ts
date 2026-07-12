@@ -16,6 +16,11 @@ import type {
   LLMEvent,
   ToolCall,
 } from "@/types/chat";
+import type { ElectronAPI } from "@/types/electron";
+
+function electron(): ElectronAPI | undefined {
+  return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
+}
 
 function generateId(): string {
   return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -147,6 +152,10 @@ interface ChatStore {
   clearMessages: () => void;
   /** Route a streamed event to its session (main tags each event). */
   handleLLMEvent: (sessionId: string, event: LLMEvent) => void;
+  /** Rewind the conversation to a user message and re-run it (Edit/Retry):
+   * truncate to before it, reset the main-process history, and resend the
+   * (optionally edited) text. */
+  resendFrom: (messageId: string, newText?: string) => Promise<void>;
 }
 
 interface SessionsBridge {
@@ -453,6 +462,46 @@ export const useChatStore = create<ChatStore>((set, get) => {
       } else {
         set({ messages: [], isStreaming: false, usage: null, error: null });
       }
+    },
+
+    resendFrom: async (messageId, newText) => {
+      const state = get();
+      const sessionId = state.currentSessionId;
+      if (!sessionId || state.isStreaming) return;
+      const msgs = state.messages;
+      const idx = msgs.findIndex((m) => m.id === messageId);
+      if (idx < 0 || msgs[idx].role !== "user") return;
+      const text = (newText ?? msgs[idx].content).trim();
+      if (!text) return;
+
+      // History strictly BEFORE the target user message becomes the seed; the
+      // renderer is truncated to it and the main-process history is reset so the
+      // seed re-applies (seedConversation only seeds an empty session).
+      const prior = msgs.slice(0, idx);
+      const seed = prior
+        .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
+        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+      mutate(sessionId, (p) => ({
+        ...p,
+        messages: prior,
+        isStreaming: false,
+        error: null,
+      }));
+      const bridge = electron();
+      await bridge?.chat.reset(sessionId);
+      get().addUserMessage(text);
+      get().startStreaming();
+      const eff = localStorage.getItem("monet.effort");
+      const effort =
+        eff === "low" || eff === "medium" || eff === "high" ? eff : undefined;
+      await bridge?.chat.send({
+        sessionId,
+        message: text,
+        seed,
+        space: state.space,
+        effort,
+      });
     },
 
     handleLLMEvent: (sessionId, event) => {

@@ -24,6 +24,8 @@ import {
   FileSearch,
   FlaskConical,
   GitPullRequest,
+  Pencil,
+  RotateCcw,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -136,17 +138,69 @@ const MessageRow = memo(
     msg: ChatMessage;
     mode?: TranscriptMode;
   }): JSX.Element {
+    const isStreaming = useChatStore((s) => s.isStreaming);
+    const home = useChatStore((s) => s.space === "home");
+    const resendFrom = useChatStore((s) => s.resendFrom);
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState(msg.content);
+
     if (msg.role === "tool" && msg.toolCall) {
       return <ToolCallBubble toolCall={msg.toolCall} mode={mode} />;
     }
 
     const isUser = msg.role === "user";
+    // Edit/Retry rewind the conversation, so only offer them in Home (Code gets
+    // filesystem-aware Rewind) and never mid-stream.
+    const canAct = isUser && home && !isStreaming;
+
+    const saveEdit = (): void => {
+      const t = draft.trim();
+      setEditing(false);
+      if (t && t !== msg.content) void resendFrom(msg.id, t);
+    };
+
+    if (isUser && editing) {
+      return (
+        <Message align="end">
+          <MessageContent>
+            <div className="w-full min-w-[18rem] rounded-2xl border border-border bg-card p-2">
+              <textarea
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setEditing(false);
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveEdit();
+                }}
+                className="max-h-60 min-h-16 w-full resize-none bg-transparent text-sm outline-none"
+              />
+              <div className="mt-1 flex justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setEditing(false)}
+                  className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveEdit}
+                  className="rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background"
+                >
+                  Save &amp; submit
+                </button>
+              </div>
+            </div>
+          </MessageContent>
+        </Message>
+      );
+    }
 
     return (
       <Message align={isUser ? "end" : "start"}>
         <MessageContent>
           {isUser ? (
-            <>
+            <div className="group flex flex-col items-end">
               {msg.attachments && msg.attachments.length > 0 && (
                 <AttachmentChips attachments={msg.attachments} />
               )}
@@ -155,7 +209,30 @@ const MessageRow = memo(
                   {msg.content}
                 </BubbleContent>
               </Bubble>
-            </>
+              {canAct && (
+                <div className="mt-0.5 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                  <button
+                    type="button"
+                    title="Edit & resubmit"
+                    onClick={() => {
+                      setDraft(msg.content);
+                      setEditing(true);
+                    }}
+                    className="rounded-md p-1 text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+                  >
+                    <Pencil className="size-3" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Retry (resend this turn)"
+                    onClick={() => void resendFrom(msg.id)}
+                    className="rounded-md p-1 text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+                  >
+                    <RotateCcw className="size-3" />
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             <Bubble variant="ghost">
               <BubbleContent className={cn(msg.isError && "text-destructive")}>
