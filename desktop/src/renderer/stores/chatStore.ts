@@ -224,6 +224,10 @@ interface ChatStore {
   /** Code Rewind: restore the workspace to a message's checkpoint (shadow git)
    * and truncate the conversation to and including that message. */
   rewindTo: (messageId: string) => Promise<void>;
+  /** Code Rewind (under a user message): restore the workspace to the state
+   * BEFORE this turn, truncate the conversation to before it, and drop the
+   * user's prompt back into the composer for editing + resend. */
+  rewindAndEdit: (messageId: string) => Promise<void>;
   /** Auto-continue: a background sub-agent finished while the chat is idle —
    * kick off a turn that delivers its queued report to the model. */
   deliverBackgroundResults: () => Promise<void>;
@@ -653,6 +657,50 @@ export const useChatStore = create<ChatStore>((set, get) => {
         error: null,
       }));
       await bridge?.chat.reset(sessionId);
+    },
+
+    rewindAndEdit: async (messageId) => {
+      const state = get();
+      const sessionId = state.currentSessionId;
+      if (!sessionId || state.isStreaming) return;
+      const msgs = state.messages;
+      const idx = msgs.findIndex((m) => m.id === messageId);
+      if (idx < 0 || msgs[idx].role !== "user") return;
+      const text = msgs[idx].content;
+      const bridge = electron();
+
+      // Restore files to the checkpoint from BEFORE this turn — the most recent
+      // assistant checkpoint before this user message (undefined if it's the
+      // first turn, which has no prior snapshot: then we only truncate + edit).
+      let sha: string | undefined;
+      for (let i = idx - 1; i >= 0; i--) {
+        if (msgs[i].checkpointSha) {
+          sha = msgs[i].checkpointSha;
+          break;
+        }
+      }
+      if (sha) {
+        const r = await bridge?.checkpoints.rewind(sessionId, sha);
+        if (r && !r.ok) {
+          mutate(sessionId, (p) => ({
+            ...p,
+            error: r.error ?? "Rewind failed.",
+          }));
+          return;
+        }
+      }
+
+      // Truncate to BEFORE this user message, reset the main-process history so
+      // the next send re-seeds from here, and drop the prompt into the composer.
+      const prior = msgs.slice(0, idx);
+      mutate(sessionId, (p) => ({
+        ...p,
+        messages: prior,
+        isStreaming: false,
+        error: null,
+      }));
+      await bridge?.chat.reset(sessionId);
+      get().setComposerDraft(text);
     },
 
     deliverBackgroundResults: async () => {

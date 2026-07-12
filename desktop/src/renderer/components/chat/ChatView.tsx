@@ -128,18 +128,24 @@ function AttachmentChips({
   );
 }
 
-/** The Code "Rewind to here" control. Previews how much a rewind would undo —
- * files changed and +ins/-del since this checkpoint — fetched lazily the first
- * time the row is hovered, and restores the workspace on click. */
-function RewindControl({
-  messageId,
-  sha,
-}: {
-  messageId: string;
-  sha: string;
-}): JSX.Element {
-  const rewindTo = useChatStore((s) => s.rewindTo);
+/** Code "Rewind to here", shown under a USER message: reverts the workspace to
+ * the state BEFORE this turn and drops the prompt back into the composer to edit
+ * and resend. Previews how much the revert would undo (files, +ins/-del) on
+ * hover. */
+function RewindControl({ messageId }: { messageId: string }): JSX.Element {
+  const rewindAndEdit = useChatStore((s) => s.rewindAndEdit);
   const sessionId = useChatStore((s) => s.currentSessionId);
+  // The checkpoint to restore to = the most recent assistant checkpoint BEFORE
+  // this user message (the workspace state before this turn ran).
+  const sha = useChatStore((s) => {
+    const msgs = s.messages;
+    const idx = msgs.findIndex((m) => m.id === messageId);
+    if (idx < 0) return undefined;
+    for (let i = idx - 1; i >= 0; i--) {
+      if (msgs[i].checkpointSha) return msgs[i].checkpointSha;
+    }
+    return undefined;
+  });
   const [stat, setStat] = useState<{
     files: number;
     insertions: number;
@@ -148,7 +154,7 @@ function RewindControl({
   const [fetched, setFetched] = useState(false);
 
   const loadStat = (): void => {
-    if (fetched) return;
+    if (fetched || !sha) return;
     setFetched(true);
     void window.electronAPI?.checkpoints
       .diffStat(sessionId ?? "default", sha)
@@ -166,10 +172,10 @@ function RewindControl({
         type="button"
         title={
           hasChanges
-            ? `Rewind to here — restores workspace files, undoing ${stat!.files} changed ${stat!.files === 1 ? "file" : "files"} (+${stat!.insertions}/-${stat!.deletions})`
-            : "Rewind to here — restore the workspace files to this point"
+            ? `Rewind to here — reverts the workspace (undoing ${stat!.files} changed ${stat!.files === 1 ? "file" : "files"}, +${stat!.insertions}/-${stat!.deletions}) and puts this prompt back in the composer to edit and resend`
+            : "Rewind to here — revert the workspace to before this turn and put this prompt back in the composer to edit and resend"
         }
-        onClick={() => void rewindTo(messageId)}
+        onClick={() => void rewindAndEdit(messageId)}
         className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
       >
         <History className="size-3" />
@@ -291,6 +297,9 @@ const MessageRow = memo(
                   </button>
                 </div>
               )}
+              {/* Code: filesystem-aware rewind lives under the user message —
+                  revert the workspace to before this turn and edit the prompt. */}
+              {!home && !isStreaming && <RewindControl messageId={msg.id} />}
             </div>
           ) : (
             <div className="group">
@@ -303,9 +312,6 @@ const MessageRow = memo(
                   ) : null}
                 </BubbleContent>
               </Bubble>
-              {!home && !isStreaming && msg.checkpointSha && (
-                <RewindControl messageId={msg.id} sha={msg.checkpointSha} />
-              )}
             </div>
           )}
         </MessageContent>
