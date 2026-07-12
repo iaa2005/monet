@@ -4,8 +4,11 @@
  * and drops the prompt back into the composer to edit and resend (same as the
  * per-message "Rewind to here").
  */
+import { useState } from "react";
 import { History, X } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 import { useChatStore } from "@/stores/chatStore";
+import type { ChatMessage } from "@/types/chat";
 
 export function CheckpointPicker({
   onClose,
@@ -15,6 +18,7 @@ export function CheckpointPicker({
   const messages = useChatStore((s) => s.messages);
   const rewindAndEdit = useChatStore((s) => s.rewindAndEdit);
   const isStreaming = useChatStore((s) => s.isStreaming);
+  const [pendingTurn, setPendingTurn] = useState<ChatMessage | null>(null);
 
   const turns = messages.filter((m) => m.role === "user");
 
@@ -53,10 +57,7 @@ export function CheckpointPicker({
                 key={m.id}
                 type="button"
                 disabled={isStreaming}
-                onClick={() => {
-                  void rewindAndEdit(m.id);
-                  onClose();
-                }}
+                onClick={() => setPendingTurn(m)}
                 className="group flex w-full items-center gap-2.5 rounded-lg border border-border px-3 py-2 text-left transition-colors hover:bg-black/[0.03] disabled:opacity-50 dark:hover:bg-white/[0.04]"
               >
                 <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
@@ -71,6 +72,43 @@ export function CheckpointPicker({
           </div>
         )}
       </div>
+      <Modal
+        open={pendingTurn !== null}
+        onClose={() => setPendingTurn(null)}
+        title="Rewind to checkpoint?"
+      >
+        <p className="text-sm text-muted-foreground">
+          This will restore the workspace to before the selected turn and put its
+          prompt back in the composer for editing and resubmission.
+        </p>
+        {pendingTurn && (
+          <p className="mt-3 truncate rounded-lg bg-muted px-3 py-2 text-sm">
+            {pendingTurn.content || "(empty)"}
+          </p>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setPendingTurn(null)}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!pendingTurn) return;
+              const id = pendingTurn.id;
+              setPendingTurn(null);
+              onClose();
+              void rewindAndEdit(id);
+            }}
+            className="rounded-lg bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground transition-opacity hover:opacity-90"
+          >
+            Rewind
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { MessageInput } from "./MessageInput";
 import { TodoCard } from "./TodoCard";
 import { GitCard } from "./GitCard";
 import { PermissionDialog } from "./PermissionDialog";
+import { Modal } from "@/components/ui/modal";
 import {
   MessageScrollerProvider,
   MessageScroller,
@@ -152,6 +153,7 @@ function RewindControl({ messageId }: { messageId: string }): JSX.Element {
     deletions: number;
   } | null>(null);
   const [fetched, setFetched] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const loadStat = (): void => {
     if (fetched || !sha) return;
@@ -175,7 +177,7 @@ function RewindControl({ messageId }: { messageId: string }): JSX.Element {
             ? `Rewind to here — reverts the workspace (undoing ${stat!.files} changed ${stat!.files === 1 ? "file" : "files"}, +${stat!.insertions}/-${stat!.deletions}) and puts this prompt back in the composer to edit and resend`
             : "Rewind to here — revert the workspace to before this turn and put this prompt back in the composer to edit and resend"
         }
-        onClick={() => void rewindAndEdit(messageId)}
+        onClick={() => setConfirmOpen(true)}
         className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
       >
         <History className="size-3" />
@@ -188,6 +190,38 @@ function RewindControl({ messageId }: { messageId: string }): JSX.Element {
           </span>
         )}
       </button>
+      <Modal
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="Rewind to checkpoint?"
+      >
+        <p className="text-sm text-muted-foreground">
+          This will restore the workspace to before this turn and put the prompt
+          back in the composer for editing and resubmission.
+          {hasChanges && (
+            <> This will undo {stat!.files} changed {stat!.files === 1 ? "file" : "files"} (+{stat!.insertions}/-{stat!.deletions}).</>
+          )}
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setConfirmOpen(false)}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setConfirmOpen(false);
+              void rewindAndEdit(messageId);
+            }}
+            className="rounded-lg bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground transition-opacity hover:opacity-90"
+          >
+            Rewind
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
