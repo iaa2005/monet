@@ -200,9 +200,13 @@ export class OpenAICompatClient implements LLMAdapter {
     };
     if (tools && tools.length > 0) body.tools = tools;
     if (request.effort) {
-      // Reasoning models take reasoning_effort and usually reject a custom
-      // temperature, so send one or the other.
-      body.reasoning_effort = request.effort;
+      // OpenRouter exposes a UNIFIED `reasoning` object that it normalises to
+      // each underlying provider (effort → OpenAI reasoning_effort, or an
+      // Anthropic thinking budget). Native OpenAI uses the flat
+      // `reasoning_effort`. Reasoning models reject a custom temperature, so we
+      // send reasoning OR temperature, never both.
+      if (this.isOpenRouter) body.reasoning = { effort: request.effort };
+      else body.reasoning_effort = request.effort;
     } else if (request.temperature != null) {
       body.temperature = request.temperature;
     }

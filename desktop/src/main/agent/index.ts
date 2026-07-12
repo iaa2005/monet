@@ -177,11 +177,14 @@ export interface ContextBreakdown {
 export async function computeContextBreakdown(
   sessionId: string,
   space?: string,
+  messageTokensOverride?: number,
 ): Promise<ContextBreakdown> {
   const provider = getProviderManager().getActive();
   const budget = provider?.inputLimit ?? provider?.contextLimit ?? 200_000;
-  const messages = conversations.get(sessionId) ?? [];
-  const messageTokens = estimateTokens(messages);
+  // Prefer the renderer's estimate (it always has the visible history, even for
+  // old chats never run in this process); fall back to the in-memory run.
+  const messageTokens =
+    messageTokensOverride ?? estimateTokens(conversations.get(sessionId) ?? []);
 
   let systemTokens = 0;
   let toolTokens = 0;

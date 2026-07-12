@@ -9,17 +9,39 @@
  * refreshed whenever the session or its usage changes, so the gauge persists
  * across chat switches and stays live through a session (never disappears).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Gauge } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
 } from "@/components/ui/dropdown-menu";
+import { useChatStore } from "@/stores/chatStore";
+import type { ChatMessage } from "@/types/chat";
 import type { ContextBreakdown, ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
+}
+
+/** Rough token estimate of the VISIBLE messages (chars/4). Computed in the
+ * renderer because it always has the loaded history — even for old chats the
+ * main process never ran this session, which otherwise counted as 0. */
+function estimateMessageTokens(messages: ChatMessage[]): number {
+  let chars = 0;
+  for (const m of messages) {
+    chars += m.content?.length ?? 0;
+    if (m.toolCall) {
+      chars += m.toolCall.name?.length ?? 0;
+      chars += m.toolCall.output?.length ?? 0;
+      try {
+        chars += JSON.stringify(m.toolCall.input ?? {}).length;
+      } catch {
+        /* skip */
+      }
+    }
+  }
+  return Math.ceil(chars / 4);
 }
 
 function fmt(n: number): string {
@@ -51,11 +73,20 @@ export function ContextMeter({
   usedTokens: number;
   ctxWindow: number;
 }): JSX.Element {
+  const messages = useChatStore((s) => s.messages);
+  const msgTokens = useMemo(() => estimateMessageTokens(messages), [messages]);
   const [data, setData] = useState<ContextBreakdown | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Refresh on session/space change and after each turn (usedTokens moves), so
-  // the gauge tracks the live session and survives chat switches.
+  // Drop the previous chat's breakdown the instant the session changes, so a
+  // new/old chat never shows the last chat's numbers while the refetch runs.
+  useEffect(() => {
+    setData(null);
+  }, [sessionId]);
+
+  // Recompute whenever the session, space, or the visible message tokens change
+  // (message tokens move on every turn AND on chat switches), passing the
+  // renderer's own message estimate so old chats count correctly.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -64,6 +95,7 @@ export function ContextMeter({
         const r = await api()?.chat.contextBreakdown(
           sessionId ?? "default",
           space,
+          msgTokens,
         );
         if (!cancelled && r) setData(r);
       } finally {
@@ -73,11 +105,11 @@ export function ContextMeter({
     return () => {
       cancelled = true;
     };
-  }, [sessionId, space, usedTokens]);
+  }, [sessionId, space, msgTokens]);
 
   const budget = data?.budget ?? ctxWindow;
-  // Prefer the real API usage when we have it; otherwise the estimate.
-  const used = Math.max(usedTokens, data?.used ?? 0);
+  // The breakdown total (accurate) once loaded; before that a light fallback.
+  const used = data?.used ?? Math.max(usedTokens, msgTokens);
   const pct = budget > 0 ? Math.min(100, Math.round((used / budget) * 100)) : 0;
   const pctOf = (n: number): number => (budget > 0 ? (n / budget) * 100 : 0);
 

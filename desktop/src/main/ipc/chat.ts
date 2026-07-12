@@ -309,7 +309,7 @@ export function registerChatIPC(): void {
   // Per-category breakdown of what fills the context window right now.
   ipcMain.handle(
     "chat:contextBreakdown",
-    (_e, sessionId?: string, space?: string) =>
-      computeContextBreakdown(sessionId || "default", space),
+    (_e, sessionId?: string, space?: string, messageTokens?: number) =>
+      computeContextBreakdown(sessionId || "default", space, messageTokens),
   );
 }

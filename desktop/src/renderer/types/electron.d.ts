@@ -96,6 +96,7 @@ export interface ElectronAPI {
     contextBreakdown: (
       sessionId?: string,
       space?: string,
+      messageTokens?: number,
     ) => Promise<ContextBreakdown>;
     onToken: (
       callback: (payload: { sessionId: string; event: LLMEvent }) => void,
