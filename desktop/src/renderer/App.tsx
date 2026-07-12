@@ -837,7 +837,7 @@ export default function App(): JSX.Element {
                       </span>
                       <FilterDropdown filters={filters} onChange={setFilters} />
                     </div>
-                    <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
+                    <div className="min-h-0 flex-1 overflow-y-auto">
                       <SessionList
                         onSelect={handleSelectSession}
                         onDelete={handleDeleteSession}
