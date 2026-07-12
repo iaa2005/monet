@@ -354,6 +354,19 @@ function ProviderModal({
                     />
                   </div>
 
+                  <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px] text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={m.supportsEffort ?? false}
+                      onChange={(e) =>
+                        patchModel(m.id, { supportsEffort: e.target.checked })
+                      }
+                      className="size-3.5 accent-foreground"
+                    />
+                    Supports reasoning effort — shows the composer's Faster↔Smarter
+                    control
+                  </label>
+
                   <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
                     <NumField
                       label="Context Length"

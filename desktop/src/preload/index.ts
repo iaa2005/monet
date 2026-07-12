@@ -21,6 +21,7 @@ const electronAPI = {
       seed?: { role: "user" | "assistant"; content: string }[];
       mode?: string;
       space?: string;
+      effort?: "low" | "medium" | "high";
       attachments?: {
         name: string;
         mediaType: string;

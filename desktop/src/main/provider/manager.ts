@@ -12,7 +12,7 @@ import { safeStorage } from 'electron'
 import type { LLMProvider, LLMProviderInput } from './types.js'
 import { PRESET_PROVIDERS } from './types.js'
 import { getDataSubdir } from '../data-dir.js'
-import { resolveProvider } from './types.js'
+import { resolveProvider, inferEffortSupport } from './types.js'
 
 function getStoragePath(): string {
   return join(getDataSubdir('providers'), 'providers.json')
@@ -119,7 +119,15 @@ export class ProviderManager {
   }
 
   list(): LLMProvider[] {
-    return [...this.providers]
+    // Resolve each model's effort support (explicit flag or inferred) so the
+    // composer can gate the Effort control without duplicating the heuristic.
+    return this.providers.map(p => ({
+      ...p,
+      models: p.models?.map(m => ({
+        ...m,
+        supportsEffort: m.supportsEffort ?? inferEffortSupport(p.kind, m.name),
+      })),
+    }))
   }
 
   get(id: string): LLMProvider | undefined {

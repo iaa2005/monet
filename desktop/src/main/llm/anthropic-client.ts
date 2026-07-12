@@ -5,14 +5,41 @@
  * Handles SSE streaming for Anthropic and DeepSeek (Anthropic-compatible).
  */
 
-import type { LLMProvider } from "../provider/types.js";
+import type { EffortLevel, LLMProvider } from "../provider/types.js";
 import type {
   LLMAdapter,
   LLMContentBlock,
   LLMEvent,
   LLMRequest,
 } from "./adapter.js";
-import { sanitizeMaxTokens } from "./adapter.js";
+import { MAX_OUTPUT_TOKENS, sanitizeMaxTokens } from "./adapter.js";
+
+/** Extended-thinking token budget per effort level. */
+const THINKING_BUDGET: Record<EffortLevel, number> = {
+  low: 2048,
+  medium: 6144,
+  high: 12288,
+};
+
+/**
+ * Apply reasoning to an Anthropic request body. With effort set we enable
+ * extended thinking (a token budget) and OMIT temperature — the API rejects a
+ * custom temperature alongside thinking. max_tokens must exceed the budget, so
+ * bump it if the caller's output budget is too small.
+ */
+function applyThinking(
+  body: Record<string, unknown>,
+  request: LLMRequest,
+): void {
+  if (!request.effort) {
+    applyThinking(body, request);
+    return;
+  }
+  const budget = THINKING_BUDGET[request.effort];
+  body.thinking = { type: "enabled", budget_tokens: budget };
+  const min = Math.min(budget + 4096, MAX_OUTPUT_TOKENS);
+  if ((body.max_tokens as number) < min) body.max_tokens = min;
+}
 
 /** Anthropic accepts text/image/document blocks natively; audio and video
  * have no equivalent — degrade those to a text placeholder. */
@@ -109,7 +136,7 @@ export class AnthropicClient implements LLMAdapter {
       tools: tools && tools.length > 0 ? tools : undefined,
       stream: true,
     };
-    if (request.temperature != null) body.temperature = request.temperature;
+    applyThinking(body, request);
 
     const response = await fetch(url, {
       method: "POST",
@@ -373,7 +400,7 @@ export class AnthropicClient implements LLMAdapter {
       })),
       stream: false,
     };
-    if (request.temperature != null) body.temperature = request.temperature;
+    applyThinking(body, request);
 
     const response = await fetch(url, {
       method: "POST",

@@ -10,6 +10,7 @@ import {
   X,
   FileText,
   Gauge,
+  Sparkles,
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import { MicButton } from "./MicButton";
@@ -50,6 +51,7 @@ interface ProviderModelEntry {
   contextLength?: number;
   maxInputTokens?: number;
   modalities?: string[];
+  supportsEffort?: boolean;
   hidden?: boolean;
 }
 
@@ -408,6 +410,17 @@ export function MessageInput({
   const space = useChatStore((s) => s.space);
   const currentSessionId = useChatStore((s) => s.currentSessionId);
 
+  // Reasoning effort (Faster ↔ Smarter). A global composer preference, only
+  // sent when the active model supports it. null = off (provider default).
+  const [effort, setEffort] = useState<"low" | "medium" | "high" | null>(() => {
+    const v = localStorage.getItem("monet.effort");
+    return v === "low" || v === "medium" || v === "high" ? v : null;
+  });
+  useEffect(() => {
+    if (effort) localStorage.setItem("monet.effort", effort);
+    else localStorage.removeItem("monet.effort");
+  }, [effort]);
+
   // Files dropped anywhere over the chat window (ChatView catches the drop).
   const droppedFiles = useChatStore((s) => s.droppedFiles);
   useEffect(() => {
@@ -686,6 +699,7 @@ export function MessageInput({
         seed,
         mode: effectiveMode,
         space: store.space,
+        effort: activeModel?.supportsEffort ? (effort ?? undefined) : undefined,
         attachments,
       });
     } catch (err) {
@@ -920,6 +934,61 @@ export function MessageInput({
                 usedTokens={usedTokens}
                 ctxWindow={ctxWindow}
               />
+            )}
+
+            {/* Reasoning effort — only for models that expose it */}
+            {activeModel?.supportsEffort && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={pillBtn}
+                    title="Reasoning effort (Faster ↔ Smarter)"
+                  >
+                    <Sparkles className="size-3" />
+                    <span>
+                      {effort
+                        ? effort[0].toUpperCase() + effort.slice(1)
+                        : "Effort"}
+                    </span>
+                    <ChevronDown className="size-3" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="end" className="w-48">
+                  <DropdownMenuLabel>Reasoning effort</DropdownMenuLabel>
+                  <div className="flex justify-between px-2 pb-1 text-[10px] text-muted-foreground">
+                    <span>Faster</span>
+                    <span>Smarter</span>
+                  </div>
+                  <DropdownMenuSeparator />
+                  {(
+                    [
+                      { v: null, label: "Off", hint: "default" },
+                      { v: "low", label: "Low", hint: "quick" },
+                      { v: "medium", label: "Medium", hint: "balanced" },
+                      { v: "high", label: "High", hint: "deepest" },
+                    ] as const
+                  ).map((o) => (
+                    <DropdownMenuItem
+                      key={o.label}
+                      onClick={() => setEffort(o.v)}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <span className="flex items-center gap-2">
+                        {(effort ?? null) === o.v ? (
+                          <Check className="size-3.5" />
+                        ) : (
+                          <span className="size-3.5" />
+                        )}
+                        {o.label}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {o.hint}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
 
             {/* Model / provider */}

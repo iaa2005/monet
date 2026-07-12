@@ -1,4 +1,4 @@
-import type { LLMProvider } from "../provider/types.js";
+import type { EffortLevel, LLMProvider } from "../provider/types.js";
 import { AnthropicClient } from "./anthropic-client.js";
 import { OpenAICompatClient } from "./openai-compat-client.js";
 
@@ -71,6 +71,9 @@ export interface LLMRequest {
   tools?: LLMTool[];
   max_tokens: number;
   temperature?: number;
+  /** Reasoning effort to request (maps to thinking budget / reasoning_effort).
+   * Absent = provider default (no reasoning param sent). */
+  effort?: EffortLevel;
 }
 
 /** Highest max_tokens we ever send to a provider. max_tokens is an OUTPUT

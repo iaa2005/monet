@@ -199,7 +199,13 @@ export class OpenAICompatClient implements LLMAdapter {
       stream,
     };
     if (tools && tools.length > 0) body.tools = tools;
-    if (request.temperature != null) body.temperature = request.temperature;
+    if (request.effort) {
+      // Reasoning models take reasoning_effort and usually reject a custom
+      // temperature, so send one or the other.
+      body.reasoning_effort = request.effort;
+    } else if (request.temperature != null) {
+      body.temperature = request.temperature;
+    }
     if (stream) body.stream_options = { include_usage: true };
     return body;
   }

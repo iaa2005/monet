@@ -13,6 +13,21 @@ export type ProviderKind = 'anthropic' | 'deepseek' | 'openai' | 'openrouter'
 /** What a model can accept as input. */
 export type Modality = 'text' | 'image' | 'audio' | 'file' | 'video'
 
+/** Reasoning-effort level the composer can request (null/absent = off). */
+export type EffortLevel = 'low' | 'medium' | 'high'
+
+/** Best-effort guess at whether a model exposes a reasoning-effort knob, used
+ * as the default when a model has no explicit supportsEffort flag. */
+export function inferEffortSupport(kind: ProviderKind, model: string): boolean {
+  const m = model.toLowerCase()
+  if (/(reason|think|-r1\b|o1|o3|o4|gpt-5)/.test(m)) return true
+  if (kind === 'anthropic') {
+    if (m.includes('haiku')) return false
+    return m.includes('opus') || m.includes('sonnet') || m.includes('claude')
+  }
+  return false
+}
+
 export interface ProviderModel {
   /** Internal id (uuid). */
   id: string
@@ -31,6 +46,8 @@ export interface ProviderModel {
   temperature?: number
   /** Input modalities the model accepts. Defaults to ['text']. */
   modalities?: Modality[]
+  /** Whether this model exposes a reasoning-effort knob. Unset → inferred. */
+  supportsEffort?: boolean
   /** Hidden models don't show in the composer's model picker. */
   hidden?: boolean
 }
@@ -60,6 +77,8 @@ export interface LLMProvider {
   inputLimit?: number
   /** Input modalities of the active model (resolved). */
   modalities?: Modality[]
+  /** Whether the active model exposes a reasoning-effort knob (resolved). */
+  supportsEffort?: boolean
 
   createdAt: string
   updatedAt: string
@@ -81,6 +100,7 @@ export function resolveProvider(p: LLMProvider): LLMProvider {
     contextLimit: m.contextLength ?? p.contextLimit ?? 200_000,
     inputLimit: m.maxInputTokens,
     modalities: m.modalities ?? ['text'],
+    supportsEffort: m.supportsEffort ?? inferEffortSupport(p.kind, m.name),
   }
 }
 

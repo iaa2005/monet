@@ -18,6 +18,7 @@ import { expandSlashCommand } from "../agent/skill-tool.js";
 import { getSessionStore } from "../session-store.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
+import type { EffortLevel } from "../provider/types.js";
 import { requestPermissionFromRenderer } from "./permissions.js";
 import type { LLMContentBlock } from "../llm/adapter.js";
 
@@ -41,6 +42,8 @@ interface ChatSendPayload {
   attachments?: ChatAttachment[];
   /** Workspace ("home" | "code") — selects the advertised toolset. */
   space?: string;
+  /** Reasoning effort ("low" | "medium" | "high"); absent = provider default. */
+  effort?: EffortLevel;
 }
 
 /** Input modalities of the ACTIVE MODEL (Settings → Providers → model).
@@ -241,6 +244,7 @@ export function registerChatIPC(): void {
           permissionMode: mode,
           requestPermission: (ask) => requestPermissionFromRenderer(win, ask),
           space: payload.space,
+          effort: payload.effort,
         },
       );
     } catch (err) {

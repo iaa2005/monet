@@ -15,6 +15,7 @@ import type {
   LLMUsage,
 } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
+import type { EffortLevel } from "../provider/types.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getSystemPrompt as getFallbackSystemPrompt } from "./prompts-vendor.js";
 import {
@@ -89,6 +90,8 @@ export interface AgentRunOptions {
   requestPermission?: RequestPermission;
   /** Workspace ("home" | "code") — selects the advertised toolset. */
   space?: string;
+  /** Reasoning effort requested from the composer (absent = provider default). */
+  effort?: EffortLevel;
 }
 
 /**
@@ -274,6 +277,7 @@ export async function runAgent(
     permissionMode = "default",
     requestPermission,
     space,
+    effort,
   } = options;
 
   let tools;
@@ -359,6 +363,7 @@ export async function runAgent(
           tools,
           max_tokens: provider.maxTokens || 16000,
           temperature: provider.temperature,
+          effort: provider.supportsEffort ? effort : undefined,
         },
         (event) => {
           if (event.type === "text_delta") assistantText += event.text;

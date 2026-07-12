@@ -24,6 +24,8 @@ export interface ProviderModel {
   temperature?: number;
   /** Input modalities the model accepts (defaults to text-only). */
   modalities?: Modality[];
+  /** Whether this model exposes a reasoning-effort knob. Unset → inferred. */
+  supportsEffort?: boolean;
   /** Hidden models don't show in the composer's model picker. */
   hidden?: boolean;
 }
