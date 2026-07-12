@@ -383,7 +383,22 @@ export function StatsDashboard(): JSX.Element {
 
   const tamagotchi = stats ? tamagotchiSnapshot(stats.approxTokens) : null;
 
-  const recent = stats ? stats.perDay.slice(-30) : [];
+  // Fill the full date window so the bar chart always has the right column count.
+  const recentDays = range === 0 ? 365 : range;
+  const recent = (() => {
+    if (!stats) return [];
+    const counts = new Map(stats.perDay.map((d) => [d.date, d.count]));
+    const result: { date: string; count: number }[] = [];
+    const cursor = new Date();
+    cursor.setHours(0, 0, 0, 0);
+    for (let i = recentDays - 1; i >= 0; i--) {
+      const d = new Date(cursor);
+      d.setDate(d.getDate() - i);
+      const ds = localDayStr(d);
+      result.push({ date: ds, count: counts.get(ds) ?? 0 });
+    }
+    return result;
+  })();
   const maxDay = Math.max(1, ...recent.map((d) => d.count));
 
   return (
@@ -476,7 +491,7 @@ export function StatsDashboard(): JSX.Element {
           <div>
             <div className="mb-3 text-sm font-medium">Activity by day</div>
             {recent.length > 0 ? (
-              <div className="flex h-40 items-end gap-1">
+              <div className="flex h-40 items-end gap-px">
                 {recent.map((d) => (
                   <div
                     key={d.date}
@@ -484,7 +499,10 @@ export function StatsDashboard(): JSX.Element {
                     title={`${d.date}: ${d.count} messages`}
                   >
                     <div
-                      className="w-full rounded-t bg-sky-500/70"
+                      className={cn(
+                        "w-full bg-sky-500/70",
+                        recentDays <= 30 && "rounded-t",
+                      )}
                       style={{
                         height: `${Math.max(3, (d.count / maxDay) * 100)}%`,
                       }}
