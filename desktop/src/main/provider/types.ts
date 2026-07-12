@@ -13,8 +13,15 @@ export type ProviderKind = 'anthropic' | 'deepseek' | 'openai' | 'openrouter'
 /** What a model can accept as input. */
 export type Modality = 'text' | 'image' | 'audio' | 'file' | 'video'
 
-/** Reasoning-effort level the composer can request (null/absent = off). */
-export type EffortLevel = 'low' | 'medium' | 'high'
+/** Reasoning-effort level the composer can request (null/absent = off).
+ * Full OpenRouter/OpenAI-style set; adapters translate/clamp per provider. */
+export type EffortLevel =
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
 
 /** Best-effort guess at whether a model exposes a reasoning-effort knob, used
  * as the default when a model has no explicit supportsEffort flag. */

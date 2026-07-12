@@ -14,11 +14,15 @@ import type {
 } from "./adapter.js";
 import { MAX_OUTPUT_TOKENS, sanitizeMaxTokens } from "./adapter.js";
 
-/** Extended-thinking token budget per effort level. */
+/** Extended-thinking token budget per effort level (Anthropic has no named
+ * effort levels, so we map each to a budget). */
 const THINKING_BUDGET: Record<EffortLevel, number> = {
+  minimal: 1024,
   low: 2048,
   medium: 6144,
   high: 12288,
+  xhigh: 20480,
+  max: 30720,
 };
 
 /**

@@ -10,11 +10,17 @@ import {
   X,
   FileText,
   Gauge,
+  Sparkles,
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import { MicButton } from "./MicButton";
 import { ContextMeter } from "./ContextMeter";
-import { EffortSlider } from "./EffortSlider";
+import {
+  EffortSlider,
+  effortLabel,
+  effortTextClass,
+  type EffortValue,
+} from "./EffortSlider";
 import { ModalityBadges } from "@/components/providers/ModalityBadges";
 import type { Modality } from "@/stores/providerStore";
 import {
@@ -412,9 +418,12 @@ export function MessageInput({
 
   // Reasoning effort (Faster ↔ Smarter). A global composer preference, only
   // sent when the active model supports it. null = off (provider default).
-  const [effort, setEffort] = useState<"low" | "medium" | "high" | null>(() => {
+  const [effort, setEffort] = useState<EffortValue>(() => {
     const v = localStorage.getItem("monet.effort");
-    return v === "low" || v === "medium" || v === "high" ? v : null;
+    return v &&
+      ["minimal", "low", "medium", "high", "xhigh", "max"].includes(v)
+      ? (v as EffortValue)
+      : null;
   });
   useEffect(() => {
     if (effort) localStorage.setItem("monet.effort", effort);
@@ -964,9 +973,28 @@ export function MessageInput({
               />
             )}
 
-            {/* Reasoning effort — only for models that expose it */}
+            {/* Reasoning effort — only for models that expose it. Pill shows
+                the level (coloured); the slider lives inside the dropdown. */}
             {activeModel?.supportsEffort && (
-              <EffortSlider value={effort} onChange={setEffort} />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={pillBtn}
+                    title="Reasoning effort (Faster ↔ Smarter)"
+                  >
+                    <Sparkles className="size-3" />
+                    <span className={cn("font-medium", effortTextClass(effort))}>
+                      {effortLabel(effort)}
+                    </span>
+                    <ChevronDown className="size-3" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="end" className="w-56">
+                  <DropdownMenuLabel>Reasoning effort</DropdownMenuLabel>
+                  <EffortSlider value={effort} onChange={setEffort} />
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
 
             {/* Model / provider */}

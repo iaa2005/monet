@@ -1,27 +1,62 @@
 /**
  * Reasoning-effort slider — a compact square horizontal control (Faster ↔
- * Smarter). Four discrete steps (Off/Low/Medium/High) fill left-to-right and
- * the value label is tinted grey → blue → light purple as effort rises.
+ * Smarter) shown INSIDE the Effort dropdown. Seven steps (Off … Max) fill
+ * left-to-right, tinted grey → blue → light purple as effort rises. The
+ * composer pill shows just the current level, coloured via the exported
+ * helpers.
  */
 import { cn } from "@/lib/utils";
 
-export type EffortValue = "low" | "medium" | "high" | null;
+export type EffortValue =
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max"
+  | null;
 
-const STEPS: EffortValue[] = [null, "low", "medium", "high"];
-const LABELS = ["Off", "Low", "Medium", "High"];
-// Fill + label tint per step: grey → light blue → light purple.
+const STEPS: EffortValue[] = [
+  null,
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
+const LABELS = ["Off", "Minimal", "Low", "Medium", "High", "X-High", "Max"];
+
+// Fill + label tint per step: grey → blue → light purple.
 const FILL = [
   "bg-muted-foreground/40",
   "bg-slate-400",
+  "bg-sky-500",
   "bg-sky-400",
+  "bg-indigo-400",
   "bg-violet-400",
+  "bg-fuchsia-400",
 ];
 const TEXT = [
   "text-muted-foreground",
   "text-slate-500 dark:text-slate-300",
+  "text-sky-600 dark:text-sky-400",
   "text-sky-500 dark:text-sky-400",
+  "text-indigo-500 dark:text-indigo-400",
   "text-violet-500 dark:text-violet-400",
+  "text-fuchsia-500 dark:text-fuchsia-400",
 ];
+
+const stepIndex = (v: EffortValue): number => Math.max(0, STEPS.indexOf(v));
+
+/** "Off" / "High" / … for the current value. */
+export function effortLabel(v: EffortValue): string {
+  return LABELS[stepIndex(v)];
+}
+/** Tailwind text-colour class for the current value (grey → blue → purple). */
+export function effortTextClass(v: EffortValue): string {
+  return TEXT[stepIndex(v)];
+}
 
 export function EffortSlider({
   value,
@@ -30,16 +65,15 @@ export function EffortSlider({
   value: EffortValue;
   onChange: (v: EffortValue) => void;
 }): JSX.Element {
-  const idx = Math.max(0, STEPS.indexOf(value));
+  const idx = stepIndex(value);
   return (
-    <div
-      className="flex items-center gap-1.5"
-      title="Reasoning effort — Faster ↔ Smarter"
-    >
-      <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground/70">
-        Faster
-      </span>
-      <div className="flex items-center gap-0.5">
+    <div className="px-1 py-0.5">
+      <div className="mb-1.5 flex items-center justify-between text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span>Faster</span>
+        <span className={cn("normal-case", TEXT[idx])}>{LABELS[idx]}</span>
+        <span>Smarter</span>
+      </div>
+      <div className="flex items-center gap-1">
         {STEPS.map((s, i) => (
           <button
             key={i}
@@ -48,18 +82,13 @@ export function EffortSlider({
             title={LABELS[i]}
             onClick={() => onChange(s)}
             className={cn(
-              "h-3.5 w-2.5 rounded-[2px] transition-colors",
+              "h-4 flex-1 rounded-[3px] transition-colors",
               i <= idx ? FILL[idx] : "bg-black/[0.08] dark:bg-white/[0.12]",
+              "hover:opacity-80",
             )}
           />
         ))}
       </div>
-      <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground/70">
-        Smarter
-      </span>
-      <span className={cn("min-w-[3.1rem] text-[11px] font-semibold", TEXT[idx])}>
-        {LABELS[idx]}
-      </span>
     </div>
   );
 }
