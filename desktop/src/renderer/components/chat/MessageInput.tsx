@@ -10,12 +10,14 @@ import {
   X,
   FileText,
   Gauge,
+  History,
   Loader2,
   Sparkles,
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import { MicButton } from "./MicButton";
 import { ContextMeter } from "./ContextMeter";
+import { CheckpointPicker } from "./CheckpointPicker";
 import {
   EffortSlider,
   effortLabel,
@@ -430,6 +432,11 @@ export function MessageInput({
       0,
     ),
   );
+  // Checkpoint picker (Code): a jump list of turns to rewind to.
+  const hasUserTurns = useChatStore((s) =>
+    s.messages.some((m) => m.role === "user"),
+  );
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // Reasoning effort (Faster ↔ Smarter). A global composer preference, only
   // sent when the active model supports it. null = off (provider default).
@@ -741,6 +748,9 @@ export function MessageInput({
 
   return (
     <div className="">
+      {pickerOpen && (
+        <CheckpointPicker onClose={() => setPickerOpen(false)} />
+      )}
       {/* flush: the centered Home empty state has no px-4 around its content,
           so the composer drops it too. Everywhere else (active chats in BOTH
           spaces) the transcript column has px-4 — keep the composer aligned. */}
@@ -980,6 +990,17 @@ export function MessageInput({
                 setInput((prev) => (prev ? prev.trimEnd() + " " : "") + t)
               }
             />
+            {/* Code: rewind checkpoint picker — jump back to any turn. */}
+            {!isHomeSpace && hasUserTurns && (
+              <button
+                type="button"
+                title="Rewind to a checkpoint"
+                onClick={() => setPickerOpen(true)}
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
+              >
+                <History className="size-4" />
+              </button>
+            )}
           </div>
 
           <div className="flex min-w-0 items-center gap-1.5">
