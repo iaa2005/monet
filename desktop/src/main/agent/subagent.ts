@@ -14,6 +14,7 @@
 import { getProviderManager } from "../provider/manager.js";
 import { createAdapter } from "../llm/adapter.js";
 import type { LLMContentBlock, LLMMessage } from "../llm/adapter.js";
+import type { AgentDefinition } from "./agent-defs.js";
 import { getSubAgentPrompt } from "./prompts-vendor.js";
 import { executeVendorTool, getVendorApiTools } from "./vendor-tools.js";
 
@@ -22,19 +23,34 @@ const SUBAGENT_MAX_TURNS = 20;
 export async function runSubAgent(opts: {
   prompt: string;
   model: string;
+  /** The resolved agent type: system prompt, tool filter, model/effort. */
+  def?: AgentDefinition;
   signal?: AbortSignal;
   onProgress?: (text: string) => void;
 }): Promise<string> {
-  const { prompt, model, signal, onProgress } = opts;
+  const { prompt, def, signal, onProgress } = opts;
+  // The definition may override the model; else inherit the parent's.
+  const model = def?.model || opts.model;
 
   const provider = getProviderManager().getActive();
   if (!provider) return "Sub-agent error: no active provider configured.";
   const adapter = createAdapter(provider);
 
-  // Restricted toolset: drop the Task tool so a child can't spawn its own
-  // children (no unbounded nesting). MCP + everything else stays available.
-  const tools = (await getVendorApiTools()).filter((t) => t.name !== "Task");
-  const system = getSubAgentPrompt();
+  // Restricted toolset: always drop Task/Agent so a child can't spawn its own
+  // children (no unbounded nesting). The definition may further narrow it via
+  // an allow-list (tools) and/or a deny-list (disallowedTools).
+  let tools = (await getVendorApiTools()).filter(
+    (t) => t.name !== "Task" && t.name !== "Agent",
+  );
+  if (def?.tools) {
+    const allow = new Set(def.tools);
+    tools = tools.filter((t) => allow.has(t.name));
+  }
+  if (def?.disallowedTools) {
+    const deny = new Set(def.disallowedTools);
+    tools = tools.filter((t) => !deny.has(t.name));
+  }
+  const system = def?.systemPrompt || getSubAgentPrompt();
 
   const messages: LLMMessage[] = [{ role: "user", content: prompt }];
   const sessionId = `sub:${Math.random().toString(36).slice(2)}`;
@@ -58,6 +74,7 @@ export async function runSubAgent(opts: {
           tools,
           max_tokens: provider.maxTokens || 16000,
           temperature: provider.temperature,
+          effort: def?.effort,
         },
         (event) => {
           if (event.type === "text_delta") {

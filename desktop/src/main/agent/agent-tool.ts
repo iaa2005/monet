@@ -11,6 +11,11 @@ import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
+import { getWorkspacePath } from "../ipc/workspace.js";
+import {
+  describeAgentsForPrompt,
+  resolveAgentDefinition,
+} from "./agent-defs.js";
 import { runSubAgent } from "./subagent.js";
 
 const inputSchema = lazySchema(() =>
@@ -26,7 +31,9 @@ const inputSchema = lazySchema(() =>
     subagent_type: z
       .string()
       .optional()
-      .describe("Optional agent type hint (currently informational)."),
+      .describe(
+        "Which agent type to use — one of the types listed in this tool's description. Defaults to general-purpose.",
+      ),
   }),
 );
 type InputSchema = ReturnType<typeof inputSchema>;
@@ -52,23 +59,31 @@ export const AgentTaskTool = buildTool({
   async prompt() {
     return [
       "Launch a sub-agent to autonomously handle a complex, multi-step task and",
-      "report back. The sub-agent has the same tools (except launching further",
-      "sub-agents) and its own separate context, so it's ideal for open-ended",
-      "searches or self-contained subtasks that would otherwise fill the main",
+      "report back. The sub-agent has its own separate context and toolset (it",
+      "cannot launch further sub-agents), so it's ideal for open-ended searches",
+      "or self-contained subtasks that would otherwise fill the main",
       "conversation. Give it a complete, standalone `prompt` — it sees no prior",
       "context — and it returns a single final report. It cannot ask follow-up",
       "questions, so include everything it needs.",
+      "",
+      "Pick the `subagent_type` that best fits the task:",
+      "",
+      describeAgentsForPrompt(getWorkspacePath()),
     ].join("\n");
   },
   async description() {
     return "Launch an autonomous sub-agent to handle a multi-step task and return its report.";
   },
-  async call({ prompt }: z.infer<InputSchema>, context: ToolUseContext) {
+  async call(
+    { prompt, subagent_type }: z.infer<InputSchema>,
+    context: ToolUseContext,
+  ) {
     const model = context.options.mainLoopModel;
     const signal = context.abortController.signal;
     const onProgress = (context as Record<string, unknown>)
       ._subAgentOnProgress as ((text: string) => void) | undefined;
-    const report = await runSubAgent({ prompt, model, signal, onProgress });
+    const def = resolveAgentDefinition(subagent_type, getWorkspacePath());
+    const report = await runSubAgent({ prompt, model, def, signal, onProgress });
     return { data: { report } };
   },
   mapToolResultToToolResultBlockParam(
