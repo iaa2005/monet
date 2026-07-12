@@ -316,6 +316,7 @@ export interface ElectronAPI {
     checkPodman: () => Promise<{ ok: boolean; error?: string; needsWsl?: boolean }>;
     isPodmanReady: () => Promise<{ ok: boolean }>;
     listFiles: (sessionId?: string) => Promise<SandboxFileEntry[]>;
+    workDir: (sessionId?: string) => Promise<string>;
   };
   checkpoints: {
     rewind: (

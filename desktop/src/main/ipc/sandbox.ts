@@ -11,7 +11,11 @@ import {
 } from "../sandbox/config.js";
 import { resetVendorTools } from "../agent/vendor-tools.js";
 import { ensurePodmanBinary } from "../sandbox/podman-binary.js";
-import { checkPodmanReady, podmanLikelyReady } from "../sandbox/podman-engine.js";
+import {
+  checkPodmanReady,
+  podmanLikelyReady,
+  sandboxWorkDir,
+} from "../sandbox/podman-engine.js";
 import { listSandboxFiles } from "../sandbox/files.js";
 import { mediaTypeOf } from "../sandbox/index.js";
 
@@ -65,5 +69,11 @@ export function registerSandboxIPC(): void {
       ...f,
       mediaType: mediaTypeOf(f.name),
     })),
+  );
+
+  // Host path of the chat's sandbox working folder (mounted at /work), for the
+  // Home Files tree — it's a real directory, so the Code FileTree can browse it.
+  ipcMain.handle("sandbox:workDir", (_e, sessionId?: string): string =>
+    sandboxWorkDir(sessionId || "default"),
   );
 }

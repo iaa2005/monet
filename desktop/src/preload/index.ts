@@ -345,6 +345,8 @@ const electronAPI = {
         mediaType: string;
       }[]
     > => ipcRenderer.invoke("sandbox:listFiles", sessionId),
+    workDir: (sessionId?: string): Promise<string> =>
+      ipcRenderer.invoke("sandbox:workDir", sessionId),
   },
 
   checkpoints: {

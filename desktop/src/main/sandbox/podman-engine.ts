@@ -50,6 +50,12 @@ function sessionDir(sessionId: string): string {
   return dir;
 }
 
+/** The host path mounted at /work for a chat — the sandbox's working folder,
+ * with its real directory structure (for the Home Files tree). */
+export function sandboxWorkDir(sessionId: string): string {
+  return sessionDir(sessionId);
+}
+
 function decodeWindowsOutput(data: Buffer): string {
   if (process.platform !== "win32") return data.toString("utf8");
   if (data.length >= 2 && data[0] === 0xff && data[1] === 0xfe)

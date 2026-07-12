@@ -27,6 +27,11 @@ interface FileEntry {
 
 interface FileTreeProps {
   onSelectFile?: (path: string) => void;
+  /** Root the tree here instead of the Code workspace (e.g. the Home sandbox
+   * working folder). When it changes, the tree reloads. */
+  rootPath?: string;
+  /** Message shown when the root is empty (no files yet). */
+  emptyLabel?: string;
 }
 
 function LargeFileDialog({
@@ -270,15 +275,22 @@ function TreeNode({
   );
 }
 
-export function FileTree({ onSelectFile }: FileTreeProps): JSX.Element {
+export function FileTree({
+  onSelectFile,
+  rootPath,
+  emptyLabel,
+}: FileTreeProps): JSX.Element {
   const [root, setRoot] = useState<FileEntry | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     const api = (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
-    api.workspace.get().then(async (ws) => {
+    const load = async (ws: string): Promise<void> => {
       try {
         const items = await api.files.list(ws);
+        if (cancelled) return;
         setRoot({
           name: ws.split(/[/\\]/).pop() || ws,
           isDirectory: true,
@@ -296,10 +308,21 @@ export function FileTree({ onSelectFile }: FileTreeProps): JSX.Element {
             }),
         });
       } catch {
-        setRoot(null);
+        if (!cancelled) setRoot(null);
+      } finally {
+        if (!cancelled) setLoaded(true);
       }
-    });
-  }, []);
+    };
+    setLoaded(false);
+    setRoot(null);
+    if (rootPath) void load(rootPath);
+    else void api.workspace.get().then((ws) => load(ws));
+    return () => {
+      cancelled = true;
+    };
+  }, [rootPath]);
+
+  const isEmpty = loaded && (!root || (root.children?.length ?? 0) === 0);
 
   return (
     <div className="flex h-full flex-col">
@@ -314,14 +337,20 @@ export function FileTree({ onSelectFile }: FileTreeProps): JSX.Element {
       </div>
 
       <div className="flex-1 overflow-auto">
-        {root?.children?.map((child, i) => (
-          <TreeNode
-            key={child.path + i}
-            entry={child}
-            depth={0}
-            onSelectFile={onSelectFile}
-          />
-        ))}
+        {isEmpty ? (
+          <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+            {emptyLabel ?? "No files yet."}
+          </div>
+        ) : (
+          root?.children?.map((child, i) => (
+            <TreeNode
+              key={child.path + i}
+              entry={child}
+              depth={0}
+              onSelectFile={onSelectFile}
+            />
+          ))
+        )}
       </div>
     </div>
   );
