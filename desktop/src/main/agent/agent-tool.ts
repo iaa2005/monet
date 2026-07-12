@@ -11,12 +11,18 @@ import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
-import { getWorkspacePath } from "../ipc/workspace.js";
 import {
   describeAgentsForPrompt,
   resolveAgentDefinition,
 } from "./agent-defs.js";
 import { runSubAgent, type SubAgentUpdate } from "./subagent.js";
+
+// The workspace is the process cwd (workspace:set chdir's into it). Read it
+// here rather than importing the workspace IPC module, which would drag the
+// whole IPC/artifacts/computer graph into every tool bundle.
+function workspaceDir(): string {
+  return process.cwd();
+}
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
@@ -68,7 +74,7 @@ export const AgentTaskTool = buildTool({
       "",
       "Pick the `subagent_type` that best fits the task:",
       "",
-      describeAgentsForPrompt(getWorkspacePath()),
+      describeAgentsForPrompt(workspaceDir()),
     ].join("\n");
   },
   async description() {
@@ -83,7 +89,7 @@ export const AgentTaskTool = buildTool({
     const emit = (context as Record<string, unknown>)._subAgentEmit as
       | ((update: SubAgentUpdate) => void)
       | undefined;
-    const def = resolveAgentDefinition(subagent_type, getWorkspacePath());
+    const def = resolveAgentDefinition(subagent_type, workspaceDir());
     emit?.({ kind: "start", agentType: def.type, description });
     try {
       const report = await runSubAgent({ prompt, model, def, signal, emit });
