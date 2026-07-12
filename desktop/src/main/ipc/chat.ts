@@ -322,4 +322,14 @@ export function registerChatIPC(): void {
       return rewindWorkspace(sessionId || "default", getWorkspacePath(), sha);
     },
   );
+
+  // Code Rewind preview: how much a rewind to this checkpoint would undo.
+  ipcMain.handle(
+    "checkpoints:diffStat",
+    async (_e, sessionId: string, sha: string) => {
+      const { checkpointDiffStat } = await import("../agent/checkpoints.js");
+      const { getWorkspacePath } = await import("./workspace.js");
+      return checkpointDiffStat(sessionId || "default", getWorkspacePath(), sha);
+    },
+  );
 }

@@ -11,13 +11,63 @@
  */
 
 import { spawn } from "child_process";
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getDataSubdir } from "../data-dir.js";
 
 function shadowDir(sessionId: string): string {
   const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_") || "session";
   return join(getDataSubdir("checkpoints"), safe);
+}
+
+/**
+ * Repo-local ignore patterns for the shadow repo (written to info/exclude).
+ * The workspace's own .gitignore is still honoured on top of this; this is a
+ * safety net so a workspace WITHOUT a .gitignore doesn't snapshot heavy dirs.
+ * `.git/` is always excluded so we never vacuum the user's real repo internals.
+ */
+const DEFAULT_EXCLUDES = [
+  ".git/",
+  "node_modules/",
+  "bower_components/",
+  ".pnpm-store/",
+  "dist/",
+  "build/",
+  "out/",
+  "target/",
+  ".next/",
+  ".nuxt/",
+  ".svelte-kit/",
+  ".turbo/",
+  ".parcel-cache/",
+  ".cache/",
+  "coverage/",
+  ".venv/",
+  "venv/",
+  "__pycache__/",
+  ".mypy_cache/",
+  ".pytest_cache/",
+  ".gradle/",
+  ".idea/",
+  ".DS_Store",
+  "*.log",
+  "",
+].join("\n");
+
+/** Ensure the shadow repo's info/exclude carries our default ignores. Also
+ * upgrades shadow repos created before this file existed. Cheap; idempotent. */
+function ensureExcludes(gitDir: string): void {
+  try {
+    const infoDir = join(gitDir, "info");
+    if (!existsSync(infoDir)) mkdirSync(infoDir, { recursive: true });
+    const excludePath = join(infoDir, "exclude");
+    const current = existsSync(excludePath)
+      ? readFileSync(excludePath, "utf8")
+      : "";
+    if (current !== DEFAULT_EXCLUDES) writeFileSync(excludePath, DEFAULT_EXCLUDES);
+  } catch {
+    /* best-effort */
+  }
 }
 
 function git(
@@ -90,6 +140,7 @@ export async function snapshotWorkspace(
       const init = await git(workspace, gitDir, ["init", "-q"]);
       if (init.code !== 0) return null;
     }
+    ensureExcludes(gitDir);
     const add = await git(workspace, gitDir, ["add", "-A"]);
     if (add.code !== 0) return null;
     // --allow-empty so an unchanged turn still yields a distinct checkpoint.
@@ -106,6 +157,49 @@ export async function snapshotWorkspace(
   } catch {
     return null;
   }
+}
+
+export interface CheckpointDiffStat {
+  files: number;
+  insertions: number;
+  deletions: number;
+}
+
+/**
+ * How much would rewinding to `sha` undo? Diffs the checkpoint against the
+ * latest checkpoint (HEAD) — i.e. everything that changed on later turns.
+ * Cheap and side-effect-free (no add/commit), so it's safe to call on hover.
+ * Returns null when there's nothing to show or git isn't available.
+ */
+export async function checkpointDiffStat(
+  sessionId: string,
+  workspace: string | undefined,
+  sha: string,
+): Promise<CheckpointDiffStat | null> {
+  if (!workspace || !existsSync(workspace)) return null;
+  const gitDir = shadowDir(sessionId);
+  if (!isInited(gitDir)) return null;
+  if (!/^[0-9a-f]{7,40}$/i.test(sha)) return null;
+  const res = await git(
+    workspace,
+    gitDir,
+    ["diff", "--numstat", `${sha}`, "HEAD"],
+    15_000,
+  );
+  if (res.code !== 0) return null;
+  let files = 0;
+  let insertions = 0;
+  let deletions = 0;
+  for (const line of res.stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const [ins, del] = trimmed.split("\t");
+    files += 1;
+    // Binary files report "-" for both counts.
+    if (ins && ins !== "-") insertions += Number(ins) || 0;
+    if (del && del !== "-") deletions += Number(del) || 0;
+  }
+  return { files, insertions, deletions };
 }
 
 /** Restore the workspace to a checkpoint commit (Rewind to here). */

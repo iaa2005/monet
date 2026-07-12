@@ -290,6 +290,14 @@ export interface ElectronAPI {
       sessionId: string,
       sha: string,
     ) => Promise<{ ok: boolean; error?: string }>;
+    diffStat: (
+      sessionId: string,
+      sha: string,
+    ) => Promise<{
+      files: number;
+      insertions: number;
+      deletions: number;
+    } | null>;
   };
   artifacts: {
     save: (payload: {

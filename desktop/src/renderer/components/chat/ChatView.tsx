@@ -128,6 +128,64 @@ function AttachmentChips({
   );
 }
 
+/** The Code "Rewind to here" control. Previews how much a rewind would undo —
+ * files changed and +ins/-del since this checkpoint — fetched lazily the first
+ * time the row is hovered, and restores the workspace on click. */
+function RewindControl({
+  messageId,
+  sha,
+}: {
+  messageId: string;
+  sha: string;
+}): JSX.Element {
+  const rewindTo = useChatStore((s) => s.rewindTo);
+  const sessionId = useChatStore((s) => s.currentSessionId);
+  const [stat, setStat] = useState<{
+    files: number;
+    insertions: number;
+    deletions: number;
+  } | null>(null);
+  const [fetched, setFetched] = useState(false);
+
+  const loadStat = (): void => {
+    if (fetched) return;
+    setFetched(true);
+    void window.electronAPI?.checkpoints
+      .diffStat(sessionId ?? "default", sha)
+      .then((s) => setStat(s ?? null))
+      .catch(() => {});
+  };
+
+  const hasChanges = !!stat && stat.files > 0;
+  return (
+    <div
+      className="mt-0.5 flex opacity-0 transition-opacity group-hover:opacity-100"
+      onMouseEnter={loadStat}
+    >
+      <button
+        type="button"
+        title={
+          hasChanges
+            ? `Rewind to here — restores workspace files, undoing ${stat!.files} changed ${stat!.files === 1 ? "file" : "files"} (+${stat!.insertions}/-${stat!.deletions})`
+            : "Rewind to here — restore the workspace files to this point"
+        }
+        onClick={() => void rewindTo(messageId)}
+        className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+      >
+        <History className="size-3" />
+        Rewind to here
+        {hasChanges && (
+          <span className="ml-0.5 tabular-nums text-[10px] text-muted-foreground/80">
+            {stat!.files}f{" "}
+            <span className="text-emerald-500">+{stat!.insertions}</span>
+            <span className="text-rose-500"> -{stat!.deletions}</span>
+          </span>
+        )}
+      </button>
+    </div>
+  );
+}
+
 /** Memoized so a streaming flush only re-renders the message that changed —
  * finished messages keep their object identity in the store, so re-parsing
  * their markdown (the main scroll-lag source) is skipped entirely. */
@@ -142,7 +200,6 @@ const MessageRow = memo(
     const isStreaming = useChatStore((s) => s.isStreaming);
     const home = useChatStore((s) => s.space === "home");
     const resendFrom = useChatStore((s) => s.resendFrom);
-    const rewindTo = useChatStore((s) => s.rewindTo);
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(msg.content);
 
@@ -247,17 +304,7 @@ const MessageRow = memo(
                 </BubbleContent>
               </Bubble>
               {!home && !isStreaming && msg.checkpointSha && (
-                <div className="mt-0.5 flex opacity-0 transition-opacity group-hover:opacity-100">
-                  <button
-                    type="button"
-                    title="Rewind to here — restore the workspace files to this point"
-                    onClick={() => void rewindTo(msg.id)}
-                    className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
-                  >
-                    <History className="size-3" />
-                    Rewind to here
-                  </button>
-                </div>
+                <RewindControl messageId={msg.id} sha={msg.checkpointSha} />
               )}
             </div>
           )}

@@ -328,6 +328,14 @@ const electronAPI = {
       sha: string,
     ): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("checkpoints:rewind", sessionId, sha),
+    diffStat: (
+      sessionId: string,
+      sha: string,
+    ): Promise<{
+      files: number;
+      insertions: number;
+      deletions: number;
+    } | null> => ipcRenderer.invoke("checkpoints:diffStat", sessionId, sha),
   },
 
   artifacts: {
