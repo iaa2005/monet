@@ -118,17 +118,19 @@ export const AgentTaskTool = buildTool({
       emit?.({ kind: "start", agentType: def.type, description, background: true });
       void runSubAgent({ prompt, model, def, signal: controller.signal, emit })
         .then((report) => {
-          emit?.({ kind: "done" });
+          // Queue BEFORE notifying the UI so an idle auto-continue that fires
+          // on the "done" event always finds the result in the pending queue.
           pushBgResult(sessionId, def.type, description ?? "", report);
+          emit?.({ kind: "done" });
         })
         .catch((err) => {
-          emit?.({ kind: "done" });
           pushBgResult(
             sessionId,
             def.type,
             description ?? "",
             `Sub-agent error: ${err instanceof Error ? err.message : String(err)}`,
           );
+          emit?.({ kind: "done" });
         })
         .finally(() => unregisterBgAgent(sessionId, controller));
       return {

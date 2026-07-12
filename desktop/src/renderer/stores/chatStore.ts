@@ -224,6 +224,9 @@ interface ChatStore {
   /** Code Rewind: restore the workspace to a message's checkpoint (shadow git)
    * and truncate the conversation to and including that message. */
   rewindTo: (messageId: string) => Promise<void>;
+  /** Auto-continue: a background sub-agent finished while the chat is idle —
+   * kick off a turn that delivers its queued report to the model. */
+  deliverBackgroundResults: () => Promise<void>;
 }
 
 interface SessionsBridge {
@@ -652,6 +655,39 @@ export const useChatStore = create<ChatStore>((set, get) => {
       await bridge?.chat.reset(sessionId);
     },
 
+    deliverBackgroundResults: async () => {
+      const state = get();
+      const sessionId = state.currentSessionId;
+      // Only auto-continue the currently-open chat, and only when idle — a
+      // running turn will fold the queued report in on its own.
+      if (!sessionId || state.isStreaming) return;
+      const bridge = electron();
+      if (!bridge) return;
+      const seed = state.messages
+        .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
+        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+      get().startStreaming();
+      // Home only understands approve/skip; elsewhere honour the saved mode.
+      const mode =
+        state.space === "home"
+          ? "default"
+          : localStorage.getItem("permission-mode") ?? "default";
+      try {
+        // Empty message: the main process folds the queued background report(s)
+        // into this turn, so the model responds to the result with no visible
+        // user bubble.
+        await bridge.chat.send({
+          sessionId,
+          message: "",
+          seed,
+          mode,
+          space: state.space,
+        });
+      } catch {
+        /* best-effort auto-continue */
+      }
+    },
+
     handleLLMEvent: (sessionId, event) => {
       // Coalesce the text firehose (see the batching note above).
       if (event.type === "text_delta") {
@@ -671,6 +707,20 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // within the session is preserved (tool rows, stops, errors).
       flushPendingFor(sessionId);
       mutate(sessionId, (p) => reduce(p, event));
+
+      // A background sub-agent finishing while its chat is open and idle
+      // auto-continues the turn so the model receives its report.
+      if (
+        event.type === "subagent" &&
+        event.kind === "done" &&
+        sessionId === get().currentSessionId
+      ) {
+        const st = get();
+        const card = st.messages.find((m) => m.toolCall?.id === event.toolUseID);
+        if (card?.toolCall?.subAgent?.background && !st.isStreaming) {
+          void get().deliverBackgroundResults();
+        }
+      }
 
       const persistable =
         sessionId && sessionId !== "default" && !sessionId.startsWith("incognito-");

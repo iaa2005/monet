@@ -10,6 +10,7 @@ import {
   X,
   FileText,
   Gauge,
+  Loader2,
   Sparkles,
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
@@ -416,6 +417,19 @@ export function MessageInput({
   const isHomeSpace = useChatStore((s) => s.space === "home");
   const space = useChatStore((s) => s.space);
   const currentSessionId = useChatStore((s) => s.currentSessionId);
+
+  // Background sub-agents still running in this chat (Task run_in_background).
+  const bgRunning = useChatStore((s) =>
+    s.messages.reduce(
+      (n, m) =>
+        n +
+        (m.toolCall?.subAgent?.background &&
+        m.toolCall.subAgent.status === "running"
+          ? 1
+          : 0),
+      0,
+    ),
+  );
 
   // Reasoning effort (Faster ↔ Smarter). A global composer preference, only
   // sent when the active model supports it. null = off (provider default).
@@ -969,6 +983,19 @@ export function MessageInput({
           </div>
 
           <div className="flex min-w-0 items-center gap-1.5">
+
+            {bgRunning > 0 && (
+              <span
+                className={cn(
+                  pillBtn,
+                  "cursor-default text-amber-600 dark:text-amber-400",
+                )}
+                title={`${bgRunning} sub-agent${bgRunning > 1 ? "s" : ""} running in the background`}
+              >
+                <Loader2 className="size-3 animate-spin" />
+                {bgRunning}
+              </span>
+            )}
 
             {activeModel && (
               <ContextMeter
