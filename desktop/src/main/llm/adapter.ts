@@ -112,6 +112,8 @@ export type LLMEvent =
       kind: "start" | "text" | "tool" | "tool_done" | "done";
       agentType?: string;
       description?: string;
+      /** Whether this sub-agent runs detached in the background. */
+      background?: boolean;
       text?: string;
       /** Child tool call id (kind "tool" / "tool_done"). */
       childId?: string;

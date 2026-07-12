@@ -15,6 +15,11 @@ import {
   describeAgentsForPrompt,
   resolveAgentDefinition,
 } from "./agent-defs.js";
+import {
+  pushBgResult,
+  registerBgAgent,
+  unregisterBgAgent,
+} from "./bg-agents.js";
 import { runSubAgent, type SubAgentUpdate } from "./subagent.js";
 
 // The workspace is the process cwd (workspace:set chdir's into it). Read it
@@ -39,6 +44,12 @@ const inputSchema = lazySchema(() =>
       .optional()
       .describe(
         "Which agent type to use — one of the types listed in this tool's description. Defaults to general-purpose.",
+      ),
+    run_in_background: z
+      .boolean()
+      .optional()
+      .describe(
+        "Run the sub-agent in the background and return immediately. Use for long, independent work you don't need the result of right now — its report is delivered to you automatically when it finishes.",
       ),
   }),
 );
@@ -81,15 +92,56 @@ export const AgentTaskTool = buildTool({
     return "Launch an autonomous sub-agent to handle a multi-step task and return its report.";
   },
   async call(
-    { prompt, description, subagent_type }: z.infer<InputSchema>,
+    {
+      prompt,
+      description,
+      subagent_type,
+      run_in_background,
+    }: z.infer<InputSchema>,
     context: ToolUseContext,
   ) {
     const model = context.options.mainLoopModel;
-    const signal = context.abortController.signal;
     const emit = (context as Record<string, unknown>)._subAgentEmit as
       | ((update: SubAgentUpdate) => void)
       | undefined;
     const def = resolveAgentDefinition(subagent_type, workspaceDir());
+
+    // Background: run detached under its own controller (a new user send
+    // aborts the turn's signal, but background work must survive that), report
+    // back via the pending queue when it finishes. The card keeps updating
+    // live because the emit channel outlives the turn.
+    if (run_in_background) {
+      const sessionId =
+        (context as { sessionId?: string }).sessionId ?? "default";
+      const controller = new AbortController();
+      registerBgAgent(sessionId, controller);
+      emit?.({ kind: "start", agentType: def.type, description, background: true });
+      void runSubAgent({ prompt, model, def, signal: controller.signal, emit })
+        .then((report) => {
+          emit?.({ kind: "done" });
+          pushBgResult(sessionId, def.type, description ?? "", report);
+        })
+        .catch((err) => {
+          emit?.({ kind: "done" });
+          pushBgResult(
+            sessionId,
+            def.type,
+            description ?? "",
+            `Sub-agent error: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        })
+        .finally(() => unregisterBgAgent(sessionId, controller));
+      return {
+        data: {
+          report:
+            `Launched sub-agent "${def.type}" in the background` +
+            (description ? ` for: ${description}` : "") +
+            `. Continue with other work — its report will be delivered to you when it finishes.`,
+        },
+      };
+    }
+
+    const signal = context.abortController.signal;
     emit?.({ kind: "start", agentType: def.type, description });
     try {
       const report = await runSubAgent({ prompt, model, def, signal, emit });

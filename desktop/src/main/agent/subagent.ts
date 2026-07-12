@@ -24,7 +24,12 @@ const SUBAGENT_MAX_TURNS = 20;
  * `start`/`done` are emitted by the Task tool around the run; `text`/`tool`/
  * `tool_done` are emitted by runSubAgent as the child works. */
 export type SubAgentUpdate =
-  | { kind: "start"; agentType: string; description?: string }
+  | {
+      kind: "start";
+      agentType: string;
+      description?: string;
+      background?: boolean;
+    }
   | { kind: "text"; text: string }
   | { kind: "tool"; id: string; name: string; input: Record<string, unknown> }
   | {

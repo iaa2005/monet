@@ -28,6 +28,17 @@ import {
   type UiPermissionMode,
 } from "./vendor-tools.js";
 import { dropSessionContext, initVendorRuntime } from "./vendor-context.js";
+import { drainBgResults } from "./bg-agents.js";
+
+/** Prepend finished background-agent reports to the user turn as context. */
+function mergeBackgroundResults(
+  notes: string[],
+  content: string | LLMContentBlock[],
+): string | LLMContentBlock[] {
+  const prefix = notes.join("\n\n") + "\n\n";
+  if (typeof content === "string") return prefix + content;
+  return [{ type: "text", text: prefix }, ...content];
+}
 import {
   shouldCompact,
   compactMessages,
@@ -394,7 +405,15 @@ export async function runAgent(
     messages = [];
     conversations.set(sessionId, messages);
   }
-  messages.push({ role: "user", content: userContent });
+  // Fold any finished background sub-agent reports into this user turn so the
+  // model can act on them. Done at the turn boundary (not when they finish) to
+  // keep user/assistant alternation intact.
+  const bgResults = drainBgResults(sessionId);
+  const turnContent =
+    bgResults.length > 0
+      ? mergeBackgroundResults(bgResults, userContent)
+      : userContent;
+  messages.push({ role: "user", content: turnContent });
 
   for (let turn = 0; turn < maxTurns; turn++) {
     if (signal?.aborted) {
@@ -573,6 +592,7 @@ export async function runAgent(
             kind: u.kind,
             agentType: u.kind === "start" ? u.agentType : undefined,
             description: u.kind === "start" ? u.description : undefined,
+            background: u.kind === "start" ? u.background : undefined,
             text: u.kind === "text" ? u.text : undefined,
             childId:
               u.kind === "tool" || u.kind === "tool_done" ? u.id : undefined,

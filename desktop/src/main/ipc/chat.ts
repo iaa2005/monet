@@ -15,6 +15,7 @@ import {
   computeContextBreakdown,
 } from "../agent/index.js";
 import { expandSlashCommand } from "../agent/skill-tool.js";
+import { abortAllBgAgents, abortBgAgents } from "../agent/bg-agents.js";
 import { getSessionStore } from "../session-store.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
@@ -266,6 +267,7 @@ export function registerChatIPC(): void {
 
   ipcMain.handle("chat:abort", (_e, sessionId?: string) => {
     if (sessionId) {
+      abortBgAgents(sessionId);
       const a = aborts.get(sessionId);
       if (a) {
         a.abort();
@@ -275,12 +277,14 @@ export function registerChatIPC(): void {
       return { ok: false, error: "No active request for session" };
     }
     // No id → abort everything.
+    abortAllBgAgents();
     for (const a of aborts.values()) a.abort();
     aborts.clear();
     return { ok: true };
   });
 
   ipcMain.handle("chat:reset", (_event, sessionId?: string) => {
+    abortBgAgents(sessionId || "default");
     resetConversation(sessionId || "default");
     return { ok: true };
   });

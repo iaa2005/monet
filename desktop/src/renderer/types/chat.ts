@@ -37,6 +37,8 @@ export interface SubAgentState {
   agentType: string
   description?: string
   status: 'running' | 'done'
+  /** Runs detached from the parent turn (Task run_in_background). */
+  background?: boolean
   messages: ChatMessage[]
 }
 
@@ -62,6 +64,7 @@ export type LLMEvent =
       kind: 'start' | 'text' | 'tool' | 'tool_done' | 'done'
       agentType?: string
       description?: string
+      background?: boolean
       text?: string
       /** Child tool call id (kind 'tool' / 'tool_done'). */
       childId?: string

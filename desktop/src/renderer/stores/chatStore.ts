@@ -420,6 +420,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
               ...sa,
               agentType: event.agentType ?? sa.agentType,
               description: event.description ?? sa.description,
+              background: event.background ?? sa.background,
               status: "running",
             };
           } else if (event.kind === "done") {

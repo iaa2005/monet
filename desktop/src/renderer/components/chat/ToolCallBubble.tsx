@@ -670,6 +670,14 @@ function SubAgentBubble({ toolCall }: { toolCall: ToolCall }): JSX.Element {
       <span className="shrink-0 rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-400">
         {agentType}
       </span>
+      {sa?.background && (
+        <span
+          className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400"
+          title="Runs in the background — its report is delivered when it finishes"
+        >
+          background
+        </span>
+      )}
       {description && (
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
           {description}
