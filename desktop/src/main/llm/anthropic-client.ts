@@ -35,10 +35,8 @@ function applyThinking(
   body: Record<string, unknown>,
   request: LLMRequest,
 ): void {
-  if (!request.effort) {
-    applyThinking(body, request);
-    return;
-  }
+  // No effort requested → send no thinking config at all.
+  if (!request.effort) return;
   const budget = THINKING_BUDGET[request.effort];
   body.thinking = { type: "enabled", budget_tokens: budget };
   const min = Math.min(budget + 4096, MAX_OUTPUT_TOKENS);
