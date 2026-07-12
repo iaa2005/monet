@@ -46,12 +46,16 @@ export async function runSubAgent(opts: {
   emit?: (update: SubAgentUpdate) => void;
 }): Promise<string> {
   const { prompt, def, signal, emit } = opts;
-  // The definition may override the model; else inherit the parent's.
-  const model = def?.model || opts.model;
 
   const provider = getProviderManager().getActive();
   if (!provider) return "Sub-agent error: no active provider configured.";
   const adapter = createAdapter(provider);
+
+  // The definition may override the model — but only if it still exists on the
+  // active provider. A removed/renamed model falls back to the chat's model.
+  const known =
+    def?.model && provider.models?.some((m) => m.name === def.model);
+  const model = known ? (def!.model as string) : opts.model;
 
   // Restricted toolset: always drop Task/Agent so a child can't spawn its own
   // children (no unbounded nesting). The definition may further narrow it via

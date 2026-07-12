@@ -260,6 +260,7 @@ export interface ElectronAPI {
       content: string,
     ) => Promise<{ ok: boolean; error?: string }>;
     deleteBySlug: (slug: string) => Promise<{ ok: boolean }>;
+    availableTools: () => Promise<string[]>;
   };
   /** Absolute filesystem path for a dropped/picked File. */
   getPathForFile: (file: File) => string;

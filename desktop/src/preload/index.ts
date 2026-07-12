@@ -264,6 +264,8 @@ const electronAPI = {
       ipcRenderer.invoke("agents:writeRaw", slug, content),
     deleteBySlug: (slug: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("agents:delete", slug),
+    availableTools: (): Promise<string[]> =>
+      ipcRenderer.invoke("agents:availableTools"),
   },
 
   // Absolute filesystem path for a dropped File (webUtils bridge).

@@ -109,10 +109,22 @@ export function registerAgentsIPC(): void {
       if (!payload?.name?.trim()) throw new Error("Agent name is required");
       if (!payload?.prompt?.trim())
         throw new Error("Agent system prompt is required");
-      const base = slugifyAgentName(payload.name);
-      let slug = base;
-      for (let n = 2; agentFile(slug) && existsSync(agentFile(slug)!); n++)
-        slug = `${base}-${n}`;
+      const slug = slugifyAgentName(payload.name);
+      // Names must be unique across built-ins AND existing user agents.
+      const taken = new Set<string>();
+      for (const d of getBuiltInAgents()) taken.add(d.type.toLowerCase());
+      for (const u of listUserAgents()) {
+        taken.add(u.slug.toLowerCase());
+        taken.add(u.type.toLowerCase());
+      }
+      if (
+        taken.has(slug.toLowerCase()) ||
+        taken.has(payload.name.trim().toLowerCase())
+      ) {
+        throw new Error(
+          `An agent named "${payload.name.trim()}" already exists — choose a different name.`,
+        );
+      }
       const full = agentFile(slug);
       if (!full) throw new Error("Invalid agent name");
       writeFileSync(
@@ -182,5 +194,19 @@ export function registerAgentsIPC(): void {
     if (full && existsSync(full)) rmSync(full, { force: true });
     refreshAgentCaches();
     return { ok: true };
+  });
+
+  // Tool names a sub-agent can be restricted to (for the manager's checkboxes).
+  // Excludes Task/Agent (no nesting) and MCP tools (dynamic per connection).
+  ipcMain.handle("agents:availableTools", async (): Promise<string[]> => {
+    try {
+      const { getVendorTools } = await import("../agent/vendor-tools.js");
+      return getVendorTools()
+        .filter((t) => !t.isMcp && t.name !== "Task" && t.name !== "Agent")
+        .map((t) => t.name)
+        .sort();
+    } catch {
+      return [];
+    }
   });
 }
