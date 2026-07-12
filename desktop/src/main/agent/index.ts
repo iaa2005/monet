@@ -566,6 +566,19 @@ export async function runAgent(
             content: text,
           });
         },
+        onSubAgentEvent: (u) => {
+          onEvent({
+            type: "subagent",
+            toolUseID: tc.id,
+            kind: u.kind,
+            agentType: u.kind === "start" ? u.agentType : undefined,
+            description: u.kind === "start" ? u.description : undefined,
+            text: u.kind === "text" ? u.text : undefined,
+            name:
+              u.kind === "tool" || u.kind === "tool_done" ? u.name : undefined,
+            isError: u.kind === "tool_done" ? u.isError : undefined,
+          });
+        },
       });
       onEvent({
         type: "tool_result",

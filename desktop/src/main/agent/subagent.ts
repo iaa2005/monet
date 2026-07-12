@@ -20,15 +20,26 @@ import { executeVendorTool, getVendorApiTools } from "./vendor-tools.js";
 
 const SUBAGENT_MAX_TURNS = 20;
 
+/** Structured progress a sub-agent reports to the UI (via the Task tool).
+ * `start`/`done` are emitted by the Task tool around the run; `text`/`tool`/
+ * `tool_done` are emitted by runSubAgent as the child works. */
+export type SubAgentUpdate =
+  | { kind: "start"; agentType: string; description?: string }
+  | { kind: "text"; text: string }
+  | { kind: "tool"; name: string }
+  | { kind: "tool_done"; name: string; isError?: boolean }
+  | { kind: "done" };
+
 export async function runSubAgent(opts: {
   prompt: string;
   model: string;
   /** The resolved agent type: system prompt, tool filter, model/effort. */
   def?: AgentDefinition;
   signal?: AbortSignal;
-  onProgress?: (text: string) => void;
+  /** Live progress channel — text deltas and child tool calls. */
+  emit?: (update: SubAgentUpdate) => void;
 }): Promise<string> {
-  const { prompt, def, signal, onProgress } = opts;
+  const { prompt, def, signal, emit } = opts;
   // The definition may override the model; else inherit the parent's.
   const model = def?.model || opts.model;
 
@@ -79,7 +90,7 @@ export async function runSubAgent(opts: {
         (event) => {
           if (event.type === "text_delta") {
             assistantText += event.text;
-            onProgress?.(event.text);
+            emit?.({ kind: "text", text: event.text });
           }
           if (event.type === "tool_use")
             toolCalls.push({
@@ -125,7 +136,7 @@ export async function runSubAgent(opts: {
     }[] = [];
     for (const tc of toolCalls) {
       if (signal?.aborted) return finalText || "Sub-agent aborted.";
-      onProgress?.(`\n⚙ Sub-agent: running ${tc.name}...\n`);
+      emit?.({ kind: "tool", name: tc.name });
       const r = await executeVendorTool({
         sessionId,
         toolUseID: tc.id,
@@ -135,6 +146,7 @@ export async function runSubAgent(opts: {
         permissionMode: "bypassPermissions",
         signal,
       });
+      emit?.({ kind: "tool_done", name: tc.name, isError: r.isError });
       results.push({
         tool_use_id: tc.id,
         content: r.content,

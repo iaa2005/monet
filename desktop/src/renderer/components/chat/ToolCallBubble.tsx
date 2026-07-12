@@ -1,6 +1,14 @@
 import { useMemo, useState, memo } from "react";
-import { Check, ChevronRight, Circle, Loader2, X, Wrench } from "lucide-react";
-import type { ToolCall } from "@/types/chat";
+import {
+  Bot,
+  Check,
+  ChevronRight,
+  Circle,
+  Loader2,
+  X,
+  Wrench,
+} from "lucide-react";
+import type { SubAgentState, ToolCall } from "@/types/chat";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import { CodeBlock } from "./CodeBlock";
@@ -587,6 +595,112 @@ function SingleToolRow({ toolCall }: { toolCall: ToolCall }): JSX.Element {
   );
 }
 
+/** Status pip for a child tool chip. */
+function SubToolStatus({
+  status,
+}: {
+  status: SubAgentState["tools"][number]["status"];
+}): JSX.Element {
+  if (status === "running")
+    return <Loader2 className="size-3 animate-spin text-foreground" />;
+  if (status === "error") return <X className="size-3 text-destructive" />;
+  return <Check className="size-3 text-emerald-600 dark:text-emerald-500" />;
+}
+
+/** Last ~6 non-empty lines of the child's live text (a compact activity tail). */
+function textTail(text: string): string {
+  const lines = text.split("\n").filter((l) => l.trim().length > 0);
+  return lines.slice(-6).join("\n");
+}
+
+/**
+ * Nested "agent card" for a Task tool call: agent type + task, the child's
+ * tool calls as live chips, a streaming activity tail while it works, and the
+ * final report (collapsible) when done.
+ */
+function SubAgentBubble({ toolCall }: { toolCall: ToolCall }): JSX.Element {
+  const sa = toolCall.subAgent;
+  const agentType = sa?.agentType ?? "general-purpose";
+  const description =
+    sa?.description ??
+    (typeof toolCall.input.description === "string"
+      ? (toolCall.input.description as string)
+      : undefined);
+  const running = sa ? sa.status === "running" : toolCall.status !== "done";
+  const report = toolCall.output;
+  const [showReport, setShowReport] = useState(false);
+  const tail = sa ? textTail(sa.text) : "";
+
+  return (
+    <div className="rounded-lg border border-border bg-black/[0.02] px-3 py-2 dark:bg-white/[0.02]">
+      <div className="flex items-center gap-2">
+        <Bot className="size-4 shrink-0 text-violet-500" />
+        <span className="shrink-0 text-sm font-medium text-foreground">
+          Sub-agent
+        </span>
+        <span className="shrink-0 rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-400">
+          {agentType}
+        </span>
+        {description && (
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {description}
+          </span>
+        )}
+        <span className="ml-auto shrink-0">
+          {running ? (
+            <Loader2 className="size-3.5 animate-spin text-foreground" />
+          ) : (
+            <Check className="size-3.5 text-emerald-600 dark:text-emerald-500" />
+          )}
+        </span>
+      </div>
+
+      {sa && sa.tools.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {sa.tools.map((t, i) => (
+            <span
+              key={`${i}-${t.name}`}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[11px] text-muted-foreground"
+            >
+              <SubToolStatus status={t.status} />
+              {humanName(t.name)}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {running && tail && (
+        <pre className="mt-2 max-h-24 overflow-hidden whitespace-pre-wrap break-words text-[11px] leading-snug text-muted-foreground/80">
+          {tail}
+        </pre>
+      )}
+
+      {!running && report && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setShowReport((o) => !o)}
+            className="flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ChevronRight
+              className={cn(
+                "size-3.5 transition-transform",
+                showReport && "rotate-90",
+              )}
+            />
+            {showReport ? "Hide report" : "Show report"}
+          </button>
+          {showReport && (
+            <div className="mt-1.5">
+              <CodeBlock code={report} language="text" maxHeight={320} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ToolCallBubbleProps {
   toolCall: ToolCall;
   /** When in a grouped set (consecutive tool calls), group members are provided. */
@@ -600,6 +714,19 @@ function ToolCallBubbleImpl({
   mode = "verbose",
 }: ToolCallBubbleProps): JSX.Element {
   if (mode === "summary") return <span />;
+
+  // Task calls render as a live nested agent card (in every non-summary mode).
+  // Any tools grouped after it still render normally below.
+  if (toolCall.subAgent || toolCall.name === "Task") {
+    return (
+      <div className="space-y-1.5">
+        <SubAgentBubble toolCall={toolCall} />
+        {mode === "normal" && groupMembers && groupMembers.length > 0 && (
+          <ToolGroupCard calls={groupMembers} />
+        )}
+      </div>
+    );
+  }
 
   if (mode === "normal" && groupMembers && groupMembers.length > 0) {
     return <ToolGroupCard calls={[toolCall, ...groupMembers]} />;

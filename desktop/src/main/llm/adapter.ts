@@ -103,6 +103,19 @@ export type LLMEvent =
       toolUseID: string;
       toolName: string;
       content: string;
+    }
+  // Live progress of a sub-agent launched by the Task tool, keyed to the
+  // launching tool_use so the UI can render a nested "agent card".
+  | {
+      type: "subagent";
+      toolUseID: string;
+      kind: "start" | "text" | "tool" | "tool_done" | "done";
+      agentType?: string;
+      description?: string;
+      text?: string;
+      /** Child tool name (kind "tool" / "tool_done"). */
+      name?: string;
+      isError?: boolean;
     };
 
 export interface LLMUsage {

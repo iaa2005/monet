@@ -16,7 +16,7 @@ import {
   describeAgentsForPrompt,
   resolveAgentDefinition,
 } from "./agent-defs.js";
-import { runSubAgent } from "./subagent.js";
+import { runSubAgent, type SubAgentUpdate } from "./subagent.js";
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
@@ -75,16 +75,22 @@ export const AgentTaskTool = buildTool({
     return "Launch an autonomous sub-agent to handle a multi-step task and return its report.";
   },
   async call(
-    { prompt, subagent_type }: z.infer<InputSchema>,
+    { prompt, description, subagent_type }: z.infer<InputSchema>,
     context: ToolUseContext,
   ) {
     const model = context.options.mainLoopModel;
     const signal = context.abortController.signal;
-    const onProgress = (context as Record<string, unknown>)
-      ._subAgentOnProgress as ((text: string) => void) | undefined;
+    const emit = (context as Record<string, unknown>)._subAgentEmit as
+      | ((update: SubAgentUpdate) => void)
+      | undefined;
     const def = resolveAgentDefinition(subagent_type, getWorkspacePath());
-    const report = await runSubAgent({ prompt, model, def, signal, onProgress });
-    return { data: { report } };
+    emit?.({ kind: "start", agentType: def.type, description });
+    try {
+      const report = await runSubAgent({ prompt, model, def, signal, emit });
+      return { data: { report } };
+    } finally {
+      emit?.({ kind: "done" });
+    }
   },
   mapToolResultToToolResultBlockParam(
     content: TaskOutput,

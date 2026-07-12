@@ -21,6 +21,7 @@ import { TodoWriteTool } from "@vendor/tools/TodoWriteTool/TodoWriteTool.js";
 import { zodToJsonSchema } from "@vendor/utils/zodToJsonSchema.js";
 import { InlineSkillTool } from "./skill-tool.js";
 import { AgentTaskTool } from "./agent-tool.js";
+import type { SubAgentUpdate } from "./subagent.js";
 import { WebFetchTool, WebSearchTool } from "./web-tools.js";
 import { RunPythonTool } from "./sandbox-tool.js";
 import { RunCommandTool } from "./podman-command-tool.js";
@@ -443,6 +444,8 @@ export async function executeVendorTool(opts: {
   requestPermission?: RequestPermission;
   signal?: AbortSignal;
   onProgress?: (text: string) => void;
+  /** Structured sub-agent progress (Task tool → nested agent card). */
+  onSubAgentEvent?: (update: SubAgentUpdate) => void;
   /** Workspace ("home" | "code"). Home HARD-BLOCKS non-sandbox tools. */
   space?: string;
 }): Promise<VendorToolResult> {
@@ -456,6 +459,7 @@ export async function executeVendorTool(opts: {
     requestPermission,
     signal,
     onProgress,
+    onSubAgentEvent,
     space,
   } = opts;
   initVendorRuntime();
@@ -522,6 +526,8 @@ export async function executeVendorTool(opts: {
   (context as { sessionId?: string }).sessionId = sessionId;
   if (onProgress)
     (context as Record<string, unknown>)._subAgentOnProgress = onProgress;
+  if (onSubAgentEvent)
+    (context as Record<string, unknown>)._subAgentEmit = onSubAgentEvent;
 
   try {
     // 1. Schema parse (defaults, coercions, strictness) — the query engine

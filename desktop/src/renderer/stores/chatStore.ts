@@ -14,6 +14,7 @@ import type {
   ChatAttachmentMeta,
   ChatMessage,
   LLMEvent,
+  SubAgentState,
   ToolCall,
 } from "@/types/chat";
 import type { ElectronAPI } from "@/types/electron";
@@ -335,6 +336,57 @@ export const useChatStore = create<ChatStore>((set, get) => {
             break;
           }
         }
+        return { ...prev, messages: msgs };
+      }
+      case "subagent": {
+        // Live sub-agent state lives on the launching Task tool call, rendered
+        // as a nested "agent card". Cap the accumulated text so a chatty child
+        // can't grow the message unbounded.
+        const cap = (s: string): string => (s.length > 4000 ? s.slice(-4000) : s);
+        const msgs = prev.messages.map((m) => {
+          if (m.toolCall?.id !== event.toolUseID) return m;
+          const tc = m.toolCall;
+          const sa: SubAgentState = tc.subAgent ?? {
+            agentType: "agent",
+            text: "",
+            tools: [],
+            status: "running",
+          };
+          let next: SubAgentState = sa;
+          if (event.kind === "start") {
+            next = {
+              ...sa,
+              agentType: event.agentType ?? sa.agentType,
+              description: event.description ?? sa.description,
+              status: "running",
+            };
+          } else if (event.kind === "text") {
+            next = { ...sa, text: cap(sa.text + (event.text ?? "")) };
+          } else if (event.kind === "tool") {
+            next = {
+              ...sa,
+              tools: [
+                ...sa.tools,
+                { name: event.name ?? "tool", status: "running" as const },
+              ],
+            };
+          } else if (event.kind === "tool_done") {
+            const tools = [...sa.tools];
+            for (let i = tools.length - 1; i >= 0; i--) {
+              if (tools[i].name === event.name && tools[i].status === "running") {
+                tools[i] = {
+                  ...tools[i],
+                  status: event.isError ? "error" : "done",
+                };
+                break;
+              }
+            }
+            next = { ...sa, tools };
+          } else if (event.kind === "done") {
+            next = { ...sa, status: "done" };
+          }
+          return { ...m, toolCall: { ...tc, subAgent: next } };
+        });
         return { ...prev, messages: msgs };
       }
       case "message_stop": {

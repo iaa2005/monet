@@ -29,12 +29,29 @@ export interface ChatMessage {
   checkpointSha?: string
 }
 
+export interface SubAgentToolCall {
+  name: string
+  status: 'running' | 'done' | 'error'
+}
+
+/** Live state of a sub-agent launched via the Task tool, shown as a nested
+ * card on the launching tool call. */
+export interface SubAgentState {
+  agentType: string
+  description?: string
+  /** Accumulated live text from the child (capped in the reducer). */
+  text: string
+  tools: SubAgentToolCall[]
+  status: 'running' | 'done'
+}
+
 export interface ToolCall {
   id: string
   name: string
   input: Record<string, unknown>
   output?: string
   status: 'pending' | 'running' | 'done' | 'error'
+  subAgent?: SubAgentState
 }
 
 export type LLMEvent =
@@ -44,3 +61,13 @@ export type LLMEvent =
   | { type: 'error'; error: string }
   | { type: 'tool_result'; toolUseID: string; toolName: string; content: string }
   | { type: 'checkpoint'; sha: string }
+  | {
+      type: 'subagent'
+      toolUseID: string
+      kind: 'start' | 'text' | 'tool' | 'tool_done' | 'done'
+      agentType?: string
+      description?: string
+      text?: string
+      name?: string
+      isError?: boolean
+    }
