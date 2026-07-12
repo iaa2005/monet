@@ -47,6 +47,16 @@ export interface SkillInfo {
   updatedAt: number;
 }
 
+export interface AgentSummary {
+  slug: string;
+  type: string;
+  description: string;
+  tools?: string[];
+  model?: string;
+  source: "built-in" | "user";
+  editable: boolean;
+}
+
 export interface McpServerConfig {
   command?: string;
   args?: string[];
@@ -231,6 +241,25 @@ export interface ElectronAPI {
     importFolder: (
       path: string,
     ) => Promise<{ ok: boolean; skill?: SkillInfo; error?: string }>;
+  };
+  agents: {
+    list: () => Promise<AgentSummary[]>;
+    create: (payload: {
+      name: string;
+      description: string;
+      prompt: string;
+      tools?: string[];
+      model?: string;
+      effort?: string;
+    }) => Promise<AgentSummary>;
+    getRaw: (
+      slug: string,
+    ) => Promise<{ ok: boolean; content?: string; error?: string }>;
+    writeRaw: (
+      slug: string,
+      content: string,
+    ) => Promise<{ ok: boolean; error?: string }>;
+    deleteBySlug: (slug: string) => Promise<{ ok: boolean }>;
   };
   /** Absolute filesystem path for a dropped/picked File. */
   getPathForFile: (file: File) => string;

@@ -123,7 +123,7 @@ function parseEffort(val: string | undefined): EffortLevel | undefined {
   return EFFORT_VALUES.includes(v) ? v : undefined;
 }
 
-function parseAgentFile(
+export function parseAgentFile(
   raw: string,
   filename: string,
   source: "user" | "project",
@@ -207,4 +207,47 @@ export function describeAgentsForPrompt(workspace?: string): string {
     (d) => `- ${d.type}: ${d.description}`,
   );
   return `Available agent types:\n${lines.join("\n")}`;
+}
+
+/** The read-only built-in agent types (for the manager's reference list). */
+export function getBuiltInAgents(): AgentDefinition[] {
+  return BUILT_INS;
+}
+
+/** Directory holding user (global) agent .md files. */
+export function userAgentsDir(): string {
+  return getDataSubdir("agents");
+}
+
+export function slugifyAgentName(name: string): string {
+  return (
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 64) || "agent"
+  );
+}
+
+/** Serialize agent fields to the markdown-with-frontmatter file format. */
+export function buildAgentMarkdown(f: {
+  name: string;
+  description: string;
+  prompt: string;
+  tools?: string[];
+  model?: string;
+  /** Raw effort string; validated against EffortLevel when the file is loaded. */
+  effort?: string;
+}): string {
+  const lines = [
+    "---",
+    `name: ${f.name.trim()}`,
+    `description: ${f.description.trim().replace(/\n+/g, " ")}`,
+  ];
+  if (f.tools && f.tools.length) lines.push(`tools: [${f.tools.join(", ")}]`);
+  if (f.model) lines.push(`model: ${f.model}`);
+  if (f.effort) lines.push(`effort: ${f.effort}`);
+  lines.push("---", "", f.prompt.trim(), "");
+  return lines.join("\n");
 }

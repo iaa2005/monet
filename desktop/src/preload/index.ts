@@ -243,6 +243,29 @@ const electronAPI = {
       ipcRenderer.invoke("skills:importFolder", path),
   },
 
+  agents: {
+    list: (): Promise<unknown[]> => ipcRenderer.invoke("agents:list"),
+    create: (payload: {
+      name: string;
+      description: string;
+      prompt: string;
+      tools?: string[];
+      model?: string;
+      effort?: string;
+    }): Promise<unknown> => ipcRenderer.invoke("agents:create", payload),
+    getRaw: (
+      slug: string,
+    ): Promise<{ ok: boolean; content?: string; error?: string }> =>
+      ipcRenderer.invoke("agents:getRaw", slug),
+    writeRaw: (
+      slug: string,
+      content: string,
+    ): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("agents:writeRaw", slug, content),
+    deleteBySlug: (slug: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("agents:delete", slug),
+  },
+
   // Absolute filesystem path for a dropped File (webUtils bridge).
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 

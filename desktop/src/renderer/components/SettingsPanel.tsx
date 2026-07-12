@@ -7,6 +7,7 @@ import {
   Copy,
   FolderOpen,
   BookMarked,
+  Bot,
   Plug,
   Search,
   FlaskConical,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { SkillsSettings } from "@/components/settings/SkillsSettings";
+import { AgentsSettings } from "@/components/settings/AgentsSettings";
 import { ConnectorsSettings } from "@/components/settings/ConnectorsSettings";
 import { AutomationSettings } from "@/components/settings/AutomationSettings";
 import { cn } from "@/lib/utils";
@@ -80,6 +82,7 @@ type Section =
   | "sandbox"
   | "automation"
   | "skills"
+  | "agents"
   | "connectors"
   | "about";
 
@@ -100,6 +103,7 @@ const NAV: {
     group: "Customize",
     items: [
       { id: "skills", label: "Skills", icon: BookMarked },
+      { id: "agents", label: "Agents", icon: Bot },
       { id: "connectors", label: "Connectors", icon: Plug },
     ],
   },
@@ -501,6 +505,7 @@ export function SettingsPanel({
         {section === "sandbox" && <SandboxSection />}
         {section === "automation" && <AutomationSettings />}
         {section === "skills" && <SkillsSettings />}
+        {section === "agents" && <AgentsSettings />}
         {section === "connectors" && <ConnectorsSettings />}
         {section === "about" && <AboutSection />}
       </div>
