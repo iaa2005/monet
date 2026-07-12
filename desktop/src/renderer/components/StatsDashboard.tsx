@@ -388,7 +388,7 @@ export function StatsDashboard(): JSX.Element {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4">
-      <div className="rounded-2xl bg-black/[0.025] p-5 dark:bg-white/[0.04]">
+      <div className="rounded-2xl bg-black/[0.025] p-4 dark:bg-white/[0.04] border border-border">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex gap-1">
             {(["overview", "models"] as const).map((t) => (
