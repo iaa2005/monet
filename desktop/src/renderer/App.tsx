@@ -37,7 +37,6 @@ import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import { ArtifactsPanel } from "@/components/ArtifactsPanel";
 import { SandboxFilesPanel } from "@/components/SandboxFilesPanel";
-import { ArtifactViewer } from "@/components/ArtifactViewer";
 import { BackgroundTasks } from "@/components/BackgroundTasks";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { FilterDropdown } from "@/components/FilterDropdown";
@@ -215,6 +214,18 @@ export default function App(): JSX.Element {
   // the entire app on every streaming update (a major lag source).
   const incognito = useChatStore((s) => s.incognito);
   const openFileRequest = useChatStore((s) => s.openFileRequest);
+  const viewerArtifact = useChatStore((s) => s.viewerArtifact);
+  const closeArtifactViewer = useCallback(
+    () => useChatStore.getState().openArtifactViewer(null),
+    [],
+  );
+  const closeFileViewer = useCallback(() => {
+    if (useChatStore.getState().viewerArtifact) {
+      closeArtifactViewer();
+    } else {
+      setOpenFilePath(null);
+    }
+  }, [closeArtifactViewer]);
 
   // Tool file links ask to open a file in the in-app viewer.
   useEffect(() => {
@@ -875,11 +886,10 @@ export default function App(): JSX.Element {
               <ResizablePanelGroup direction="horizontal" className="gap-1">
                 <ResizablePanel minSize={30}>
                   <div className="h-full min-h-0 overflow-hidden">
-                    {openFilePath ? (
-                      <FileViewer
-                        path={openFilePath}
-                        onClose={() => setOpenFilePath(null)}
-                      />
+                    {viewerArtifact ? (
+                      <FileViewer item={viewerArtifact} onClose={closeArtifactViewer} />
+                    ) : openFilePath ? (
+                      <FileViewer path={openFilePath} onClose={closeFileViewer} />
                     ) : (
                       <ChatView
                         transcriptMode={transcriptMode}
@@ -955,11 +965,10 @@ export default function App(): JSX.Element {
                   <ResizablePanelGroup direction="vertical" className="gap-1">
                     <ResizablePanel minSize={20}>
                       <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                        {openFilePath ? (
-                          <FileViewer
-                            path={openFilePath}
-                            onClose={() => setOpenFilePath(null)}
-                          />
+                        {viewerArtifact ? (
+                          <FileViewer item={viewerArtifact} onClose={closeArtifactViewer} />
+                        ) : openFilePath ? (
+                          <FileViewer path={openFilePath} onClose={closeFileViewer} />
                         ) : (
                           <>
                             {view === "chat" && (
@@ -1087,7 +1096,6 @@ export default function App(): JSX.Element {
         </ResizablePanelGroup>
       </div>
 
-      <ArtifactViewer />
 
       <Modal
         open={aboutOpen}
