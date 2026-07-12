@@ -97,6 +97,7 @@ export type LLMEvent =
     }
   | { type: "message_stop"; stop_reason: string; usage?: LLMUsage }
   | { type: "error"; error: string }
+  | { type: "checkpoint"; sha: string }
   | {
       type: "tool_result";
       toolUseID: string;

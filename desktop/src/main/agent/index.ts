@@ -429,6 +429,18 @@ export async function runAgent(
         stop_reason: lastStopReason ?? "end_turn",
         usage: lastUsage,
       });
+      // Code Rewind: snapshot the workspace AFTER the reply is done (never
+      // blocks it) so this turn can be restored later. Home has no workspace.
+      if (space && space !== "home") {
+        try {
+          const { getWorkspacePath } = await import("../ipc/workspace.js");
+          const { snapshotWorkspace } = await import("./checkpoints.js");
+          const sha = await snapshotWorkspace(sessionId, getWorkspacePath());
+          if (sha) onEvent({ type: "checkpoint", sha });
+        } catch {
+          /* best-effort */
+        }
+      }
       return;
     }
 

@@ -25,6 +25,8 @@ export interface ChatMessage {
   attachments?: ChatAttachmentMeta[]
   isStreaming?: boolean
   isError?: boolean
+  /** Code Rewind: workspace snapshot taken after this (assistant) turn. */
+  checkpointSha?: string
 }
 
 export interface ToolCall {
@@ -41,3 +43,4 @@ export type LLMEvent =
   | { type: 'message_stop'; stop_reason: string; usage?: { input_tokens: number; output_tokens: number } }
   | { type: 'error'; error: string }
   | { type: 'tool_result'; toolUseID: string; toolName: string; content: string }
+  | { type: 'checkpoint'; sha: string }

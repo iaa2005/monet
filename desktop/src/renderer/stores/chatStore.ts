@@ -156,6 +156,9 @@ interface ChatStore {
    * truncate to before it, reset the main-process history, and resend the
    * (optionally edited) text. */
   resendFrom: (messageId: string, newText?: string) => Promise<void>;
+  /** Code Rewind: restore the workspace to a message's checkpoint (shadow git)
+   * and truncate the conversation to and including that message. */
+  rewindTo: (messageId: string) => Promise<void>;
 }
 
 interface SessionsBridge {
@@ -320,6 +323,18 @@ export const useChatStore = create<ChatStore>((set, get) => {
               }
             : m,
         );
+        return { ...prev, messages: msgs };
+      }
+      case "checkpoint": {
+        // Attach the workspace snapshot to the turn's final assistant message
+        // so its "Rewind to here" can restore that state.
+        const msgs = [...prev.messages];
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role === "assistant") {
+            msgs[i] = { ...msgs[i], checkpointSha: event.sha };
+            break;
+          }
+        }
         return { ...prev, messages: msgs };
       }
       case "message_stop": {
@@ -504,6 +519,38 @@ export const useChatStore = create<ChatStore>((set, get) => {
       });
     },
 
+    rewindTo: async (messageId) => {
+      const state = get();
+      const sessionId = state.currentSessionId;
+      if (!sessionId || state.isStreaming) return;
+      const msgs = state.messages;
+      const idx = msgs.findIndex((m) => m.id === messageId);
+      if (idx < 0) return;
+
+      const bridge = electron();
+      const sha = msgs[idx].checkpointSha;
+      if (sha) {
+        const r = await bridge?.checkpoints.rewind(sessionId, sha);
+        if (r && !r.ok) {
+          mutate(sessionId, (p) => ({
+            ...p,
+            error: r.error ?? "Rewind failed.",
+          }));
+          return;
+        }
+      }
+      // Truncate to and including this message; reset the main-process history
+      // so the next send continues from here (it re-seeds from the renderer).
+      const kept = msgs.slice(0, idx + 1);
+      mutate(sessionId, (p) => ({
+        ...p,
+        messages: kept,
+        isStreaming: false,
+        error: null,
+      }));
+      await bridge?.chat.reset(sessionId);
+    },
+
     handleLLMEvent: (sessionId, event) => {
       // Coalesce the text firehose (see the batching note above).
       if (event.type === "text_delta") {
@@ -529,7 +576,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // End of run → persist this session (ordered with the deltas above).
       if (
         persistable &&
-        (event.type === "message_stop" || event.type === "error")
+        (event.type === "message_stop" ||
+          event.type === "error" ||
+          event.type === "checkpoint")
       ) {
         lastCheckpoint.delete(sessionId);
         void persistSession(sessionId);

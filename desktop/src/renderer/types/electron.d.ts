@@ -272,6 +272,12 @@ export interface ElectronAPI {
     isPodmanReady: () => Promise<{ ok: boolean }>;
     listFiles: (sessionId?: string) => Promise<SandboxFileEntry[]>;
   };
+  checkpoints: {
+    rewind: (
+      sessionId: string,
+      sha: string,
+    ) => Promise<{ ok: boolean; error?: string }>;
+  };
   artifacts: {
     save: (payload: {
       sessionId: string;

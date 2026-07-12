@@ -312,4 +312,14 @@ export function registerChatIPC(): void {
     (_e, sessionId?: string, space?: string, messageTokens?: number) =>
       computeContextBreakdown(sessionId || "default", space, messageTokens),
   );
+
+  // Code Rewind: restore the workspace to a turn's checkpoint (shadow git).
+  ipcMain.handle(
+    "checkpoints:rewind",
+    async (_e, sessionId: string, sha: string) => {
+      const { rewindWorkspace } = await import("../agent/checkpoints.js");
+      const { getWorkspacePath } = await import("./workspace.js");
+      return rewindWorkspace(sessionId || "default", getWorkspacePath(), sha);
+    },
+  );
 }

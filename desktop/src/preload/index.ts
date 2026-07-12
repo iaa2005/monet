@@ -322,6 +322,14 @@ const electronAPI = {
     > => ipcRenderer.invoke("sandbox:listFiles", sessionId),
   },
 
+  checkpoints: {
+    rewind: (
+      sessionId: string,
+      sha: string,
+    ): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("checkpoints:rewind", sessionId, sha),
+  },
+
   artifacts: {
     save: (payload: {
       sessionId: string;

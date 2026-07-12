@@ -24,6 +24,7 @@ import {
   FileSearch,
   FlaskConical,
   GitPullRequest,
+  History,
   Pencil,
   RotateCcw,
   type LucideIcon,
@@ -141,6 +142,7 @@ const MessageRow = memo(
     const isStreaming = useChatStore((s) => s.isStreaming);
     const home = useChatStore((s) => s.space === "home");
     const resendFrom = useChatStore((s) => s.resendFrom);
+    const rewindTo = useChatStore((s) => s.rewindTo);
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(msg.content);
 
@@ -234,11 +236,30 @@ const MessageRow = memo(
               )}
             </div>
           ) : (
-            <Bubble variant="ghost">
-              <BubbleContent className={cn(msg.isError && "text-destructive")}>
-                {msg.content ? <MarkdownViewer content={msg.content} /> : null}
-              </BubbleContent>
-            </Bubble>
+            <div className="group">
+              <Bubble variant="ghost">
+                <BubbleContent
+                  className={cn(msg.isError && "text-destructive")}
+                >
+                  {msg.content ? (
+                    <MarkdownViewer content={msg.content} />
+                  ) : null}
+                </BubbleContent>
+              </Bubble>
+              {!home && !isStreaming && msg.checkpointSha && (
+                <div className="mt-0.5 flex opacity-0 transition-opacity group-hover:opacity-100">
+                  <button
+                    type="button"
+                    title="Rewind to here — restore the workspace files to this point"
+                    onClick={() => void rewindTo(msg.id)}
+                    className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+                  >
+                    <History className="size-3" />
+                    Rewind to here
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </MessageContent>
       </Message>
@@ -553,7 +574,7 @@ export function ChatView({
             <MessageInput flush />
           </div>
           {podmanWarning && (
-            <div className="-mt-2 mb-3 flex w-full max-w-2xl items-center justify-between gap-3 rounded-b-xl border border-amber-500/50 bg-amber-500/10 px-3 pb-2.5 pt-4.5 text-left text-[13px]">
+            <div className="mt-1 mb-3 flex w-full max-w-2xl items-center justify-between gap-3 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2.5 text-left text-[13px]">
               <span className="text-amber-900 dark:text-amber-200">
                 Podman is not ready.
                 <br />
