@@ -507,6 +507,25 @@ export async function executeVendorTool(opts: {
     return callMcpTool(name, input);
   }
 
+  // Reading an image runs a heavy native (sharp) resize the model often can't
+  // even use. For a model without image input it's pointless — and that path
+  // has hung the tool call — so short-circuit with a note instead of reading
+  // and resizing. Vision-capable models fall through to the real read.
+  if (
+    name === "Read" &&
+    typeof input.file_path === "string" &&
+    /\.(png|jpe?g|gif|webp|bmp|tiff?|avif)$/i.test(input.file_path) &&
+    !activeModelSeesImages()
+  ) {
+    return {
+      content:
+        `[Image file: ${input.file_path}. The active model has no image input, ` +
+        `so its contents aren't shown. Switch to a vision-capable model to ` +
+        `view images.]`,
+      isError: false,
+    };
+  }
+
   // Point the vendor tools' checkPermissions() at the selected mode.
   setVendorPermissionMode(VENDOR_MODE_FOR[permissionMode]);
   const tools = getVendorTools();
