@@ -27,6 +27,70 @@ function generateId(): string {
   return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
 }
 
+/** Apply one sub-agent event to the child's mini-transcript — mirrors the main
+ * reducer's text_delta / tool_use / tool_result handling on a nested list, so
+ * the child renders with the same components as the top-level chat. */
+function reduceSubMessages(
+  messages: ChatMessage[],
+  event: Extract<LLMEvent, { type: "subagent" }>,
+): ChatMessage[] {
+  if (event.kind === "text") {
+    const msgs = [...messages];
+    const last = msgs[msgs.length - 1];
+    if (!last || last.role !== "assistant" || !last.isStreaming) {
+      msgs.push({
+        id: generateId(),
+        role: "assistant",
+        content: event.text ?? "",
+        timestamp: Date.now(),
+        isStreaming: true,
+      });
+    } else {
+      msgs[msgs.length - 1] = {
+        ...last,
+        content: last.content + (event.text ?? ""),
+      };
+    }
+    return msgs;
+  }
+  if (event.kind === "tool") {
+    // Freeze any streaming text, drop a stranded empty bubble, add the tool.
+    const msgs = messages.map((m) =>
+      m.role === "assistant" && m.isStreaming ? { ...m, isStreaming: false } : m,
+    );
+    const last = msgs[msgs.length - 1];
+    if (last && last.role === "assistant" && !last.content) msgs.pop();
+    msgs.push({
+      id: generateId(),
+      role: "tool",
+      content: `Tool: ${event.name ?? "tool"}`,
+      timestamp: Date.now(),
+      toolCall: {
+        id: event.childId ?? generateId(),
+        name: event.name ?? "tool",
+        input: event.input ?? {},
+        status: "running",
+      },
+    });
+    return msgs;
+  }
+  if (event.kind === "tool_done") {
+    return messages.map((m) =>
+      m.toolCall && m.toolCall.id === event.childId
+        ? {
+            ...m,
+            toolCall: {
+              ...m.toolCall,
+              status: event.isError ? ("error" as const) : ("done" as const),
+              output: event.output,
+            },
+          }
+        : m,
+    );
+  }
+  return messages;
+}
+
 export interface ChatUsage {
   input_tokens: number;
   output_tokens: number;
@@ -339,18 +403,16 @@ export const useChatStore = create<ChatStore>((set, get) => {
         return { ...prev, messages: msgs };
       }
       case "subagent": {
-        // Live sub-agent state lives on the launching Task tool call, rendered
-        // as a nested "agent card". Cap the accumulated text so a chatty child
-        // can't grow the message unbounded.
-        const cap = (s: string): string => (s.length > 4000 ? s.slice(-4000) : s);
+        // Live sub-agent state lives on the launching Task tool call. The
+        // child's activity is a real mini-transcript (assistant text + tool
+        // calls) so it renders with the SAME components as the main chat.
         const msgs = prev.messages.map((m) => {
           if (m.toolCall?.id !== event.toolUseID) return m;
           const tc = m.toolCall;
           const sa: SubAgentState = tc.subAgent ?? {
             agentType: "agent",
-            text: "",
-            tools: [],
             status: "running",
+            messages: [],
           };
           let next: SubAgentState = sa;
           if (event.kind === "start") {
@@ -360,30 +422,16 @@ export const useChatStore = create<ChatStore>((set, get) => {
               description: event.description ?? sa.description,
               status: "running",
             };
-          } else if (event.kind === "text") {
-            next = { ...sa, text: cap(sa.text + (event.text ?? "")) };
-          } else if (event.kind === "tool") {
+          } else if (event.kind === "done") {
             next = {
               ...sa,
-              tools: [
-                ...sa.tools,
-                { name: event.name ?? "tool", status: "running" as const },
-              ],
+              status: "done",
+              messages: sa.messages.map((cm) =>
+                cm.isStreaming ? { ...cm, isStreaming: false } : cm,
+              ),
             };
-          } else if (event.kind === "tool_done") {
-            const tools = [...sa.tools];
-            for (let i = tools.length - 1; i >= 0; i--) {
-              if (tools[i].name === event.name && tools[i].status === "running") {
-                tools[i] = {
-                  ...tools[i],
-                  status: event.isError ? "error" : "done",
-                };
-                break;
-              }
-            }
-            next = { ...sa, tools };
-          } else if (event.kind === "done") {
-            next = { ...sa, status: "done" };
+          } else {
+            next = { ...sa, messages: reduceSubMessages(sa.messages, event) };
           }
           return { ...m, toolCall: { ...tc, subAgent: next } };
         });

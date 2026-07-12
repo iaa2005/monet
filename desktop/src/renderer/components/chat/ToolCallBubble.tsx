@@ -1,17 +1,20 @@
-import { useMemo, useState, memo } from "react";
+import { useEffect, useMemo, useState, memo } from "react";
+import { createPortal } from "react-dom";
 import {
   Bot,
   Check,
   ChevronRight,
   Circle,
   Loader2,
+  Maximize2,
   X,
   Wrench,
 } from "lucide-react";
-import type { SubAgentState, ToolCall } from "@/types/chat";
+import type { ChatMessage, ToolCall } from "@/types/chat";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import { CodeBlock } from "./CodeBlock";
+import { MarkdownViewer } from "./MarkdownViewer";
 import { InlineDiff, diffStats } from "./InlineDiff";
 import {
   ArtifactThumb,
@@ -595,28 +598,45 @@ function SingleToolRow({ toolCall }: { toolCall: ToolCall }): JSX.Element {
   );
 }
 
-/** Status pip for a child tool chip. */
-function SubToolStatus({
-  status,
+/**
+ * The child's activity, rendered with the SAME components as the main chat:
+ * each tool call is an expandable ToolCallBubble; each assistant chunk is
+ * markdown. So the details (inputs, outputs, diffs) are always inspectable.
+ */
+function SubAgentTranscript({
+  messages,
+  running,
 }: {
-  status: SubAgentState["tools"][number]["status"];
+  messages: ChatMessage[];
+  running: boolean;
 }): JSX.Element {
-  if (status === "running")
-    return <Loader2 className="size-3 animate-spin text-foreground" />;
-  if (status === "error") return <X className="size-3 text-destructive" />;
-  return <Check className="size-3 text-emerald-600 dark:text-emerald-500" />;
+  return (
+    <div className="space-y-2">
+      {messages.map((m) =>
+        m.role === "tool" && m.toolCall ? (
+          <ToolCallBubble key={m.id} toolCall={m.toolCall} mode="normal" />
+        ) : m.content ? (
+          <div key={m.id} className="text-sm leading-relaxed text-foreground">
+            <MarkdownViewer content={m.content} />
+          </div>
+        ) : null,
+      )}
+      {messages.length === 0 && (
+        <div className="text-xs text-muted-foreground">
+          {running ? "Working…" : "No output."}
+        </div>
+      )}
+    </div>
+  );
 }
 
-/** Last ~6 non-empty lines of the child's live text (a compact activity tail). */
-function textTail(text: string): string {
-  const lines = text.split("\n").filter((l) => l.trim().length > 0);
-  return lines.slice(-6).join("\n");
-}
+const ICON_BTN =
+  "rounded p-0.5 text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]";
 
 /**
- * Nested "agent card" for a Task tool call: agent type + task, the child's
- * tool calls as live chips, a streaming activity tail while it works, and the
- * final report (collapsible) when done.
+ * Nested "agent card" for a Task tool call. Shows the child's full transcript
+ * (same tool/markdown components as the main chat), collapsible inline, and
+ * expandable to a full-screen overlay you can dismiss back to the chat.
  */
 function SubAgentBubble({ toolCall }: { toolCall: ToolCall }): JSX.Element {
   const sa = toolCall.subAgent;
@@ -627,77 +647,104 @@ function SubAgentBubble({ toolCall }: { toolCall: ToolCall }): JSX.Element {
       ? (toolCall.input.description as string)
       : undefined);
   const running = sa ? sa.status === "running" : toolCall.status !== "done";
-  const report = toolCall.output;
-  const [showReport, setShowReport] = useState(false);
-  const tail = sa ? textTail(sa.text) : "";
+  const messages = sa?.messages ?? [];
+  const [collapsed, setCollapsed] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
 
-  return (
-    <div className="rounded-lg border border-border bg-black/[0.02] px-3 py-2 dark:bg-white/[0.02]">
-      <div className="flex items-center gap-2">
-        <Bot className="size-4 shrink-0 text-violet-500" />
-        <span className="shrink-0 text-sm font-medium text-foreground">
-          Sub-agent
+  // Esc closes the full-screen overlay.
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullscreen]);
+
+  const header = (inOverlay: boolean): JSX.Element => (
+    <div className="flex items-center gap-2">
+      <Bot className="size-4 shrink-0 text-violet-500" />
+      <span className="shrink-0 text-sm font-medium text-foreground">
+        Sub-agent
+      </span>
+      <span className="shrink-0 rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-400">
+        {agentType}
+      </span>
+      {description && (
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {description}
         </span>
-        <span className="shrink-0 rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-400">
-          {agentType}
-        </span>
-        {description && (
-          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-            {description}
-          </span>
+      )}
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        {running ? (
+          <Loader2 className="size-3.5 animate-spin text-foreground" />
+        ) : (
+          <Check className="size-3.5 text-emerald-600 dark:text-emerald-500" />
         )}
-        <span className="ml-auto shrink-0">
-          {running ? (
-            <Loader2 className="size-3.5 animate-spin text-foreground" />
-          ) : (
-            <Check className="size-3.5 text-emerald-600 dark:text-emerald-500" />
-          )}
-        </span>
-      </div>
-
-      {sa && sa.tools.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {sa.tools.map((t, i) => (
-            <span
-              key={`${i}-${t.name}`}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[11px] text-muted-foreground"
-            >
-              <SubToolStatus status={t.status} />
-              {humanName(t.name)}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {running && tail && (
-        <pre className="mt-2 max-h-24 overflow-hidden whitespace-pre-wrap break-words text-[11px] leading-snug text-muted-foreground/80">
-          {tail}
-        </pre>
-      )}
-
-      {!running && report && (
-        <div className="mt-2">
+        {inOverlay ? (
           <button
             type="button"
-            onClick={() => setShowReport((o) => !o)}
-            className="flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+            onClick={() => setFullscreen(false)}
+            title="Back to chat (Esc)"
+            className={ICON_BTN}
           >
-            <ChevronRight
-              className={cn(
-                "size-3.5 transition-transform",
-                showReport && "rotate-90",
-              )}
-            />
-            {showReport ? "Hide report" : "Show report"}
+            <X className="size-4" />
           </button>
-          {showReport && (
-            <div className="mt-1.5">
-              <CodeBlock code={report} language="text" maxHeight={320} />
-            </div>
-          )}
-        </div>
-      )}
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => setFullscreen(true)}
+              title="Expand to full screen"
+              className={ICON_BTN}
+            >
+              <Maximize2 className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setCollapsed((c) => !c)}
+              title={collapsed ? "Expand" : "Collapse"}
+              className={ICON_BTN}
+            >
+              <ChevronRight
+                className={cn(
+                  "size-4 transition-transform",
+                  !collapsed && "rotate-90",
+                )}
+              />
+            </button>
+          </>
+        )}
+      </div>
     </div>
+  );
+
+  return (
+    <>
+      <div className="rounded-lg border border-border bg-black/[0.02] px-3 py-2 dark:bg-white/[0.02]">
+        {header(false)}
+        {!collapsed && (
+          <div className="mt-2 border-l-2 border-violet-500/20 pl-3">
+            <SubAgentTranscript messages={messages} running={running} />
+          </div>
+        )}
+      </div>
+
+      {fullscreen &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm">
+            <div className="border-b border-border px-4 py-3">
+              {header(true)}
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              <div className="mx-auto max-w-3xl">
+                <SubAgentTranscript messages={messages} running={running} />
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 

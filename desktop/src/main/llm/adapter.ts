@@ -113,8 +113,12 @@ export type LLMEvent =
       agentType?: string;
       description?: string;
       text?: string;
+      /** Child tool call id (kind "tool" / "tool_done"). */
+      childId?: string;
       /** Child tool name (kind "tool" / "tool_done"). */
       name?: string;
+      input?: Record<string, unknown>;
+      output?: string;
       isError?: boolean;
     };
 

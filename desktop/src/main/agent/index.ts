@@ -574,8 +574,12 @@ export async function runAgent(
             agentType: u.kind === "start" ? u.agentType : undefined,
             description: u.kind === "start" ? u.description : undefined,
             text: u.kind === "text" ? u.text : undefined,
+            childId:
+              u.kind === "tool" || u.kind === "tool_done" ? u.id : undefined,
             name:
               u.kind === "tool" || u.kind === "tool_done" ? u.name : undefined,
+            input: u.kind === "tool" ? u.input : undefined,
+            output: u.kind === "tool_done" ? u.output : undefined,
             isError: u.kind === "tool_done" ? u.isError : undefined,
           });
         },

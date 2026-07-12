@@ -26,8 +26,14 @@ const SUBAGENT_MAX_TURNS = 20;
 export type SubAgentUpdate =
   | { kind: "start"; agentType: string; description?: string }
   | { kind: "text"; text: string }
-  | { kind: "tool"; name: string }
-  | { kind: "tool_done"; name: string; isError?: boolean }
+  | { kind: "tool"; id: string; name: string; input: Record<string, unknown> }
+  | {
+      kind: "tool_done";
+      id: string;
+      name: string;
+      output: string;
+      isError?: boolean;
+    }
   | { kind: "done" };
 
 export async function runSubAgent(opts: {
@@ -136,7 +142,7 @@ export async function runSubAgent(opts: {
     }[] = [];
     for (const tc of toolCalls) {
       if (signal?.aborted) return finalText || "Sub-agent aborted.";
-      emit?.({ kind: "tool", name: tc.name });
+      emit?.({ kind: "tool", id: tc.id, name: tc.name, input: tc.input });
       const r = await executeVendorTool({
         sessionId,
         toolUseID: tc.id,
@@ -146,7 +152,13 @@ export async function runSubAgent(opts: {
         permissionMode: "bypassPermissions",
         signal,
       });
-      emit?.({ kind: "tool_done", name: tc.name, isError: r.isError });
+      emit?.({
+        kind: "tool_done",
+        id: tc.id,
+        name: tc.name,
+        output: r.content,
+        isError: r.isError,
+      });
       results.push({
         tool_use_id: tc.id,
         content: r.content,
