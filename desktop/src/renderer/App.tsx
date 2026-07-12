@@ -1114,33 +1114,33 @@ export default function App(): JSX.Element {
       <Modal
         open={incognitoCloseOpen}
         onClose={() => setIncognitoCloseOpen(false)}
-      >
-        <div className="p-5">
+        title={
           <div className="flex items-center gap-2">
             <Ghost className="size-4 text-muted-foreground" />
             <h3 className="text-base font-semibold">Close incognito chat?</h3>
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Everything from this chat will be deleted permanently — the
-            conversation, sandbox files and generated artifacts. If you need a
-            file, download it before closing.
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setIncognitoCloseOpen(false)}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={closeIncognito}
-              className="rounded-lg bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground transition-opacity hover:opacity-90"
-            >
-              Close & delete
-            </button>
-          </div>
+        }
+      >
+        <p>
+          Everything from this chat will be deleted permanently — the
+          conversation, sandbox files and generated artifacts. If you need a
+          file, download it before closing.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setIncognitoCloseOpen(false)}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={closeIncognito}
+            className="rounded-lg bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground transition-opacity hover:opacity-90"
+          >
+            Close & delete
+          </button>
         </div>
       </Modal>
 
