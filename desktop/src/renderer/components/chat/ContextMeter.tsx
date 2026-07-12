@@ -71,11 +71,13 @@ export function ContextMeter({
   space,
   usedTokens,
   ctxWindow,
+  className
 }: {
   sessionId: string | null;
   space: string;
   usedTokens: number;
   ctxWindow: number;
+  className?: string;
 }): JSX.Element {
   const messages = useChatStore((s) => s.messages);
   const msgTokens = useMemo(() => estimateMessageTokens(messages), [messages]);
@@ -122,7 +124,7 @@ export function ContextMeter({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+          className={className}
           title="Context window — click for a breakdown"
         >
           <Gauge className="size-3" />

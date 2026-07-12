@@ -19,6 +19,7 @@ import {
   EffortSlider,
   effortLabel,
   effortTextClass,
+  effortBgClass,
   type EffortValue,
 } from "./EffortSlider";
 import { ModalityBadges } from "@/components/providers/ModalityBadges";
@@ -761,7 +762,7 @@ export function MessageInput({
                         className={cn(
                           "flex w-full items-baseline gap-2 rounded-md px-2 py-1 text-left transition-colors",
                           idx === slashIndex &&
-                            "bg-black/[0.06] dark:bg-white/[0.08]",
+                            "bg-black/6 dark:bg-white/8",
                         )}
                       >
                         <span className="shrink-0 font-mono text-[13px]">
@@ -815,126 +816,131 @@ export function MessageInput({
           </div>
         )}
         {notice && (
-          <div className="mb-2 rounded-lg bg-black/[0.04] px-3 py-1.5 text-[12px] text-muted-foreground dark:bg-white/[0.06]">
+          <div className="mb-2 rounded-lg bg-black/4 px-3 py-1.5 text-[12px] text-muted-foreground dark:bg-white/6">
             {notice}
           </div>
         )}
-        <div className="rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25">
-          {files.length > 0 && (
-            <div className="flex flex-wrap gap-2 px-2 pt-2">
-              {files.map((f) => {
-                const isImg = f.file.type.startsWith("image/");
-                return (
-                  <Attachment key={f.id} size="sm" className="max-w-56">
-                    <AttachmentMedia variant={isImg ? "image" : "icon"}>
-                      {isImg && f.url ? (
-                        <img src={f.url} alt={f.file.name} />
-                      ) : (
-                        <FileText />
-                      )}
-                    </AttachmentMedia>
-                    <AttachmentContent>
-                      <AttachmentTitle>{f.file.name}</AttachmentTitle>
-                      <AttachmentDescription>
-                        {formatSize(f.file.size)}
-                      </AttachmentDescription>
-                    </AttachmentContent>
-                    <AttachmentActions>
-                      <AttachmentAction
-                        aria-label="Remove attachment"
-                        onClick={() => removeFile(f.id)}
-                      >
-                        <X />
-                      </AttachmentAction>
-                    </AttachmentActions>
-                  </Attachment>
-                );
-              })}
-            </div>
-          )}
-          <textarea
-            ref={taRef}
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              setCaret(e.target.selectionStart ?? e.target.value.length);
-            }}
-            onSelect={(e) =>
-              setCaret(e.currentTarget.selectionStart ?? 0)
-            }
-            onKeyDown={(e) => {
-              // "/" menu navigation takes priority while it's open.
-              if (slashOpen) {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setSlashIndex((i) => (i + 1) % slashFlat.length);
-                  return;
-                }
-                if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setSlashIndex(
-                    (i) => (i - 1 + slashFlat.length) % slashFlat.length,
-                  );
-                  return;
-                }
-                if (e.key === "Enter" || e.key === "Tab") {
-                  e.preventDefault();
-                  pickSlash(slashFlat[slashIndex]?.name ?? slashQuery ?? "");
-                  return;
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setSlashDismissed(true);
-                  return;
-                }
-              }
-              // Enter inserts a newline; Ctrl/Cmd+Enter sends.
-              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            placeholder="Type / for commands"
-            rows={1}
-            disabled={isStreaming}
-            className="max-h-[200px] min-h-[24px] w-full resize-none bg-transparent px-3.5 pt-3 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
-          />
-
-          {/* Send stays in the composer; the controls sit below it */}
-          <div className="flex items-center justify-end px-2 pb-2">
-            <input
-              ref={fileRef}
-              type="file"
-              multiple
-              className="hidden"
+        
+        {files.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {files.map((f) => {
+              const isImg = f.file.type.startsWith("image/");
+              return (
+                <Attachment key={f.id} size="sm" className="max-w-56">
+                  <AttachmentMedia variant={isImg ? "image" : "icon"}>
+                    {isImg && f.url ? (
+                      <img src={f.url} alt={f.file.name} />
+                    ) : (
+                      <FileText />
+                    )}
+                  </AttachmentMedia>
+                  <AttachmentContent>
+                    <AttachmentTitle>{f.file.name}</AttachmentTitle>
+                    <AttachmentDescription>
+                      {formatSize(f.file.size)}
+                    </AttachmentDescription>
+                  </AttachmentContent>
+                  <AttachmentActions>
+                    <AttachmentAction
+                      aria-label="Remove attachment"
+                      onClick={() => removeFile(f.id)}
+                    >
+                      <X className="text-muted-foreground"/>
+                    </AttachmentAction>
+                  </AttachmentActions>
+                </Attachment>
+              );
+            })}
+          </div>
+        )}
+        
+        <div className="p-3 gap-2.5 items-end rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25">
+          
+          <div className="flex gap-2.5 w-full items-end">
+            <textarea
+              ref={taRef}
+              value={input}
               onChange={(e) => {
-                stageFiles(e.target.files);
-                e.target.value = "";
+                setInput(e.target.value);
+                setCaret(e.target.selectionStart ?? e.target.value.length);
               }}
+              onSelect={(e) =>
+                setCaret(e.currentTarget.selectionStart ?? 0)
+              }
+              onKeyDown={(e) => {
+                // "/" menu navigation takes priority while it's open.
+                if (slashOpen) {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setSlashIndex((i) => (i + 1) % slashFlat.length);
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setSlashIndex(
+                      (i) => (i - 1 + slashFlat.length) % slashFlat.length,
+                    );
+                    return;
+                  }
+                  if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault();
+                    pickSlash(slashFlat[slashIndex]?.name ?? slashQuery ?? "");
+                    return;
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setSlashDismissed(true);
+                    return;
+                  }
+                }
+                // Enter inserts a newline; Ctrl/Cmd+Enter sends.
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              placeholder="Type / for commands"
+              rows={1}
+              disabled={isStreaming}
+              className="pt-0.5 max-h-50 min-h-7 w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
             />
-            {isStreaming ? (
-              <button
-                type="button"
-                onClick={abort}
-                title="Stop"
-                className="flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity hover:opacity-90"
-              >
-                <Square className="size-3.5 fill-current" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={send}
-                disabled={!input.trim()}
-                title="Send"
-                className={cn(
-                  "flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity",
-                  input.trim() ? "hover:opacity-90" : "opacity-30",
-                )}
-              >
-                <ArrowUp className="size-4" />
-              </button>
-            )}
+  
+            {/* Send stays in the composer; the controls sit below it */}
+            <div className="flex items-center justify-end">
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  stageFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              {isStreaming ? (
+                <button
+                  type="button"
+                  onClick={abort}
+                  title="Stop"
+                  className="flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity hover:opacity-90"
+                >
+                  <Square className="size-3.5 fill-current" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={send}
+                  disabled={!input.trim()}
+                  title="Send"
+                  className={cn(
+                    "flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity",
+                    input.trim() ? "hover:opacity-90" : "opacity-30",
+                  )}
+                >
+                  <ArrowUp className="size-4" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -945,7 +951,7 @@ export function MessageInput({
               type="button"
               title="Attach files"
               onClick={() => fileRef.current?.click()}
-              className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+              className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
             >
               <Plus className="size-4" />
             </button>
@@ -970,6 +976,7 @@ export function MessageInput({
                 space={space}
                 usedTokens={usedTokens}
                 ctxWindow={ctxWindow}
+                className={pillBtn}
               />
             )}
 
@@ -980,14 +987,14 @@ export function MessageInput({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className={pillBtn}
+                    className={cn(pillBtn, effortBgClass(effort))}
                     title="Reasoning effort (Faster ↔ Smarter)"
                   >
-                    <Sparkles className="size-3" />
+                    <Sparkles className={cn("size-3", effortTextClass(effort))} />
                     <span className={cn("font-medium", effortTextClass(effort))}>
                       {effortLabel(effort)}
                     </span>
-                    <ChevronDown className="size-3" />
+                    {/*<ChevronDown className="size-3" />*/}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="end" className="w-56">
@@ -1002,7 +1009,7 @@ export function MessageInput({
               <DropdownMenuTrigger asChild>
                 <button type="button" className={pillBtn}>
                   <span className="max-w-[18ch] truncate">{modelLabel}</span>
-                  <ChevronDown className="size-3" />
+                  {/*<ChevronDown className="size-3" />*/}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="end" className="w-80">
@@ -1098,7 +1105,7 @@ export function MessageInput({
                     <button
                       type="button"
                       onClick={() => setShowHiddenModels((v) => !v)}
-                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/6"
                     >
                       {showHiddenModels ? (
                         <EyeOff className="size-3" />

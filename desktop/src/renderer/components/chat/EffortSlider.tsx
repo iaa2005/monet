@@ -29,18 +29,27 @@ const LABELS = ["Off", "Minimal", "Low", "Medium", "High", "X-High", "Max"];
 
 // Fill + label tint per step: grey → blue → light purple.
 const FILL = [
-  "bg-muted-foreground/40",
+  "bg-muted-foreground",
   "bg-slate-400",
+  "bg-sky-300",
   "bg-sky-500",
-  "bg-sky-400",
   "bg-indigo-400",
   "bg-violet-400",
   "bg-fuchsia-400",
 ];
+const BGBUTTON = [
+  "hover:bg-muted-foreground/10 dark:hover:bg-muted-foreground/20 hover:cursor-pointer",
+  "hover:bg-slate-400/20 dark:hover:bg-slate-400/30 hover:cursor-pointer",
+  "hover:bg-sky-300/20 dark:hover:bg-sky-300/30 hover:cursor-pointer",
+  "hover:bg-sky-500/20 dark:hover:bg-sky-500/30 hover:cursor-pointer",
+  "hover:bg-indigo-400/20 dark:hover:bg-indigo-400/30 hover:cursor-pointer",
+  "hover:bg-violet-400/20 dark:hover:bg-violet-400/30 hover:cursor-pointer",
+  "hover:bg-fuchsia-400/20 dark:hover:bg-fuchsia-400/30 hover:cursor-pointer",
+];
 const TEXT = [
   "text-muted-foreground",
   "text-slate-500 dark:text-slate-300",
-  "text-sky-600 dark:text-sky-400",
+  "text-sky-400 dark:text-sky-300",
   "text-sky-500 dark:text-sky-400",
   "text-indigo-500 dark:text-indigo-400",
   "text-violet-500 dark:text-violet-400",
@@ -58,6 +67,11 @@ export function effortTextClass(v: EffortValue): string {
   return TEXT[stepIndex(v)];
 }
 
+/** Background colour for the current value  */
+export function effortBgClass(v: EffortValue): string {
+  return BGBUTTON[stepIndex(v)];
+}
+
 export function EffortSlider({
   value,
   onChange,
@@ -67,7 +81,7 @@ export function EffortSlider({
 }): JSX.Element {
   const idx = stepIndex(value);
   return (
-    <div className="px-1 py-0.5">
+    <div className="p-1.5">
       <div className="mb-1.5 flex items-center justify-between text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         <span>Faster</span>
         <span className={cn("normal-case", TEXT[idx])}>{LABELS[idx]}</span>
