@@ -19,11 +19,24 @@ export interface SandboxFileEntry {
   mediaType: string;
 }
 
+export interface ContextCategory {
+  key: string;
+  label: string;
+  tokens: number;
+  items?: { label: string; tokens: number }[];
+}
+
 export interface ContextBreakdown {
   budget: number;
   used: number;
   free: number;
-  categories: { key: string; label: string; tokens: number }[];
+  categories: ContextCategory[];
+  apiUsage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_input_tokens: number;
+    cache_creation_input_tokens: number;
+  } | null;
 }
 
 export interface SkillInfo {

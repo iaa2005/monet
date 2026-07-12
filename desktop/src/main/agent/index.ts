@@ -160,13 +160,30 @@ export interface ContextCategory {
   key: string;
   label: string;
   tokens: number;
+  /** Optional drill-down: the individual entries that make up this category
+   * (e.g. each tool, each MCP server, each skill). Estimated like the parent. */
+  items?: { label: string; tokens: number }[];
 }
 export interface ContextBreakdown {
   budget: number;
   used: number;
   free: number;
   categories: ContextCategory[];
+  /** Actual token usage from the last API response for this session, when the
+   * agent has run at least one turn in this process. Null for cold/old chats.
+   * When present, `used` is measured (not estimated). */
+  apiUsage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_input_tokens: number;
+    cache_creation_input_tokens: number;
+  } | null;
 }
+
+/** Last API usage seen per session, captured from message_stop in runAgent.
+ * Lets computeContextBreakdown report the REAL context total (input + cache)
+ * instead of a chars/4 estimate once a turn has completed. Process-lived. */
+const lastUsageBySession = new Map<string, LLMUsage>();
 
 /**
  * Estimate what currently fills the model's context window, by category — the
@@ -191,6 +208,10 @@ export async function computeContextBreakdown(
   let mcpToolTokens = 0;
   let skillTokens = 0;
   let memoryTokens = 0;
+  // Per-item drill-down (each tool, each MCP server, each skill).
+  const toolItems: { label: string; tokens: number }[] = [];
+  const mcpByServer = new Map<string, number>();
+  let skillItems: { label: string; tokens: number }[] = [];
   try {
     const [apiTools, basePrompt] = await Promise.all([
       getVendorApiTools(space),
@@ -204,8 +225,15 @@ export async function computeContextBreakdown(
 
     for (const t of apiTools) {
       const size = Math.ceil(JSON.stringify(t).length / 4);
-      if (t.name.startsWith("mcp__")) mcpToolTokens += size;
-      else toolTokens += size;
+      if (t.name.startsWith("mcp__")) {
+        mcpToolTokens += size;
+        // mcp__<server>__<tool> → group by server for the drill-down.
+        const server = t.name.split("__")[1] || "mcp";
+        mcpByServer.set(server, (mcpByServer.get(server) ?? 0) + size);
+      } else {
+        toolTokens += size;
+        toolItems.push({ label: t.name, tokens: size });
+      }
     }
 
     // Skills (the Skill tool's catalog) and memory (CLAUDE.md) both live INSIDE
@@ -213,12 +241,11 @@ export async function computeContextBreakdown(
     // the categories mutually exclusive and the total honest.
     try {
       const { listSkillInfos } = await import("../ipc/skills.js");
-      skillTokens = Math.ceil(
-        listSkillInfos().reduce(
-          (n, s) => n + s.name.length + s.description.length + 12,
-          0,
-        ) / 4,
-      );
+      skillItems = listSkillInfos().map((s) => ({
+        label: s.name,
+        tokens: Math.ceil((s.name.length + s.description.length + 12) / 4),
+      }));
+      skillTokens = skillItems.reduce((n, s) => n + s.tokens, 0);
     } catch {
       /* ignore */
     }
@@ -237,24 +264,78 @@ export async function computeContextBreakdown(
     /* best-effort */
   }
 
-  const used =
+  const estimatedSum =
     messageTokens +
     systemTokens +
     toolTokens +
     mcpToolTokens +
     skillTokens +
     memoryTokens;
+
+  // Real usage (input + cache) once a turn has run this process; else estimate.
+  const usage = lastUsageBySession.get(sessionId);
+  const apiUsed = usage
+    ? usage.input_tokens +
+      (usage.cache_read_input_tokens ?? 0) +
+      (usage.cache_creation_input_tokens ?? 0)
+    : undefined;
+  // The measured total usually exceeds our chars/4 estimate (exact tokenizer,
+  // tool preamble, cache framing). Surface that gap as its own line so the
+  // categories still sum to `used` and the bar stays consistent.
+  const overhead = apiUsed != null ? Math.max(0, apiUsed - estimatedSum) : 0;
+  const used = estimatedSum + overhead;
   const free = Math.max(0, budget - used);
+
+  const sortItems = (
+    xs: { label: string; tokens: number }[],
+  ): { label: string; tokens: number }[] =>
+    xs.filter((x) => x.tokens > 0).sort((a, b) => b.tokens - a.tokens);
+
+  const mcpItems = sortItems(
+    [...mcpByServer].map(([label, tokens]) => ({ label, tokens })),
+  );
+
   const categories: ContextCategory[] = [
     { key: "messages", label: "Messages", tokens: messageTokens },
     { key: "system", label: "System prompt", tokens: systemTokens },
-    { key: "tools", label: "System tools", tokens: toolTokens },
-    { key: "mcp", label: "MCP tools", tokens: mcpToolTokens },
-    { key: "skills", label: "Skills", tokens: skillTokens },
+    {
+      key: "tools",
+      label: "System tools",
+      tokens: toolTokens,
+      items: sortItems(toolItems),
+    },
+    {
+      key: "mcp",
+      label: "MCP tools",
+      tokens: mcpToolTokens,
+      items: mcpItems,
+    },
+    {
+      key: "skills",
+      label: "Skills",
+      tokens: skillTokens,
+      items: sortItems(skillItems),
+    },
     { key: "memory", label: "Memory files", tokens: memoryTokens },
+    ...(overhead > 0
+      ? [{ key: "overhead", label: "Measured overhead", tokens: overhead }]
+      : []),
     { key: "free", label: "Free space", tokens: free },
   ];
-  return { budget, used, free, categories };
+  return {
+    budget,
+    used,
+    free,
+    categories,
+    apiUsage: usage
+      ? {
+          input_tokens: usage.input_tokens,
+          output_tokens: usage.output_tokens,
+          cache_read_input_tokens: usage.cache_read_input_tokens ?? 0,
+          cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
+        }
+      : null,
+  };
 }
 
 export async function runAgent(
@@ -399,6 +480,10 @@ export async function runAgent(
       onEvent({ type: "message_stop", stop_reason: "error" });
       return;
     }
+
+    // Remember this turn's real token usage so the context meter can report the
+    // measured total (input + cache) instead of a chars/4 estimate.
+    if (lastUsage) lastUsageBySession.set(sessionId, lastUsage);
 
     // Record the assistant turn (text + tool_use blocks) so the next turn
     // and the next user message have the full context.
