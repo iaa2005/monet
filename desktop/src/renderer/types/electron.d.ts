@@ -64,6 +64,8 @@ export interface McpServerConfig {
   type?: "http" | "sse";
   url?: string;
   headers?: Record<string, string>;
+  oauthClientId?: string;
+  timeout?: number;
   enabled?: boolean;
 }
 

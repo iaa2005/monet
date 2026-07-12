@@ -28,6 +28,10 @@ export interface McpServerConfig {
   type?: "http" | "sse";
   url?: string;
   headers?: Record<string, string>;
+  /** Optional OAuth client id for a remote server (stored for future auth). */
+  oauthClientId?: string;
+  /** Per-request timeout in seconds (applied to tool calls). */
+  timeout?: number;
   /** default true */
   enabled?: boolean;
 }
@@ -108,10 +112,14 @@ async function connectServer(name: string, config: McpServerConfig): Promise<voi
       });
     } else if (config.url) {
       const url = new URL(config.url);
+      // Forward user-configured headers with every request (e.g. auth tokens).
+      const requestInit = config.headers
+        ? { headers: config.headers }
+        : undefined;
       transport =
         config.type === "sse"
-          ? new SSEClientTransport(url)
-          : new StreamableHTTPClientTransport(url);
+          ? new SSEClientTransport(url, { requestInit })
+          : new StreamableHTTPClientTransport(url, { requestInit });
     } else {
       throw new Error("Server config must have a command or a url");
     }
@@ -217,10 +225,15 @@ export async function callMcpTool(
     const tool = s.tools.find((t) => t.fullName === fullName);
     if (!tool || !s.client) continue;
     try {
-      const result = (await s.client.callTool({
-        name: tool.toolName,
-        arguments: input,
-      })) as {
+      const timeoutMs =
+        s.config.timeout && s.config.timeout > 0
+          ? s.config.timeout * 1000
+          : undefined;
+      const result = (await s.client.callTool(
+        { name: tool.toolName, arguments: input },
+        undefined,
+        timeoutMs ? { timeout: timeoutMs } : undefined,
+      )) as {
         content?: Array<{ type: string; text?: string }>;
         isError?: boolean;
       };
