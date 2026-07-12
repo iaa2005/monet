@@ -10,6 +10,7 @@ import {
   KindIcon,
   viewArtifact,
 } from "@/components/ArtifactsPanel";
+import { tr } from "zod/v4/locales";
 
 // Sandbox tool output carries one line per produced file:
 //   [sandbox-file] <mediaType> <name> :: <absolute path>
@@ -344,12 +345,14 @@ function ToolRow({
   onToggle,
   compact,
   inGroup,
+  showIcon = true,
 }: {
   toolCall: ToolCall;
   open: boolean;
   onToggle: () => void;
   compact?: boolean;
   inGroup?: boolean;
+  showIcon?: boolean;
 }): JSX.Element {
   const human = humanName(toolCall.name);
   const preview = inputPreview(toolCall.name, toolCall.input);
@@ -382,6 +385,7 @@ function ToolRow({
           compact && "py-0.5",
         )}
       >
+        {showIcon && <Wrench className="size-3.5 shrink-0 text-muted-foreground" />}
         <span className="shrink-0 text-sm font-medium text-foreground">
           {human}
         </span>
@@ -431,15 +435,22 @@ function ToolRow({
 /** Group card — header is a plain text row, expanded content appears in a bordered card. */
 function ToolGroupCard({ calls }: { calls: ToolCall[] }): JSX.Element {
   const [groupOpen, setGroupOpen] = useState(false);
-  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const [openIndices, setOpenIndices] = useState<Set<number>>(new Set());
 
   if (calls.length === 1) {
     return (
       <div>
         <ToolRow
           toolCall={calls[0]}
-          open={openIdx === 0}
-          onToggle={() => setOpenIdx((o) => (o === 0 ? null : 0))}
+          open={openIndices.has(0)}
+          onToggle={() =>
+            setOpenIndices((prev) => {
+              const next = new Set(prev);
+              if (next.has(0)) next.delete(0);
+              else next.add(0);
+              return next;
+            })
+          }
         />
       </div>
     );
@@ -471,10 +482,18 @@ function ToolGroupCard({ calls }: { calls: ToolCall[] }): JSX.Element {
               {i > 0 && <hr className="-mx-2.5 my-1.5 border-border/30" />}
               <ToolRow
                 toolCall={tc}
-                open={openIdx === i}
-                onToggle={() => setOpenIdx((o) => (o === i ? null : i))}
+                open={openIndices.has(i)}
+                onToggle={() =>
+                  setOpenIndices((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(i)) next.delete(i);
+                    else next.add(i);
+                    return next;
+                  })
+                }
                 compact
                 inGroup
+                showIcon={false}
               />
             </div>
           ))}
