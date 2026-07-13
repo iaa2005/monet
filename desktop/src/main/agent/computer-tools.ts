@@ -24,7 +24,7 @@ import {
   typeText,
 } from "../computer/input.js";
 import { getComputerConfig } from "../computer/config.js";
-import { saveArtifactBuffer } from "../ipc/artifacts.js";
+import { artifactReference, saveArtifactBuffer } from "../ipc/artifacts.js";
 
 // The scale from the most recent screenshot (model image px → DIP screen px).
 let lastScale = 1;
@@ -92,7 +92,8 @@ async function takeScreenshot(
     text:
       `${note}\n` +
       `Screen is ${shot.width}x${shot.height} px (give click coordinates in THIS space).\n` +
-      `[sandbox-file] image/png ${name} :: ${path}`,
+      `[artifact] image/png ${name} :: ${artifactReference(path)}\n` +
+      `Markdown: ![${name}](${artifactReference(path)})`,
     isError: false,
     imageBase64: shot.png.toString("base64"),
     imageMediaType: "image/png",

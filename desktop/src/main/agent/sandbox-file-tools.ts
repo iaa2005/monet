@@ -16,6 +16,7 @@ import {
   readSandboxFile,
   writeSandboxFile,
 } from "../sandbox/files.js";
+import { artifactReference } from "../ipc/artifacts.js";
 
 interface TextOutput {
   text: string;
@@ -199,7 +200,8 @@ export const SandboxWriteTool = buildTool({
       return {
         data: {
           text:
-            `[sandbox-file] ${mediaType} ${name} :: ${path}\n` +
+            `[artifact] ${mediaType} ${name} :: ${artifactReference(path)}\n` +
+            `Markdown: ![${name}](${artifactReference(path)})\n` +
             `Saved ${name} (${fmtSize(Buffer.byteLength(content, "utf-8"))}).`,
           isError: false,
         },

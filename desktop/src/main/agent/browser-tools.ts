@@ -21,7 +21,7 @@ import {
   pagePressEnter,
   pageScreenshot,
 } from "../browser/cdp.js";
-import { saveArtifactBuffer } from "../ipc/artifacts.js";
+import { artifactReference, saveArtifactBuffer } from "../ipc/artifacts.js";
 
 interface TextOutput {
   text: string;
@@ -421,7 +421,8 @@ export const BrowserScreenshotTool = buildTool({
       const path = saveArtifactBuffer(sessionId, name, bytes);
       const info = await pageInfo();
       return ok(
-        `[sandbox-file] image/png ${name} :: ${path}\n` +
+        `[artifact] image/png ${name} :: ${artifactReference(path)}\n` +
+          `Markdown: ![${name}](${artifactReference(path)})\n` +
           `Screenshot of "${info.title}" attached for the user.`,
       );
     } catch (err) {

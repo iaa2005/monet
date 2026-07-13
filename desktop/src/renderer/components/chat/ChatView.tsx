@@ -342,7 +342,9 @@ const MessageRow = memo(
                   className={cn(msg.isError && "text-destructive")}
                 >
                   {msg.content ? (
-                    <MarkdownViewer content={msg.content} />
+                    <MarkdownViewer
+                      content={msg.content}
+                    />
                   ) : null}
                 </BubbleContent>
               </Bubble>
@@ -378,10 +380,10 @@ function stripIndexes(msgs: ChatMessage[]): Map<number, ArtifactItem[]> {
       return;
     }
     lastIdx = i;
-    // Any tool whose result carries [sandbox-file] markers contributes to the
+    // Any tool whose result carries [artifact] markers contributes to the
     // turn's strip (RunPython, RunCommand, SandboxWrite, screenshots …).
     const out = m.toolCall?.output;
-    if (out && out.includes("[sandbox-file]"))
+    if (out && out.includes("[artifact]"))
       for (const f of sandboxFilesFromOutput(out, m.timestamp))
         acc.set(f.name, f);
   });

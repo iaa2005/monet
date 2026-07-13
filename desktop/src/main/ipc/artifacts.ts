@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from "fs";
 import { join, basename, resolve } from "path";
-import { getDataSubdir } from "../data-dir.js";
+import { getDataDir, getDataSubdir } from "../data-dir.js";
 
 function artifactsRoot(): string {
   const dir = getDataSubdir("artifacts");
@@ -45,6 +45,26 @@ export function saveArtifactBuffer(
 }
 
 /** Only paths inside the artifacts folder are ever read back. */
+export function artifactReference(path: string): string {
+  const root = resolve(getDataSubdir("artifacts"));
+  const absolute = resolve(path);
+  if (!absolute.startsWith(root)) throw new Error("artifact outside data folder");
+  return absolute.slice(resolve(getDataDir()).length + 1).replace(/\\/g, "/");
+}
+
+export function resolveArtifactReference(reference: string): string {
+  const root = resolve(getDataDir());
+  const path = resolve(root, reference.replace(/^file:\/\//i, ""));
+  if (!path.startsWith(root)) throw new Error("artifact outside data folder");
+  return path;
+}
+
+function artifactAbsolute(path: string): string {
+  const absolute = resolveArtifactReference(path);
+  if (!insideArtifacts(absolute)) throw new Error("outside artifacts dir");
+  return absolute;
+}
+
 function insideArtifacts(path: string): boolean {
   const root = resolve(artifactsRoot());
   return resolve(path).startsWith(root);
@@ -84,9 +104,8 @@ export function registerArtifactsIPC(): void {
       mediaType?: string,
     ): { ok: boolean; dataUrl?: string; error?: string } => {
       try {
-        if (!insideArtifacts(path))
-          return { ok: false, error: "outside artifacts dir" };
-        const buf = readFileSync(path);
+        const absolute = artifactAbsolute(path);
+        const buf = readFileSync(absolute);
         if (buf.length > 15 * 1024 * 1024)
           return { ok: false, error: "too large" };
         return {
@@ -104,7 +123,11 @@ export function registerArtifactsIPC(): void {
 
   // Open an artifact with the OS default app.
   ipcMain.handle("artifacts:open", (_e, path: string): { ok: boolean } => {
-    if (insideArtifacts(path)) void shell.openPath(path);
+    try {
+      void shell.openPath(artifactAbsolute(path));
+    } catch {
+      return { ok: false };
+    }
     return { ok: true };
   });
 
@@ -116,9 +139,8 @@ export function registerArtifactsIPC(): void {
       path: string,
     ): { ok: boolean; base64?: string; error?: string } => {
       try {
-        if (!insideArtifacts(path))
-          return { ok: false, error: "outside artifacts dir" };
-        const buf = readFileSync(path);
+        const absolute = artifactAbsolute(path);
+        const buf = readFileSync(absolute);
         if (buf.length > 40 * 1024 * 1024)
           return { ok: false, error: "File is too large to preview (40MB)" };
         return { ok: true, base64: buf.toString("base64") };
@@ -136,9 +158,8 @@ export function registerArtifactsIPC(): void {
     "artifacts:readText",
     (_e, path: string): { ok: boolean; content?: string; error?: string } => {
       try {
-        if (!insideArtifacts(path))
-          return { ok: false, error: "outside artifacts dir" };
-        const buf = readFileSync(path);
+        const absolute = artifactAbsolute(path);
+        const buf = readFileSync(absolute);
         if (buf.length > 2 * 1024 * 1024)
           return { ok: false, error: "File is too large to preview" };
         if (buf.includes(0)) return { ok: false, error: "Binary file" };
@@ -161,14 +182,14 @@ export function registerArtifactsIPC(): void {
       name?: string,
     ): Promise<{ ok: boolean; savedTo?: string; error?: string }> => {
       try {
-        if (!insideArtifacts(path) || !existsSync(path))
-          return { ok: false, error: "not found" };
+        const absolute = artifactAbsolute(path);
+        if (!existsSync(absolute)) return { ok: false, error: "not found" };
         const win = BrowserWindow.getFocusedWindow() ?? undefined;
         const res = await dialog.showSaveDialog(win!, {
-          defaultPath: name || basename(path).replace(/^\d+-/, ""),
+          defaultPath: name || basename(absolute).replace(/^\d+-/, ""),
         });
         if (res.canceled || !res.filePath) return { ok: false };
-        copyFileSync(path, res.filePath);
+        copyFileSync(absolute, res.filePath);
         return { ok: true, savedTo: res.filePath };
       } catch (err) {
         return {

@@ -13,6 +13,7 @@ import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import { runInSandbox } from "../sandbox/index.js";
+import { artifactReference } from "../ipc/artifacts.js";
 import { getSandboxConfig } from "../sandbox/config.js";
 
 // ── Per-engine prompt sections ────────────────────────────────────────────
@@ -156,10 +157,13 @@ export const RunPythonTool = buildTool({
       if (r.stderr.trim()) parts.push(`[stderr]\n${r.stderr.trimEnd()}`);
       if (r.error) parts.push(`[sandbox error] ${r.error}`);
       if (r.files.length > 0) {
-        // A machine-readable line the UI parses to render/attach files, plus a
-        // human summary the model can reference.
-        for (const f of r.files)
-          parts.push(`[sandbox-file] ${f.mediaType} ${f.name} :: ${f.path}`);
+        for (const f of r.files) {
+          const markdownPath = artifactReference(f.path);
+          parts.push(
+            `[artifact] ${f.mediaType} ${f.name} :: ${markdownPath}`,
+          );
+          parts.push(`Markdown: ![${f.name}](${markdownPath})`);
+        }
         parts.push(
           `Created ${r.files.length} file(s): ${r.files.map((f) => f.name).join(", ")}`,
         );

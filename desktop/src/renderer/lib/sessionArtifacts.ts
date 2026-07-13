@@ -4,10 +4,7 @@
  * Two groups:
  *  - Content  : input the user attached to their messages.
  *  - Artifacts: output the sandbox produced (parsed from RunPython tool results,
- *               which carry "[sandbox-file] <mime> <name> :: <path>" lines).
- *
- * `byName` lets the markdown renderer resolve an image the model embedded by
- * filename (e.g. ![chart](chart.png)) to the real on-disk artifact.
+ *               which carry "[artifact] <mime> <name> :: <path>" lines).
  */
 
 import { useMemo } from "react";
@@ -26,7 +23,7 @@ export interface ArtifactItem {
   source: "content" | "output";
 }
 
-const SANDBOX_FILE_RE = /^\[sandbox-file\]\s+(\S+)\s+(.+?)\s+::\s+(.+)$/;
+const ARTIFACT_RE = /^\[artifact\]\s+(\S+)\s+(.+?)\s+::\s+(.+)$/;
 
 export function kindOfMime(mime: string): ArtifactKind {
   if (mime.startsWith("image/")) return "image";
@@ -35,18 +32,14 @@ export function kindOfMime(mime: string): ArtifactKind {
   return "file";
 }
 
-export function baseName(p: string): string {
-  return p.split(/[/\\]/).pop() ?? p;
-}
-
-/** Files a single RunPython result produced (from its [sandbox-file] lines). */
+/** Files a single tool result produced (from its [artifact] lines). */
 export function sandboxFilesFromOutput(
   output: string,
   ts: number,
 ): ArtifactItem[] {
   const items: ArtifactItem[] = [];
   for (const line of output.split("\n")) {
-    const m = SANDBOX_FILE_RE.exec(line.trim());
+    const m = ARTIFACT_RE.exec(line.trim());
     if (m) {
       items.push({
         name: m[2],
@@ -64,7 +57,6 @@ export function sandboxFilesFromOutput(
 export interface SessionArtifacts {
   content: ArtifactItem[];
   output: ArtifactItem[];
-  byName: Map<string, ArtifactItem>;
 }
 
 export function collectArtifacts(messages: ChatMessage[]): SessionArtifacts {
@@ -83,19 +75,12 @@ export function collectArtifacts(messages: ChatMessage[]): SessionArtifacts {
         source: "content",
       });
     }
-    // Any tool whose result carries [sandbox-file] markers contributes files
-    // (RunPython, RunCommand, SandboxWrite, Computer/Browser screenshots …).
-    const out = m.toolCall?.output;
-    if (out && out.includes("[sandbox-file]"))
+      const out = m.toolCall?.output;
+    if (out && out.includes("[artifact]"))
       output.push(...sandboxFilesFromOutput(out, m.timestamp));
   }
 
-  // Newest of each name wins; output registered last so a generated file
-  // shadows a same-named input when the model references it.
-  const byName = new Map<string, ArtifactItem>();
-  for (const it of [...content, ...output]) byName.set(baseName(it.name), it);
-
-  return { content, output, byName };
+  return { content, output };
 }
 
 export function useSessionArtifacts(): SessionArtifacts {

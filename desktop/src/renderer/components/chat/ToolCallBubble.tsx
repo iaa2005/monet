@@ -24,8 +24,8 @@ import {
 import { tr } from "zod/v4/locales";
 
 // Sandbox tool output carries one line per produced file:
-//   [sandbox-file] <mediaType> <name> :: <absolute path>
-const SANDBOX_FILE_RE = /^\[sandbox-file\]\s+(\S+)\s+(.+?)\s+::\s+(.+)$/;
+//   [artifact] <mediaType> <name> :: <absolute path>
+const SANDBOX_FILE_RE = /^\[artifact\]\s+(\S+)\s+(.+?)\s+::\s+(.+)$/;
 
 function kindOfMime(mime: string): "image" | "audio" | "video" | "file" {
   if (mime.startsWith("image/")) return "image";
@@ -298,7 +298,7 @@ function ToolDetail({
           className={inGroup ? "border-none bg-transparent my-0" : ""}
         />
       )}
-      {output && output.includes("[sandbox-file]") ? (
+      {output && output.includes("[artifact]") ? (
         // Any tool that produced files (Computer/Browser screenshots, sandbox
         // writes) renders them as thumbnails instead of raw marker lines.
         <SandboxOutput output={output} inGroup={inGroup} />

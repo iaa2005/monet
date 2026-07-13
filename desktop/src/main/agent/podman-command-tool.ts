@@ -4,6 +4,7 @@ import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import { getSandboxConfig } from "../sandbox/config.js";
 import { runCommandInSandbox } from "../sandbox/index.js";
+import { artifactReference } from "../ipc/artifacts.js";
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
@@ -53,10 +54,13 @@ export const RunCommandTool = buildTool({
     if (r.stderr.trim()) parts.push(`[stderr]\n${r.stderr.trimEnd()}`);
     if (r.error) parts.push(`[sandbox error] ${r.error}`);
     if (r.files.length > 0) {
-      // Machine-readable lines the UI parses to attach files, plus a human
-      // summary — same format RunPython uses so RunCommand files show too.
-      for (const f of r.files)
-        parts.push(`[sandbox-file] ${f.mediaType} ${f.name} :: ${f.path}`);
+      for (const f of r.files) {
+        const markdownPath = artifactReference(f.path);
+        parts.push(
+          `[artifact] ${f.mediaType} ${f.name} :: ${markdownPath}`,
+        );
+        parts.push(`Markdown: ![${f.name}](${markdownPath})`);
+      }
       parts.push(
         `Created ${r.files.length} file(s): ${r.files.map((f) => f.name).join(", ")}`,
       );
