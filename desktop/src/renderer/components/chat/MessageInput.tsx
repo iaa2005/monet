@@ -969,7 +969,7 @@ export function MessageInput({
         </div>
 
         {/* Controls below the composer: actions on the left, meta on the right */}
-        <div className="mt-1.5 flex items-center justify-between gap-2 px-1">
+        <div className="mt-1.5 flex items-center justify-between gap-2 px-1 flex-wrap">
           <div className="flex items-center gap-0.5">
             <button
               type="button"
@@ -990,17 +990,6 @@ export function MessageInput({
                 setInput((prev) => (prev ? prev.trimEnd() + " " : "") + t)
               }
             />
-            {/* Code: rewind checkpoint picker — jump back to any turn. */}
-            {!isHomeSpace && hasUserTurns && (
-              <button
-                type="button"
-                title="Rewind to a checkpoint"
-                onClick={() => setPickerOpen(true)}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
-              >
-                <History className="size-4" />
-              </button>
-            )}
           </div>
 
           <div className="flex min-w-0 items-center gap-1.5">
@@ -1016,6 +1005,18 @@ export function MessageInput({
                 <Loader2 className="size-3 animate-spin" />
                 {bgRunning}
               </span>
+            )}
+
+            {/* Code: rewind checkpoint picker — jump back to any turn. */}
+            {!isHomeSpace && hasUserTurns && (
+              <button
+                type="button"
+                title="Rewind to a checkpoint"
+                onClick={() => setPickerOpen(true)}
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
+              >
+                <History className="size-4" />
+              </button>
             )}
 
             {activeModel && (
@@ -1079,7 +1080,7 @@ export function MessageInput({
                   const currentId = activeModelOf(p)?.id;
                   return (
                     <div key={p.id}>
-                      <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      <DropdownMenuLabel className="text-xs text-muted-foreground py-0.5 px-2 bg-accent w-fit rounded-full my-0.5">
                         {p.name}
                       </DropdownMenuLabel>
                       {visible.map((m) => (

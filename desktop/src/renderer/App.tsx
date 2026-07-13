@@ -431,13 +431,20 @@ export default function App(): JSX.Element {
         await api()?.sessions.deleteById(id);
         useChatStore.getState().bumpSessions();
         if (id === currentSessionId) {
-          await newSession();
+          // Clear the active session without spawning a replacement —
+          // creating a new empty row for every deletion is what left
+          // orphan "New session" entries behind when the user tried to
+          // clean up the list.
+          useChatStore.getState().clearMessages();
+          useChatStore.getState().setCurrentSessionId(undefined);
+          setCurrentSessionId(undefined);
+          setSessionTitle("New session");
         }
       } catch (err) {
         console.error("Failed to delete session:", err);
       }
     },
-    [currentSessionId, newSession],
+    [currentSessionId],
   );
 
   const toggleRight = (tab: Exclude<RightTab, null>): void =>

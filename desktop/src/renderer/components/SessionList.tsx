@@ -196,6 +196,10 @@ export function SessionList({
                   "group relative flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
                   active && "bg-black/[0.06] dark:bg-white/[0.08]",
                 )}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setOpenMenuId(menuOpen ? null : s.id);
+                }}
               >
                 <div
                   className="flex min-w-0 flex-1 items-center gap-2"
