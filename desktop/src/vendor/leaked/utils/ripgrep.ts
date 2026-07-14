@@ -56,10 +56,14 @@ const getRipgrepConfig = memoize((): RipgrepConfig => {
   }
 
   const rgRoot = path.resolve(__dirname, 'vendor', 'ripgrep')
-  const command =
+  const command = (
     process.platform === 'win32'
       ? path.resolve(rgRoot, `${process.arch}-win32`, 'rg.exe')
       : path.resolve(rgRoot, `${process.arch}-${process.platform}`, 'rg')
+  )
+    // Packaged Electron: executables can't be spawned from inside app.asar —
+    // electron-builder unpacks vendor/ripgrep next to it (asarUnpack).
+    .replace(/app\.asar([\\/])/, 'app.asar.unpacked$1')
 
   return { mode: 'builtin', command, args: [] }
 })

@@ -4,6 +4,10 @@ directories:
   output: release
 files:
   - out/**/*
+# Native binaries can't be spawned from inside app.asar — keep them on disk
+# (spawn paths swap app.asar → app.asar.unpacked at runtime).
+asarUnpack:
+  - out/main/vendor/ripgrep/**
 win:
   target: nsis
   icon: build/icon.ico
