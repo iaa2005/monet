@@ -7,39 +7,13 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Globe, MonitorSmartphone, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
-function Toggle({
-  on,
-  onChange,
-}: {
-  on: boolean;
-  onChange: (v: boolean) => void;
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      onClick={() => onChange(!on)}
-      className={cn(
-        "relative h-5 w-9 shrink-0 rounded-full transition-colors",
-        on ? "bg-emerald-500" : "bg-black/[0.15] dark:bg-white/[0.2]",
-      )}
-    >
-      <span
-        className={cn(
-          "absolute top-0.5 size-4 rounded-full bg-white shadow transition-all",
-          on ? "left-[18px]" : "left-0.5",
-        )}
-      />
-    </button>
-  );
-}
 
 export function AutomationSettings(): JSX.Element {
   const [browserOn, setBrowserOn] = useState(false);
@@ -99,7 +73,7 @@ export function AutomationSettings(): JSX.Element {
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm font-medium">Browser Use</span>
-              <Toggle on={browserOn} onChange={toggleBrowser} />
+              <Switch checked={browserOn} onChange={toggleBrowser} />
             </div>
             <p className="mt-1 text-[13px] text-muted-foreground">
               The agent can open and drive a separate Chrome/Edge window
@@ -129,7 +103,7 @@ export function AutomationSettings(): JSX.Element {
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm font-medium">Computer Use</span>
-              <Toggle on={computerOn} onChange={toggleComputer} />
+              <Switch checked={computerOn} onChange={toggleComputer} />
             </div>
             <p className="mt-1 text-[13px] text-muted-foreground">
               The agent can take screenshots of your screen and control your

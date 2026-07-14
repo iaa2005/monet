@@ -245,6 +245,7 @@ export interface ElectronAPI {
       peakHour: number | null;
       approxTokens: number;
       perDay: { date: string; count: number }[];
+      perDayMinutes: { date: string; minutes: number }[];
     }>;
   };
   settings: {
@@ -279,11 +280,12 @@ export interface ElectronAPI {
     ) => Promise<{ ok: boolean; skill?: SkillInfo; error?: string }>;
   };
   memory: {
-    getConfig: () => Promise<{ searchChats: boolean; generateMemory: boolean }>;
+    getConfig: () => Promise<{ searchChats: boolean; generateMemory: boolean; extractEveryMinutes: number }>;
     setConfig: (patch: {
       searchChats?: boolean;
       generateMemory?: boolean;
-    }) => Promise<{ searchChats: boolean; generateMemory: boolean }>;
+      extractEveryMinutes?: number;
+    }) => Promise<{ searchChats: boolean; generateMemory: boolean; extractEveryMinutes: number }>;
     list: () => Promise<MemoryFileInfo[]>;
     read: (id: string) => Promise<{
       ok: boolean;
@@ -298,6 +300,24 @@ export interface ElectronAPI {
     ) => Promise<{ ok: boolean; error?: string }>;
     deleteById: (id: string) => Promise<{ ok: boolean }>;
     addNote: (note: string) => Promise<{ ok: boolean; applied: string[] }>;
+  };
+  profile: {
+    get: () => Promise<{
+      name: string;
+      about: string;
+      avatarDataUrl: string | null;
+    }>;
+    set: (patch: {
+      name?: string;
+      about?: string;
+    }) => Promise<{ name: string; about: string }>;
+    setAvatarFile: (path: string) => Promise<{ ok: boolean; error?: string }>;
+    setAvatarUrl: (url: string) => Promise<{ ok: boolean; error?: string }>;
+    gallery: () => Promise<{
+      ok: boolean;
+      items?: { url: string; dataUrl: string }[];
+      error?: string;
+    }>;
   };
   reflect: {
     digest: (

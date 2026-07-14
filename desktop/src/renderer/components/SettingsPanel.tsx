@@ -21,6 +21,7 @@ import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { SkillsSettings } from "@/components/settings/SkillsSettings";
 import { AgentsSettings } from "@/components/settings/AgentsSettings";
 import { MemorySettings } from "@/components/settings/MemorySettings";
+import { ProfileSection } from "@/components/settings/ProfileSection";
 import { ReflectSettings } from "@/components/settings/ReflectSettings";
 import { ConnectorsSettings } from "@/components/settings/ConnectorsSettings";
 import { AutomationSettings } from "@/components/settings/AutomationSettings";
@@ -354,6 +355,7 @@ function GeneralSection({
 }): JSX.Element {
   return (
     <div className="space-y-8">
+      <ProfileSection />
       <section>
         <h3 className="text-base font-semibold">Appearance</h3>
         <p className="mt-0.5 text-sm text-muted-foreground">

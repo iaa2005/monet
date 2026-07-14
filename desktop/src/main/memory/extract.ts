@@ -16,7 +16,6 @@ import {
   writeMemoryFile,
 } from "./store.js";
 
-const THROTTLE_MS = 3 * 60 * 1000;
 const lastRun = new Map<string, number>();
 
 const SYSTEM = `You maintain the user's long-term memory for an AI assistant.
@@ -122,12 +121,14 @@ export async function maybeExtractMemory(
   conversationText: string | null,
 ): Promise<void> {
   try {
-    if (!getMemoryConfig().generateMemory) return;
+    const cfg = getMemoryConfig();
+    if (!cfg.generateMemory) return;
     if (!sessionId || sessionId === "default" || sessionId.startsWith("incognito-"))
       return;
     if (!conversationText || conversationText.length < 200) return;
     const now = Date.now();
-    if (now - (lastRun.get(sessionId) ?? 0) < THROTTLE_MS) return;
+    if (now - (lastRun.get(sessionId) ?? 0) < cfg.extractEveryMinutes * 60_000)
+      return;
     lastRun.set(sessionId, now);
     await runExtraction(conversationText);
   } catch {

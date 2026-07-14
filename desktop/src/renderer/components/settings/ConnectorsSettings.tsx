@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Plug, RefreshCw, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 import type {
   ElectronAPI,
   McpServerConfig,
@@ -450,15 +451,10 @@ export function ConnectorsSettings(): JSX.Element {
                   </div>
                 )}
               </div>
-              <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={s.config.enabled !== false}
-                  onChange={(e) => toggle(s.name, e.target.checked)}
-                  className="accent-foreground"
-                />
-                Enabled
-              </label>
+              <Switch
+                checked={s.config.enabled !== false}
+                onChange={(v) => void toggle(s.name, v)}
+              />
               <button
                 type="button"
                 onClick={() => remove(s.name)}

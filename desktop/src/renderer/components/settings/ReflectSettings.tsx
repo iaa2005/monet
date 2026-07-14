@@ -16,6 +16,7 @@ interface Stats {
   sessions: number;
   peakHour: number | null;
   perDay: { date: string; count: number }[];
+  perDayMinutes: { date: string; minutes: number }[];
 }
 
 const PALETTE = ["#a84b2a", "#c47a52", "#d9a380", "#ecc9ad", "#f4e2d0"];
@@ -41,28 +42,52 @@ function fmtHour(h: number | null): string {
   return `${hr} ${ampm}`;
 }
 
-function ActivityChart({ perDay }: { perDay: Stats["perDay"] }): JSX.Element {
+/** Line chart with LABELLED dashed gridlines — every dash row says what value
+ * it sits at (hours for time, messages for conversations). */
+function ActivityChart({
+  points,
+  unit,
+}: {
+  points: { date: string; value: number }[];
+  unit: "h" | "msgs";
+}): JSX.Element {
   const W = 640;
-  const H = 130;
-  const max = Math.max(1, ...perDay.map((d) => d.count));
-  const pts = perDay.map((d, i) => {
-    const x = perDay.length > 1 ? (i / (perDay.length - 1)) * (W - 8) + 4 : W / 2;
-    const y = H - 14 - (d.count / max) * (H - 34);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  const H = 140;
+  const PAD_L = 34;
+  const max = Math.max(1, ...points.map((d) => d.value));
+  const fmtVal = (v: number): string =>
+    unit === "h" ? `${(v / 60).toFixed(v >= 60 ? 0 : 1)}h` : String(Math.round(v));
+  const y = (v: number): number => H - 16 - (v / max) * (H - 40);
+  const pts = points.map((d, i) => {
+    const x =
+      points.length > 1
+        ? PAD_L + (i / (points.length - 1)) * (W - PAD_L - 6)
+        : W / 2;
+    return `${x.toFixed(1)},${y(d.value).toFixed(1)}`;
   });
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
       {[0.25, 0.5, 0.75, 1].map((t) => (
-        <line
-          key={t}
-          x1={4}
-          x2={W - 4}
-          y1={H - 14 - t * (H - 34)}
-          y2={H - 14 - t * (H - 34)}
-          className="stroke-border"
-          strokeDasharray="2 4"
-          strokeWidth={0.6}
-        />
+        <g key={t}>
+          <line
+            x1={PAD_L}
+            x2={W - 4}
+            y1={y(max * t)}
+            y2={y(max * t)}
+            className="stroke-border"
+            strokeDasharray="2 4"
+            strokeWidth={0.6}
+          />
+          <text
+            x={PAD_L - 5}
+            y={y(max * t) + 3}
+            textAnchor="end"
+            className="fill-muted-foreground"
+            fontSize={9}
+          >
+            {fmtVal(max * t)}
+          </text>
+        </g>
       ))}
       {pts.length > 1 && (
         <polyline
@@ -73,14 +98,17 @@ function ActivityChart({ perDay }: { perDay: Stats["perDay"] }): JSX.Element {
           strokeLinejoin="round"
         />
       )}
-      <text x={4} y={H - 2} className="fill-muted-foreground" fontSize={9}>
-        {perDay[0]?.date ?? ""}
+      <text x={PAD_L} y={H - 3} className="fill-muted-foreground" fontSize={9}>
+        {points[0]?.date ?? ""}
       </text>
-      <text x={W - 4} y={H - 2} textAnchor="end" className="fill-muted-foreground" fontSize={9}>
-        {perDay[perDay.length - 1]?.date ?? ""}
-      </text>
-      <text x={4} y={10} className="fill-muted-foreground" fontSize={9}>
-        {max}
+      <text
+        x={W - 4}
+        y={H - 3}
+        textAnchor="end"
+        className="fill-muted-foreground"
+        fontSize={9}
+      >
+        {points[points.length - 1]?.date ?? ""}
       </text>
     </svg>
   );
@@ -95,6 +123,7 @@ const SKILL_ORDER = [
 
 export function ReflectSettings(): JSX.Element {
   const [days, setDays] = useState(30);
+  const [chartMode, setChartMode] = useState<"time" | "msgs">("time");
   const [stats, setStats] = useState<Stats | null>(null);
   const [digest, setDigest] = useState<ReflectDigest | null>(null);
   const [loading, setLoading] = useState(false);
@@ -192,11 +221,46 @@ export function ReflectSettings(): JSX.Element {
           </div>
 
           <div className="mt-7">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Your time with Claude
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Your time with Claude
+              </div>
+              <div className="flex gap-0.5 rounded-lg bg-black/[0.04] p-0.5 dark:bg-white/[0.05]">
+                {(["time", "msgs"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setChartMode(m)}
+                    className={cn(
+                      "rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
+                      chartMode === m
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {m === "time" ? "Time spent" : "Messages"}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="mt-2 rounded-xl border border-border p-3">
-              <ActivityChart perDay={stats.perDay} />
+              {chartMode === "time" ? (
+                <ActivityChart
+                  points={stats.perDayMinutes.map((d) => ({
+                    date: d.date,
+                    value: d.minutes,
+                  }))}
+                  unit="h"
+                />
+              ) : (
+                <ActivityChart
+                  points={stats.perDay.map((d) => ({
+                    date: d.date,
+                    value: d.count,
+                  }))}
+                  unit="msgs"
+                />
+              )}
             </div>
           </div>
         </>

@@ -30,6 +30,7 @@ import {
 import { dropSessionContext, initVendorRuntime } from "./vendor-context.js";
 import { drainBgResults } from "./bg-agents.js";
 import { buildMemoryPrompt } from "../memory/store.js";
+import { getProfilePrompt } from "../profile.js";
 
 /** Prepend finished background-agent reports to the user turn as context. */
 function mergeBackgroundResults(
@@ -79,8 +80,8 @@ async function buildSystemPrompt(
 /** Append the user's long-term memory files (Settings → Memory) to the prompt. */
 function withUserMemory(prompt: string): string {
   try {
-    const mem = buildMemoryPrompt();
-    return mem ? `${prompt}\n\n${mem}` : prompt;
+    const extra = [getProfilePrompt(), buildMemoryPrompt()].filter(Boolean);
+    return extra.length ? `${prompt}\n\n${extra.join("\n\n")}` : prompt;
   } catch {
     return prompt;
   }

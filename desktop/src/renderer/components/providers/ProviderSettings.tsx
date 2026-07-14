@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 import {
   useProviderStore,
   activeModelOf,
@@ -355,13 +356,10 @@ function ProviderModal({
                   </div>
 
                   <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px] text-muted-foreground">
-                    <input
-                      type="checkbox"
+                    <Switch
+                      className="h-5 w-9 [&>span]:size-4"
                       checked={m.supportsEffort ?? false}
-                      onChange={(e) =>
-                        patchModel(m.id, { supportsEffort: e.target.checked })
-                      }
-                      className="size-3.5 accent-foreground"
+                      onChange={(v) => patchModel(m.id, { supportsEffort: v })}
                     />
                     Supports reasoning effort — shows the composer's Faster↔Smarter
                     control

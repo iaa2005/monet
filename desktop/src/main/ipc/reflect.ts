@@ -25,11 +25,6 @@ export interface ReflectDigest {
   };
 }
 
-interface CacheShape {
-  key: string;
-  digest: ReflectDigest;
-}
-
 const cacheFile = (): string => join(getDataDir(), "reflect-cache.json");
 
 const SYSTEM = `You write a reflective monthly digest of a user's AI-assistant sessions, in the USER'S language (detect it from the chat titles).
@@ -95,24 +90,26 @@ export function registerReflectIPC(): void {
       force?: boolean,
     ): Promise<{ ok: boolean; digest?: ReflectDigest; error?: string }> => {
       try {
-        const store = getSessionStore();
-        const all = store.list(300, 0);
-        const since = Date.now() - days * 86_400_000;
-        const inRange = all.filter(
-          (s) => new Date(s.updatedAt).getTime() >= since,
-        );
-        const latest = inRange[0]?.updatedAt ?? "";
-        const key = `${days}:${inRange.length}:${latest}`;
-        if (!force && existsSync(cacheFile())) {
+        // Persist per range and reuse for 24h — reopening Settings must NOT
+        // regenerate (active chats change constantly). Refresh = force.
+        type Entries = Record<string, { at: number; digest: ReflectDigest }>;
+        let entries: Entries = {};
+        if (existsSync(cacheFile())) {
           try {
-            const c = JSON.parse(readFileSync(cacheFile(), "utf-8")) as CacheShape;
-            if (c.key === key) return { ok: true, digest: c.digest };
+            const c = JSON.parse(readFileSync(cacheFile(), "utf-8")) as {
+              entries?: Entries;
+            };
+            entries = c.entries ?? {};
           } catch {
             /* regenerate */
           }
         }
+        const hit = entries[String(days)];
+        if (!force && hit && Date.now() - hit.at < 24 * 3_600_000)
+          return { ok: true, digest: hit.digest };
         const digest = await generateDigest(days);
-        writeFileSync(cacheFile(), JSON.stringify({ key, digest } satisfies CacheShape));
+        entries[String(days)] = { at: Date.now(), digest };
+        writeFileSync(cacheFile(), JSON.stringify({ entries }));
         return { ok: true, digest };
       } catch (err) {
         return {

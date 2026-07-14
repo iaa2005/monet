@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from "react";
 import { ArrowUp, Trash2, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 import type { ElectronAPI, MemoryFileInfo } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -19,34 +19,6 @@ function agoOf(ms: number): string {
   if (h < 24) return `${h} hour${h > 1 ? "s" : ""} ago`;
   const days = Math.round(h / 24);
   return `${days} day${days > 1 ? "s" : ""} ago`;
-}
-
-function Toggle({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={cn(
-        "relative h-6 w-10 shrink-0 rounded-full transition-colors",
-        checked ? "bg-primary" : "bg-black/[0.15] dark:bg-white/[0.2]",
-      )}
-    >
-      <span
-        className={cn(
-          "absolute top-0.5 size-5 rounded-full bg-white shadow transition-all",
-          checked ? "left-[18px]" : "left-0.5",
-        )}
-      />
-    </button>
-  );
 }
 
 function EditMemoryModal({
@@ -156,7 +128,11 @@ const SECTIONS: { key: MemoryFileInfo["section"]; label: string }[] = [
 ];
 
 export function MemorySettings(): JSX.Element {
-  const [config, setConfig] = useState({ searchChats: true, generateMemory: true });
+  const [config, setConfig] = useState({
+    searchChats: true,
+    generateMemory: true,
+    extractEveryMinutes: 3,
+  });
   const [files, setFiles] = useState<MemoryFileInfo[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -211,7 +187,7 @@ export function MemorySettings(): JSX.Element {
             (adds the SearchPastChats tool).
           </p>
         </div>
-        <Toggle
+        <Switch
           checked={config.searchChats}
           onChange={(v) => void toggle("searchChats", v)}
         />
@@ -225,11 +201,34 @@ export function MemorySettings(): JSX.Element {
             projects, workflows) into the memory files below.
           </p>
         </div>
-        <Toggle
+        <Switch
           checked={config.generateMemory}
           onChange={(v) => void toggle("generateMemory", v)}
         />
       </div>
+
+      {config.generateMemory && (
+        <div className="mt-3 flex items-center justify-between gap-4 pl-4">
+          <span className="text-sm text-muted-foreground">
+            Run extraction at most once per…
+          </span>
+          <select
+            value={config.extractEveryMinutes}
+            onChange={(e) =>
+              void api()
+                ?.memory.setConfig({ extractEveryMinutes: Number(e.target.value) })
+                .then((next) => next && setConfig(next))
+            }
+            className="rounded-lg border border-border bg-background px-2 py-1 text-sm outline-none"
+          >
+            {[1, 3, 10, 30, 60].map((m) => (
+              <option key={m} value={m}>
+                {m} min
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-4">
         {SECTIONS.map(({ key, label }) => {

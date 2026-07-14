@@ -65,6 +65,8 @@ export interface StatsResult {
   peakHour: number | null;
   approxTokens: number;
   perDay: { date: string; count: number }[];
+  /** Estimated active minutes per day (distinct 10-minute buckets with activity). */
+  perDayMinutes: { date: string; minutes: number }[];
 }
 
 interface SessionRow {
@@ -437,6 +439,8 @@ export class SessionStore {
 
     const sessionIds = new Set<string>();
     const dayCounts = new Map<string, number>();
+    // Active time ≈ distinct 10-minute buckets that saw at least one message.
+    const dayBuckets = new Map<string, Set<number>>();
     const hourCounts = new Array<number>(24).fill(0);
     let approxTokens = 0;
     let userMessages = 0;
@@ -450,6 +454,10 @@ export class SessionStore {
         (dayCounts.get(localDay(r.timestamp)) ?? 0) + 1,
       );
       hourCounts[new Date(r.timestamp).getHours()]++;
+      const day = localDay(r.timestamp);
+      const set = dayBuckets.get(day) ?? new Set<number>();
+      set.add(Math.floor(r.timestamp / 600000));
+      dayBuckets.set(day, set);
     }
 
     const days = [...dayCounts.keys()].sort();
@@ -490,6 +498,10 @@ export class SessionStore {
       peakHour,
       approxTokens,
       perDay: days.map((date) => ({ date, count: dayCounts.get(date) ?? 0 })),
+      perDayMinutes: days.map((date) => ({
+        date,
+        minutes: (dayBuckets.get(date)?.size ?? 0) * 10,
+      })),
     };
   }
 }

@@ -253,12 +253,13 @@ const electronAPI = {
   },
 
   memory: {
-    getConfig: (): Promise<{ searchChats: boolean; generateMemory: boolean }> =>
+    getConfig: (): Promise<{ searchChats: boolean; generateMemory: boolean; extractEveryMinutes: number }> =>
       ipcRenderer.invoke("memory:getConfig"),
     setConfig: (patch: {
       searchChats?: boolean;
       generateMemory?: boolean;
-    }): Promise<{ searchChats: boolean; generateMemory: boolean }> =>
+      extractEveryMinutes?: number;
+    }): Promise<{ searchChats: boolean; generateMemory: boolean; extractEveryMinutes: number }> =>
       ipcRenderer.invoke("memory:setConfig", patch),
     list: (): Promise<unknown[]> => ipcRenderer.invoke("memory:list"),
     read: (
@@ -279,6 +280,28 @@ const electronAPI = {
       ipcRenderer.invoke("memory:delete", id),
     addNote: (note: string): Promise<{ ok: boolean; applied: string[] }> =>
       ipcRenderer.invoke("memory:addNote", note),
+  },
+
+  profile: {
+    get: (): Promise<{
+      name: string;
+      about: string;
+      avatarDataUrl: string | null;
+    }> => ipcRenderer.invoke("profile:get"),
+    set: (patch: {
+      name?: string;
+      about?: string;
+    }): Promise<{ name: string; about: string }> =>
+      ipcRenderer.invoke("profile:set", patch),
+    setAvatarFile: (path: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("profile:setAvatarFile", path),
+    setAvatarUrl: (url: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("profile:setAvatarUrl", url),
+    gallery: (): Promise<{
+      ok: boolean;
+      items?: { url: string; dataUrl: string }[];
+      error?: string;
+    }> => ipcRenderer.invoke("profile:gallery"),
   },
 
   reflect: {

@@ -24,6 +24,8 @@ import { getDataDir } from "../data-dir.js";
 export interface MemoryConfig {
   searchChats: boolean;
   generateMemory: boolean;
+  /** Auto-extraction runs at most once per this many minutes per chat. */
+  extractEveryMinutes: number;
 }
 
 export interface MemoryFileInfo {
@@ -51,12 +53,15 @@ function configFile(): string {
 export function getMemoryConfig(): MemoryConfig {
   try {
     const j = JSON.parse(readFileSync(configFile(), "utf-8")) as Partial<MemoryConfig>;
+    const mins = Number(j.extractEveryMinutes);
     return {
       searchChats: j.searchChats !== false,
       generateMemory: j.generateMemory !== false,
+      extractEveryMinutes:
+        Number.isFinite(mins) && mins >= 1 ? Math.min(mins, 240) : 3,
     };
   } catch {
-    return { searchChats: true, generateMemory: true };
+    return { searchChats: true, generateMemory: true, extractEveryMinutes: 3 };
   }
 }
 
