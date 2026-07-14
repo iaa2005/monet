@@ -231,6 +231,155 @@ export async function pageScreenshot(): Promise<Uint8Array> {
   return Buffer.from(r.data, "base64");
 }
 
+// ─── Human-like trusted input ─────────────────────────────────────────────
+// Anti-bot systems flag pages that receive clicks with no pointer trail,
+// instant value fills, and zero inter-event latency. These helpers drive the
+// page through CDP Input.dispatch* (trusted events) with human pacing: the
+// mouse travels a slightly curved, eased path; typing is per-key with jitter;
+// scrolling arrives as several wheel ticks.
+
+const rand = (min: number, max: number): number =>
+  min + Math.random() * (max - min);
+const sleep = (ms: number): Promise<void> =>
+  new Promise((r) => setTimeout(r, ms));
+const humanPause = (min: number, max: number): Promise<void> =>
+  sleep(Math.round(rand(min, max)));
+
+// The virtual cursor persists between actions so every movement starts where
+// the previous one ended (a teleporting cursor is itself a bot signal).
+let mouseX = 0;
+let mouseY = 0;
+let mouseSeeded = false;
+
+async function viewport(): Promise<{ w: number; h: number }> {
+  try {
+    const v = await pageEvaluate(
+      "JSON.stringify({w: innerWidth, h: innerHeight})",
+    );
+    const p = JSON.parse(v) as { w?: number; h?: number };
+    return { w: p.w || 1280, h: p.h || 800 };
+  } catch {
+    return { w: 1280, h: 800 };
+  }
+}
+
+/** Move the mouse to (x, y) along a curved, eased path with jitter. */
+export async function pageMoveMouse(x: number, y: number): Promise<void> {
+  const { c, sid } = await ensurePage();
+  if (!mouseSeeded) {
+    const { w, h } = await viewport();
+    mouseX = rand(w * 0.2, w * 0.8);
+    mouseY = rand(h * 0.2, h * 0.8);
+    mouseSeeded = true;
+  }
+  const dx = x - mouseX;
+  const dy = y - mouseY;
+  const dist = Math.hypot(dx, dy);
+  const steps = Math.max(6, Math.min(22, Math.round(dist / 40)));
+  // A control point off the straight line makes the path a shallow arc.
+  const bend = Math.min(80, dist * 0.25) * (Math.random() < 0.5 ? -1 : 1);
+  const cx = mouseX + dx * 0.5 - (dy / (dist || 1)) * bend;
+  const cy = mouseY + dy * 0.5 + (dx / (dist || 1)) * bend;
+  const startX = mouseX;
+  const startY = mouseY;
+  for (let i = 1; i <= steps; i++) {
+    const t0 = i / steps;
+    // Ease in-out: slow start, fast middle, slow arrival.
+    const t = t0 < 0.5 ? 2 * t0 * t0 : 1 - Math.pow(-2 * t0 + 2, 2) / 2;
+    const px =
+      (1 - t) * (1 - t) * startX + 2 * (1 - t) * t * cx + t * t * x +
+      (i < steps ? rand(-1.5, 1.5) : 0);
+    const py =
+      (1 - t) * (1 - t) * startY + 2 * (1 - t) * t * cy + t * t * y +
+      (i < steps ? rand(-1.5, 1.5) : 0);
+    await c.send(
+      "Input.dispatchMouseEvent",
+      { type: "mouseMoved", x: px, y: py, button: "none" },
+      sid,
+    );
+    await humanPause(8, 26);
+  }
+  mouseX = x;
+  mouseY = y;
+}
+
+/** Human click: travel to the point, hover briefly, press, release. */
+export async function pageClickAt(x: number, y: number): Promise<void> {
+  const { c, sid } = await ensurePage();
+  await pageMoveMouse(x, y);
+  await humanPause(70, 220);
+  const base = { x, y, button: "left", clickCount: 1 };
+  await c.send(
+    "Input.dispatchMouseEvent",
+    { ...base, type: "mousePressed", buttons: 1 },
+    sid,
+  );
+  await humanPause(45, 130);
+  await c.send(
+    "Input.dispatchMouseEvent",
+    { ...base, type: "mouseReleased", buttons: 0 },
+    sid,
+  );
+}
+
+/** Type text with real per-key events and human inter-key latency. */
+export async function pageTypeText(text: string): Promise<void> {
+  const { c, sid } = await ensurePage();
+  for (const ch of text) {
+    const upper = ch.toUpperCase().charCodeAt(0);
+    const isAlnum = /[a-z0-9]/i.test(ch);
+    const vk = isAlnum ? { windowsVirtualKeyCode: upper, nativeVirtualKeyCode: upper } : {};
+    if (ch === "\n") {
+      await pagePressEnter();
+    } else {
+      await c.send(
+        "Input.dispatchKeyEvent",
+        { type: "keyDown", text: ch, key: ch, ...vk },
+        sid,
+      );
+      await c.send(
+        "Input.dispatchKeyEvent",
+        { type: "keyUp", key: ch, ...vk },
+        sid,
+      );
+    }
+    // Humans type unevenly; word boundaries get a slightly longer beat.
+    await humanPause(30, 110);
+    if (ch === " " || ch === "." || ch === ",") await humanPause(20, 90);
+  }
+}
+
+/** Scroll with several wheel ticks (positive deltaY scrolls down). */
+export async function pageScrollWheel(totalDeltaY: number): Promise<void> {
+  const { c, sid } = await ensurePage();
+  if (!mouseSeeded) {
+    const { w, h } = await viewport();
+    mouseX = rand(w * 0.3, w * 0.7);
+    mouseY = rand(h * 0.3, h * 0.7);
+    mouseSeeded = true;
+  }
+  const chunks = Math.max(3, Math.min(6, Math.round(Math.abs(totalDeltaY) / 250)));
+  let remaining = totalDeltaY;
+  for (let i = 0; i < chunks; i++) {
+    const part =
+      i === chunks - 1 ? remaining : Math.round((totalDeltaY / chunks) * rand(0.75, 1.25));
+    remaining -= part;
+    await c.send(
+      "Input.dispatchMouseEvent",
+      {
+        type: "mouseWheel",
+        x: mouseX,
+        y: mouseY,
+        deltaX: 0,
+        deltaY: part,
+        button: "none",
+      },
+      sid,
+    );
+    await humanPause(40, 120);
+  }
+}
+
 export async function pagePressEnter(): Promise<void> {
   const { c, sid } = await ensurePage();
   const base = {

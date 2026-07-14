@@ -15,12 +15,49 @@ import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import {
+  pageClickAt,
   pageEvaluate,
   pageInfo,
   pageNavigate,
   pagePressEnter,
   pageScreenshot,
+  pageScrollWheel,
+  pageTypeText,
 } from "../browser/cdp.js";
+
+/** Element viewport rect (post scroll-into-view), or null when unresolvable. */
+async function refRect(
+  ref: string,
+): Promise<{ x: number; y: number; w: number; h: number } | null> {
+  const raw = await pageEvaluate(`
+    (() => {
+      const el = document.querySelector('[data-monet-ref=${JSON.stringify(ref)}]');
+      if (!el) return 'STALE';
+      el.scrollIntoView({ block: 'center' });
+      const r = el.getBoundingClientRect();
+      return JSON.stringify({ x: r.x, y: r.y, w: r.width, h: r.height });
+    })()
+  `);
+  if (raw.includes("STALE")) return null;
+  try {
+    const r = JSON.parse(raw.startsWith('"') ? (JSON.parse(raw) as string) : raw) as {
+      x: number; y: number; w: number; h: number;
+    };
+    return r;
+  } catch {
+    return null;
+  }
+}
+
+/** A human doesn't hit the exact centre — aim inside the middle ~50% box. */
+function jitteredPoint(r: { x: number; y: number; w: number; h: number }): {
+  x: number;
+  y: number;
+} {
+  const jx = (Math.random() - 0.5) * Math.min(r.w * 0.5, 60);
+  const jy = (Math.random() - 0.5) * Math.min(r.h * 0.5, 24);
+  return { x: r.x + r.w / 2 + jx, y: r.y + r.h / 2 + jy };
+}
 import { artifactReference, saveArtifactBuffer } from "../ipc/artifacts.js";
 
 interface TextOutput {
@@ -225,22 +262,29 @@ export const BrowserClickTool = buildTool({
   },
   async call({ ref }: z.infer<ClickSchema>) {
     try {
-      const result = await pageEvaluate(`
-        (() => {
-          const el = document.querySelector('[data-monet-ref=${JSON.stringify(ref)}]');
-          if (!el) return 'STALE';
-          el.scrollIntoView({ block: 'center' });
-          el.click();
-          return 'OK';
-        })()
-      `);
-      if (result.includes("STALE"))
+      const rect = await refRect(ref);
+      if (!rect)
         return {
           data: {
             text: `Ref ${ref} not found — the page changed. Call BrowserReadPage again.`,
             isError: true,
           },
         };
+      if (rect.w > 1 && rect.h > 1) {
+        // Real, human-paced mouse events (trusted input, pointer trail).
+        await new Promise((r) => setTimeout(r, 150 + Math.random() * 250));
+        const p = jitteredPoint(rect);
+        await pageClickAt(p.x, p.y);
+      } else {
+        // Invisible/zero-size target — fall back to a synthetic click.
+        await pageEvaluate(`
+          (() => {
+            const el = document.querySelector('[data-monet-ref=${JSON.stringify(ref)}]');
+            if (el) el.click();
+            return 'OK';
+          })()
+        `);
+      }
       await new Promise((r) => setTimeout(r, 600)); // let the page react
       const info = await pageInfo();
       return ok(`Clicked ${ref}. Now on "${info.title}" — ${info.url}`);
@@ -285,41 +329,58 @@ export const BrowserTypeTool = buildTool({
     return false;
   },
   async prompt() {
-    return "Set the value of an input/textarea by ref (React-compatible: native setter + input event). Pass submit=true to press Enter afterwards.";
+    return "Type into an input/textarea by ref with real, human-paced key events (clicks the field first, clears it, then types). Pass submit=true to press Enter afterwards.";
   },
   async description() {
     return "Type text into a page input by ref (optionally submit).";
   },
   async call({ ref, text, submit }: z.infer<TypeSchema>) {
     try {
-      const result = await pageEvaluate(`
-        (() => {
-          const el = document.querySelector('[data-monet-ref=${JSON.stringify(ref)}]');
-          if (!el) return 'STALE';
-          el.focus();
-          if (el.isContentEditable) {
-            el.textContent = ${JSON.stringify(text)};
-          } else {
-            const proto = el.tagName === 'TEXTAREA'
-              ? HTMLTextAreaElement.prototype
-              : HTMLInputElement.prototype;
-            const setter = Object.getOwnPropertyDescriptor(proto, 'value');
-            if (setter && setter.set) setter.set.call(el, ${JSON.stringify(text)});
-            else el.value = ${JSON.stringify(text)};
-          }
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-          return 'OK';
-        })()
-      `);
-      if (result.includes("STALE"))
+      const rect = await refRect(ref);
+      if (!rect)
         return {
           data: {
             text: `Ref ${ref} not found — the page changed. Call BrowserReadPage again.`,
             isError: true,
           },
         };
+      // Focus like a person: click into the field (fallback: JS focus).
+      if (rect.w > 1 && rect.h > 1) {
+        const p = jitteredPoint(rect);
+        await pageClickAt(p.x, p.y);
+      }
+      // Clear the existing value (React-compatible native setter), keep focus.
+      const cleared = await pageEvaluate(`
+        (() => {
+          const el = document.querySelector('[data-monet-ref=${JSON.stringify(ref)}]');
+          if (!el) return 'STALE';
+          el.focus();
+          if (el.isContentEditable) {
+            el.textContent = '';
+          } else {
+            const proto = el.tagName === 'TEXTAREA'
+              ? HTMLTextAreaElement.prototype
+              : HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value');
+            if (setter && setter.set) setter.set.call(el, '');
+            else el.value = '';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          return 'OK';
+        })()
+      `);
+      if (cleared.includes("STALE"))
+        return {
+          data: {
+            text: `Ref ${ref} not found — the page changed. Call BrowserReadPage again.`,
+            isError: true,
+          },
+        };
+      // Real per-key typing with human latency.
+      await new Promise((r) => setTimeout(r, 120 + Math.random() * 180));
+      await pageTypeText(text);
       if (submit) {
+        await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
         await pagePressEnter();
         await new Promise((r) => setTimeout(r, 800));
       }
@@ -367,9 +428,9 @@ export const BrowserScrollTool = buildTool({
   },
   async call({ direction }: z.infer<ScrollSchema>) {
     try {
-      await pageEvaluate(
-        `window.scrollBy(0, ${direction === "down" ? "" : "-"}Math.round(innerHeight * 0.85)); 'ok'`,
-      );
+      // Wheel events in a few uneven ticks — like a real scroll gesture.
+      const vh = Number(await pageEvaluate("String(innerHeight)")) || 800;
+      await pageScrollWheel(Math.round(vh * 0.85) * (direction === "down" ? 1 : -1));
       return ok(`Scrolled ${direction}.`);
     } catch (err) {
       return fail(err, "Scroll");
