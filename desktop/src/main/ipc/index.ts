@@ -12,6 +12,7 @@ import { registerSessionsIPC } from "./sessions.js";
 import { registerSettingsIPC } from "./settings.js";
 import { registerStatsIPC } from "./stats.js";
 import { registerSkillsIPC } from "./skills.js";
+import { registerSkillStoreIPC } from "./skill-store.js";
 import { registerAgentsIPC } from "./agents.js";
 import { registerMcpIPC } from "./mcp.js";
 import { registerSttIPC } from "./stt.js";
@@ -34,6 +35,7 @@ export function registerAllIPC(): void {
   registerSettingsIPC();
   registerStatsIPC();
   registerSkillsIPC();
+  registerSkillStoreIPC();
   registerAgentsIPC();
   registerMcpIPC();
   registerSttIPC();

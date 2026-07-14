@@ -47,6 +47,13 @@ export interface SkillInfo {
   updatedAt: number;
 }
 
+export interface StoreSkill {
+  path: string;
+  name: string;
+  description: string;
+  installed: boolean;
+}
+
 export interface AgentSummary {
   slug: string;
   type: string;
@@ -250,6 +257,14 @@ export interface ElectronAPI {
     importFolder: (
       path: string,
     ) => Promise<{ ok: boolean; skill?: SkillInfo; error?: string }>;
+  };
+  skillStore: {
+    getSource: () => Promise<string>;
+    setSource: (source: string) => Promise<string>;
+    list: () => Promise<{ ok: boolean; skills?: StoreSkill[]; error?: string }>;
+    install: (
+      dir: string,
+    ) => Promise<{ ok: boolean; slug?: string; error?: string }>;
   };
   agents: {
     list: () => Promise<AgentSummary[]>;

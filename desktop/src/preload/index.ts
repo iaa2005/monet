@@ -252,6 +252,18 @@ const electronAPI = {
       ipcRenderer.invoke("skills:importFolder", path),
   },
 
+  skillStore: {
+    getSource: (): Promise<string> => ipcRenderer.invoke("skillstore:getSource"),
+    setSource: (source: string): Promise<string> =>
+      ipcRenderer.invoke("skillstore:setSource", source),
+    list: (): Promise<{ ok: boolean; skills?: unknown[]; error?: string }> =>
+      ipcRenderer.invoke("skillstore:list"),
+    install: (
+      dir: string,
+    ): Promise<{ ok: boolean; slug?: string; error?: string }> =>
+      ipcRenderer.invoke("skillstore:install", dir),
+  },
+
   agents: {
     list: (): Promise<unknown[]> => ipcRenderer.invoke("agents:list"),
     create: (payload: {
