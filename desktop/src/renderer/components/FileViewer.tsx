@@ -1,16 +1,18 @@
 /**
  * FileViewer — a unified file preview card.
  *
- * Two entry points:
- *   - `path`  — reads the file via `api().files.read` (text / markdown source);
+ * Two entry points, ONE pipeline:
  *   - `item`  — a rich artifact (`{ name, path?, mediaType, kind, dataUrl? }`)
- *               from chatStore.viewerArtifact. Previews images (via dataUrl /
- *               artifacts.readImage), pdf (blob-URL iframe), docx (docx-preview),
- *               xlsx/xls (SheetJS), and text/code (syntax-highlighted).
+ *               from chatStore.viewerArtifact;
+ *   - `path`  — any file from the file trees. Known binary types (images, pdf,
+ *               docx, xlsx, audio, video) are synthesized into the same rich
+ *               item shape and previewed identically — never dumped as text;
+ *               everything else renders as text/markdown/code.
  *
- * Always rendered as a self-contained card (`rounded-xl border border-border`).
- * In artifact mode, extra controls (refresh / download / open-externally /
- * expand) are shown alongside the close button.
+ * Reads go through artifacts:* for artifacts (their readers are locked to the
+ * artifacts dir) and files:* for tree paths. Always rendered as a
+ * self-contained card (`rounded-xl border border-border`) with refresh /
+ * download / open-externally controls in both modes.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -43,6 +45,8 @@ export type FileViewerItem = {
   mediaType: string;
   kind: string;
   dataUrl?: string;
+  /** Where reads go: chat artifact (default) or an arbitrary file on disk. */
+  source?: "artifact" | "file";
 };
 
 // --- Language detection ---
@@ -94,28 +98,99 @@ function langFor(name: string): string {
   return EXT_LANG[ext] ?? "text";
 }
 
-// --- Rich (artifact) preview helpers ---
+// --- Rich preview detection ---
 
 const TEXT_EXT =
   /\.(txt|md|csv|tsv|json|jsonc|js|mjs|ts|tsx|py|html|css|xml|svg|yaml|yml|log|tex|bib|sty)$/i;
+
+type PreviewKind =
+  | "image"
+  | "pdf"
+  | "docx"
+  | "xlsx"
+  | "audio"
+  | "video"
+  | "text"
+  | "none";
+
+const IMAGE_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  ico: "image/x-icon",
+  avif: "image/avif",
+};
+const AUDIO_MIME: Record<string, string> = {
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  m4a: "audio/mp4",
+  flac: "audio/flac",
+  aac: "audio/aac",
+};
+const VIDEO_MIME: Record<string, string> = {
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  mkv: "video/x-matroska",
+  avi: "video/x-msvideo",
+};
+/** Known-binary extensions with no inline preview — show the fallback card
+ * instead of dumping bytes as text. */
+const OPAQUE_EXT = new Set([
+  "zip", "7z", "rar", "tar", "gz", "bz2", "xz",
+  "exe", "dll", "so", "dylib", "bin", "dat", "db", "sqlite", "wasm",
+  "o", "obj", "lib", "a", "class", "pyc", "pyd", "node", "iso", "msi",
+  "ttf", "otf", "woff", "woff2", "doc", "ppt", "pptx",
+]);
+
+function extOf(name: string): string {
+  return name.split(".").pop()?.toLowerCase() ?? "";
+}
+
+/** Rich preview kind for a plain filename, or null → render as text/code. */
+function richKindForName(name: string): PreviewKind | null {
+  const ext = extOf(name);
+  if (IMAGE_MIME[ext]) return "image";
+  if (ext === "pdf") return "pdf";
+  if (ext === "docx") return "docx";
+  if (ext === "xlsx" || ext === "xls") return "xlsx";
+  if (AUDIO_MIME[ext]) return "audio";
+  if (VIDEO_MIME[ext]) return "video";
+  if (OPAQUE_EXT.has(ext)) return "none";
+  return null;
+}
+
+function mediaTypeForName(name: string): string {
+  const ext = extOf(name);
+  return (
+    IMAGE_MIME[ext] ??
+    AUDIO_MIME[ext] ??
+    VIDEO_MIME[ext] ??
+    (ext === "pdf" ? "application/pdf" : "application/octet-stream")
+  );
+}
+
+function previewKindOf(item: FileViewerItem): PreviewKind {
+  const ext = extOf(item.name);
+  if (item.kind === "image") return "image";
+  if (item.kind === "audio" || AUDIO_MIME[ext]) return "audio";
+  if (item.kind === "video" || VIDEO_MIME[ext]) return "video";
+  if (ext === "pdf") return "pdf";
+  if (ext === "docx") return "docx";
+  if (ext === "xlsx" || ext === "xls") return "xlsx";
+  if (item.kind === "text" || TEXT_EXT.test(item.name)) return "text";
+  return "none";
+}
 
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
-}
-
-type PreviewKind = "image" | "pdf" | "docx" | "xlsx" | "text" | "none";
-
-function previewKindOf(item: FileViewerItem): PreviewKind {
-  const ext = item.name.split(".").pop()?.toLowerCase() ?? "";
-  if (item.kind === "image") return "image";
-  if (ext === "pdf") return "pdf";
-  if (ext === "docx") return "docx";
-  if (ext === "xlsx" || ext === "xls") return "xlsx";
-  if (item.kind === "text" || TEXT_EXT.test(item.name)) return "text";
-  return "none";
 }
 
 // --- Component ---
@@ -129,29 +204,47 @@ export function FileViewer({
   item?: FileViewerItem | null;
   onClose: () => void;
 }): JSX.Element {
+  // A tree file with a known binary type becomes a synthesized rich item and
+  // flows through the SAME preview pipeline as artifacts.
+  const displayName =
+    item?.name ?? (path ? path.split(/[/\\]/).pop() || path : "");
+  const treeRichKind = !item && path ? richKindForName(displayName) : null;
+  const eff: FileViewerItem | null =
+    item ??
+    (path && treeRichKind
+      ? {
+          name: displayName,
+          path,
+          mediaType: mediaTypeForName(displayName),
+          kind: treeRichKind === "image" ? "image" : "file",
+          source: "file",
+        }
+      : null);
+  const source: "artifact" | "file" = eff?.source ?? (item ? "artifact" : "file");
+  const isRich = !!eff;
+  const filePath = eff?.path ?? path ?? null;
+
   // --- Plain-file state ---
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // --- Artifact state ---
+  // --- Rich state ---
   const [expanded, setExpanded] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [imgUrl, setImgUrl] = useState<string | null>(null);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [sheetHtml, setSheetHtml] = useState<string | null>(null);
   const [artText, setArtText] = useState<string | null>(null);
   const docxRef = useRef<HTMLDivElement>(null);
 
-  const isArtifact = !!item;
-  const displayName = item?.name ?? (path ? path.split(/[/\\]/).pop() || path : "");
   const isMd = /\.(md|markdown)$/i.test(displayName);
   const dark = document.documentElement.classList.contains("dark");
-  const preview: PreviewKind = item ? previewKindOf(item) : "none";
+  const preview: PreviewKind = eff ? previewKindOf(eff) : "none";
 
-  // --- Load plain file content ---
+  // --- Load plain file content (text/markdown/code) ---
   useEffect(() => {
-    if (isArtifact || !path) return;
+    if (isRich || !path) return;
     let cancelled = false;
     setLoading(true);
     setContent(null);
@@ -160,7 +253,9 @@ export function FileViewer({
       ?.files.read(path)
       .then((c) => {
         if (!cancelled)
-          setContent(c.length > 400000 ? c.slice(0, 400000) + "\n\n… (truncated)" : c);
+          setContent(
+            c.length > 400000 ? c.slice(0, 400000) + "\n\n… (truncated)" : c,
+          );
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -171,19 +266,19 @@ export function FileViewer({
     return () => {
       cancelled = true;
     };
-  }, [path, isArtifact]);
+  }, [path, isRich, nonce]);
 
   // --- Load rich preview ---
-  const artPath = item?.path;
+  const effPath = eff?.path;
 
   useEffect(() => {
-    if (!item) return;
+    if (!eff) return;
     setImgUrl(null);
     setSheetHtml(null);
     setArtText(null);
     setError(null);
     setLoading(true);
-    setPdfUrl((old) => {
+    setBlobUrl((old) => {
       if (old) URL.revokeObjectURL(old);
       return null;
     });
@@ -194,53 +289,64 @@ export function FileViewer({
     const fail = (e: unknown, fallback: string): void => {
       if (alive) setError(e instanceof Error ? e.message : String(e) || fallback);
     };
-    const readBytes = async (): Promise<Uint8Array | null> => {
-      if (!artPath)
-        return item.dataUrl ? b64ToBytes(item.dataUrl.split(",")[1] ?? "") : null;
-      const r = await bridge?.artifacts.readBytes(artPath);
+    const readB64 = async (): Promise<string | null> => {
+      if (!effPath)
+        return eff.dataUrl ? (eff.dataUrl.split(",")[1] ?? "") : null;
+      const r =
+        source === "file"
+          ? await bridge?.files.readBytes(effPath)
+          : await bridge?.artifacts.readBytes(effPath);
       if (!r?.ok || !r.base64) {
         if (alive) setError(r?.error ?? "Can't read file");
         return null;
       }
-      return b64ToBytes(r.base64);
+      return r.base64;
+    };
+    const makeBlobUrl = async (mime: string): Promise<void> => {
+      const b64 = await readB64();
+      if (b64 && alive) {
+        const url = URL.createObjectURL(
+          new Blob([b64ToBytes(b64) as BlobPart], { type: mime }),
+        );
+        setBlobUrl(url);
+      }
     };
 
     void (async () => {
       try {
         if (preview === "image") {
-          if (item.dataUrl) {
-            if (alive) setImgUrl(item.dataUrl);
-          } else if (artPath) {
-            const r = await bridge?.artifacts.readImage(artPath, item.mediaType);
+          if (eff.dataUrl) {
+            if (alive) setImgUrl(eff.dataUrl);
+          } else if (effPath && source === "artifact") {
+            const r = await bridge?.artifacts.readImage(effPath, eff.mediaType);
             if (alive) {
               if (r?.ok && r.dataUrl) setImgUrl(r.dataUrl);
               else setError(r?.error ?? "Can't read image");
             }
+          } else if (effPath) {
+            const b64 = await readB64();
+            if (b64 && alive) setImgUrl(`data:${eff.mediaType};base64,${b64}`);
           } else {
             if (alive) setError("No preview data for this image.");
           }
         } else if (preview === "pdf") {
-          const bytes = await readBytes();
-          if (bytes && alive) {
-            const url = URL.createObjectURL(
-              new Blob([bytes as BlobPart], { type: "application/pdf" }),
-            );
-            setPdfUrl(url);
-          }
+          await makeBlobUrl("application/pdf");
+        } else if (preview === "audio" || preview === "video") {
+          await makeBlobUrl(eff.mediaType);
         } else if (preview === "docx") {
-          const bytes = await readBytes();
-          if (bytes && alive && docxRef.current) {
+          const b64 = await readB64();
+          if (b64 && alive && docxRef.current) {
             const { renderAsync } = await import("docx-preview");
-            await renderAsync(bytes.buffer, docxRef.current, undefined, {
+            await renderAsync(b64ToBytes(b64).buffer, docxRef.current, undefined, {
               ignoreWidth: false,
               inWrapper: true,
             });
           }
         } else if (preview === "xlsx") {
-          const bytes = await readBytes();
-          if (bytes && alive) {
+          const b64 = await readB64();
+          if (b64 && alive) {
             const XLSX = await import("xlsx");
-            const wb = XLSX.read(bytes, { type: "array" });
+            const wb = XLSX.read(b64ToBytes(b64), { type: "array" });
             const parts: string[] = [];
             for (const sheetName of wb.SheetNames.slice(0, 8)) {
               parts.push(
@@ -251,12 +357,15 @@ export function FileViewer({
             if (alive) setSheetHtml(parts.join("\n"));
           }
         } else if (preview === "text") {
-          if (artPath) {
-            const r = await bridge?.artifacts.readText(artPath);
+          if (effPath && source === "artifact") {
+            const r = await bridge?.artifacts.readText(effPath);
             if (alive) {
               if (r?.ok) setArtText(r.content ?? "");
               else setError(r?.error ?? "Can't read file");
             }
+          } else if (effPath) {
+            const c = await bridge?.files.read(effPath);
+            if (alive) setArtText(c ?? "");
           } else if (alive) {
             setError("No preview data for this file.");
           }
@@ -272,14 +381,26 @@ export function FileViewer({
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item?.path, item?.name, item?.dataUrl, nonce]);
+  }, [eff?.path, eff?.name, eff?.dataUrl, nonce]);
 
   // Revoke the blob URL when it changes/unmounts.
   useEffect(() => {
     return () => {
-      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
     };
-  }, [pdfUrl]);
+  }, [blobUrl]);
+
+  const download = (): void => {
+    if (!filePath) return;
+    if (source === "artifact")
+      void api()?.artifacts.download(filePath, displayName);
+    else void api()?.files.saveAs(filePath, displayName);
+  };
+  const openExternal = (): void => {
+    if (!filePath) return;
+    if (source === "artifact") void api()?.artifacts.open(filePath);
+    else void api()?.shell.openPath(filePath);
+  };
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-border bg-background">
@@ -287,32 +408,28 @@ export function FileViewer({
       <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-1.5">
         <span className="flex min-w-0 items-center gap-1.5">
           <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate text-xs font-medium" title={item?.path ?? path ?? ""}>
+          <span className="truncate text-xs font-medium" title={filePath ?? ""}>
             {displayName}
           </span>
         </span>
         <div className="flex shrink-0 items-center gap-1">
-          {isArtifact && (
+          <IconBtn title="Refresh" onClick={() => setNonce((n) => n + 1)}>
+            <RefreshCw className="size-3.5" />
+          </IconBtn>
+          {filePath && (
             <>
-              <IconBtn title="Refresh" onClick={() => setNonce((n) => n + 1)}>
-                <RefreshCw className="size-3.5" />
-              </IconBtn>
-              <IconBtn
-                title="Download"
-                onClick={() => artPath && void api()?.artifacts.download(artPath, displayName)}
-              >
+              <IconBtn title="Download" onClick={download}>
                 <Download className="size-3.5" />
               </IconBtn>
-              <IconBtn
-                title="Open externally"
-                onClick={() => artPath && void api()?.artifacts.open(artPath)}
-              >
+              <IconBtn title="Open externally" onClick={openExternal}>
                 <ExternalLink className="size-3.5" />
               </IconBtn>
-              <IconBtn title={expanded ? "Shrink" : "Expand"} onClick={() => setExpanded((v) => !v)}>
-                {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-              </IconBtn>
             </>
+          )}
+          {isRich && (
+            <IconBtn title={expanded ? "Shrink" : "Expand"} onClick={() => setExpanded((v) => !v)}>
+              {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+            </IconBtn>
           )}
           <IconBtn title="Close" onClick={onClose}>
             <X className="size-3.5" />
@@ -322,7 +439,7 @@ export function FileViewer({
 
       {/* Body */}
       <div className="min-h-0 flex-1 overflow-auto">
-        {isArtifact ? (
+        {isRich ? (
           <>
             {loading && (
               <p className="p-4 text-sm text-muted-foreground">Loading…</p>
@@ -343,12 +460,28 @@ export function FileViewer({
               </div>
             )}
 
-            {!error && preview === "pdf" && pdfUrl && (
+            {!error && preview === "pdf" && blobUrl && (
               <iframe
-                src={pdfUrl}
+                src={blobUrl}
                 title={displayName}
                 className="h-full w-full border-0"
               />
+            )}
+
+            {!error && preview === "audio" && blobUrl && (
+              <div className="p-4">
+                <audio controls src={blobUrl} className="w-full" />
+              </div>
+            )}
+
+            {!error && preview === "video" && blobUrl && (
+              <div className="p-4">
+                <video
+                  controls
+                  src={blobUrl}
+                  className="mx-auto max-h-full max-w-full rounded-lg border border-border"
+                />
+              </div>
             )}
 
             {/* docx-preview renders white pages on a neutral bed. */}
@@ -385,7 +518,7 @@ export function FileViewer({
                 </p>
                 <button
                   type="button"
-                  onClick={() => artPath && void api()?.artifacts.open(artPath)}
+                  onClick={openExternal}
                   className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
                 >
                   <ExternalLink className="size-4" />

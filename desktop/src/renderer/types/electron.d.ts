@@ -140,6 +140,13 @@ export interface ElectronAPI {
     stat: (
       path: string,
     ) => Promise<{ size: number; isFile: boolean; isDirectory: boolean }>;
+    readBytes: (
+      path: string,
+    ) => Promise<{ ok: boolean; base64?: string; error?: string }>;
+    saveAs: (
+      path: string,
+      name?: string,
+    ) => Promise<{ ok: boolean; savedTo?: string; error?: string }>;
   };
   shell: {
     run: (

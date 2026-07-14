@@ -2,15 +2,16 @@
  * File IPC handlers — read/write/edit/list files.
  */
 
-import { ipcMain, dialog } from "electron";
+import { ipcMain, dialog, BrowserWindow } from "electron";
 import {
+  copyFileSync,
   readFileSync,
   writeFileSync,
   readdirSync,
   statSync,
   existsSync,
 } from "fs";
-import { join } from "path";
+import { basename, join } from "path";
 
 /** Normalise Unix-style paths (/c/Users/...) to Windows (C:\Users\...). */
 function normPath(p: string): string {
@@ -66,4 +67,53 @@ export function registerFilesIPC(): void {
     const s = statSync(filePath);
     return { size: s.size, isFile: s.isFile(), isDirectory: s.isDirectory() };
   });
+
+  // Raw bytes (base64) for rich previews of ANY file the user opens from the
+  // file tree (images/pdf/docx/xlsx/audio/video) — the artifacts:* readers
+  // refuse paths outside the artifacts dir by design.
+  ipcMain.handle(
+    "files:readBytes",
+    (_e, filePath: string): { ok: boolean; base64?: string; error?: string } => {
+      try {
+        const p = normPath(filePath);
+        const buf = readFileSync(p);
+        if (buf.length > 40 * 1024 * 1024)
+          return { ok: false, error: "File is too large to preview (40MB)" };
+        return { ok: true, base64: buf.toString("base64") };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "read failed",
+        };
+      }
+    },
+  );
+
+  // Save-as: copy any readable file to a user-chosen location (viewer's
+  // Download button for tree files; artifacts have their own handler).
+  ipcMain.handle(
+    "files:saveAs",
+    async (
+      _e,
+      filePath: string,
+      name?: string,
+    ): Promise<{ ok: boolean; savedTo?: string; error?: string }> => {
+      try {
+        const p = normPath(filePath);
+        if (!existsSync(p)) return { ok: false, error: "not found" };
+        const win = BrowserWindow.getFocusedWindow() ?? undefined;
+        const res = await dialog.showSaveDialog(win!, {
+          defaultPath: name || basename(p),
+        });
+        if (res.canceled || !res.filePath) return { ok: false };
+        copyFileSync(p, res.filePath);
+        return { ok: true, savedTo: res.filePath };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "save failed",
+        };
+      }
+    },
+  );
 }

@@ -86,6 +86,15 @@ const electronAPI = {
       path: string,
     ): Promise<{ size: number; isFile: boolean; isDirectory: boolean }> =>
       ipcRenderer.invoke("files:stat", path),
+    readBytes: (
+      path: string,
+    ): Promise<{ ok: boolean; base64?: string; error?: string }> =>
+      ipcRenderer.invoke("files:readBytes", path),
+    saveAs: (
+      path: string,
+      name?: string,
+    ): Promise<{ ok: boolean; savedTo?: string; error?: string }> =>
+      ipcRenderer.invoke("files:saveAs", path, name),
   },
 
   shell: {
