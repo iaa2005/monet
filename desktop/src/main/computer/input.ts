@@ -39,6 +39,7 @@ using System.Runtime.InteropServices;
 public class MonetInput {
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint data, IntPtr extra);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
   [StructLayout(LayoutKind.Sequential)] public struct P { public int X; public int Y; }
@@ -93,60 +94,71 @@ export async function scroll(
 
 export async function typeText(text: string): Promise<void> {
   const b64 = Buffer.from(text, "utf-8").toString("base64");
-  await ps(
+  const result = await ps(
     `${WIN32}
 $saved = ''
 try { $saved = Get-Clipboard -Raw } catch {}
 $txt = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}'))
 Set-Clipboard -Value $txt
-Start-Sleep -Milliseconds 40
-[System.Windows.Forms.SendKeys]::SendWait('^v')
-Start-Sleep -Milliseconds 120
-try { if ($saved) { Set-Clipboard -Value $saved } } catch {}`,
+Start-Sleep -Milliseconds 150
+[MonetInput]::keybd_event(0xA2,0,0,[UIntPtr]::Zero)
+Start-Sleep -Milliseconds 30
+[MonetInput]::keybd_event(0x56,0,0,[UIntPtr]::Zero)
+Start-Sleep -Milliseconds 60
+[MonetInput]::keybd_event(0x56,0,2,[UIntPtr]::Zero)
+[MonetInput]::keybd_event(0xA2,0,2,[UIntPtr]::Zero)
+Start-Sleep -Milliseconds 300
+try { Set-Clipboard -Value $saved } catch {}`,
   );
+  if (!result.ok) throw new Error(result.stderr || "Text input failed");
 }
 
-// Model key names → SendKeys tokens.
-const KEY_MAP: Record<string, string> = {
-  enter: "{ENTER}",
-  return: "{ENTER}",
-  tab: "{TAB}",
-  esc: "{ESC}",
-  escape: "{ESC}",
-  space: " ",
-  backspace: "{BACKSPACE}",
-  delete: "{DELETE}",
-  del: "{DELETE}",
-  home: "{HOME}",
-  end: "{END}",
-  pageup: "{PGUP}",
-  page_up: "{PGUP}",
-  pagedown: "{PGDN}",
-  page_down: "{PGDN}",
-  up: "{UP}",
-  down: "{DOWN}",
-  left: "{LEFT}",
-  right: "{RIGHT}",
+const KEY_VK: Record<string, number> = {
+  enter: 0x0d,
+  return: 0x0d,
+  tab: 0x09,
+  esc: 0x1b,
+  escape: 0x1b,
+  space: 0x20,
+  backspace: 0x08,
+  delete: 0x2e,
+  del: 0x2e,
+  home: 0x24,
+  end: 0x23,
+  pageup: 0x21,
+  page_up: 0x21,
+  pagedown: 0x22,
+  page_down: 0x22,
+  up: 0x26,
+  down: 0x28,
+  left: 0x25,
+  right: 0x27,
+  ctrl: 0xa2,
+  control: 0xa2,
+  cmd: 0x5b,
+  meta: 0x5b,
+  win: 0x5b,
+  windows: 0x5b,
+  super: 0x5b,
+  alt: 0xa4,
+  option: 0xa4,
+  shift: 0xa0,
 };
 
-/** Convert "ctrl+c", "alt+Tab", "Return" → a SendKeys string. */
-function toSendKeys(combo: string): string {
-  const parts = combo.split("+").map((p) => p.trim().toLowerCase());
-  let prefix = "";
-  const keys: string[] = [];
-  for (const p of parts) {
-    if (p === "ctrl" || p === "control" || p === "cmd" || p === "meta")
-      prefix += "^";
-    else if (p === "alt" || p === "option") prefix += "%";
-    else if (p === "shift") prefix += "+";
-    else keys.push(KEY_MAP[p] ?? p);
-  }
-  return prefix + keys.join("");
+function keyCode(key: string): number {
+  const normalized = key.trim().toLowerCase();
+  if (KEY_VK[normalized] !== undefined) return KEY_VK[normalized];
+  if (normalized.length === 1) return normalized.toUpperCase().charCodeAt(0);
+  throw new Error(`Unsupported key: ${key}`);
 }
 
+/** Send a key combination as real key-down/key-up events. */
 export async function pressKey(combo: string): Promise<void> {
-  const sk = toSendKeys(combo).replace(/'/g, "''");
-  await ps(`${WIN32}\n[System.Windows.Forms.SendKeys]::SendWait('${sk}')`);
+  const keys = combo.split("+").map(keyCode);
+  const downs = keys.map((key) => `[MonetInput]::keybd_event(${key},0,0,[UIntPtr]::Zero)`).join("; ");
+  const ups = [...keys].reverse().map((key) => `[MonetInput]::keybd_event(${key},0,2,[UIntPtr]::Zero)`).join("; ");
+  const result = await ps(`${WIN32}\n${downs}; Start-Sleep -Milliseconds 40; ${ups}`);
+  if (!result.ok) throw new Error(result.stderr || "Key press failed");
 }
 
 export async function cursorPosition(): Promise<{ x: number; y: number }> {

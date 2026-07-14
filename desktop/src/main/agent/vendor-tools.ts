@@ -333,7 +333,7 @@ export function isSpaceToolAllowed(name: string, space?: string): boolean {
     return getSandboxConfig().engine === "docker" || name === "RunPython";
   }
   if (BROWSER_TOOL_NAMES.has(name)) return getBrowserConfig().enabled;
-  if (name === "computer")
+  if (name === "Computer")
     return getComputerConfig().enabled && activeModelSeesImages();
   if (space === "home") return HOME_TOOL_NAMES.has(name);
   return !SANDBOX_ONLY_NAMES.has(name);

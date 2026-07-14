@@ -26,8 +26,13 @@ import {
 import { getComputerConfig } from "../computer/config.js";
 import { artifactReference, saveArtifactBuffer } from "../ipc/artifacts.js";
 
-// The scale from the most recent screenshot (model image px → DIP screen px).
-let lastScale = 1;
+// The transform from the most recent screenshot to virtual desktop pixels.
+let lastTransform = {
+  scaleX: 1,
+  scaleY: 1,
+  offsetX: 0,
+  offsetY: 0,
+};
 
 interface ComputerOutput {
   text: string;
@@ -62,6 +67,10 @@ const schema = lazySchema(() =>
       .describe("Text to type (action=type) or a key combo like 'ctrl+c', 'Return' (action=key)."),
     scroll_direction: z.enum(["up", "down"]).optional(),
     scroll_amount: z.number().optional().describe("Wheel clicks (default 3)."),
+    region: z
+      .object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
+      .optional()
+      .describe("Optional screen crop in full-screen coordinates for screenshot."),
   }),
 );
 type Schema = ReturnType<typeof schema>;
@@ -83,15 +92,23 @@ async function deniedGuard(action: string): Promise<string | null> {
 async function takeScreenshot(
   sessionId: string,
   note: string,
+  region?: { x: number; y: number; width: number; height: number },
 ): Promise<ComputerOutput> {
-  const shot = await captureScreen();
-  lastScale = shot.scale;
+  const shot = await captureScreen(region);
+  lastTransform = {
+    scaleX: shot.scaleX,
+    scaleY: shot.scaleY,
+    offsetX: shot.offsetX,
+    offsetY: shot.offsetY,
+  };
   const name = `screen-${Date.now()}.png`;
   const path = saveArtifactBuffer(sessionId, name, shot.png);
   return {
     text:
       `${note}\n` +
       `Screen is ${shot.width}x${shot.height} px (give click coordinates in THIS space).\n` +
+      `Crop region (screen coordinates): x=${shot.region.x}, y=${shot.region.y}, width=${shot.region.width}, height=${shot.region.height}.\n` +
+      `Coordinate mapping: screenX = ${shot.region.x} + imageX * ${shot.scaleX}; screenY = ${shot.region.y} + imageY * ${shot.scaleY}.\n` +
       `[artifact] image/png ${name} :: ${artifactReference(path)}\n` +
       `Markdown: ![${name}](${artifactReference(path)})`,
     isError: false,
@@ -101,7 +118,7 @@ async function takeScreenshot(
 }
 
 export const ComputerTool = buildTool({
-  name: "computer",
+  name: "Computer",
   searchHint: "screenshot and control the desktop (mouse/keyboard)",
   maxResultSizeChars: 4_000,
   get inputSchema(): Schema {
@@ -127,7 +144,8 @@ export const ComputerTool = buildTool({
       "- key — text: a combo like 'ctrl+c', 'alt+Tab', 'Return', 'Escape'.",
       "- scroll — coordinate + scroll_direction (up/down) + scroll_amount.",
       "- cursor_position — where the pointer is.",
-      "Take a NEW screenshot after actions that change the screen to verify the",
+      "- screenshot may include region: {x, y, width, height}; the result reports the crop region.",
+      "Take a NEW screenshot after actions that change the screen to verify the", 
       "result. Move deliberately; some actions can't be undone.",
     ].join("\n");
   },
@@ -137,7 +155,7 @@ export const ComputerTool = buildTool({
   async call(input: z.infer<Schema>, context: ToolUseContext) {
     const sessionId =
       (context as { sessionId?: string }).sessionId || "default";
-    const { action, coordinate, text, scroll_direction, scroll_amount } = input;
+    const { action, coordinate, text, scroll_direction, scroll_amount, region } = input;
 
     const denied = await deniedGuard(action);
     if (denied) return { data: { text: denied, isError: true } };
@@ -157,7 +175,14 @@ export const ComputerTool = buildTool({
         return {
           data: { text: `Action ${action} needs coordinate: [x, y].`, isError: true },
         };
-      const p = toScreenCoord(coordinate[0], coordinate[1], lastScale);
+      const p = toScreenCoord(
+        coordinate[0],
+        coordinate[1],
+        lastTransform.scaleX,
+        lastTransform.scaleY,
+        lastTransform.offsetX,
+        lastTransform.offsetY,
+      );
       sx = p.x;
       sy = p.y;
     }
@@ -165,7 +190,7 @@ export const ComputerTool = buildTool({
     try {
       switch (action) {
         case "screenshot":
-          return { data: await takeScreenshot(sessionId, "Screenshot taken.") };
+          return { data: await takeScreenshot(sessionId, "Screenshot taken.", region) };
         case "cursor_position": {
           const p = await cursorPosition();
           return { data: { text: `Cursor at ${p.x}, ${p.y} (screen px).`, isError: false } };

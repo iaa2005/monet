@@ -132,7 +132,7 @@ const HUMAN_NAMES: Record<string, string> = {
   BrowserType: "Typed",
   BrowserScroll: "Scrolled",
   BrowserScreenshot: "Screenshot",
-  computer: "Computer",
+  Computer: "Computer",
 };
 
 function humanName(name: string): string {
