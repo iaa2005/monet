@@ -29,6 +29,7 @@ import {
 } from "./vendor-tools.js";
 import { dropSessionContext, initVendorRuntime } from "./vendor-context.js";
 import { drainBgResults } from "./bg-agents.js";
+import { buildMemoryPrompt } from "../memory/store.js";
 
 /** Prepend finished background-agent reports to the user turn as context. */
 function mergeBackgroundResults(
@@ -64,15 +65,51 @@ async function buildSystemPrompt(
     // a model that reads about a tool will try to call it.
     const sections = await getSystemPrompt(getVendorToolsForSpace(space), model);
     const prompt = sections.filter(Boolean).join("\n\n");
-    if (prompt.trim().length > 0) return prompt;
+    if (prompt.trim().length > 0) return withUserMemory(prompt);
     throw new Error("vendor system prompt came back empty");
   } catch (err) {
     console.warn(
       "[agent] vendor getSystemPrompt failed, using fallback:",
       err instanceof Error ? err.message : err,
     );
-    return getFallbackSystemPrompt();
+    return withUserMemory(await getFallbackSystemPrompt());
   }
+}
+
+/** Append the user's long-term memory files (Settings → Memory) to the prompt. */
+function withUserMemory(prompt: string): string {
+  try {
+    const mem = buildMemoryPrompt();
+    return mem ? `${prompt}\n\n${mem}` : prompt;
+  } catch {
+    return prompt;
+  }
+}
+
+/** Plain-text tail of a session's conversation (for memory extraction):
+ * user/assistant text only, tool blocks reduced to one-line markers. */
+export function getConversationText(
+  sessionId: string,
+  maxChars = 8_000,
+): string | null {
+  const messages = conversations.get(sessionId);
+  if (!messages || messages.length === 0) return null;
+  const lines: string[] = [];
+  for (const m of messages.slice(-14)) {
+    if (typeof m.content === "string") {
+      lines.push(`${m.role}: ${m.content}`);
+      continue;
+    }
+    const chunks: string[] = [];
+    for (const b of m.content) {
+      if (b.type === "text") chunks.push(b.text);
+      else if (b.type === "tool_use") chunks.push(`[tool: ${b.name}]`);
+      else if (b.type === "tool_result") chunks.push(`[tool result]`);
+    }
+    if (chunks.length) lines.push(`${m.role}: ${chunks.join(" ")}`);
+  }
+  const text = lines.join("\n");
+  return text.length > maxChars ? text.slice(-maxChars) : text;
 }
 
 /** Prepended in Home so the model knows the ground rules of the space. */

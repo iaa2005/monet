@@ -252,6 +252,43 @@ const electronAPI = {
       ipcRenderer.invoke("skills:importFolder", path),
   },
 
+  memory: {
+    getConfig: (): Promise<{ searchChats: boolean; generateMemory: boolean }> =>
+      ipcRenderer.invoke("memory:getConfig"),
+    setConfig: (patch: {
+      searchChats?: boolean;
+      generateMemory?: boolean;
+    }): Promise<{ searchChats: boolean; generateMemory: boolean }> =>
+      ipcRenderer.invoke("memory:setConfig", patch),
+    list: (): Promise<unknown[]> => ipcRenderer.invoke("memory:list"),
+    read: (
+      id: string,
+    ): Promise<{
+      ok: boolean;
+      name?: string;
+      summary?: string;
+      body?: string;
+      error?: string;
+    }> => ipcRenderer.invoke("memory:read", id),
+    write: (
+      id: string,
+      data: { name: string; summary: string; body: string },
+    ): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("memory:write", id, data),
+    deleteById: (id: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("memory:delete", id),
+    addNote: (note: string): Promise<{ ok: boolean; applied: string[] }> =>
+      ipcRenderer.invoke("memory:addNote", note),
+  },
+
+  reflect: {
+    digest: (
+      days: number,
+      force?: boolean,
+    ): Promise<{ ok: boolean; digest?: unknown; error?: string }> =>
+      ipcRenderer.invoke("reflect:digest", days, force),
+  },
+
   skillStore: {
     getSource: (): Promise<string> => ipcRenderer.invoke("skillstore:getSource"),
     setSource: (source: string): Promise<string> =>

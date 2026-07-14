@@ -262,6 +262,13 @@ export function registerChatIPC(): void {
     // not the slash-expanded one).
     void maybeAutoTitle(win, sessionId, payload.message);
 
+    // Background memory extraction (Settings → Memory, throttled, best-effort).
+    void (async () => {
+      const { getConversationText } = await import("../agent/index.js");
+      const { maybeExtractMemory } = await import("../memory/extract.js");
+      await maybeExtractMemory(sessionId, getConversationText(sessionId));
+    })().catch(() => {});
+
     return { ok: true };
   });
 

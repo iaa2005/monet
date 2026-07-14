@@ -21,6 +21,8 @@ import { TodoWriteTool } from "@vendor/tools/TodoWriteTool/TodoWriteTool.js";
 import { zodToJsonSchema } from "@vendor/utils/zodToJsonSchema.js";
 import { InlineSkillTool } from "./skill-tool.js";
 import { AgentTaskTool } from "./agent-tool.js";
+import { SearchPastChatsTool } from "./memory-tools.js";
+import { getMemoryConfig } from "../memory/store.js";
 import type { SubAgentUpdate } from "./subagent.js";
 import { WebFetchTool, WebSearchTool } from "./web-tools.js";
 import { RunPythonTool } from "./sandbox-tool.js";
@@ -57,6 +59,7 @@ const HOME_TOOL_NAMES = new Set([
   "Skill",
   "WebFetch",
   "WebSearch",
+  "SearchPastChats",
 ]);
 
 /** Sandbox-scoped tools make no sense in Code (it has the real filesystem). */
@@ -270,6 +273,7 @@ export function getVendorTools(): Tools {
     TodoWriteTool,
     InlineSkillTool,
     AgentTaskTool,
+    SearchPastChatsTool,
     WebFetchTool,
     WebSearchTool,
     RunPythonTool,
@@ -332,6 +336,7 @@ export function isSpaceToolAllowed(name: string, space?: string): boolean {
     // run code. RunCommand needs the Podman engine; RunPython works on any.
     return getSandboxConfig().engine === "docker" || name === "RunPython";
   }
+  if (name === "SearchPastChats") return getMemoryConfig().searchChats;
   if (BROWSER_TOOL_NAMES.has(name)) return getBrowserConfig().enabled;
   if (name === "Computer")
     return getComputerConfig().enabled && activeModelSeesImages();

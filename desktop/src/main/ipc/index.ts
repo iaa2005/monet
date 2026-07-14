@@ -14,6 +14,8 @@ import { registerStatsIPC } from "./stats.js";
 import { registerSkillsIPC } from "./skills.js";
 import { registerSkillStoreIPC } from "./skill-store.js";
 import { registerAgentsIPC } from "./agents.js";
+import { registerMemoryIPC } from "./memory.js";
+import { registerReflectIPC } from "./reflect.js";
 import { registerMcpIPC } from "./mcp.js";
 import { registerSttIPC } from "./stt.js";
 import { registerGitIPC } from "./git.js";
@@ -37,6 +39,8 @@ export function registerAllIPC(): void {
   registerSkillsIPC();
   registerSkillStoreIPC();
   registerAgentsIPC();
+  registerMemoryIPC();
+  registerReflectIPC();
   registerMcpIPC();
   registerSttIPC();
   registerGitIPC();

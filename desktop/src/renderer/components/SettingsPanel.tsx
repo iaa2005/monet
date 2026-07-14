@@ -8,6 +8,8 @@ import {
   FolderOpen,
   BookMarked,
   Bot,
+  Brain,
+  Sun,
   Plug,
   Search,
   FlaskConical,
@@ -18,6 +20,8 @@ import {
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { SkillsSettings } from "@/components/settings/SkillsSettings";
 import { AgentsSettings } from "@/components/settings/AgentsSettings";
+import { MemorySettings } from "@/components/settings/MemorySettings";
+import { ReflectSettings } from "@/components/settings/ReflectSettings";
 import { ConnectorsSettings } from "@/components/settings/ConnectorsSettings";
 import { AutomationSettings } from "@/components/settings/AutomationSettings";
 import { cn } from "@/lib/utils";
@@ -81,6 +85,8 @@ type Section =
   | "providers"
   | "sandbox"
   | "automation"
+  | "memory"
+  | "reflect"
   | "skills"
   | "agents"
   | "connectors"
@@ -97,6 +103,8 @@ const NAV: {
       { id: "providers", label: "Providers", icon: Boxes },
       { id: "sandbox", label: "Sandbox", icon: FlaskConical },
       { id: "automation", label: "Automation", icon: MousePointerClick },
+      { id: "memory", label: "Memory", icon: Brain },
+      { id: "reflect", label: "Reflect", icon: Sun },
     ],
   },
   {
@@ -504,6 +512,8 @@ export function SettingsPanel({
         {section === "providers" && <ProviderSettings />}
         {section === "sandbox" && <SandboxSection />}
         {section === "automation" && <AutomationSettings />}
+        {section === "memory" && <MemorySettings />}
+        {section === "reflect" && <ReflectSettings />}
         {section === "skills" && <SkillsSettings />}
         {section === "agents" && <AgentsSettings />}
         {section === "connectors" && <ConnectorsSettings />}

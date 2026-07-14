@@ -47,6 +47,26 @@ export interface SkillInfo {
   updatedAt: number;
 }
 
+export interface MemoryFileInfo {
+  id: string;
+  section: "you" | "topics" | "areas";
+  name: string;
+  summary: string;
+  updatedAt: number;
+}
+
+export interface ReflectDigest {
+  headline: string;
+  narrative: string;
+  categories: { name: string; pct: number; detail: string }[];
+  skills: {
+    delegation: { title: string; body: string };
+    description: { title: string; body: string };
+    discernment: { title: string; body: string };
+    diligence: { title: string; body: string };
+  };
+}
+
 export interface StoreSkill {
   path: string;
   name: string;
@@ -257,6 +277,33 @@ export interface ElectronAPI {
     importFolder: (
       path: string,
     ) => Promise<{ ok: boolean; skill?: SkillInfo; error?: string }>;
+  };
+  memory: {
+    getConfig: () => Promise<{ searchChats: boolean; generateMemory: boolean }>;
+    setConfig: (patch: {
+      searchChats?: boolean;
+      generateMemory?: boolean;
+    }) => Promise<{ searchChats: boolean; generateMemory: boolean }>;
+    list: () => Promise<MemoryFileInfo[]>;
+    read: (id: string) => Promise<{
+      ok: boolean;
+      name?: string;
+      summary?: string;
+      body?: string;
+      error?: string;
+    }>;
+    write: (
+      id: string,
+      data: { name: string; summary: string; body: string },
+    ) => Promise<{ ok: boolean; error?: string }>;
+    deleteById: (id: string) => Promise<{ ok: boolean }>;
+    addNote: (note: string) => Promise<{ ok: boolean; applied: string[] }>;
+  };
+  reflect: {
+    digest: (
+      days: number,
+      force?: boolean,
+    ) => Promise<{ ok: boolean; digest?: ReflectDigest; error?: string }>;
   };
   skillStore: {
     getSource: () => Promise<string>;
