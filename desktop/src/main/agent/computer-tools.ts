@@ -14,6 +14,7 @@ import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import { captureScreen, toScreenCoord } from "../computer/screen.js";
+import { listScreenElements } from "../computer/elements.js";
 import {
   click,
   cursorPosition,
@@ -46,6 +47,7 @@ const schema = lazySchema(() =>
     action: z
       .enum([
         "screenshot",
+        "list_elements",
         "left_click",
         "right_click",
         "middle_click",
@@ -77,7 +79,12 @@ type Schema = ReturnType<typeof schema>;
 
 /** Refuse to act on a denied foreground app (screenshots/reads are exempt). */
 async function deniedGuard(action: string): Promise<string | null> {
-  if (action === "screenshot" || action === "cursor_position") return null;
+  if (
+    action === "screenshot" ||
+    action === "cursor_position" ||
+    action === "list_elements"
+  )
+    return null;
   const denied = getComputerConfig().deniedApps.map((a) =>
     a.toLowerCase().replace(/\.exe$/, ""),
   );
@@ -145,7 +152,12 @@ export const ComputerTool = buildTool({
       "- scroll — coordinate + scroll_direction (up/down) + scroll_amount.",
       "- cursor_position — where the pointer is.",
       "- screenshot may include region: {x, y, width, height}; the result reports the crop region.",
-      "Take a NEW screenshot after actions that change the screen to verify the", 
+      "- list_elements — READ the foreground window's UI elements (buttons,",
+      "  fields, links…) with their names and CLICKABLE coordinates from the",
+      "  accessibility tree. PREFER this over guessing pixel positions from a",
+      "  screenshot: take a screenshot, then list_elements, then click the",
+      "  element's reported coordinate.",
+      "Take a NEW screenshot after actions that change the screen to verify the",
       "result. Move deliberately; some actions can't be undone.",
     ].join("\n");
   },
@@ -191,6 +203,45 @@ export const ComputerTool = buildTool({
       switch (action) {
         case "screenshot":
           return { data: await takeScreenshot(sessionId, "Screenshot taken.", region) };
+        case "list_elements": {
+          const scan = await listScreenElements();
+          if (!scan.ok)
+            return {
+              data: {
+                text: `UI element scan failed: ${scan.error ?? "unknown"}. Fall back to screenshot + visual coordinates.`,
+                isError: true,
+              },
+            };
+          const els = scan.elements ?? [];
+          if (els.length === 0)
+            return {
+              data: {
+                text:
+                  `No accessible elements found in "${scan.title ?? "the foreground window"}" — ` +
+                  `the app may not expose an accessibility tree. Use screenshot + visual coordinates.`,
+                isError: false,
+              },
+            };
+          // Report centres in the LAST screenshot's image space — the same
+          // space click coordinates are given in (inverse of lastTransform).
+          const toImg = (sx: number, sy: number): [number, number] => [
+            Math.round((sx - lastTransform.offsetX) / (lastTransform.scaleX || 1)),
+            Math.round((sy - lastTransform.offsetY) / (lastTransform.scaleY || 1)),
+          ];
+          const lines = els.slice(0, 100).map((e, i) => {
+            const [ix, iy] = toImg(e.x + e.w / 2, e.y + e.h / 2);
+            const label = e.n ? `"${e.n}"` : "(unnamed)";
+            return `${i + 1}. [${e.t}] ${label} — click at [${ix}, ${iy}]`;
+          });
+          return {
+            data: {
+              text:
+                `UI elements of "${scan.title ?? ""}" (coordinates are in the last screenshot's pixel space — pass them directly to click actions):\n` +
+                lines.join("\n"),
+              isError: false,
+            },
+          };
+        }
         case "cursor_position": {
           const p = await cursorPosition();
           return { data: { text: `Cursor at ${p.x}, ${p.y} (screen px).`, isError: false } };
