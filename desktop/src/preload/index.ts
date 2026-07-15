@@ -487,6 +487,29 @@ const electronAPI = {
       ipcRenderer.invoke("prompts:reveal"),
   },
 
+  transfer: {
+    exportChat: (
+      sessionId: string,
+      opts: {
+        format: "monet" | "markdown";
+        includeArtifacts: boolean;
+        includeContext: boolean;
+      },
+    ): Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }> =>
+      ipcRenderer.invoke("chat:export", sessionId, opts),
+    importChat: (): Promise<{
+      ok: boolean;
+      canceled?: boolean;
+      error?: string;
+      session?: {
+        id: string;
+        title: string;
+        messages: unknown[];
+        workspace?: string;
+      };
+    }> => ipcRenderer.invoke("chat:import"),
+  },
+
   checkpoints: {
     rewind: (
       sessionId: string,

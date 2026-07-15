@@ -6,8 +6,10 @@ import {
   GitFork,
   Archive,
   Trash2,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ExportChatModal } from "@/components/chat/ExportChatModal";
 import { useChatStore } from "@/stores/chatStore";
 import type { ChatMessage } from "@/types/chat";
 import type { ElectronAPI } from "@/types/electron";
@@ -72,6 +74,10 @@ export function SessionList({
   const [allSessions, setAllSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [exportSession, setExportSession] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const version = useChatStore((s) => s.sessionsVersion);
   // Subscribe to the SET of running sessions as a string — subscribing to the
@@ -299,6 +305,17 @@ export function SessionList({
                         F
                       </span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setExportSession({ id: s.id, title: s.title });
+                      }}
+                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                    >
+                      <Download className="size-4 text-muted-foreground" />
+                      Export…
+                    </button>
 
                     <div className="-mx-1 my-1 h-px bg-border" />
 
@@ -331,6 +348,13 @@ export function SessionList({
             );
           })}
         </div>
+      )}
+      {exportSession && (
+        <ExportChatModal
+          sessionId={exportSession.id}
+          title={exportSession.title}
+          onClose={() => setExportSession(null)}
+        />
       )}
     </div>
   );

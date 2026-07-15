@@ -4,6 +4,7 @@
 
 import type { LLMEvent, LLMRequest } from "../main/llm/adapter.js";
 import type { LLMProvider, LLMProviderInput } from "../main/provider/types.js";
+import type { ChatMessage } from "./chat";
 import type {
   PermissionRequest,
   PermissionDecision,
@@ -459,6 +460,27 @@ export interface ElectronAPI {
     lspSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
     promptsReload: () => Promise<{ ok: boolean }>;
     promptsReveal: () => Promise<{ ok: boolean; dir: string }>;
+  };
+  transfer: {
+    exportChat: (
+      sessionId: string,
+      opts: {
+        format: "monet" | "markdown";
+        includeArtifacts: boolean;
+        includeContext: boolean;
+      },
+    ) => Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>;
+    importChat: () => Promise<{
+      ok: boolean;
+      canceled?: boolean;
+      error?: string;
+      session?: {
+        id: string;
+        title: string;
+        messages: ChatMessage[];
+        workspace?: string;
+      };
+    }>;
   };
   checkpoints: {
     rewind: (

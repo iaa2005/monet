@@ -30,6 +30,7 @@ import {
   ListTodo,
   Pencil,
   FileText,
+  Upload,
   GitFork,
   Archive,
   Trash2,
@@ -429,6 +430,25 @@ export default function App(): JSX.Element {
       /* offline / no preload */
     }
     setView("chat");
+  }, [handleSelectSession]);
+
+  const handleImport = useCallback(async () => {
+    try {
+      const r = await api()?.transfer.importChat();
+      if (r?.ok && r.session) {
+        handleSelectSession({
+          id: r.session.id,
+          title: r.session.title,
+          messages: r.session.messages,
+        });
+        useChatStore.getState().bumpSessions();
+        setView("chat");
+      } else if (r && !r.canceled && r.error) {
+        console.error("Import failed:", r.error);
+      }
+    } catch (err) {
+      console.error("Import failed:", err);
+    }
   }, [handleSelectSession]);
 
   const handleDeleteSession = useCallback(
@@ -955,6 +975,11 @@ export default function App(): JSX.Element {
                       icon={Plus}
                       label="New session"
                       onClick={newSession}
+                    />
+                    <NavRow
+                      icon={Upload}
+                      label="Import chat"
+                      onClick={handleImport}
                     />
                     <NavRow
                       icon={FileText}
