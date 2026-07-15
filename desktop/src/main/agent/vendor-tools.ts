@@ -35,6 +35,8 @@ import { AskUserQuestionTool } from "./ask-user-tool.js";
 import { ToolSearchTool } from "./tool-search-tool.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import { getRevealedTools } from "./revealed-tools.js";
+import { LSPTool } from "./lsp-tool.js";
+import { getLspConfig } from "./lsp/config.js";
 import type { AskUserFn } from "../ipc/ask-user.js";
 import { getSandboxConfig } from "../sandbox/config.js";
 import {
@@ -285,6 +287,7 @@ export function getVendorTools(): Tools {
     InlineSkillTool,
     AskUserQuestionTool,
     ToolSearchTool,
+    LSPTool,
     AgentTaskTool,
     SearchPastChatsTool,
     WebFetchTool,
@@ -360,6 +363,8 @@ export function isSpaceToolAllowed(name: string, space?: string): boolean {
   // when there are connectors whose tools can be deferred.
   if (name === "ToolSearch")
     return space !== "home" && getToolSearchConfig().enabled && hasMcpServers();
+  // LSP (opt-in) needs the real workspace + installed language servers; Code-only.
+  if (name === "LSP") return space !== "home" && getLspConfig().enabled;
   if (BROWSER_TOOL_NAMES.has(name)) return getBrowserConfig().enabled;
   if (name === "Computer")
     return getComputerConfig().enabled && activeModelSeesImages();
