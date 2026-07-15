@@ -727,7 +727,7 @@ export function ChatView({
             <MessageInput flush />
           </div>
           {podmanWarning && (
-            <div className="mt-1 mb-3 flex w-full max-w-2xl items-center justify-between gap-3 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2.5 text-left text-[13px]">
+            <div className="glass-panel glass-amber mt-1 mb-3 flex w-full max-w-2xl items-center justify-between gap-3 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2.5 text-left text-[13px]">
               <span className="text-amber-900 dark:text-amber-200">
                 Podman is not ready.
                 <br />

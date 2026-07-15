@@ -310,6 +310,10 @@
 .monet-glass .glass-hover:hover::before {
     background-color: hsl(var(--bg-000) / 0.85);
 }
+/* Preserve amber background on glass panels */
+.monet-glass .glass-amber::before {
+    background-color: hsl(48 96% 53% / 0.15) !important;
+}
 .monet-glass .glass-panel.bg-sidebar::before {
     background-color: hsl(var(--bg-100) / 0.45);
     -webkit-backdrop-filter: blur(16px);
