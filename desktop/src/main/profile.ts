@@ -28,14 +28,21 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Respons
 export interface Profile {
   name: string;
   about: string;
+  fullName: string;
+  work: string;
 }
 
 export function getProfile(): Profile {
   try {
     const j = JSON.parse(readFileSync(profileFile(), "utf-8")) as Partial<Profile>;
-    return { name: j.name ?? "", about: j.about ?? "" };
+    return {
+      name: j.name ?? "",
+      about: j.about ?? "",
+      fullName: j.fullName ?? "",
+      work: j.work ?? "",
+    };
   } catch {
-    return { name: "", about: "" };
+    return { name: "", about: "", fullName: "", work: "" };
   }
 }
 
@@ -131,9 +138,90 @@ export async function listGallery(): Promise<{ url: string; dataUrl: string }[]>
 /** System-prompt block, or null when the profile is empty. */
 export function getProfilePrompt(): string | null {
   const p = getProfile();
-  if (!p.name && !p.about) return null;
+  if (!p.name && !p.about && !p.fullName && !p.work) return null;
   const lines = ["# User profile"];
-  if (p.name) lines.push(`The user's name: ${p.name}. Address them by name.`);
-  if (p.about) lines.push(`About the user (their own words):\n${p.about.slice(0, 2_000)}`);
+  if (p.name) lines.push(`Call the user "${p.name}".`);
+  if (p.fullName) lines.push(`Full name: ${p.fullName}.`);
+  if (p.work) lines.push(`Their work: ${p.work}.`);
+  if (p.about) lines.push(`Instructions from the user (keep in mind across chats):\n${p.about.slice(0, 2_000)}`);
   return lines.join("\n");
+}
+
+// ── Monet paintings picker (full-screen gallery) ─────────────────────────
+
+export interface PaintingFace {
+  /** avatars/<file>.jpg (the 256×256 crop to install as the avatar). */
+  file: string;
+  bbox: { x: number; y: number; w: number; h: number };
+}
+export interface PaintingInfo {
+  title: string;
+  year: string;
+  /** artworks/<file>.jpg */
+  file: string;
+  width: number;
+  height: number;
+  faces: PaintingFace[];
+}
+
+const RAW = `https://raw.githubusercontent.com/${GALLERY_REPO}/HEAD`;
+let paintingsCache: PaintingInfo[] | null = null;
+
+/** Paintings that contain detected faces, with bbox overlays for the picker. */
+export async function listPaintings(): Promise<PaintingInfo[]> {
+  if (paintingsCache) return paintingsCache;
+  const [pRes, aRes] = await Promise.all([
+    fetchWithTimeout(`${RAW}/monet_paintings.json`, 15_000),
+    fetchWithTimeout(`${RAW}/avatars/avatars.json`, 15_000),
+  ]);
+  if (!pRes.ok || !aRes.ok)
+    throw new Error(`GitHub raw returned ${pRes.status}/${aRes.status}`);
+  const paintings = (await pRes.json()) as {
+    title: string; year: string; filename: string; width: number; height: number;
+  }[];
+  const avatars = (await aRes.json()) as {
+    filename: string; source: string;
+    bbox: { x: number; y: number; w: number; h: number };
+  }[];
+  const bySource = new Map<string, PaintingFace[]>();
+  for (const a of avatars) {
+    const arr = bySource.get(a.source) ?? [];
+    arr.push({ file: `avatars/${a.filename}`, bbox: a.bbox });
+    bySource.set(a.source, arr);
+  }
+  const out: PaintingInfo[] = [];
+  for (const p of paintings) {
+    const faces = bySource.get(p.filename);
+    if (!faces?.length) continue;
+    out.push({
+      title: p.title, year: p.year, file: p.filename,
+      width: p.width, height: p.height, faces,
+    });
+  }
+  if (out.length > 0) paintingsCache = out;
+  return out;
+}
+
+// Small LRU of painting images (compressed jpgs, a few hundred KB each).
+const paintingImgCache = new Map<string, string>();
+
+export async function paintingImage(file: string): Promise<string> {
+  if (!/^artworks\/[\w.-]+\.(jpe?g|png|webp)$/i.test(file))
+    throw new Error("Invalid painting path");
+  const hit = paintingImgCache.get(file);
+  if (hit) return hit;
+  const res = await fetchWithTimeout(`${RAW}/${file}`, 20_000);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > 6 * 1024 * 1024) throw new Error("Painting too large");
+  const dataUrl = `data:image/jpeg;base64,${buf.toString("base64")}`;
+  paintingImgCache.set(file, dataUrl);
+  if (paintingImgCache.size > 6)
+    paintingImgCache.delete(paintingImgCache.keys().next().value as string);
+  return dataUrl;
+}
+
+/** Raw URL of an avatar crop (what setAvatarFromUrl downloads). */
+export function avatarRawUrl(file: string): string {
+  return `${RAW}/${file}`;
 }

@@ -1,28 +1,225 @@
 /**
- * Settings → General → Profile: name, avatar (upload or Monet-faces gallery
- * from github.com/iaa2005/monet-paintings) and an "about me" prompt injected
- * into every chat's system prompt.
+ * Settings → General → Profile, Claude.ai-style rows: Avatar / Full name /
+ * What should Claude call you / What best describes your work / Instructions.
+ * Everything autosaves; name+work+instructions are injected into every chat's
+ * system prompt. The avatar can be uploaded, or picked from a FULL-SCREEN
+ * carousel of Monet paintings (iaa2005/monet-paintings): hovering darkens the
+ * painting except the detected-face circles (bbox), click a circle to use
+ * that face as the avatar.
  */
-import { useEffect, useRef, useState } from "react";
-import { Upload, Palette } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { ChevronLeft, ChevronRight, Palette, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ElectronAPI } from "@/types/electron";
+import type { ElectronAPI, PaintingInfo } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
-const INPUT =
-  "mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-foreground/20";
+const ROW_INPUT =
+  "w-64 rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-foreground/20";
+
+const WORK_OPTIONS = [
+  "", "Engineering", "Student", "Research", "Design", "Writing", "Data", "Other",
+];
+
+// ── Full-screen Monet painting picker ─────────────────────────────────────
+
+function MonetPicker({
+  onPicked,
+  onClose,
+}: {
+  onPicked: () => void;
+  onClose: () => void;
+}): JSX.Element {
+  const [paintings, setPaintings] = useState<PaintingInfo[] | null>(null);
+  const [idx, setIdx] = useState(0);
+  const [img, setImg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void api()
+      ?.profile.paintings()
+      .then((r) => {
+        if (r.ok && r.items?.length) setPaintings(r.items);
+        else setError(r.error ?? "No paintings with faces found.");
+      })
+      .catch(() => setError("Network error."));
+  }, []);
+
+  const cur = paintings?.[idx] ?? null;
+
+  useEffect(() => {
+    if (!cur) return;
+    let alive = true;
+    setImg(null);
+    void api()
+      ?.profile.paintingImage(cur.file)
+      .then((r) => {
+        if (alive) {
+          if (r.ok && r.dataUrl) setImg(r.dataUrl);
+          else setError(r.error ?? "Failed to load the painting.");
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, [cur?.file]);
+
+  const step = useCallback(
+    (d: number): void => {
+      if (!paintings) return;
+      setError(null);
+      setIdx((i) => (i + d + paintings.length) % paintings.length);
+    },
+    [paintings],
+  );
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowRight") step(1);
+      if (e.key === "ArrowLeft") step(-1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, step]);
+
+  const pick = async (file: string): Promise<void> => {
+    setBusy(true);
+    try {
+      const r = await api()?.profile.pickPaintingFace(file);
+      if (r?.ok) {
+        onPicked();
+        onClose();
+      } else setError(r?.error ?? "Failed to set the avatar.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // The dark veil covers the painting EXCEPT the face circles: one evenodd
+  // path (full rect + circle subpaths) in painting-pixel coordinates.
+  const veil = (p: PaintingInfo): string => {
+    let d = `M0 0 H${p.width} V${p.height} H0 Z`;
+    for (const f of p.faces) {
+      const cx = f.bbox.x + f.bbox.w / 2;
+      const cy = f.bbox.y + f.bbox.h / 2;
+      const r = (Math.max(f.bbox.w, f.bbox.h) / 2) * 1.35;
+      d += ` M${cx - r} ${cy} A${r} ${r} 0 1 0 ${cx + r} ${cy} A${r} ${r} 0 1 0 ${cx - r} ${cy} Z`;
+    }
+    return d;
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex flex-col bg-black/90">
+      <div className="flex items-center justify-between px-4 py-3 text-white/90">
+        <div className="min-w-0 text-sm">
+          {cur ? (
+            <>
+              <span className="font-serif font-semibold">{cur.title}</span>
+              {cur.year && <span className="text-white/60"> · {cur.year}</span>}
+              <span className="ml-3 text-white/50">
+                {idx + 1} / {paintings?.length ?? 0} · hover the painting, click
+                a circle to use that face
+              </span>
+            </>
+          ) : (
+            <span>{error ?? "Loading Monet paintings…"}</span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md p-1.5 text-white/80 transition-colors hover:bg-white/10"
+        >
+          <X className="size-5" />
+        </button>
+      </div>
+
+      <div className="relative flex min-h-0 flex-1 items-center justify-center px-14 pb-6">
+        <button
+          type="button"
+          onClick={() => step(-1)}
+          className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-2 text-white transition-colors hover:bg-white/20"
+        >
+          <ChevronLeft className="size-6" />
+        </button>
+
+        {cur && img ? (
+          <svg
+            viewBox={`0 0 ${cur.width} ${cur.height}`}
+            className="group max-h-full max-w-full rounded-lg shadow-2xl"
+            style={{ aspectRatio: `${cur.width} / ${cur.height}` }}
+          >
+            <image href={img} width={cur.width} height={cur.height} />
+            {/* Darken on hover — except the face circles (evenodd holes). */}
+            <path
+              d={veil(cur)}
+              fill="rgba(0,0,0,0.6)"
+              fillRule="evenodd"
+              className="pointer-events-none opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+            />
+            {cur.faces.map((f, i) => {
+              const cx = f.bbox.x + f.bbox.w / 2;
+              const cy = f.bbox.y + f.bbox.h / 2;
+              const r = (Math.max(f.bbox.w, f.bbox.h) / 2) * 1.35;
+              return (
+                <g key={i}>
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={r}
+                    fill="none"
+                    stroke="white"
+                    strokeWidth={Math.max(2, cur.width / 400)}
+                    className="opacity-0 transition-opacity duration-200 group-hover:opacity-90"
+                  />
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={r}
+                    fill="transparent"
+                    className={cn("cursor-pointer", busy && "pointer-events-none")}
+                    onClick={() => void pick(f.file)}
+                  >
+                    <title>Use this face as your avatar</title>
+                  </circle>
+                </g>
+              );
+            })}
+          </svg>
+        ) : (
+          <div className="text-sm text-white/60">
+            {error ?? "Loading painting…"}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => step(1)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-2 text-white transition-colors hover:bg-white/20"
+        >
+          <ChevronRight className="size-6" />
+        </button>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ── Profile rows ──────────────────────────────────────────────────────────
 
 export function ProfileSection(): JSX.Element {
   const [name, setName] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [work, setWork] = useState("");
   const [about, setAbout] = useState("");
   const [avatar, setAvatar] = useState<string | null>(null);
-  const [gallery, setGallery] = useState<{ url: string; dataUrl: string }[] | null>(null);
-  const [galleryOpen, setGalleryOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [galleryError, setGalleryError] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -32,14 +229,21 @@ export function ProfileSection(): JSX.Element {
       .then((p) => {
         setName(p.name);
         setAbout(p.about);
+        setFullName(p.fullName ?? "");
+        setWork(p.work ?? "");
         setAvatar(p.avatarDataUrl);
       });
   }, []);
 
-  const save = async (): Promise<void> => {
-    await api()?.profile.set({ name, about });
+  const persist = async (patch: {
+    name?: string;
+    about?: string;
+    fullName?: string;
+    work?: string;
+  }): Promise<void> => {
+    await api()?.profile.set(patch);
     setNotice("Saved ✓");
-    setTimeout(() => setNotice(null), 2500);
+    setTimeout(() => setNotice(null), 2000);
   };
 
   const refreshAvatar = async (): Promise<void> => {
@@ -54,144 +258,150 @@ export function ProfileSection(): JSX.Element {
     if (r?.ok) await refreshAvatar();
   };
 
-  const openGallery = async (): Promise<void> => {
-    setGalleryOpen((o) => !o);
-    if (!gallery) {
-      setBusy(true);
-      setGalleryError(null);
-      try {
-        const r = await api()?.profile.gallery();
-        setGallery(r?.ok ? (r.items ?? []) : []);
-        if (!r?.ok) setGalleryError(r?.error ?? "Unknown error");
-        else if (r.items?.length === 0) setGalleryError("No avatars loaded — check your network connection.");
-      } catch {
-        setGallery([]);
-        setGalleryError("Network error — check your connection or VPN.");
-      } finally {
-        setBusy(false);
-      }
-    }
-  };
-
-  const pick = async (url: string): Promise<void> => {
-    const r = await api()?.profile.setAvatarUrl(url);
-    if (r?.ok) {
-      await refreshAvatar();
-      setGalleryOpen(false);
-    }
-  };
+  const Row = ({
+    label,
+    children,
+  }: {
+    label: string;
+    children: React.ReactNode;
+  }): JSX.Element => (
+    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+      <span className="text-sm">{label}</span>
+      {children}
+    </div>
+  );
 
   return (
     <section>
-      <h3 className="text-base font-semibold">Profile</h3>
-      <p className="mt-0.5 text-sm text-muted-foreground">
-        The agent knows your name and preferences in every chat.
-      </p>
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-base font-semibold">Profile</h3>
+        {notice && (
+          <span className="text-xs text-muted-foreground">{notice}</span>
+        )}
+      </div>
 
-      <div className="mt-4 flex items-start gap-4">
-        <div className="flex flex-col items-center gap-2">
-          {avatar ? (
-            <img
-              src={avatar}
-              alt="avatar"
-              className="size-16 rounded-full border border-border object-cover"
-            />
-          ) : (
-            <div className="flex size-16 items-center justify-center rounded-full border border-border bg-muted text-lg font-semibold text-muted-foreground">
-              {(name.trim()[0] ?? "?").toUpperCase()}
-            </div>
-          )}
-          <div className="flex gap-1">
+      <div className="mt-1">
+        <Row label="Avatar">
+          <div className="relative">
             <button
               type="button"
-              title="Upload an image"
-              onClick={() => fileRef.current?.click()}
-              className="rounded-md border border-border p-1.5 text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]"
+              title="Change avatar"
+              onClick={() => setMenuOpen((o) => !o)}
+              className="block overflow-hidden rounded-full border border-border transition-transform hover:scale-105"
             >
-              <Upload className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              title="Pick a face from Monet's paintings"
-              onClick={() => void openGallery()}
-              className={cn(
-                "rounded-md border border-border p-1.5 text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
-                galleryOpen && "bg-black/[0.06] text-foreground dark:bg-white/[0.08]",
+              {avatar ? (
+                <img src={avatar} alt="avatar" className="size-11 object-cover" />
+              ) : (
+                <div className="flex size-11 items-center justify-center bg-muted text-sm font-semibold text-muted-foreground">
+                  {(name.trim()[0] ?? "?").toUpperCase()}
+                </div>
               )}
-            >
-              <Palette className="size-3.5" />
             </button>
+            {menuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setMenuOpen(false)}
+                />
+                <div className="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-border bg-card p-1 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      fileRef.current?.click();
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                  >
+                    <Upload className="size-4 text-muted-foreground" />
+                    Upload an image…
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setPickerOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                  >
+                    <Palette className="size-4 text-muted-foreground" />
+                    From Monet's paintings…
+                  </button>
+                </div>
+              </>
+            )}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void upload(f);
+                e.target.value = "";
+              }}
+            />
           </div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void upload(f);
-              e.target.value = "";
-            }}
-          />
-        </div>
+        </Row>
 
-        <div className="min-w-0 flex-1">
-          <label className="text-sm font-medium">Name</label>
+        <Row label="Full name">
+          <input
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            onBlur={() => void persist({ fullName })}
+            placeholder="Aleksandr Ivanov"
+            className={ROW_INPUT}
+          />
+        </Row>
+
+        <Row label="What should Claude call you?">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="What should Claude call you?"
-            className={INPUT}
+            onBlur={() => void persist({ name })}
+            placeholder="Aleksandr"
+            className={ROW_INPUT}
           />
-          <label className="mt-3 block text-sm font-medium">About you</label>
+        </Row>
+
+        <Row label="What best describes your work?">
+          <select
+            value={work}
+            onChange={(e) => {
+              setWork(e.target.value);
+              void persist({ work: e.target.value });
+            }}
+            className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none"
+          >
+            {WORK_OPTIONS.map((w) => (
+              <option key={w} value={w}>
+                {w || "Select"}
+              </option>
+            ))}
+          </select>
+        </Row>
+
+        <div className="py-3.5">
+          <div className="text-sm">Instructions for Claude</div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Claude will keep these in mind across chats (injected into every
+            chat's system prompt).
+          </p>
           <textarea
             value={about}
             onChange={(e) => setAbout(e.target.value)}
-            rows={3}
-            placeholder="Кто ты, чем занимаешься, как отвечать (язык, стиль, что учитывать)…"
-            className={cn(INPUT, "resize-none")}
+            onBlur={() => void persist({ about })}
+            rows={4}
+            placeholder="e.g. ask clarifying questions before giving detailed answers"
+            className="mt-2 w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-foreground/20"
           />
-          <div className="mt-2 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => void save()}
-              className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90"
-            >
-              Save
-            </button>
-            {notice && (
-              <span className="text-xs text-muted-foreground">{notice}</span>
-            )}
-          </div>
         </div>
       </div>
 
-      {galleryOpen && (
-        <div className="mt-4 rounded-xl border border-border p-3">
-          <div className="mb-2 text-xs text-muted-foreground">
-            Faces from Claude Monet's paintings —{" "}
-            <span className="font-mono">iaa2005/monet-paintings</span>
-          </div>
-          {busy && <p className="text-xs text-muted-foreground">Loading…</p>}
-          {gallery && gallery.length === 0 && !busy && (
-            <p className="text-xs text-destructive">
-              {galleryError || "Couldn't load the gallery (repo unreachable?)."}
-            </p>
-          )}
-          <div className="grid grid-cols-6 gap-2 sm:grid-cols-9">
-            {gallery?.map((g) => (
-              <button
-                key={g.url}
-                type="button"
-                onClick={() => void pick(g.url)}
-                className="overflow-hidden rounded-full border border-border transition-transform hover:scale-105"
-                title="Use as avatar"
-              >
-                <img src={g.dataUrl} alt="" className="aspect-square w-full object-cover" />
-              </button>
-            ))}
-          </div>
-        </div>
+      {pickerOpen && (
+        <MonetPicker
+          onPicked={() => void refreshAvatar()}
+          onClose={() => setPickerOpen(false)}
+        />
       )}
     </section>
   );

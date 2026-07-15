@@ -67,6 +67,15 @@ export interface ReflectDigest {
   };
 }
 
+export interface PaintingInfo {
+  title: string;
+  year: string;
+  file: string;
+  width: number;
+  height: number;
+  faces: { file: string; bbox: { x: number; y: number; w: number; h: number } }[];
+}
+
 export interface StoreSkill {
   path: string;
   name: string;
@@ -305,14 +314,27 @@ export interface ElectronAPI {
     get: () => Promise<{
       name: string;
       about: string;
+      fullName: string;
+      work: string;
       avatarDataUrl: string | null;
     }>;
     set: (patch: {
       name?: string;
       about?: string;
-    }) => Promise<{ name: string; about: string }>;
+      fullName?: string;
+      work?: string;
+    }) => Promise<{ name: string; about: string; fullName: string; work: string }>;
     setAvatarFile: (path: string) => Promise<{ ok: boolean; error?: string }>;
     setAvatarUrl: (url: string) => Promise<{ ok: boolean; error?: string }>;
+    paintings: () => Promise<{
+      ok: boolean;
+      items?: PaintingInfo[];
+      error?: string;
+    }>;
+    paintingImage: (
+      file: string,
+    ) => Promise<{ ok: boolean; dataUrl?: string; error?: string }>;
+    pickPaintingFace: (file: string) => Promise<{ ok: boolean; error?: string }>;
     gallery: () => Promise<{
       ok: boolean;
       items?: { url: string; dataUrl: string }[];

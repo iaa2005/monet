@@ -297,6 +297,14 @@ const electronAPI = {
       ipcRenderer.invoke("profile:setAvatarFile", path),
     setAvatarUrl: (url: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("profile:setAvatarUrl", url),
+    paintings: (): Promise<{ ok: boolean; items?: unknown[]; error?: string }> =>
+      ipcRenderer.invoke("profile:paintings"),
+    paintingImage: (
+      file: string,
+    ): Promise<{ ok: boolean; dataUrl?: string; error?: string }> =>
+      ipcRenderer.invoke("profile:paintingImage", file),
+    pickPaintingFace: (file: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("profile:pickPaintingFace", file),
     gallery: (): Promise<{
       ok: boolean;
       items?: { url: string; dataUrl: string }[];

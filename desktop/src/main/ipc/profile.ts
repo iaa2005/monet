@@ -3,8 +3,11 @@
 import { BrowserWindow, ipcMain } from "electron";
 import {
   avatarDataUrl,
+  avatarRawUrl,
   getProfile,
   listGallery,
+  listPaintings,
+  paintingImage,
   setAvatarFromFile,
   setAvatarFromUrl,
   setProfile,
@@ -37,6 +40,25 @@ export function registerProfileIPC(): void {
   });
   ipcMain.handle("profile:setAvatarUrl", async (_e, url: string) => {
     const r = await setAvatarFromUrl(url);
+    if (r.ok) notifyRenderer();
+    return r;
+  });
+  ipcMain.handle("profile:paintings", async () => {
+    try {
+      return { ok: true, items: await listPaintings() };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "failed" };
+    }
+  });
+  ipcMain.handle("profile:paintingImage", async (_e, file: string) => {
+    try {
+      return { ok: true, dataUrl: await paintingImage(file) };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "failed" };
+    }
+  });
+  ipcMain.handle("profile:pickPaintingFace", async (_e, file: string) => {
+    const r = await setAvatarFromUrl(avatarRawUrl(file));
     if (r.ok) notifyRenderer();
     return r;
   });
