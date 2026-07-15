@@ -141,17 +141,6 @@ function MonetPicker({
     }
   };
 
-  // The dark veil covers the painting EXCEPT the face circles: one evenodd
-  // path (full rect + circle subpaths) in painting-pixel coordinates.
-  const veil = (p: PaintingInfo): string => {
-    let d = `M0 0 H${p.width} V${p.height} H0 Z`;
-    for (const f of p.faces) {
-      const { cx, cy, r } = faceCircle(p, f);
-      d += ` M${cx - r} ${cy} A${r} ${r} 0 1 0 ${cx + r} ${cy} A${r} ${r} 0 1 0 ${cx - r} ${cy} Z`;
-    }
-    return d;
-  };
-
   return createPortal(
     <div className="fixed inset-0 z-50 flex flex-col bg-black/90">
       <div className="flex items-center justify-between px-4 py-3 text-white/90">
@@ -194,11 +183,24 @@ function MonetPicker({
             style={{ aspectRatio: `${cur.width} / ${cur.height}` }}
           >
             <image href={img} width={cur.width} height={cur.height} />
-            {/* Darken on hover — except the face circles (evenodd holes). */}
-            <path
-              d={veil(cur)}
+            {/* Darken on hover — except the face circles. A luminance MASK
+                (white veil, black holes) keeps OVERLAPPING circles clear too:
+                unlike an evenodd path, unioned black circles can't re-darken
+                their intersection. */}
+            <defs>
+              <mask id="monet-veil-mask">
+                <rect width={cur.width} height={cur.height} fill="white" />
+                {cur.faces.map((f, i) => {
+                  const { cx, cy, r } = faceCircle(cur, f);
+                  return <circle key={i} cx={cx} cy={cy} r={r} fill="black" />;
+                })}
+              </mask>
+            </defs>
+            <rect
+              width={cur.width}
+              height={cur.height}
               fill="rgba(0,0,0,0.6)"
-              fillRule="evenodd"
+              mask="url(#monet-veil-mask)"
               className="pointer-events-none opacity-0 transition-opacity duration-200 group-hover:opacity-100"
             />
             {cur.faces.map((f, i) => {
