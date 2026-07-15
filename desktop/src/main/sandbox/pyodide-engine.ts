@@ -13,6 +13,7 @@ import { Worker } from "worker_threads";
 import { join } from "path";
 import { getDataDir } from "../data-dir.js";
 import { artifactSessionDir } from "../ipc/artifacts.js";
+import { sandboxWorkDir } from "./podman-engine.js";
 import type { EngineResult, SandboxFile } from "./types.js";
 
 const RUN_TIMEOUT_MS = 240_000;
@@ -107,6 +108,10 @@ export async function runPyodide(
       id,
       code,
       memDir: sessionDirFor(sessionId),
+      // Real per-chat working tree (subfolders preserved) — seeded in and
+      // written back out recursively. artifactsDir is a legacy flat fallback
+      // so files saved before subdir support still seed.
+      workDir: sandboxWorkDir(sessionId),
       artifactsDir: artifactSessionDir(sessionId),
       cacheDir: join(getDataDir(), "pyodide-cache"),
     });

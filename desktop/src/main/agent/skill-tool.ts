@@ -18,7 +18,7 @@
  */
 
 import { readdirSync, readFileSync, statSync } from 'fs'
-import { join } from 'path'
+import { join, relative, sep } from 'path'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import { z } from 'zod/v4'
@@ -31,12 +31,12 @@ import { initVendorRuntime } from './vendor-context.js'
 import { copyBufferIntoSandbox } from '../sandbox/files.js'
 
 // Home is isolated: a skill's "Base directory" host path is unreachable there.
-// Copy the skill's TOP-LEVEL files into the chat sandbox so SandboxRead and
-// RunPython can use them. Flat only — nested packages (scripts/) can't map into
-// the flat sandbox; the model regenerates that logic with RunPython instead.
-const SKILL_COPY_MAX_FILE = 1024 * 1024 // 1 MB per file
-const SKILL_COPY_MAX_TOTAL = 8 * 1024 * 1024 // 8 MB total
-const SKILL_COPY_MAX_COUNT = 30
+// Copy the skill's bundled files into the chat sandbox — recursively, preserving
+// subfolders — so SandboxRead and RunPython can use them at the same relative
+// paths the skill's instructions reference (e.g. scripts/office/pack.py).
+const SKILL_COPY_MAX_FILE = 2 * 1024 * 1024 // 2 MB per file
+const SKILL_COPY_MAX_TOTAL = 12 * 1024 * 1024 // 12 MB total
+const SKILL_COPY_MAX_COUNT = 200
 
 function copySkillFilesToSandbox(
   sessionId: string,
@@ -44,33 +44,42 @@ function copySkillFilesToSandbox(
 ): string[] {
   const copied: string[] = []
   let total = 0
-  let entries: string[]
-  try {
-    entries = readdirSync(skillDir).sort()
-  } catch {
-    return copied
-  }
-  for (const name of entries) {
-    if (copied.length >= SKILL_COPY_MAX_COUNT) break
-    if (name === 'SKILL.md') continue // already inlined into the prompt
-    const full = join(skillDir, name)
-    let st
+  const walk = (dir: string): void => {
+    let entries: string[]
     try {
-      st = statSync(full)
+      entries = readdirSync(dir).sort()
     } catch {
-      continue
+      return
     }
-    if (!st.isFile()) continue // skip subdirs — sandbox is flat
-    if (st.size === 0 || st.size > SKILL_COPY_MAX_FILE) continue
-    if (total + st.size > SKILL_COPY_MAX_TOTAL) break
-    try {
-      copyBufferIntoSandbox(sessionId, name, readFileSync(full))
-      copied.push(name)
-      total += st.size
-    } catch {
-      /* skip unreadable file */
+    for (const e of entries) {
+      if (copied.length >= SKILL_COPY_MAX_COUNT) return
+      const full = join(dir, e)
+      const rel = relative(skillDir, full).split(sep).join('/')
+      if (rel === 'SKILL.md') continue // already inlined into the prompt
+      let st
+      try {
+        st = statSync(full)
+      } catch {
+        continue
+      }
+      if (st.isDirectory()) {
+        walk(full)
+        continue
+      }
+      if (!st.isFile()) continue
+      if (st.size === 0 || st.size > SKILL_COPY_MAX_FILE) continue
+      if (total + st.size > SKILL_COPY_MAX_TOTAL) return
+      try {
+        if (copyBufferIntoSandbox(sessionId, rel, readFileSync(full))) {
+          copied.push(rel)
+          total += st.size
+        }
+      } catch {
+        /* skip unreadable file */
+      }
     }
   }
+  walk(skillDir)
   return copied
 }
 
@@ -261,13 +270,17 @@ export const InlineSkillTool = buildTool({
       if (space === 'home' && skillDir) {
         const copied = copySkillFilesToSandbox(sessionId, skillDir)
         if (copied.length > 0) {
+          const shown = copied.slice(0, 20).join(', ')
+          const more =
+            copied.length > 20 ? ` (+${copied.length - 20} more)` : ''
           text +=
             `\n\n---\n[Home sandbox] This chat is isolated, so the skill's host ` +
-            `"Base directory" above is NOT reachable. Its top-level files were ` +
-            `copied into this chat's sandbox — read them by bare name with ` +
-            `SandboxRead, or open them from RunPython: ${copied.join(', ')}. ` +
-            `Subfolders (e.g. scripts/) were not copied: write equivalent code ` +
-            `with RunPython instead of invoking bundled scripts.`
+            `"Base directory" above is NOT reachable. The skill's files were ` +
+            `copied into this chat's sandbox at the SAME relative paths ` +
+            `(subfolders preserved) — read them with SandboxRead or open them ` +
+            `from RunPython (cwd is the sandbox root): ${shown}${more}. Note some ` +
+            `bundled scripts may rely on tools unavailable in the sandbox ` +
+            `(e.g. LibreOffice); prefer generating output directly with RunPython.`
         }
       }
 

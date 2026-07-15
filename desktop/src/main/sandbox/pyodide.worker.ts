@@ -14,8 +14,14 @@
  */
 
 import { parentPort } from "worker_threads";
-import { readFileSync, readdirSync, statSync } from "fs";
-import { join } from "path";
+import {
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "fs";
+import { dirname, join, relative, sep } from "path";
 import v8 from "v8";
 
 // Python-side SYNC networking (urllib3/requests) needs WebAssembly JSPI,
@@ -38,7 +44,10 @@ interface RunMsg {
   code: string;
   /** In-memory working dir for the chat (e.g. /sessions/<id>). */
   memDir: string;
-  /** Host dir with the chat's saved artifacts (for re-seeding). */
+  /** Real per-chat working TREE on the host (subfolders preserved) — seeded in
+   * recursively and produced files written back out here. */
+  workDir: string;
+  /** Legacy flat artifacts dir (fallback seed for pre-subdir chats). */
   artifactsDir: string;
   /** Host dir for the Pyodide package cache. */
   cacheDir: string;
@@ -151,28 +160,94 @@ async function execWithAutoInstall(
   }
 }
 
-function snapshotDir(py: Py, dir: string): Map<string, string> {
+/** Recursively snapshot the in-memory tree, keyed by POSIX relpath from root. */
+function snapshotDir(py: Py, root: string): Map<string, string> {
   const map = new Map<string, string>();
-  let names: string[] = [];
-  try {
-    names = py.FS.readdir(dir);
-  } catch {
-    return map;
-  }
-  for (const n of names) {
-    if (n === "." || n === "..") continue;
+  const walk = (dir: string): void => {
+    let names: string[] = [];
     try {
-      const st = py.FS.stat(`${dir}/${n}`);
-      if (py.FS.isFile(st.mode))
-        map.set(n, `${st.size}:${Number(new Date(st.mtime as Date))}`);
+      names = py.FS.readdir(dir);
     } catch {
-      /* skip */
+      return;
     }
-  }
+    for (const n of names) {
+      if (n === "." || n === "..") continue;
+      const full = `${dir}/${n}`;
+      try {
+        const st = py.FS.stat(full);
+        if (py.FS.isFile(st.mode)) {
+          const rel = full.slice(root.length + 1);
+          map.set(rel, `${st.size}:${Number(new Date(st.mtime as Date))}`);
+        } else {
+          walk(full); // directory
+        }
+      } catch {
+        /* skip */
+      }
+    }
+  };
+  walk(root);
   return map;
 }
 
-function seedFromArtifacts(py: Py, artifactsDir: string, memDir: string): void {
+/** Ensure every parent dir of an in-memory file path exists. */
+function ensureMemDirs(py: Py, memPath: string): void {
+  const slash = memPath.lastIndexOf("/");
+  if (slash <= 0) return;
+  py.runPython(
+    `import os; os.makedirs(${JSON.stringify(memPath.slice(0, slash))}, exist_ok=True)`,
+  );
+}
+
+/** Seed the in-memory tree from the host: the real work tree first (recursive,
+ * subfolders preserved), then the legacy flat artifacts dir as a fallback for
+ * files saved before subdir support. Never overwrites a file already in memory. */
+function seedFromDisk(
+  py: Py,
+  workDir: string,
+  artifactsDir: string,
+  memDir: string,
+): void {
+  const put = (rel: string, full: string): void => {
+    const target = `${memDir}/${rel}`;
+    try {
+      py.FS.stat(target);
+      return; // already present in memory — don't clobber
+    } catch {
+      /* not present — seed it */
+    }
+    try {
+      if (statSync(full).size > 30 * 1024 * 1024) return;
+      ensureMemDirs(py, target);
+      py.FS.writeFile(target, readFileSync(full));
+    } catch {
+      /* skip unreadable */
+    }
+  };
+
+  // 1) Real work tree (recursive).
+  const walkHost = (dir: string): void => {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const full = join(dir, e);
+      let st;
+      try {
+        st = statSync(full);
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) walkHost(full);
+      else if (st.isFile()) put(relative(workDir, full).split(sep).join("/"), full);
+    }
+  };
+  walkHost(workDir);
+
+  // 2) Legacy flat artifacts (newest-per-name), only names not already seeded.
   try {
     const newest = new Map<string, { ts: number; full: string }>();
     for (const f of readdirSync(artifactsDir)) {
@@ -183,18 +258,7 @@ function seedFromArtifacts(py: Py, artifactsDir: string, memDir: string): void {
       if (!cur || ts > cur.ts)
         newest.set(name, { ts, full: join(artifactsDir, f) });
     }
-    for (const [name, { full }] of newest) {
-      const target = `${memDir}/${name}`;
-      let exists = true;
-      try {
-        py.FS.stat(target);
-      } catch {
-        exists = false;
-      }
-      if (exists) continue;
-      if (statSync(full).size > 30 * 1024 * 1024) continue;
-      py.FS.writeFile(target, readFileSync(full));
-    }
+    for (const [name, { full }] of newest) put(name, full);
   } catch {
     /* best-effort */
   }
@@ -230,7 +294,7 @@ async function run(msg: RunMsg): Promise<void> {
       "os.environ.setdefault('MPLBACKEND', 'Agg')",
     ].join("\n"),
   );
-  seedFromArtifacts(py, msg.artifactsDir, msg.memDir);
+  seedFromDisk(py, msg.workDir, msg.artifactsDir, msg.memDir);
 
   const before = snapshotDir(py, msg.memDir);
 
@@ -250,7 +314,17 @@ async function run(msg: RunMsg): Promise<void> {
   for (const [name, sig] of after) {
     if (before.get(name) === sig) continue;
     try {
-      const copy = py.FS.readFile(`${msg.memDir}/${name}`).slice();
+      const bytes = py.FS.readFile(`${msg.memDir}/${name}`);
+      // Persist back into the real work tree (subfolders preserved) so the file
+      // survives a worker restart and shows up in the Home Files tree.
+      try {
+        const dest = join(msg.workDir, name);
+        mkdirSync(dirname(dest), { recursive: true });
+        writeFileSync(dest, bytes);
+      } catch {
+        /* disk write best-effort — the transferred copy still reaches the UI */
+      }
+      const copy = bytes.slice();
       files.push({ name, bytes: copy.buffer as ArrayBuffer });
       transfers.push(copy.buffer as ArrayBuffer);
     } catch {
@@ -275,10 +349,13 @@ parentPort!.on("message", (msg: RunMsg | MirrorMsg | WipeMsg) => {
   if (msg.type === "mirror") {
     if (!pyodide) return; // cold worker: the seeder will pick it up from disk
     try {
+      const target = `${msg.memDir}/${msg.name}`;
+      // makedirs the file's PARENT (msg.name may be a nested path like a/b.txt).
+      ensureMemDirs(pyodide, target);
       pyodide.runPython(
         `import os; os.makedirs(${JSON.stringify(msg.memDir)}, exist_ok=True)`,
       );
-      pyodide.FS.writeFile(`${msg.memDir}/${msg.name}`, new Uint8Array(msg.bytes));
+      pyodide.FS.writeFile(target, new Uint8Array(msg.bytes));
     } catch {
       /* best-effort */
     }

@@ -36,9 +36,12 @@ const mapResult = (
 const sid = (context: ToolUseContext): string =>
   (context as { sessionId?: string }).sessionId || "default";
 
-/** Plain names only — the sandbox is flat, paths don't exist here. */
+/** Sandbox-relative POSIX path: no absolute paths, no "..", no backslashes.
+ * Subfolders (a/b/c.py) are allowed — the sandbox is a real directory tree. */
 function validName(name: string): boolean {
-  return !!name && !/[/\\]/.test(name) && name !== "." && name !== "..";
+  if (!name || name.startsWith("/") || /^[a-zA-Z]:/.test(name)) return false;
+  if (name.includes("\\")) return false;
+  return name.split("/").every((p) => p !== "" && p !== "." && p !== "..");
 }
 
 function fmtSize(n: number): string {
@@ -69,7 +72,7 @@ export const SandboxListTool = buildTool({
     return true;
   },
   async prompt() {
-    return "List the files in this chat's sandbox (user attachments and files produced by RunPython/SandboxWrite). This chat cannot see the user's filesystem — this sandbox is all there is.";
+    return "List the files in this chat's sandbox (user attachments and files produced by RunPython/SandboxWrite), including files in subfolders (shown as relative paths like scripts/build.py). This chat cannot see the user's filesystem — this sandbox is all there is.";
   },
   async description() {
     return "List the files in this chat's sandbox.";
@@ -92,7 +95,9 @@ export const SandboxListTool = buildTool({
 
 const readSchema = lazySchema(() =>
   z.strictObject({
-    name: z.string().describe("The file name (as shown by SandboxList)."),
+    name: z
+      .string()
+      .describe("The file path as shown by SandboxList (subfolders allowed)."),
   }),
 );
 type ReadSchema = ReturnType<typeof readSchema>;
@@ -114,7 +119,7 @@ export const SandboxReadTool = buildTool({
     return true;
   },
   async prompt() {
-    return "Read a TEXT file from this chat's sandbox by name (see SandboxList). Binary files (images, docx, xlsx) can't be read as text — process those with RunPython.";
+    return "Read a TEXT file from this chat's sandbox by its path as shown by SandboxList (subfolders like scripts/build.py are fine). Binary files (images, docx, xlsx) can't be read as text — process those with RunPython.";
   },
   async description() {
     return "Read a text file from this chat's sandbox.";
@@ -123,7 +128,7 @@ export const SandboxReadTool = buildTool({
     if (!validName(name)) {
       return {
         data: {
-          text: `Invalid name "${name}" — the sandbox is flat, use a bare file name.`,
+          text: `Invalid path "${name}" — use a sandbox-relative path (subfolders ok; no "..", no absolute paths, no backslashes).`,
           isError: true,
         },
       };
@@ -145,7 +150,9 @@ const writeSchema = lazySchema(() =>
   z.strictObject({
     name: z
       .string()
-      .describe("The file name to create/overwrite (bare name, no paths)."),
+      .describe(
+        "The relative path to create/overwrite (subfolders ok, e.g. src/app.py).",
+      ),
     content: z.string().describe("The full text content of the file."),
   }),
 );
@@ -170,9 +177,10 @@ export const SandboxWriteTool = buildTool({
   async prompt() {
     return [
       "Write a TEXT file into this chat's sandbox (markdown, csv, code, html…).",
-      "The file is attached to the conversation for the user and becomes",
-      "readable by RunPython/SandboxRead. For binary formats (docx, xlsx,",
-      "images) generate the file with RunPython instead.",
+      "Use a relative path to place it in a subfolder (e.g. src/app.py) — the",
+      "sandbox is a real directory tree. The file is attached to the conversation",
+      "for the user and becomes readable by RunPython/SandboxRead. For binary",
+      "formats (docx, xlsx, images) generate the file with RunPython instead.",
     ].join("\n");
   },
   async description() {
@@ -185,7 +193,7 @@ export const SandboxWriteTool = buildTool({
     if (!validName(name)) {
       return {
         data: {
-          text: `Invalid name "${name}" — the sandbox is flat, use a bare file name.`,
+          text: `Invalid path "${name}" — use a sandbox-relative path (subfolders ok; no "..", no absolute paths, no backslashes).`,
           isError: true,
         },
       };
