@@ -7,23 +7,13 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getDataDir } from "./data-dir.js";
+import { fetchRetry } from "./net-fetch.js";
 
 const GALLERY_REPO = "iaa2005/monet-paintings";
 const profileFile = (): string => join(getDataDir(), "profile.json");
 const avatarFile = (): string => join(getDataDir(), "avatar.png");
 
-async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      signal: ctrl.signal,
-      headers: { "User-Agent": "monet-desktop" },
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-}
+const GITHUB_FETCH: RequestInit = { headers: { "User-Agent": "monet-desktop" } };
 
 export interface Profile {
   name: string;
@@ -74,7 +64,7 @@ export async function setAvatarFromUrl(
   url: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(url, { headers: { "User-Agent": "monet-desktop" } });
+    const res = await fetchRetry(url, { ...GITHUB_FETCH, timeoutMs: 15_000 });
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length > 8 * 1024 * 1024) return { ok: false, error: "Image too large" };
@@ -85,18 +75,14 @@ export async function setAvatarFromUrl(
   }
 }
 
-// Gallery previews are fetched once per app run (small data URLs).
-let galleryCache: { url: string; dataUrl: string }[] | null = null;
-
 export async function listGallery(): Promise<{ url: string; dataUrl: string }[]> {
-  if (galleryCache) return galleryCache;
 
-  // Fetch directory listing from GitHub API (15 s timeout).
+  // Fetch directory listing from GitHub API (uses net.fetch → VPN-friendly).
   let res: Response;
   try {
-    res = await fetchWithTimeout(
+    res = await fetchRetry(
       `https://api.github.com/repos/${GALLERY_REPO}/contents/avatars`,
-      15_000,
+      { ...GITHUB_FETCH, timeoutMs: 15_000, noMirror: true },
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : "network error";
@@ -114,7 +100,7 @@ export async function listGallery(): Promise<{ url: string; dataUrl: string }[]>
     imgs.map(async (e) => {
       let r: Response;
       try {
-        r = await fetchWithTimeout(e.download_url, 10_000);
+        r = await fetchRetry(e.download_url, { ...GITHUB_FETCH, timeoutMs: 10_000 });
       } catch {
         return;
       }
@@ -130,8 +116,6 @@ export async function listGallery(): Promise<{ url: string; dataUrl: string }[]>
     }),
   );
 
-  // Only cache non-empty results so a transient failure isn't sticky.
-  if (out.length > 0) galleryCache = out;
   return out;
 }
 
@@ -165,14 +149,11 @@ export interface PaintingInfo {
 }
 
 const RAW = `https://raw.githubusercontent.com/${GALLERY_REPO}/HEAD`;
-let paintingsCache: PaintingInfo[] | null = null;
-
 /** Paintings that contain detected faces, with bbox overlays for the picker. */
 export async function listPaintings(): Promise<PaintingInfo[]> {
-  if (paintingsCache) return paintingsCache;
   const [pRes, aRes] = await Promise.all([
-    fetchWithTimeout(`${RAW}/monet_paintings.json`, 15_000),
-    fetchWithTimeout(`${RAW}/avatars/avatars.json`, 15_000),
+    fetchRetry(`${RAW}/monet_paintings.json`, { ...GITHUB_FETCH, timeoutMs: 15_000, noMirror: true }),
+    fetchRetry(`${RAW}/avatars/avatars.json`, { ...GITHUB_FETCH, timeoutMs: 15_000, noMirror: true }),
   ]);
   if (!pRes.ok || !aRes.ok)
     throw new Error(`GitHub raw returned ${pRes.status}/${aRes.status}`);
@@ -198,27 +179,17 @@ export async function listPaintings(): Promise<PaintingInfo[]> {
       width: p.width, height: p.height, faces,
     });
   }
-  if (out.length > 0) paintingsCache = out;
   return out;
 }
-
-// Small LRU of painting images (compressed jpgs, a few hundred KB each).
-const paintingImgCache = new Map<string, string>();
 
 export async function paintingImage(file: string): Promise<string> {
   if (!/^artworks\/[\w.-]+\.(jpe?g|png|webp)$/i.test(file))
     throw new Error("Invalid painting path");
-  const hit = paintingImgCache.get(file);
-  if (hit) return hit;
-  const res = await fetchWithTimeout(`${RAW}/${file}`, 20_000);
+  const res = await fetchRetry(`${RAW}/${file}`, { ...GITHUB_FETCH, timeoutMs: 20_000, noMirror: true });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.length > 6 * 1024 * 1024) throw new Error("Painting too large");
-  const dataUrl = `data:image/jpeg;base64,${buf.toString("base64")}`;
-  paintingImgCache.set(file, dataUrl);
-  if (paintingImgCache.size > 6)
-    paintingImgCache.delete(paintingImgCache.keys().next().value as string);
-  return dataUrl;
+  return `data:image/jpeg;base64,${buf.toString("base64")}`;
 }
 
 /** Raw URL of an avatar crop (what setAvatarFromUrl downloads). */

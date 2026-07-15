@@ -42,14 +42,13 @@ function Row({
   );
 }
 
-/** The circle shown over a detected face = the region the avatar crop actually
- * covers: side = max(w,h) × 4.2 (the generator's face×3×1.4 padding), the
- * square clamped/shifted into the painting like detect_faces.py does. */
+/** The circle shown over a detected face = the exact avatar crop region.
+ * Bbox is already the real crop square — no padding multiplier. */
 function faceCircle(
   p: PaintingInfo,
   f: PaintingInfo["faces"][number],
 ): { cx: number; cy: number; r: number } {
-  const side = Math.max(f.bbox.w, f.bbox.h) * 4.2;
+  const side = Math.max(f.bbox.w, f.bbox.h);
   const fx = f.bbox.x + f.bbox.w / 2;
   const fy = f.bbox.y + f.bbox.h / 2;
   let x1 = Math.max(0, fx - side / 2);
@@ -316,9 +315,9 @@ export function ProfileSection(): JSX.Element {
               className="block overflow-hidden rounded-full border border-border transition-transform hover:scale-105"
             >
               {avatar ? (
-                <img src={avatar} alt="avatar" className="size-11 object-cover" />
+                <img src={avatar} alt="avatar" className="size-24 object-cover" />
               ) : (
-                <div className="flex size-11 items-center justify-center bg-muted text-sm font-semibold text-muted-foreground">
+                <div className="flex size-24 items-center justify-center bg-muted text-2xl font-semibold text-muted-foreground">
                   {(name.trim()[0] ?? "?").toUpperCase()}
                 </div>
               )}
