@@ -863,6 +863,10 @@ export function ChatView({
         </>
       )}
 
+      {/* Structured question panel — sits just above the composer, over the
+          chat (scrollable), collapsible. Renders null when nothing is asked. */}
+      <AskUserHost />
+
       {/* Bottom composer — except in the Home empty state, where the composer
           is centered above. Home never shows the working-directory picker. */}
       {!(isEmpty && home) && (
