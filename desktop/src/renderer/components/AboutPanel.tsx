@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { ExternalLink } from "lucide-react";
 
+const RAW = "https://cdn.jsdelivr.net/gh/iaa2005/monet-paintings@main";
+
 interface Painting {
   title: string;
   year: string;
@@ -21,9 +23,7 @@ export function AboutPanel(): JSX.Element {
   };
 
   useEffect(() => {
-    fetch(
-      "https://raw.githubusercontent.com/iaa2005/monet-paintings/main/monet_paintings.json",
-    )
+    fetch(`${RAW}/monet_paintings.json`)
       .then((r) => r.json())
       .then((data: Painting[]) => {
         const filtered = data.filter(
@@ -43,7 +43,7 @@ export function AboutPanel(): JSX.Element {
   };
 
   const imgSrc = painting
-    ? `https://raw.githubusercontent.com/iaa2005/monet-paintings/main/${painting.filename}`
+    ? `${RAW}/${painting.filename}`
     : null;
 
   const isHorizontal = painting && painting.aspect_ratio >= 1.67;
