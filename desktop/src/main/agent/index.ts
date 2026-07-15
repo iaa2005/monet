@@ -17,7 +17,10 @@ import type {
 import { getProviderManager } from "../provider/manager.js";
 import type { EffortLevel } from "../provider/types.js";
 import { createAdapter } from "../llm/adapter.js";
-import { getSystemPrompt as getFallbackSystemPrompt } from "./prompts-vendor.js";
+import {
+  getSystemPrompt as getFallbackSystemPrompt,
+  getSubAgentPrompt,
+} from "./prompts-vendor.js";
 import {
   executeVendorTool,
   getVendorApiTools,
@@ -81,13 +84,41 @@ async function buildSystemPrompt(
   }
 }
 
-/** Append the user's long-term memory files (Settings → Memory) to the prompt. */
+/** Append the user's long-term memory files (Settings → Memory) plus a global,
+ * user-tunable system-prompt addendum to the prompt. `system-append` is empty
+ * by default (a no-op) and applies to BOTH the vendor and fallback prompts —
+ * it's the knob for tuning the live system prompt without editing code. */
 function withUserMemory(prompt: string): string {
   try {
-    const extra = [getProfilePrompt(), buildMemoryPrompt()].filter(Boolean);
+    const extra = [
+      getProfilePrompt(),
+      buildMemoryPrompt(),
+      tunablePrompt("system-append", ""),
+    ]
+      .map((s) => s?.trim())
+      .filter(Boolean);
     return extra.length ? `${prompt}\n\n${extra.join("\n\n")}` : prompt;
   } catch {
     return prompt;
+  }
+}
+
+/** Touch every tunable-prompt producer so its file exists under
+ * <dataDir>/prompts for editing (used by the "open prompts folder" action).
+ * Best-effort: config-gated tool prompts (ToolSearch/LSP) only seed when those
+ * tools are enabled. */
+export async function seedTunablePrompts(): Promise<void> {
+  try {
+    await getVendorApiTools("home").catch(() => []);
+    await getVendorApiTools("code").catch(() => []);
+    await getFallbackSystemPrompt().catch(() => "");
+    getSubAgentPrompt();
+    buildMemoryPrompt();
+    getProfilePrompt();
+    homeDirective();
+    tunablePrompt("system-append", "");
+  } catch {
+    /* best-effort */
   }
 }
 
