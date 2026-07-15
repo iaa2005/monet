@@ -451,6 +451,14 @@ export interface ElectronAPI {
     listFiles: (sessionId?: string) => Promise<SandboxFileEntry[]>;
     workDir: (sessionId?: string) => Promise<string>;
   };
+  tuning: {
+    toolSearchGet: () => Promise<{ enabled: boolean }>;
+    toolSearchSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
+    lspGet: () => Promise<{ enabled: boolean }>;
+    lspSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
+    promptsReload: () => Promise<{ ok: boolean }>;
+    promptsReveal: () => Promise<{ ok: boolean; dir: string }>;
+  };
   checkpoints: {
     rewind: (
       sessionId: string,

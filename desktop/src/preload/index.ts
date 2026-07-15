@@ -471,6 +471,20 @@ const electronAPI = {
       ipcRenderer.invoke("sandbox:workDir", sessionId),
   },
 
+  tuning: {
+    toolSearchGet: (): Promise<{ enabled: boolean }> =>
+      ipcRenderer.invoke("toolsearch:get"),
+    toolSearchSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
+      ipcRenderer.invoke("toolsearch:set", patch),
+    lspGet: (): Promise<{ enabled: boolean }> => ipcRenderer.invoke("lsp:get"),
+    lspSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
+      ipcRenderer.invoke("lsp:set", patch),
+    promptsReload: (): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("prompts:reload"),
+    promptsReveal: (): Promise<{ ok: boolean; dir: string }> =>
+      ipcRenderer.invoke("prompts:reveal"),
+  },
+
   checkpoints: {
     rewind: (
       sessionId: string,

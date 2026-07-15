@@ -153,6 +153,10 @@ app.on("will-quit", () => {
   void import("./browser/chrome.js")
     .then((m) => m.shutdownBrowser())
     .catch(() => {});
+  // Shut down any language servers spawned by the LSP tool.
+  void import("./agent/lsp/manager.js")
+    .then((m) => m.stopAllLsp())
+    .catch(() => {});
 });
 
 app.on("window-all-closed", () => {
