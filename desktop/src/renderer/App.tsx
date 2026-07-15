@@ -533,7 +533,7 @@ export default function App(): JSX.Element {
 
   return (
     <div
-      className="flex h-screen flex-col bg-sidebar text-foreground"
+      className="relative flex h-screen flex-col bg-sidebar text-foreground"
       style={
         bg
           ? {
@@ -545,6 +545,8 @@ export default function App(): JSX.Element {
           : undefined
       }
     >
+      {bg && <div className="pointer-events-none fixed inset-0 bg-black/50 z-0" />}
+      <div className="relative z-10 flex flex-col h-full">
       {/* ── Custom title bar ── */}
       <header
         className={cn(
@@ -1212,6 +1214,7 @@ export default function App(): JSX.Element {
       </Modal>
 
       <PermissionHost />
+      </div>
     </div>
   );
 }
