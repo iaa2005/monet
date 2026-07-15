@@ -27,6 +27,10 @@ import type { SubAgentUpdate } from "./subagent.js";
 import { WebFetchTool, WebSearchTool } from "./web-tools.js";
 import { RunPythonTool } from "./sandbox-tool.js";
 import { RunCommandTool } from "./podman-command-tool.js";
+import {
+  ListMcpResourcesTool,
+  ReadMcpResourceTool,
+} from "./mcp-resource-tools.js";
 import { getSandboxConfig } from "../sandbox/config.js";
 import {
   SandboxListTool,
@@ -84,6 +88,7 @@ import {
   callMcpTool,
   ensureConnected,
   getMcpTools,
+  hasMcpServers,
   isMcpToolName,
 } from "../mcp/manager.js";
 import type { LLMTool } from "../llm/adapter.js";
@@ -278,6 +283,8 @@ export function getVendorTools(): Tools {
     WebSearchTool,
     RunPythonTool,
     RunCommandTool,
+    ListMcpResourcesTool,
+    ReadMcpResourceTool,
     SandboxListTool,
     SandboxReadTool,
     SandboxWriteTool,
@@ -337,6 +344,10 @@ export function isSpaceToolAllowed(name: string, space?: string): boolean {
     return getSandboxConfig().engine === "docker" || name === "RunPython";
   }
   if (name === "SearchPastChats") return getMemoryConfig().searchChats;
+  // MCP resources are Code-only (Home has no MCP) and only worth advertising
+  // when the user actually has connectors configured.
+  if (name === "ListMcpResources" || name === "ReadMcpResource")
+    return space !== "home" && hasMcpServers();
   if (BROWSER_TOOL_NAMES.has(name)) return getBrowserConfig().enabled;
   if (name === "Computer")
     return getComputerConfig().enabled && activeModelSeesImages();

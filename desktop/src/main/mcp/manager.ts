@@ -252,6 +252,112 @@ export async function callMcpTool(
   return { content: `Unknown MCP tool: ${fullName}`, isError: true };
 }
 
+// ─── Resources ─────────────────────────────────────────────────────────────
+
+export interface McpResource {
+  server: string;
+  uri: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+}
+
+/** Any MCP servers configured at all (gates the resource tools' advertisement). */
+export function hasMcpServers(): boolean {
+  return Object.keys(loadConfig().mcpServers).length > 0;
+}
+
+/** List resources across every connected server. Servers that don't implement
+ * resources (Method not found) are silently skipped; real errors are collected. */
+export async function listMcpResources(): Promise<{
+  resources: McpResource[];
+  errors: { server: string; error: string }[];
+}> {
+  const resources: McpResource[] = [];
+  const errors: { server: string; error: string }[] = [];
+  await Promise.all(
+    [...servers.entries()].map(async ([name, s]) => {
+      if (s.status !== "connected" || !s.client) return;
+      try {
+        const listed = (await s.client.listResources()) as {
+          resources?: {
+            uri: string;
+            name?: string;
+            description?: string;
+            mimeType?: string;
+          }[];
+        };
+        for (const r of listed.resources ?? []) {
+          resources.push({
+            server: name,
+            uri: r.uri,
+            name: r.name,
+            description: r.description,
+            mimeType: r.mimeType,
+          });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // -32601 / "Method not found" ⇒ server just has no resources support.
+        if (!/-32601|method not found|not supported/i.test(msg))
+          errors.push({ server: name, error: msg });
+      }
+    }),
+  );
+  return { resources, errors };
+}
+
+/** Read one resource by URI from a named server. Binary blobs are reported as
+ * a note (size + mime) rather than inlining base64 into the context. */
+export async function readMcpResource(
+  server: string,
+  uri: string,
+): Promise<{
+  contents: { uri: string; mimeType?: string; text?: string; note?: string }[];
+  error?: string;
+}> {
+  const s = servers.get(server);
+  if (!s) return { contents: [], error: `Unknown MCP server: ${server}` };
+  if (s.status !== "connected" || !s.client)
+    return { contents: [], error: `Server "${server}" is not connected` };
+  try {
+    const timeoutMs =
+      s.config.timeout && s.config.timeout > 0
+        ? s.config.timeout * 1000
+        : undefined;
+    const result = (await s.client.readResource(
+      { uri },
+      timeoutMs ? { timeout: timeoutMs } : undefined,
+    )) as {
+      contents?: {
+        uri: string;
+        mimeType?: string;
+        text?: string;
+        blob?: string;
+      }[];
+    };
+    const contents = (result.contents ?? []).map((c) => {
+      if (typeof c.text === "string")
+        return { uri: c.uri, mimeType: c.mimeType, text: c.text };
+      if (typeof c.blob === "string") {
+        const bytes = Buffer.from(c.blob, "base64").length;
+        return {
+          uri: c.uri,
+          mimeType: c.mimeType,
+          note: `[binary resource, ${bytes} bytes${c.mimeType ? `, ${c.mimeType}` : ""} — not inlined]`,
+        };
+      }
+      return { uri: c.uri, mimeType: c.mimeType, note: "[empty resource]" };
+    });
+    return { contents };
+  } catch (err) {
+    return {
+      contents: [],
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 export function getServerStatuses(): McpServerStatus[] {
   const config = loadConfig();
   return Object.entries(config.mcpServers).map(([name, cfg]) => {
