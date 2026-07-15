@@ -20,6 +20,7 @@ import {
 } from "fs";
 import { dirname, join } from "path";
 import { getDataDir } from "../data-dir.js";
+import { tunablePrompt } from "../prompts/index.js";
 
 export interface MemoryConfig {
   searchChats: boolean;
@@ -171,9 +172,14 @@ export function buildMemoryPrompt(): string | null {
   const files = listMemoryFiles();
   if (files.length === 0) return null;
   const parts: string[] = [
-    "# User memory",
-    "Long-term facts about the user, accumulated across past conversations.",
-    "Use them for context; the user does not see this section.",
+    tunablePrompt(
+      "memory-preamble",
+      [
+        "# User memory",
+        "Long-term facts about the user, accumulated across past conversations.",
+        "Use them for context; the user does not see this section.",
+      ].join("\n\n"),
+    ),
   ];
   let total = 0;
   for (const f of files) {
@@ -184,5 +190,6 @@ export function buildMemoryPrompt(): string | null {
     total += body.length;
     parts.push(`## ${f.name}\n${body}`);
   }
-  return parts.length > 3 ? parts.join("\n\n") : null;
+  // Only emit when at least one memory file was actually added (preamble + ≥1).
+  return parts.length > 1 ? parts.join("\n\n") : null;
 }

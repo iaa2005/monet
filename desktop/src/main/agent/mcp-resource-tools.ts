@@ -13,6 +13,7 @@ import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import { listMcpResources, readMcpResource } from "../mcp/manager.js";
+import { tunablePrompt } from "../prompts/index.js";
 
 interface TextOutput {
   text: string;
@@ -51,7 +52,10 @@ export const ListMcpResourcesTool = buildTool({
     return true;
   },
   async prompt() {
-    return "List the resources (readable content addressed by URI) exposed by connected MCP servers. Use ReadMcpResource with a server + uri from this list to read one.";
+    return tunablePrompt(
+      "tool-mcp-list-resources",
+      "List the resources (readable content addressed by URI) exposed by connected MCP servers. Use ReadMcpResource with a server + uri from this list to read one.",
+    );
   },
   async description() {
     return "List readable resources across connected MCP servers.";
@@ -106,7 +110,10 @@ export const ReadMcpResourceTool = buildTool({
     return true;
   },
   async prompt() {
-    return "Read a single MCP resource by `server` and `uri` (from ListMcpResources). Text resources return their content; binary resources return a note (they aren't inlined).";
+    return tunablePrompt(
+      "tool-mcp-read-resource",
+      "Read a single MCP resource by `server` and `uri` (from ListMcpResources). Text resources return their content; binary resources return a note (they aren't inlined).",
+    );
   },
   async description() {
     return "Read one MCP resource by server + uri.";

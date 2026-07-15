@@ -31,6 +31,7 @@ import { dropSessionContext, initVendorRuntime } from "./vendor-context.js";
 import { drainBgResults } from "./bg-agents.js";
 import { buildMemoryPrompt } from "../memory/store.js";
 import { getProfilePrompt } from "../profile.js";
+import { tunablePrompt } from "../prompts/index.js";
 import type { AskUserFn } from "../ipc/ask-user.js";
 
 /** Prepend finished background-agent reports to the user turn as context. */
@@ -114,18 +115,21 @@ export function getConversationText(
   return text.length > maxChars ? text.slice(-maxChars) : text;
 }
 
-/** Prepended in Home so the model knows the ground rules of the space. */
-const HOME_DIRECTIVE = [
+/** Prepended in Home so the model knows the ground rules of the space.
+ * Tunable via <dataDir>/prompts/home-directive.md. */
+const HOME_DIRECTIVE_DEFAULT = [
   "You are in HOME. Your default workspace is an ISOLATED sandbox — you have",
   "no direct access to the user's filesystem or shell. This chat has its OWN",
-  "flat sandbox of files (user attachments + files you produce): SandboxList",
-  "shows them, SandboxRead/SandboxWrite handle text files, and RunPython",
-  "executes Python in the same directory — use it for computation, data",
-  "analysis and binary documents (charts, docx, xlsx). Every file written",
+  "sandbox of files (user attachments + files you produce): SandboxList",
+  "shows them (subfolders included), SandboxRead/SandboxWrite handle text files,",
+  "and RunPython executes Python in the same directory — use it for computation,",
+  "data analysis and binary documents (charts, docx, xlsx). Every file written",
   "there is attached to the conversation automatically. Only the tools",
   "explicitly provided to you (e.g. Browser or Computer Use, if enabled) reach",
   "outside this sandbox — do not assume any other system access.",
 ].join(" ");
+const homeDirective = (): string =>
+  tunablePrompt("home-directive", HOME_DIRECTIVE_DEFAULT);
 
 // ─── Agent loop ─────────────────────────────────────────────────────────
 
@@ -270,7 +274,7 @@ export async function computeContextBreakdown(
       getVendorApiTools(space),
       provider ? buildSystemPrompt(provider.model, space) : Promise.resolve(""),
     ]);
-    const directives = space === "home" ? [HOME_DIRECTIVE] : [];
+    const directives = space === "home" ? [homeDirective()] : [];
     const systemPrompt = [...directives, basePrompt]
       .filter(Boolean)
       .join("\n\n");
@@ -451,7 +455,7 @@ export async function runAgent(
   }
 
   const directives = [
-    ...(space === "home" ? [HOME_DIRECTIVE] : []),
+    ...(space === "home" ? [homeDirective()] : []),
     ...(modeDirective ? [modeDirective] : []),
   ];
   const systemPrompt =

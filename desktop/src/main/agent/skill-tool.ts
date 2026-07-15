@@ -29,6 +29,7 @@ import type { Command } from '@vendor/types/command.js'
 import { lazySchema } from '@vendor/utils/lazySchema.js'
 import { initVendorRuntime } from './vendor-context.js'
 import { copyBufferIntoSandbox } from '../sandbox/files.js'
+import { tunablePrompt } from '../prompts/index.js'
 
 // Home is isolated: a skill's "Base directory" host path is unreachable there.
 // Copy the skill's bundled files into the chat sandbox — recursively, preserving
@@ -208,13 +209,15 @@ export const InlineSkillTool = buildTool({
   },
   async prompt() {
     const skills = await listSkills()
-    return [
-      'Invoke a skill: a reusable, named prompt that packages instructions for a',
-      'specific task. Pass the skill `name`; its instructions are loaded into the',
-      'conversation and you then carry them out. Only invoke a skill listed below.',
-      '',
-      skillCatalog(skills),
-    ].join('\n')
+    const preamble = tunablePrompt(
+      'tool-skill',
+      [
+        'Invoke a skill: a reusable, named prompt that packages instructions for a',
+        'specific task. Pass the skill `name`; its instructions are loaded into the',
+        'conversation and you then carry them out. Only invoke a skill listed below.',
+      ].join('\n'),
+    )
+    return `${preamble}\n\n${skillCatalog(skills)}`
   },
   async description() {
     return 'Invoke a named skill (reusable prompt) so its instructions guide the current task.'

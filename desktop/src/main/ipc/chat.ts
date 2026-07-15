@@ -22,6 +22,7 @@ import { getProviderManager } from "../provider/manager.js";
 import type { EffortLevel } from "../provider/types.js";
 import { requestPermissionFromRenderer } from "./permissions.js";
 import { askUserFromRenderer } from "./ask-user.js";
+import { tunablePrompt } from "../prompts/index.js";
 import type { LLMContentBlock } from "../llm/adapter.js";
 
 interface ChatAttachment {
@@ -144,6 +145,12 @@ const MODE_DIRECTIVES: Record<string, string> = {
   plan: "You are operating in PLAN mode: think through the task and present a clear, numbered plan first. Do NOT modify files or run mutating commands until the user approves the plan.",
 };
 
+/** The mode directive for `mode`, tunable via <dataDir>/prompts/mode-<mode>.md. */
+function modeDirectiveFor(mode: string): string | undefined {
+  const def = MODE_DIRECTIVES[mode];
+  return def ? tunablePrompt(`mode-${mode}`, def) : undefined;
+}
+
 // Per-session abort controllers so multiple chats can run (and be stopped)
 // independently, and so switching chats doesn't cancel a background run.
 const aborts = new Map<string, AbortController>();
@@ -242,7 +249,7 @@ export function registerChatIPC(): void {
         },
         {
           signal: abort.signal,
-          modeDirective: MODE_DIRECTIVES[mode],
+          modeDirective: modeDirectiveFor(mode),
           permissionMode: mode,
           requestPermission: (ask) => requestPermissionFromRenderer(win, ask),
           askUser: (questions) => askUserFromRenderer(win, questions),

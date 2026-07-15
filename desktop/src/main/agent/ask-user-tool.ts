@@ -11,6 +11,7 @@ import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
+import { tunablePrompt } from "../prompts/index.js";
 import type {
   AskUserFn,
   AskUserQuestionSpec,
@@ -83,15 +84,18 @@ export const AskUserQuestionTool = buildTool({
     return false;
   },
   async prompt() {
-    return [
-      "Ask the user 1–4 structured multiple-choice questions when a decision is",
-      "genuinely theirs to make and you cannot resolve it from the request, the",
-      "code, or sensible defaults. Each question has a short `header`, the",
-      "`question` text, and 2–4 `options` (with optional descriptions); set",
-      "`multiSelect` when several answers may combine. The user can always type a",
-      "custom answer. Don't use this for decisions with an obvious default —",
-      "pick it and proceed instead.",
-    ].join(" ");
+    return tunablePrompt(
+      "tool-ask-user",
+      [
+        "Ask the user 1–4 structured multiple-choice questions when a decision is",
+        "genuinely theirs to make and you cannot resolve it from the request, the",
+        "code, or sensible defaults. Each question has a short `header`, the",
+        "`question` text, and 2–4 `options` (with optional descriptions); set",
+        "`multiSelect` when several answers may combine. The user can always type a",
+        "custom answer. Don't use this for decisions with an obvious default —",
+        "pick it and proceed instead.",
+      ].join(" "),
+    );
   },
   async description() {
     return "Ask the user a small number of structured multiple-choice questions.";

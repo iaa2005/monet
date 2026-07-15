@@ -5,6 +5,7 @@ import { lazySchema } from "@vendor/utils/lazySchema.js";
 import { getSandboxConfig } from "../sandbox/config.js";
 import { runCommandInSandbox } from "../sandbox/index.js";
 import { artifactReference } from "../ipc/artifacts.js";
+import { tunablePrompt } from "../prompts/index.js";
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
@@ -31,14 +32,17 @@ export const RunCommandTool = buildTool({
     return false;
   },
   async prompt() {
-    return [
-      "Run a shell command inside the isolated Podman sandbox (Debian Linux;",
-      "/work is the working directory, shared with RunPython). Pre-installed:",
-      "python3 (numpy, pandas, matplotlib, Pillow, fpdf2, python-docx, openpyxl),",
-      "node/npm, tectonic (LaTeX), DejaVu/Liberation fonts. pip works; do NOT",
-      "apt/conda-install system packages (texlive, imagemagick) — they are",
-      "unavailable. Files written to /work are attached to the chat automatically.",
-    ].join(" ");
+    return tunablePrompt(
+      "tool-run-command",
+      [
+        "Run a shell command inside the isolated Podman sandbox (Debian Linux;",
+        "/work is the working directory, shared with RunPython). Pre-installed:",
+        "python3 (numpy, pandas, matplotlib, Pillow, fpdf2, python-docx, openpyxl),",
+        "node/npm, tectonic (LaTeX), DejaVu/Liberation fonts. pip works; do NOT",
+        "apt/conda-install system packages (texlive, imagemagick) — they are",
+        "unavailable. Files written to /work are attached to the chat automatically.",
+      ].join(" "),
+    );
   },
   async description() {
     return "Run a command inside the isolated Podman sandbox.";

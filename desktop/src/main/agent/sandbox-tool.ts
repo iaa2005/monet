@@ -15,6 +15,7 @@ import { lazySchema } from "@vendor/utils/lazySchema.js";
 import { runInSandbox } from "../sandbox/index.js";
 import { artifactReference } from "../ipc/artifacts.js";
 import { getSandboxConfig } from "../sandbox/config.js";
+import { tunablePrompt } from "../prompts/index.js";
 
 // ── Per-engine prompt sections ────────────────────────────────────────────
 // The engines differ in capabilities (packages, networking, CLI tools), so
@@ -130,18 +131,23 @@ export const RunPythonTool = buildTool({
   },
   async prompt() {
     const engine = getSandboxConfig().engine;
-    const specific =
+    const [key, specific] =
       engine === "subprocess"
-        ? PROMPT_SUBPROCESS
+        ? (["tool-run-python-subprocess", PROMPT_SUBPROCESS] as const)
         : engine === "docker"
-          ? PROMPT_PODMAN
-          : PROMPT_PYODIDE;
+          ? (["tool-run-python-podman", PROMPT_PODMAN] as const)
+          : (["tool-run-python-pyodide", PROMPT_PYODIDE] as const);
     return [
-      "Execute Python in a sandbox to compute results, analyse data, or",
-      "produce documents (charts, .xlsx, .docx, .csv, .pdf …). This is how",
-      "you DO things in Home — there is no direct filesystem here.",
+      tunablePrompt(
+        "tool-run-python-intro",
+        [
+          "Execute Python in a sandbox to compute results, analyse data, or",
+          "produce documents (charts, .xlsx, .docx, .csv, .pdf …). This is how",
+          "you DO things in Home — there is no direct filesystem here.",
+        ].join("\n"),
+      ),
       "",
-      ...specific,
+      tunablePrompt(key, specific.join("\n")),
     ].join("\n");
   },
   async description() {

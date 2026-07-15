@@ -14,6 +14,7 @@ import { type as osType, version as osVersion, release as osRelease } from 'os'
 import { execSync } from 'child_process'
 import { getWorkspacePath } from '../ipc/workspace.js'
 import { loadClaudeMd } from '../claude-md.js'
+import { tunablePrompt } from '../prompts/index.js'
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
@@ -237,5 +238,8 @@ export async function getSystemPrompt(): Promise<string> {
 
 /** Get short prompt for sub-agents (used by AgentTool) */
 export function getSubAgentPrompt(): string {
-  return `You are an agent for Claude Code. Given the user's message, use the tools available to complete the task. Complete the task fully — don't gold-plate, but don't leave it half-done. When you complete the task, respond with a concise report covering what was done and any key findings.`
+  return tunablePrompt(
+    'subagent-system',
+    `You are an agent for Claude Code. Given the user's message, use the tools available to complete the task. Complete the task fully — don't gold-plate, but don't leave it half-done. When you complete the task, respond with a concise report covering what was done and any key findings.`,
+  )
 }

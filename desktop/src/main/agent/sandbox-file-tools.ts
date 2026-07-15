@@ -17,6 +17,7 @@ import {
   writeSandboxFile,
 } from "../sandbox/files.js";
 import { artifactReference } from "../ipc/artifacts.js";
+import { tunablePrompt } from "../prompts/index.js";
 
 interface TextOutput {
   text: string;
@@ -72,7 +73,10 @@ export const SandboxListTool = buildTool({
     return true;
   },
   async prompt() {
-    return "List the files in this chat's sandbox (user attachments and files produced by RunPython/SandboxWrite), including files in subfolders (shown as relative paths like scripts/build.py). This chat cannot see the user's filesystem — this sandbox is all there is.";
+    return tunablePrompt(
+      "tool-sandbox-list",
+      "List the files in this chat's sandbox (user attachments and files produced by RunPython/SandboxWrite), including files in subfolders (shown as relative paths like scripts/build.py). This chat cannot see the user's filesystem — this sandbox is all there is.",
+    );
   },
   async description() {
     return "List the files in this chat's sandbox.";
@@ -119,7 +123,10 @@ export const SandboxReadTool = buildTool({
     return true;
   },
   async prompt() {
-    return "Read a TEXT file from this chat's sandbox by its path as shown by SandboxList (subfolders like scripts/build.py are fine). Binary files (images, docx, xlsx) can't be read as text — process those with RunPython.";
+    return tunablePrompt(
+      "tool-sandbox-read",
+      "Read a TEXT file from this chat's sandbox by its path as shown by SandboxList (subfolders like scripts/build.py are fine). Binary files (images, docx, xlsx) can't be read as text — process those with RunPython.",
+    );
   },
   async description() {
     return "Read a text file from this chat's sandbox.";
@@ -175,13 +182,16 @@ export const SandboxWriteTool = buildTool({
     return false;
   },
   async prompt() {
-    return [
-      "Write a TEXT file into this chat's sandbox (markdown, csv, code, html…).",
-      "Use a relative path to place it in a subfolder (e.g. src/app.py) — the",
-      "sandbox is a real directory tree. The file is attached to the conversation",
-      "for the user and becomes readable by RunPython/SandboxRead. For binary",
-      "formats (docx, xlsx, images) generate the file with RunPython instead.",
-    ].join("\n");
+    return tunablePrompt(
+      "tool-sandbox-write",
+      [
+        "Write a TEXT file into this chat's sandbox (markdown, csv, code, html…).",
+        "Use a relative path to place it in a subfolder (e.g. src/app.py) — the",
+        "sandbox is a real directory tree. The file is attached to the conversation",
+        "for the user and becomes readable by RunPython/SandboxRead. For binary",
+        "formats (docx, xlsx, images) generate the file with RunPython instead.",
+      ].join("\n"),
+    );
   },
   async description() {
     return "Write a text file into this chat's sandbox (attached to the chat automatically).";
