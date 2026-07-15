@@ -24,6 +24,47 @@ const WORK_OPTIONS = [
   "", "Engineering", "Student", "Research", "Design", "Writing", "Data", "Other",
 ];
 
+/** Module-level on purpose: defining this inside ProfileSection would create a
+ * NEW component type every render — React remounts the row and the input
+ * loses focus after every keystroke. */
+function Row({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+      <span className="text-sm">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+/** The circle shown over a detected face = the region the avatar crop actually
+ * covers: side = max(w,h) × 4.2 (the generator's face×3×1.4 padding), the
+ * square clamped/shifted into the painting like detect_faces.py does. */
+function faceCircle(
+  p: PaintingInfo,
+  f: PaintingInfo["faces"][number],
+): { cx: number; cy: number; r: number } {
+  const side = Math.max(f.bbox.w, f.bbox.h) * 4.2;
+  const fx = f.bbox.x + f.bbox.w / 2;
+  const fy = f.bbox.y + f.bbox.h / 2;
+  let x1 = Math.max(0, fx - side / 2);
+  let y1 = Math.max(0, fy - side / 2);
+  const x2 = Math.min(p.width, x1 + side);
+  const y2 = Math.min(p.height, y1 + side);
+  x1 = Math.max(0, x2 - side);
+  y1 = Math.max(0, y2 - side);
+  return {
+    cx: (x1 + x2) / 2,
+    cy: (y1 + y2) / 2,
+    r: Math.min(x2 - x1, y2 - y1) / 2,
+  };
+}
+
 // ── Full-screen Monet painting picker ─────────────────────────────────────
 
 function MonetPicker({
@@ -105,9 +146,7 @@ function MonetPicker({
   const veil = (p: PaintingInfo): string => {
     let d = `M0 0 H${p.width} V${p.height} H0 Z`;
     for (const f of p.faces) {
-      const cx = f.bbox.x + f.bbox.w / 2;
-      const cy = f.bbox.y + f.bbox.h / 2;
-      const r = (Math.max(f.bbox.w, f.bbox.h) / 2) * 1.35;
+      const { cx, cy, r } = faceCircle(p, f);
       d += ` M${cx - r} ${cy} A${r} ${r} 0 1 0 ${cx + r} ${cy} A${r} ${r} 0 1 0 ${cx - r} ${cy} Z`;
     }
     return d;
@@ -163,9 +202,7 @@ function MonetPicker({
               className="pointer-events-none opacity-0 transition-opacity duration-200 group-hover:opacity-100"
             />
             {cur.faces.map((f, i) => {
-              const cx = f.bbox.x + f.bbox.w / 2;
-              const cy = f.bbox.y + f.bbox.h / 2;
-              const r = (Math.max(f.bbox.w, f.bbox.h) / 2) * 1.35;
+              const { cx, cy, r } = faceCircle(cur, f);
               return (
                 <g key={i}>
                   <circle
@@ -257,19 +294,6 @@ export function ProfileSection(): JSX.Element {
     const r = await api()?.profile.setAvatarFile(path);
     if (r?.ok) await refreshAvatar();
   };
-
-  const Row = ({
-    label,
-    children,
-  }: {
-    label: string;
-    children: React.ReactNode;
-  }): JSX.Element => (
-    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-      <span className="text-sm">{label}</span>
-      {children}
-    </div>
-  );
 
   return (
     <section>
