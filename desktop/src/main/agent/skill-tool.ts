@@ -17,6 +17,8 @@
  * tool being enabled).
  */
 
+import { readdirSync, readFileSync, statSync } from 'fs'
+import { join } from 'path'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import { z } from 'zod/v4'
@@ -26,6 +28,51 @@ import { getProjectRoot } from '@vendor/bootstrap/state.js'
 import type { Command } from '@vendor/types/command.js'
 import { lazySchema } from '@vendor/utils/lazySchema.js'
 import { initVendorRuntime } from './vendor-context.js'
+import { copyBufferIntoSandbox } from '../sandbox/files.js'
+
+// Home is isolated: a skill's "Base directory" host path is unreachable there.
+// Copy the skill's TOP-LEVEL files into the chat sandbox so SandboxRead and
+// RunPython can use them. Flat only — nested packages (scripts/) can't map into
+// the flat sandbox; the model regenerates that logic with RunPython instead.
+const SKILL_COPY_MAX_FILE = 1024 * 1024 // 1 MB per file
+const SKILL_COPY_MAX_TOTAL = 8 * 1024 * 1024 // 8 MB total
+const SKILL_COPY_MAX_COUNT = 30
+
+function copySkillFilesToSandbox(
+  sessionId: string,
+  skillDir: string,
+): string[] {
+  const copied: string[] = []
+  let total = 0
+  let entries: string[]
+  try {
+    entries = readdirSync(skillDir).sort()
+  } catch {
+    return copied
+  }
+  for (const name of entries) {
+    if (copied.length >= SKILL_COPY_MAX_COUNT) break
+    if (name === 'SKILL.md') continue // already inlined into the prompt
+    const full = join(skillDir, name)
+    let st
+    try {
+      st = statSync(full)
+    } catch {
+      continue
+    }
+    if (!st.isFile()) continue // skip subdirs — sandbox is flat
+    if (st.size === 0 || st.size > SKILL_COPY_MAX_FILE) continue
+    if (total + st.size > SKILL_COPY_MAX_TOTAL) break
+    try {
+      copyBufferIntoSandbox(sessionId, name, readFileSync(full))
+      copied.push(name)
+      total += st.size
+    } catch {
+      /* skip unreadable file */
+    }
+  }
+  return copied
+}
 
 /**
  * Expand a user-typed slash command ("/name args") into its prompt text —
@@ -203,7 +250,27 @@ export const InlineSkillTool = buildTool({
 
     try {
       const blocks = await command.getPromptForCommand(args ?? '', context)
-      const text = flattenBlocks(blocks)
+      let text = flattenBlocks(blocks)
+
+      // In Home the skill's bundled files live on the host FS, which the
+      // isolated chat cannot read — bridge them into the chat sandbox so
+      // SandboxRead / RunPython can use them.
+      const space = (context as { space?: string }).space
+      const sessionId = (context as { sessionId?: string }).sessionId || 'default'
+      const skillDir = (command as { skillRoot?: string }).skillRoot
+      if (space === 'home' && skillDir) {
+        const copied = copySkillFilesToSandbox(sessionId, skillDir)
+        if (copied.length > 0) {
+          text +=
+            `\n\n---\n[Home sandbox] This chat is isolated, so the skill's host ` +
+            `"Base directory" above is NOT reachable. Its top-level files were ` +
+            `copied into this chat's sandbox — read them by bare name with ` +
+            `SandboxRead, or open them from RunPython: ${copied.join(', ')}. ` +
+            `Subfolders (e.g. scripts/) were not copied: write equivalent code ` +
+            `with RunPython instead of invoking bundled scripts.`
+        }
+      }
+
       return {
         data: {
           text:

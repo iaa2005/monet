@@ -82,3 +82,18 @@ export function writeSandboxFile(
   mirrorToPyodideSession(sessionId, name, bytes);
   return { path, mediaType: mediaTypeOf(name) };
 }
+
+/**
+ * Drop an arbitrary file (any bytes, e.g. a skill's bundled resource) into the
+ * chat sandbox: persisted in the artifacts store AND mirrored into the live
+ * Pyodide FS, so both SandboxRead and RunPython see it. Returns the stored path.
+ */
+export function copyBufferIntoSandbox(
+  sessionId: string,
+  name: string,
+  bytes: Buffer,
+): string {
+  const path = saveArtifactBuffer(sessionId, name, bytes);
+  mirrorToPyodideSession(sessionId, name, bytes);
+  return path;
+}

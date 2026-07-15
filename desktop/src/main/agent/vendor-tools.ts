@@ -548,6 +548,8 @@ export async function executeVendorTool(opts: {
   (context as { toolUseId?: string }).toolUseId = toolUseID;
   // Custom tools (e.g. RunPython) read the sessionId off the context.
   (context as { sessionId?: string }).sessionId = sessionId;
+  // Skill copies its bundle into the sandbox only in Home — needs the space.
+  (context as { space?: string }).space = space;
   if (onProgress)
     (context as Record<string, unknown>)._subAgentOnProgress = onProgress;
   if (onSubAgentEvent)
