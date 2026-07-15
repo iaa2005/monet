@@ -318,6 +318,13 @@ export interface ElectronAPI {
       items?: { url: string; dataUrl: string }[];
       error?: string;
     }>;
+    onChanged: (
+      callback: (p: {
+        name: string;
+        about: string;
+        avatarDataUrl: string | null;
+      }) => void,
+    ) => () => void;
   };
   reflect: {
     digest: (

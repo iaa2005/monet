@@ -1,6 +1,6 @@
 /** Profile IPC — Settings → General profile block. */
 
-import { ipcMain } from "electron";
+import { BrowserWindow, ipcMain } from "electron";
 import {
   avatarDataUrl,
   getProfile,
@@ -11,20 +11,35 @@ import {
   type Profile,
 } from "../profile.js";
 
+function notifyRenderer(): void {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win)
+    win.webContents.send("profile:changed", {
+      ...getProfile(),
+      avatarDataUrl: avatarDataUrl(),
+    });
+}
+
 export function registerProfileIPC(): void {
   ipcMain.handle("profile:get", () => ({
     ...getProfile(),
     avatarDataUrl: avatarDataUrl(),
   }));
-  ipcMain.handle("profile:set", (_e, patch: Partial<Profile>) =>
-    setProfile(patch),
-  );
-  ipcMain.handle("profile:setAvatarFile", (_e, path: string) =>
-    setAvatarFromFile(path),
-  );
-  ipcMain.handle("profile:setAvatarUrl", (_e, url: string) =>
-    setAvatarFromUrl(url),
-  );
+  ipcMain.handle("profile:set", (_e, patch: Partial<Profile>) => {
+    const next = setProfile(patch);
+    notifyRenderer();
+    return next;
+  });
+  ipcMain.handle("profile:setAvatarFile", (_e, path: string) => {
+    const r = setAvatarFromFile(path);
+    if (r.ok) notifyRenderer();
+    return r;
+  });
+  ipcMain.handle("profile:setAvatarUrl", async (_e, url: string) => {
+    const r = await setAvatarFromUrl(url);
+    if (r.ok) notifyRenderer();
+    return r;
+  });
   ipcMain.handle(
     "profile:gallery",
     async (): Promise<{

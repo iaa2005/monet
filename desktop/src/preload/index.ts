@@ -302,6 +302,20 @@ const electronAPI = {
       items?: { url: string; dataUrl: string }[];
       error?: string;
     }> => ipcRenderer.invoke("profile:gallery"),
+    onChanged: (
+      callback: (p: {
+        name: string;
+        about: string;
+        avatarDataUrl: string | null;
+      }) => void,
+    ): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        p: { name: string; about: string; avatarDataUrl: string | null },
+      ) => callback(p);
+      ipcRenderer.on("profile:changed", handler);
+      return () => ipcRenderer.removeListener("profile:changed", handler);
+    },
   },
 
   reflect: {

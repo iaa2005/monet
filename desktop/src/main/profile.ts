@@ -12,6 +12,19 @@ const GALLERY_REPO = "iaa2005/monet-paintings";
 const profileFile = (): string => join(getDataDir(), "profile.json");
 const avatarFile = (): string => join(getDataDir(), "avatar.png");
 
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      signal: ctrl.signal,
+      headers: { "User-Agent": "monet-desktop" },
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface Profile {
   name: string;
   about: string;
@@ -70,32 +83,48 @@ let galleryCache: { url: string; dataUrl: string }[] | null = null;
 
 export async function listGallery(): Promise<{ url: string; dataUrl: string }[]> {
   if (galleryCache) return galleryCache;
-  const res = await fetch(
-    `https://api.github.com/repos/${GALLERY_REPO}/git/trees/HEAD?recursive=1`,
-    { headers: { "User-Agent": "monet-desktop", Accept: "application/vnd.github+json" } },
-  );
-  if (!res.ok) throw new Error(`GitHub ${res.status}`);
-  const json = (await res.json()) as { tree?: { path: string; type: string }[] };
-  const imgs = (json.tree ?? [])
-    .filter((e) => e.type === "blob" && /\.(png|jpe?g|webp)$/i.test(e.path))
-    .slice(0, 18);
+
+  // Fetch directory listing from GitHub API (15 s timeout).
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(
+      `https://api.github.com/repos/${GALLERY_REPO}/contents/avatars`,
+      15_000,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "network error";
+    throw new Error(`GitHub API unreachable: ${msg}`);
+  }
+  if (!res.ok) throw new Error(`GitHub API returned ${res.status}`);
+
+  const json = (await res.json()) as { name: string; download_url: string; type: string }[];
+  const imgs = (Array.isArray(json) ? json : [])
+    .filter((e) => e.type === "file" && /\.(png|jpe?g|webp)$/i.test(e.name));
+
+  // Download each avatar preview (10 s timeout per image).
   const out: { url: string; dataUrl: string }[] = [];
   await Promise.allSettled(
     imgs.map(async (e) => {
-      const url = `https://raw.githubusercontent.com/${GALLERY_REPO}/HEAD/${e.path}`;
-      const r = await fetch(url, { headers: { "User-Agent": "monet-desktop" } });
+      let r: Response;
+      try {
+        r = await fetchWithTimeout(e.download_url, 10_000);
+      } catch {
+        return;
+      }
       if (!r.ok) return;
       const buf = Buffer.from(await r.arrayBuffer());
       if (buf.length > 2 * 1024 * 1024) return;
-      const mime = /\.png$/i.test(e.path)
+      const mime = /\.png$/i.test(e.name)
         ? "image/png"
-        : /\.webp$/i.test(e.path)
+        : /\.webp$/i.test(e.name)
           ? "image/webp"
           : "image/jpeg";
-      out.push({ url, dataUrl: `data:${mime};base64,${buf.toString("base64")}` });
+      out.push({ url: e.download_url, dataUrl: `data:${mime};base64,${buf.toString("base64")}` });
     }),
   );
-  galleryCache = out;
+
+  // Only cache non-empty results so a transient failure isn't sticky.
+  if (out.length > 0) galleryCache = out;
   return out;
 }
 

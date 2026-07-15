@@ -22,6 +22,7 @@ export function ProfileSection(): JSX.Element {
   const [gallery, setGallery] = useState<{ url: string; dataUrl: string }[] | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [galleryError, setGalleryError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -57,9 +58,15 @@ export function ProfileSection(): JSX.Element {
     setGalleryOpen((o) => !o);
     if (!gallery) {
       setBusy(true);
+      setGalleryError(null);
       try {
         const r = await api()?.profile.gallery();
         setGallery(r?.ok ? (r.items ?? []) : []);
+        if (!r?.ok) setGalleryError(r?.error ?? "Unknown error");
+        else if (r.items?.length === 0) setGalleryError("No avatars loaded — check your network connection.");
+      } catch {
+        setGallery([]);
+        setGalleryError("Network error — check your connection or VPN.");
       } finally {
         setBusy(false);
       }
@@ -167,8 +174,8 @@ export function ProfileSection(): JSX.Element {
           </div>
           {busy && <p className="text-xs text-muted-foreground">Loading…</p>}
           {gallery && gallery.length === 0 && !busy && (
-            <p className="text-xs text-muted-foreground">
-              Couldn't load the gallery (repo unreachable?).
+            <p className="text-xs text-destructive">
+              {galleryError || "Couldn't load the gallery (repo unreachable?)."}
             </p>
           )}
           <div className="grid grid-cols-6 gap-2 sm:grid-cols-9">

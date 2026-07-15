@@ -521,7 +521,7 @@ function SummaryTurnCard({ turn }: { turn: TurnSummary }): JSX.Element {
   );
 }
 
-function pickGreeting(isFirstRun: boolean): {
+function pickGreeting(name: string, isFirstRun: boolean): {
   title: string;
   subtitle: string;
 } {
@@ -531,8 +531,6 @@ function pickGreeting(isFirstRun: boolean): {
   else if (hour >= 12 && hour < 17) timeKey = "afternoon";
   else if (hour >= 17 && hour < 22) timeKey = "evening";
   else timeKey = "night";
-
-  const name = localStorage.getItem("user-name") || "friend";
 
   let title: string;
   if (isFirstRun) {
@@ -565,6 +563,18 @@ export function ChatView({
   onOpenSettings?: () => void;
 }): JSX.Element {
   const [podmanWarning, setPodmanWarning] = useState(false);
+  const [profileName, setProfileName] = useState("friend");
+
+  useEffect(() => {
+    const a = api();
+    if (!a) return;
+    void a.profile.get().then((p) => {
+      if (p.name) setProfileName(p.name);
+    });
+    return a.profile.onChanged((p) => {
+      if (p.name) setProfileName(p.name);
+    });
+  }, []);
 
   useEffect(() => {
     if (!home) return;
@@ -594,7 +604,7 @@ export function ChatView({
     return false;
   }, []);
 
-  const greeting = useMemo(() => pickGreeting(isFirstRun), [isFirstRun]);
+  const greeting = useMemo(() => pickGreeting(profileName, isFirstRun), [profileName, isFirstRun]);
 
   const grouped = groupMessages(messages, transcriptMode);
   const summaryTurns =
