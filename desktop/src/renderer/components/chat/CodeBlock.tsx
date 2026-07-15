@@ -105,7 +105,7 @@ export function CodeBlock({
   return (
     <div
       className={cn(
-        "my-3 overflow-hidden rounded-lg border border-border bg-card",
+              "glass-panel my-3 overflow-hidden rounded-lg border border-border bg-card",
         className,
       )}
     >

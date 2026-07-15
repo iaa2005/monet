@@ -12,7 +12,7 @@ const LS_KEY = "monet.background";
 // ══ Config ═══════════════════════════════════════════════════════════════
 export const BG_AR_MIN = 4 / 3;    // min aspect ratio (width/height)
 export const BG_AR_MAX = 2;        // max aspect ratio
-export const BG_OPACITY = 0.5;     // painting transparency (0=invisible, 1=solid)
+export const BG_OPACITY = 0.2;     // painting transparency (0=invisible, 1=solid)
 
 interface PaintingMeta {
   title: string;

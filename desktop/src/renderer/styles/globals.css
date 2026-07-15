@@ -264,7 +264,7 @@
     -webkit-app-region: no-drag;
 }
 
-/* ─── Pill scrollbar ─── */
+/* Pill scrollbar */
 ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -284,4 +284,52 @@
 }
 .dark ::-webkit-scrollbar-thumb:hover {
     background: hsl(0 0% 50%);
+}
+
+/* Monet background glass effect */
+.monet-glass .glass-panel {
+    position: relative;
+    z-index: 0;
+    isolation: isolate;
+    background-color: transparent !important;
+    transition: background-color 0.5s ease;
+}
+.monet-glass .glass-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-color: hsl(var(--bg-000) / 0.55);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border-radius: inherit;
+}
+.monet-glass .glass-panel.\!bg-sidebar::before {
+    background-color: hsl(var(--bg-100) / 0.45);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+}
+.monet-glass th::before,
+.monet-glass td::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-color: hsl(var(--bg-200) / 0.5);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-radius: inherit;
+}
+.monet-glass th,
+.monet-glass td {
+    position: relative;
+    z-index: 0;
+    isolation: isolate;
+    background-color: transparent !important;
+    transition: background-color 0.5s ease;
+}
+/* Terminal transparency inside glass panels */
+.monet-glass .glass-panel .xterm-viewport,
+.monet-glass .glass-panel .xterm-screen {
+    background-color: transparent !important;
 }

@@ -251,7 +251,7 @@ export function GitCard(): JSX.Element | null {
     <div className="mx-auto w-full max-w-3xl px-4 pb-1">
       <div
         ref={rootRef}
-        className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-1.5 py-1.5 text-[12px]"
+        className="glass-panel flex items-center gap-1.5 rounded-lg border border-border bg-card px-1.5 py-1.5 text-[12px]"
       >
         {/* Repo */}
         <div className="relative min-w-0">

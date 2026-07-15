@@ -878,7 +878,7 @@ export function MessageInput({
           </div>
         )}
         
-        <div className="p-3 gap-2.5 items-end rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25">
+        <div className="glass-panel p-3 gap-2.5 items-end rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25">
           
           <div className="flex gap-2.5 w-full items-end">
             <textarea

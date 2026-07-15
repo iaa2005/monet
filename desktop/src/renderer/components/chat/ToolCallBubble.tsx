@@ -487,7 +487,7 @@ function ToolGroupCard({ calls }: { calls: ToolCall[] }): JSX.Element {
       </button>
 
       {groupOpen && (
-        <div className="mt-1.5 rounded-lg border border-border bg-black/[0.02] px-2.5 py-2 dark:bg-white/[0.02]">
+        <div className="glass-panel mt-1.5 rounded-lg border border-border bg-card px-2.5 py-2">
           {calls.map((tc, i) => (
             <div key={tc.id}>
               {i > 0 && <hr className="-mx-2.5 my-1.5 border-border/30" />}
@@ -729,7 +729,7 @@ function SubAgentBubble({ toolCall }: { toolCall: ToolCall }): JSX.Element {
 
   return (
     <>
-      <div className="rounded-lg border border-border bg-black/[0.02] px-3 py-2 dark:bg-white/[0.02]">
+      <div className="glass-panel rounded-lg border border-border bg-card px-3 py-2">
         {header(false)}
         {!collapsed && (
           <div className="mt-2 border-l-2 border-violet-500/20 pl-3">

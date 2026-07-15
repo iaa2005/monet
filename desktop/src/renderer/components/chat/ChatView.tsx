@@ -304,7 +304,7 @@ const MessageRow = memo(
                 <AttachmentChips attachments={msg.attachments} />
               )}
               <Bubble variant="secondary" align="end">
-                <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.08]">
+                <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.08] glass-panel rounded-xl">
                   {msg.content}
                 </BubbleContent>
               </Bubble>

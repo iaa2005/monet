@@ -175,7 +175,7 @@ function Panel({
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm",
+        "glass-panel flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm",
         className,
       )}
     >
@@ -533,22 +533,32 @@ export default function App(): JSX.Element {
   );
 
   const { bg, toggle: toggleBg } = useMonetBackground();
+  const lastBg = useRef<string | null>(null);
+  if (bg) lastBg.current = bg;
+
+  // Sync glass class with background fade
+  useEffect(() => {
+    if (bg) {
+      document.documentElement.classList.add("monet-glass");
+    } else {
+      const t = setTimeout(() => document.documentElement.classList.remove("monet-glass"), 700);
+      return () => clearTimeout(t);
+    }
+  }, [bg]);
 
   return (
     <div className="relative flex h-screen flex-col bg-sidebar text-foreground">
-      {bg && (
-        <div
-          className="pointer-events-none fixed inset-0 z-0"
-          style={{
-            backgroundImage: `url(${bg})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            backgroundAttachment: "fixed",
-            opacity: BG_OPACITY,
-          }}
-        />
-      )}
-      <div className="relative z-10 flex flex-col h-full">
+      <div
+        className="pointer-events-none fixed inset-0 transition-opacity duration-700"
+        style={{
+          backgroundImage: bg || lastBg.current ? `url(${bg || lastBg.current})` : "none",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundAttachment: "fixed",
+          opacity: bg ? BG_OPACITY : 0,
+        }}
+      />
+      <div className="flex flex-col h-full">
       {/* ── Custom title bar ── */}
       <header
         className={cn(
@@ -809,10 +819,10 @@ export default function App(): JSX.Element {
                 className="min-w-[280px]"
                 style={{ overflow: "visible" }}
               >
-                <aside className="flex h-full flex-col rounded-xl border border-border bg-card shadow-sm">
+                <aside className="glass-panel flex h-full flex-col rounded-xl border border-border bg-card shadow-sm">
                   {/* Home / Code tabs */}
                   <div className="flex items-center gap-1 px-2 pt-2">
-                    <div className="flex h-7 flex-1 items-center rounded-md bg-black/[0.05] p-0.5 dark:bg-white/[0.06]">
+                    <div className="flex flex-1 items-center rounded-md bg-black/[0.05] p-0.5 dark:bg-white/[0.06] border">
                       <button
                         onClick={() => {
                           setAppMode("home");
@@ -941,7 +951,7 @@ export default function App(): JSX.Element {
                       minSize={18}
                       maxSize={55}
                     >
-                      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
+                      <div className="glass-panel flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
                         <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
                           <button
                             type="button"

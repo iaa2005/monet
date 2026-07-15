@@ -403,7 +403,7 @@ export function FileViewer({
   };
 
   return (
-    <div className="flex h-full flex-col rounded-xl border border-border bg-background">
+    <div className="glass-panel flex h-full flex-col rounded-xl border border-border bg-background">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-1.5">
         <span className="flex min-w-0 items-center gap-1.5">
@@ -489,7 +489,7 @@ export function FileViewer({
               ref={docxRef}
               className={
                 preview === "docx" && !error
-                  ? "docx-host min-h-0 bg-black/[0.04] p-3 dark:bg-white/[0.06] [&_.docx-wrapper]:bg-transparent [&_.docx-wrapper]:p-0 [&_section.docx]:mx-auto [&_section.docx]:mb-3 [&_section.docx]:shadow"
+                                  ? "docx-host min-h-0 bg-black/[0.04] p-3 dark:bg-white/[0.06] [&_.docx-wrapper]:bg-transparent [&_.docx-wrapper]:p-0 [&_section.docx]:mx-auto [&_section.docx]:mb-3 [&_section.docx]:shadow"
                   : "hidden"
               }
             />

@@ -403,7 +403,7 @@ export function StatsDashboard(): JSX.Element {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4">
-      <div className="rounded-2xl bg-black/[0.025] p-4 dark:bg-white/[0.04] border border-border">
+      <div className="glass-panel rounded-2xl bg-card p-4 border border-border">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex gap-1">
             {(["overview", "models"] as const).map((t) => (
@@ -422,7 +422,7 @@ export function StatsDashboard(): JSX.Element {
               </button>
             ))}
           </div>
-          <div className="flex gap-0.5 rounded-lg bg-black/[0.04] p-0.5 dark:bg-white/[0.06]">
+          <div className="flex gap-0.5 rounded-lg bg-muted p-0.5">
             {RANGES.map((r) => (
               <button
                 key={r.id}
@@ -447,7 +447,7 @@ export function StatsDashboard(): JSX.Element {
               {cards.map((c) => (
                 <div
                   key={c.label}
-                  className="rounded-md bg-black/[0.04] px-3 py-2.5 dark:bg-white/[0.06]"
+                  className="rounded-md bg-muted px-3 py-2.5"
                 >
                   <div className="truncate text-xs text-muted-foreground">
                     {c.label}
