@@ -7,7 +7,11 @@ import {
   Suspense,
   type ReactNode,
 } from "react";
-import { useMonetBackground } from "./components/useMonetBackground.js";
+import {
+  useMonetBackground,
+  BG_DARK_OPACITY,
+  BG_LIGHT_OPACITY,
+} from "./components/useMonetBackground.js";
 import {
   Home,
   Code,
@@ -547,11 +551,13 @@ export default function App(): JSX.Element {
     >
       {bg && (
         <div
-          className={
-            theme === "dark"
-              ? "pointer-events-none fixed inset-0 bg-black/50 z-0"
-              : "pointer-events-none fixed inset-0 bg-white/60 z-0"
-          }
+          className="pointer-events-none fixed inset-0 z-0"
+          style={{
+            backgroundColor:
+              theme === "dark"
+                ? `rgba(0,0,0,${BG_DARK_OPACITY / 100})`
+                : `rgba(255,255,255,${BG_LIGHT_OPACITY / 100})`,
+          }}
         />
       )}
       <div className="relative z-10 flex flex-col h-full">

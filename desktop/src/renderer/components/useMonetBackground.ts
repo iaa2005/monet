@@ -9,6 +9,12 @@ const JSON_URL =
   "https://raw.githubusercontent.com/iaa2005/monet-paintings/main/monet_paintings.json";
 const LS_KEY = "monet.background";
 
+// ══ Config ═══════════════════════════════════════════════════════════════
+export const BG_AR_MIN = 4 / 3;    // min aspect ratio (width/height)
+export const BG_AR_MAX = 2;        // max aspect ratio
+export const BG_DARK_OPACITY = 50; // overlay % for dark theme
+export const BG_LIGHT_OPACITY = 60; // overlay % for light theme
+
 interface PaintingMeta {
   title: string;
   year: string;
@@ -33,7 +39,7 @@ export function useMonetBackground(): {
       // Horizontal paintings: aspect ratio 4:3 to 2:1
       const horizontals = all.filter((p) => {
         const ar = p.width / p.height;
-        return ar >= 4 / 3 && ar <= 2;
+        return ar >= BG_AR_MIN && ar <= BG_AR_MAX;
       });
       const pool = horizontals.length > 0 ? horizontals : all;
       const pick = pool[Math.floor(Math.random() * pool.length)];
