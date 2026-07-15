@@ -30,8 +30,11 @@ export function useMonetBackground(): {
       const res = await fetch(JSON_URL);
       if (!res.ok) return;
       const all: PaintingMeta[] = await res.json();
-      // Prefer horizontal paintings (width >= height)
-      const horizontals = all.filter((p) => p.width >= p.height);
+      // Horizontal paintings: aspect ratio 4:3 to 2:1
+      const horizontals = all.filter((p) => {
+        const ar = p.width / p.height;
+        return ar >= 4 / 3 && ar <= 2;
+      });
       const pool = horizontals.length > 0 ? horizontals : all;
       const pick = pool[Math.floor(Math.random() * pool.length)];
       if (!pick) return;
