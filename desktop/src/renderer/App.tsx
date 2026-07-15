@@ -9,7 +9,7 @@ import {
 } from "react";
 import {
   useMonetBackground,
-  BG_OPACITY,
+  bgOpacity,
   ROTATE_OPTIONS,
 } from "./components/useMonetBackground.js";
 import {
@@ -557,8 +557,8 @@ export default function App(): JSX.Element {
       cur.style.opacity = "0";
       void cur.offsetHeight;
       cur.style.transition = "opacity 1200ms ease-in-out";
-      cur.style.opacity = String(BG_OPACITY);
-      prevBg.current = bg;
+      cur.style.opacity = String(bgOpacity());
+            prevBg.current = bg;
       return;
     }
 
@@ -573,7 +573,7 @@ export default function App(): JSX.Element {
     // Snap fade layer to old image at full opacity
     fade.style.backgroundImage = `url(${old})`;
     fade.style.transition = "none";
-    fade.style.opacity = String(BG_OPACITY);
+    fade.style.opacity = String(bgOpacity());
     // Snap current layer to new image at zero opacity
     cur.style.backgroundImage = `url(${bg})`;
     cur.style.transition = "none";
@@ -584,8 +584,8 @@ export default function App(): JSX.Element {
     fade.style.transition = "opacity 1200ms ease-in-out";
     fade.style.opacity = "0";
     cur.style.transition = "opacity 1200ms ease-in-out";
-    cur.style.opacity = String(BG_OPACITY);
-  }, [bg]);
+    cur.style.opacity = String(bgOpacity());
+      }, [bg]);
 
   // Sync glass class with background fade
   useEffect(() => {
@@ -618,7 +618,7 @@ export default function App(): JSX.Element {
           backgroundSize: "cover",
           backgroundPosition: "center",
           backgroundAttachment: "fixed",
-          opacity: bg ? BG_OPACITY : 0,
+          opacity: bg ? bgOpacity() : 0,
           transition: bg ? "none" : "opacity 1200ms ease-in-out",
         }}
       />

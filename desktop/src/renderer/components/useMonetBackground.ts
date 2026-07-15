@@ -13,7 +13,14 @@ const LS_ROTATE = "monet.rotate";
 // ══ Config ═══════════════════════════════════════════════════════════════
 export const BG_AR_MIN = 4 / 3;       // min aspect ratio (width/height)
 export const BG_AR_MAX = 2;           // max aspect ratio
-export const BG_OPACITY = 0.2;        // painting transparency
+export const BG_OPACITY_LIGHT = 0.4;
+export const BG_OPACITY_DARK = 0.2;
+
+export function bgOpacity(): number {
+  return document.documentElement.classList.contains("dark")
+    ? BG_OPACITY_DARK
+    : BG_OPACITY_LIGHT;
+}
 export const BG_MIN_PX = 1_700_000;   // min resolution in pixels (width × height)
 
 export const ROTATE_OPTIONS: { label: string; ms: number | null }[] = [
