@@ -7,6 +7,7 @@ import {
   Suspense,
   type ReactNode,
 } from "react";
+import { useMonetBackground } from "./components/useMonetBackground.js";
 import {
   Home,
   Code,
@@ -528,8 +529,22 @@ export default function App(): JSX.Element {
     [handleSelectSession],
   );
 
+  const { bg, toggle: toggleBg } = useMonetBackground();
+
   return (
-    <div className="flex h-screen flex-col bg-sidebar text-foreground">
+    <div
+      className="flex h-screen flex-col bg-sidebar text-foreground"
+      style={
+        bg
+          ? {
+              backgroundImage: `url(${bg})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              backgroundAttachment: "fixed",
+            }
+          : undefined
+      }
+    >
       {/* ── Custom title bar ── */}
       <header
         className={cn(
@@ -547,9 +562,13 @@ export default function App(): JSX.Element {
         )}
 
         <div className="app-no-drag flex items-center gap-2">
-          <span className="font-[Copernicus] text-[15px] font-semibold tracking-tight text-foreground">
+          <button
+            type="button"
+            onClick={toggleBg}
+            className="font-[Copernicus] text-[15px] font-semibold tracking-tight text-foreground cursor-pointer hover:opacity-80 transition-opacity"
+          >
             Monet
-          </span>
+          </button>
         </div>
 
         <div className="flex-1" />
