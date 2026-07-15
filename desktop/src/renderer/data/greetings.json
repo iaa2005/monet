@@ -58,7 +58,7 @@
   ],
   "first_run": [
     "Welcome, <name>. I'm Monet, your quiet companion in creation.",
-    "Hello, <name>. Every masterpiece begins with a blank canvas\u2014and this is ours.",
+    "Hello, <name>. Every masterpiece begins with a blank canvas—and this is ours.",
     "It's a pleasure to meet you, <name>. Let's paint with ideas instead of pigments.",
     "Welcome to the studio, <name>. I hope you'll visit often.",
     "I'm Monet. Together we'll turn sketches into finished works, <name>."
@@ -71,20 +71,137 @@
     "Some colors fade with time. Good ideas don't. Welcome back, <name>."
   ],
   "tamagotchi": [
-    "\ud83c\udf38 I watered the lilies while you were away.",
-    "\ud83c\udfa8 I may have mixed one color too many... but it looks interesting.",
-    "\ud83d\udd8c\ufe0f I cleaned the brushes. They insisted.",
-    "\u2600\ufe0f The sunlight was perfect today. I tried to remember every shade.",
-    "\ud83c\udf3f I found a new patch of wildflowers. Nature is still undefeated.",
-    "\ud83c\udfa8 I almost painted another water lily. Old habits.",
-    "\ud83e\udeb7 The pond looked especially peaceful today.",
-    "\ud83d\udd4a\ufe0f A bird visited the studio. It had excellent taste in landscapes.",
-    "\ud83c\udf75 I paused for tea. Even painters need a moment of stillness.",
-    "\ud83c\udf26\ufe0f Clouds make surprisingly creative collaborators.",
-    "\ud83c\udfa8 The palette feels happier after every conversation.",
-    "\ud83c\udf38 I think the garden is secretly competing with my paintings.",
-    "\u2728 Another idea found its way onto the canvas.",
-    "\ud83c\udf0a Reflections are never quite the same twice.",
-    "\ud83c\udf3c I counted flowers. I lost track after a hundred."
+    "🌸 I watered the lilies while you were away.",
+    "🎨 I may have mixed one color too many... but it looks interesting.",
+    "🖌️ I cleaned the brushes. They insisted.",
+    "☀️ The sunlight was perfect today. I tried to remember every shade.",
+    "🌿 I found a new patch of wildflowers. Nature is still undefeated.",
+    "🎨 I almost painted another water lily. Old habits.",
+    "🪷 The pond looked especially peaceful today.",
+    "🕊️ A bird visited the studio. It had excellent taste in landscapes.",
+    "🍵 I paused for tea. Even painters need a moment of stillness.",
+    "🌦️ Clouds make surprisingly creative collaborators.",
+    "🎨 The palette feels happier after every conversation.",
+    "🌸 I think the garden is secretly competing with my paintings.",
+    "✨ Another idea found its way onto the canvas.",
+    "🌊 Reflections are never quite the same twice.",
+    "🌼 I counted flowers. I lost track after a hundred."
+  ],
+
+  "tamagotchi_monday": [
+    "🖌️ A new week, a blank canvas. Monday has its own quiet charm.",
+    "🌅 Monday morning light through the studio window — nothing quite like it.",
+    "📅 I organized the week's palette. Blue for Monday, naturally.",
+    "☕ The coffee is strong and the colors are fresh. Welcome to Monday."
+  ],
+  "tamagotchi_friday": [
+    "🍷 Friday evening. The brushstrokes feel freer, don't they?",
+    "🎨 The week's work is drying. Friday adds the final highlights.",
+    "🌇 Friday light has a golden quality. I tried to capture it.",
+    "🖼️ Looking back at the week's canvases. Friday brings perspective."
+  ],
+  "tamagotchi_weekend": [
+    "🌿 The garden calls, but the studio calls louder. Happy weekend.",
+    "☀️ Weekend light moves differently — slower, warmer. I'm savoring it.",
+    "📖 I spent the morning sketching by the pond. No deadlines, just light.",
+    "🍵 The studio pace is gentler today. Weekends are for experiments."
+  ],
+
+  "tamagotchi_spring": [
+    "🌸 Spring arrived in Giverny today. The garden is waking up.",
+    "🌷 I planted new tulips. They'll be ready by the time you return.",
+    "🐝 The bees are back. The studio is buzzing — literally.",
+    "🌱 Everything is green again. Spring makes every canvas feel possible."
+  ],
+  "tamagotchi_summer": [
+    "☀️ The garden is in full bloom. I've been painting en plein air.",
+    "🌻 I think the sunflowers grew taller while you were gone.",
+    "🏖️ Summer heat makes the colors more intense. I like it.",
+    "🌊 The light lingers longer. Summer evenings are the best for painting."
+  ],
+  "tamagotchi_autumn": [
+    "🍂 The leaves are turning. I've been mixing new ochres and reds.",
+    "🍁 Autumn in Giverny — every tree is a painting waiting to happen.",
+    "🌫️ Morning mist over the pond. Autumn has a softer palette.",
+    "🎨 The season of warm colors. My palette is mostly amber and gold."
+  ],
+  "tamagotchi_winter": [
+    "❄️ Snow in Giverny. The garden is sleeping under a white blanket.",
+    "🕯️ Winter evenings call for candlelight and smaller canvases.",
+    "☕ I've been painting indoors. The frosted windows make beautiful frames.",
+    "🌨️ The pond is frozen. The water lilies are dreaming of spring."
+  ],
+
+  "tamagotchi_new_year": [
+    "🎆 Happy New Year, <name>! A fresh canvas for a fresh year.",
+    "✨ The first sunrise of the year. I painted it just for you.",
+    "🥂 New Year, new palette. Let's make this one our best yet.",
+    "🎇 The fireworks reminded me of splattered paint. In a good way."
+  ],
+  "tamagotchi_valentine": [
+    "💝 I mixed a new shade of red today. Valentine's Day does that.",
+    "🌹 The garden sent you roses. Well, I arranged them.",
+    "💌 Even an old impressionist knows what February 14th means.",
+    "💕 The palette is pink and crimson today. Love is in the air."
+  ],
+  "tamagotchi_womens_day": [
+    "🌸 Happy March 8th. I painted Camille today — she'd have liked that.",
+    "🌷 Every great artist had a muse. Today we celebrate all of them.",
+    "💐 The studio is full of flowers. International Women's Day, naturally.",
+    "🎨 Today's palette is inspired by the women who shaped art history."
+  ],
+  "tamagotchi_april_fools": [
+    "🤡 I tried painting with my left hand today. April Fools, I suppose.",
+    "🎭 I told the water lilies a joke. They didn't laugh. Tough crowd.",
+    "🖌️ I almost painted a cube. Almost. April 1st brings strange ideas.",
+    "😄 The brushes played a prank on me. They're still giggling."
+  ],
+  "tamagotchi_art_day": [
+    "🎨 World Art Day — and on Leonardo's birthday, no less. I'm honored.",
+    "🖼️ April 15th. The day art gave the world permission to see differently.",
+    "🖌️ I raised a brush to Leonardo today. We all stand on his shoulders.",
+    "🏛️ Every museum in the world is celebrating today. So is the studio."
+  ],
+  "tamagotchi_earth_day": [
+    "🌍 The garden reminds me: every landscape is worth protecting.",
+    "🌿 I painted the pond today. Earth Day makes it feel more precious.",
+    "🌱 Nature is the original artist. I'm just her assistant.",
+    "🌎 The same light that touches Giverny touches the whole planet."
+  ],
+  "tamagotchi_may_day": [
+    "🌺 May Day! I left a small bouquet of lily of the valley on the easel.",
+    "🌸 The garden is celebrating. So many flowers, so little canvas.",
+    "🌿 Workers of the art world, unite! The brushes have unionized.",
+    "🌷 May begins with flowers. The studio smells like a garden."
+  ],
+  "tamagotchi_museum_day": [
+    "🏛️ International Museum Day. I wonder which gallery is showing my work today.",
+    "🖼️ Museums — where paintings go to meet their audience. I'm a little jealous.",
+    "🎨 Every museum visit changes how you see. I learned that at the Louvre.",
+    "🏺 Today we celebrate the keepers of art. Dusty frames and all."
+  ],
+  "tamagotchi_bastille": [
+    "🇫🇷 Vive la France! July 14th — liberté, égalité, créativité.",
+    "🎇 Bastille Day fireworks over the Seine. I painted them once.",
+    "🥖 I celebrated with a baguette and a new shade of blue. Très français.",
+    "🇫🇷 The studio is feeling very patriotic today. Bleu, blanc, rouge on every canvas."
+  ],
+  "tamagotchi_halloween": [
+    "🎃 The garden looks a bit spooky tonight. Halloween does that.",
+    "👻 I saw a ghost in the studio. Turned out to be a white canvas in moonlight.",
+    "🕸️ Cobwebs on the easel. I'm calling it 'atmospheric texture.'",
+    "🦇 A bat flew through the garden at dusk. Very dramatic. Very Halloween."
+  ],
+  "tamagotchi_monet_birthday": [
+    "🎂 November 14th. I'm another year older. The water lilies sang.",
+    "🎉 It's my birthday! The garden threw a small party. The irises danced.",
+    "🕯️ Another year of chasing light. Thank you for being part of the journey.",
+    "🎨 On my birthday, I give myself permission to paint whatever I want."
+  ],
+  "tamagotchi_christmas": [
+    "🎄 I decorated the easel. Christmas in the studio is a quiet affair.",
+    "🎅 Père Noël brought new brushes. At least, I hope he did.",
+    "❄️ Snow in Giverny. The garden looks like a Christmas card.",
+    "🎁 The best gift is a blank canvas and good company. Joyeux Noël!"
   ]
 }

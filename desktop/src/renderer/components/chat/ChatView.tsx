@@ -525,7 +525,8 @@ function pickGreeting(name: string, isFirstRun: boolean): {
   title: string;
   subtitle: string;
 } {
-  const hour = new Date().getHours();
+  const now = new Date();
+  const hour = now.getHours();
   let timeKey: keyof typeof greetings = "anytime";
   if (hour >= 5 && hour < 12) timeKey = "morning";
   else if (hour >= 12 && hour < 17) timeKey = "afternoon";
@@ -542,12 +543,60 @@ function pickGreeting(name: string, isFirstRun: boolean): {
   }
   title = title.replace("<name>", name);
 
-  const tamagotchi =
-    greetings.tamagotchi[
-      Math.floor(Math.random() * greetings.tamagotchi.length)
-    ];
+  // Pick tamagotchi — date-specific categories first
+  const tamagotchi = pickTamagotchi(now);
 
   return { title, subtitle: tamagotchi };
+}
+
+function pickTamagotchi(now: Date): string {
+  const month = now.getMonth(); // 0-11
+  const day = now.getDate();
+  const dow = now.getDay(); // 0=Sun
+
+  // Collect all applicable pools
+  const pools: string[][] = [greetings.tamagotchi];
+
+  // Holidays
+  if ((month === 11 && day === 31) || (month === 0 && day <= 2))
+    pools.push(greetings.tamagotchi_new_year as string[]);
+  if (month === 11 && day >= 24 && day <= 26)
+    pools.push(greetings.tamagotchi_christmas as string[]);
+  if (month === 1 && day === 14)
+    pools.push(greetings.tamagotchi_valentine as string[]);
+  if (month === 2 && day === 8)
+    pools.push(greetings.tamagotchi_womens_day as string[]);
+  if (month === 3 && day === 1)
+    pools.push(greetings.tamagotchi_april_fools as string[]);
+  if (month === 3 && day === 15)
+    pools.push(greetings.tamagotchi_art_day as string[]);
+  if (month === 3 && day === 22)
+    pools.push(greetings.tamagotchi_earth_day as string[]);
+  if (month === 4 && day === 1)
+    pools.push(greetings.tamagotchi_may_day as string[]);
+  if (month === 4 && day === 18)
+    pools.push(greetings.tamagotchi_museum_day as string[]);
+  if (month === 6 && day === 14)
+    pools.push(greetings.tamagotchi_bastille as string[]);
+  if (month === 9 && day === 31)
+    pools.push(greetings.tamagotchi_halloween as string[]);
+  if (month === 10 && day === 14)
+    pools.push(greetings.tamagotchi_monet_birthday as string[]);
+
+  // Day of week
+  if (dow === 1) pools.push(greetings.tamagotchi_monday as string[]);
+  else if (dow === 5) pools.push(greetings.tamagotchi_friday as string[]);
+  else if (dow === 0 || dow === 6) pools.push(greetings.tamagotchi_weekend as string[]);
+
+  // Season
+  if (month >= 2 && month <= 4) pools.push(greetings.tamagotchi_spring as string[]);
+  else if (month >= 5 && month <= 7) pools.push(greetings.tamagotchi_summer as string[]);
+  else if (month >= 8 && month <= 10) pools.push(greetings.tamagotchi_autumn as string[]);
+  else pools.push(greetings.tamagotchi_winter as string[]);
+
+  // Pick random pool, then random line from it
+  const pool = pools[Math.floor(Math.random() * pools.length)];
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 export function ChatView({
   transcriptMode = "normal",
