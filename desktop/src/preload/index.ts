@@ -456,6 +456,8 @@ const electronAPI = {
       ipcRenderer.invoke("sandbox:checkPodman"),
     isPodmanReady: (): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("sandbox:isPodmanReady"),
+    warmPodman: (): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("sandbox:warmPodman"),
     listFiles: (
       sessionId?: string,
     ): Promise<

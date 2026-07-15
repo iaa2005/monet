@@ -658,16 +658,44 @@ export function ChatView({
 
   useEffect(() => {
     if (!home) return;
+    let cancelled = false;
+    let timer: number | undefined;
     void api()
       ?.sandbox.getConfig()
       .then(async (config) => {
-        if (config.engine !== "docker") return;
-        // Non-destructive probe — must NOT init/start/restart the machine just
-        // because the user opened a Home chat (that wedged the VM previously).
+        if (config.engine !== "docker" || cancelled) return;
         const result = await api()?.sandbox.isPodmanReady();
-        setPodmanWarning(!result?.ok);
+        if (cancelled) return;
+        if (result?.ok) {
+          setPodmanWarning(false);
+          return;
+        }
+        // Not ready → warm the VM in the BACKGROUND now (so its cold boot is
+        // hidden behind reading/typing) and poll until it comes up, clearing
+        // the banner without any user action.
+        setPodmanWarning(true);
+        void api()?.sandbox.warmPodman();
+        const started = Date.now();
+        const poll = async (): Promise<void> => {
+          if (cancelled) return;
+          const r = await api()?.sandbox.isPodmanReady();
+          if (cancelled) return;
+          if (r?.ok) {
+            setPodmanWarning(false);
+            return;
+          }
+          if (Date.now() - started < 120_000)
+            timer = window.setTimeout(() => void poll(), 2_500);
+        };
+        timer = window.setTimeout(() => void poll(), 2_500);
       })
-      .catch(() => setPodmanWarning(true));
+      .catch(() => {
+        if (!cancelled) setPodmanWarning(true);
+      });
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [home]);
   const messages = useChatStore((s) => s.messages);
   const error = useChatStore((s) => s.error);

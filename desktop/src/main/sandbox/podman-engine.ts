@@ -137,14 +137,16 @@ type PodmanReadyResult = {
   needsWsl?: boolean;
 };
 
-/** Poll `podman info` until the API socket accepts connections, or timeout. */
+/** Poll `podman info` until the API socket accepts connections, or timeout.
+ * Tight cadence so we detect "socket up" within ~1s of it happening (the boot
+ * itself is the floor; don't add detection lag on top). */
 async function waitForPodmanReady(timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const info = await run(["info"], { timeoutMs: 20_000 });
+    const info = await run(["info"], { timeoutMs: 8_000 });
     if (info.code === 0) return true;
     if (Date.now() >= deadline) return false;
-    await new Promise((r) => setTimeout(r, 3_000));
+    await new Promise((r) => setTimeout(r, 1_000));
   }
 }
 
@@ -185,6 +187,23 @@ let podmanEverReady = false;
 
 export function isPodmanReady(): boolean {
   return podmanReadyState;
+}
+
+let warmInFlight: Promise<unknown> | null = null;
+
+/**
+ * Kick off machine start (and image check) in the BACKGROUND so the VM is warm
+ * by the time the user runs code — the cold WSL2 boot then happens off the
+ * critical path. Fire-and-forget and deduped; a no-op once ready. Called when a
+ * Home chat opens so the wait is hidden behind reading/typing.
+ */
+export function warmPodman(): void {
+  if (podmanReadyState || warmInFlight) return;
+  warmInFlight = ensureImage()
+    .catch(() => {})
+    .finally(() => {
+      warmInFlight = null;
+    });
 }
 
 /**

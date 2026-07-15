@@ -15,6 +15,7 @@ import {
   checkPodmanReady,
   podmanLikelyReady,
   sandboxWorkDir,
+  warmPodman,
 } from "../sandbox/podman-engine.js";
 import { listSandboxFiles } from "../sandbox/files.js";
 import { mediaTypeOf } from "../sandbox/index.js";
@@ -61,6 +62,13 @@ export function registerSandboxIPC(): void {
     "sandbox:isPodmanReady",
     async (): Promise<{ ok: boolean }> => ({ ok: await podmanLikelyReady() }),
   );
+
+  // Fire-and-forget: start warming the Podman VM in the background (called when
+  // a Home chat opens with the Podman engine) so the boot is hidden.
+  ipcMain.handle("sandbox:warmPodman", (): { ok: true } => {
+    if (getSandboxConfig().engine === "docker") warmPodman();
+    return { ok: true };
+  });
 
   // All files in a chat's sandbox (the /work dir), for the Home Files panel —
   // the full on-disk set, not just files surfaced in the transcript.
