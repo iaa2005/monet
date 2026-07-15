@@ -8,8 +8,15 @@ import type {
   PermissionRequest,
   PermissionDecision,
 } from "../main/ipc/permissions.js";
+import type {
+  AskUserRequest,
+  AskUserAnswer,
+  AskUserQuestionSpec,
+  AskUserOption,
+} from "../main/ipc/ask-user.js";
 
 export type { PermissionRequest, PermissionDecision };
+export type { AskUserRequest, AskUserAnswer, AskUserQuestionSpec, AskUserOption };
 
 export interface SandboxFileEntry {
   name: string;
@@ -212,6 +219,14 @@ export interface ElectronAPI {
   permissions: {
     onRequest: (callback: (request: PermissionRequest) => void) => () => void;
     respond: (decision: PermissionDecision) => void;
+  };
+  askUser: {
+    onRequest: (callback: (request: AskUserRequest) => void) => () => void;
+    respond: (
+      id: string,
+      cancelled: boolean,
+      answers?: AskUserAnswer[],
+    ) => void;
   };
   workspace: {
     get: () => Promise<string>;

@@ -31,6 +31,7 @@ import { dropSessionContext, initVendorRuntime } from "./vendor-context.js";
 import { drainBgResults } from "./bg-agents.js";
 import { buildMemoryPrompt } from "../memory/store.js";
 import { getProfilePrompt } from "../profile.js";
+import type { AskUserFn } from "../ipc/ask-user.js";
 
 /** Prepend finished background-agent reports to the user turn as context. */
 function mergeBackgroundResults(
@@ -137,6 +138,8 @@ export interface AgentRunOptions {
   permissionMode?: UiPermissionMode;
   /** Called when a tool needs the user's approval (routes to the UI dialog). */
   requestPermission?: RequestPermission;
+  /** Round-trips an AskUserQuestion to the renderer dialog. */
+  askUser?: AskUserFn;
   /** Workspace ("home" | "code") — selects the advertised toolset. */
   space?: string;
   /** Reasoning effort requested from the composer (absent = provider default). */
@@ -426,6 +429,7 @@ export async function runAgent(
     modeDirective,
     permissionMode = "default",
     requestPermission,
+    askUser,
     space,
     effort,
   } = options;
@@ -630,6 +634,7 @@ export async function runAgent(
         model: provider.model,
         permissionMode,
         requestPermission,
+        askUser,
         signal,
         space,
         onProgress: (text) => {

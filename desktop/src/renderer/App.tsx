@@ -38,7 +38,7 @@ import {
   Monitor,
   type LucideIcon,
 } from "lucide-react";
-import { ChatView, PermissionHost } from "@/components/chat/ChatView";
+import { ChatView, PermissionHost, AskUserHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import { ArtifactsPanel } from "@/components/ArtifactsPanel";
 import { SandboxFilesPanel } from "@/components/SandboxFilesPanel";
@@ -1320,6 +1320,7 @@ export default function App(): JSX.Element {
       </Modal>
 
       <PermissionHost />
+      <AskUserHost />
       </div>
     </div>
   );

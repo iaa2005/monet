@@ -6,6 +6,7 @@ import { MessageInput } from "./MessageInput";
 import { TodoCard } from "./TodoCard";
 import { GitCard } from "./GitCard";
 import { PermissionDialog } from "./PermissionDialog";
+import { AskUserDialog } from "./AskUserDialog";
 import { Modal } from "@/components/ui/modal";
 import {
   MessageScrollerProvider,
@@ -42,7 +43,11 @@ import {
 } from "@/lib/sessionArtifacts";
 import { cn } from "@/lib/utils";
 import greetings from "@/data/greetings.json";
-import type { ElectronAPI, PermissionRequest } from "@/types/electron";
+import type {
+  ElectronAPI,
+  PermissionRequest,
+  AskUserRequest,
+} from "@/types/electron";
 import type { ChatMessage, ToolCall } from "@/types/chat";
 
 type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
@@ -897,6 +902,36 @@ export function PermissionHost(): JSX.Element | null {
         const bridge = (window as unknown as { electronAPI?: ElectronAPI })
           .electronAPI;
         bridge?.permissions.respond(decision);
+        setRequest(null);
+      }}
+    />
+  );
+}
+
+export function AskUserHost(): JSX.Element | null {
+  const [request, setRequest] = useState<AskUserRequest | null>(null);
+
+  useEffect(() => {
+    const bridge = (window as unknown as { electronAPI?: ElectronAPI })
+      .electronAPI;
+    if (!bridge?.askUser) return;
+    return bridge.askUser.onRequest((req: AskUserRequest) => setRequest(req));
+  }, []);
+
+  if (!request) return null;
+
+  const bridge = (window as unknown as { electronAPI?: ElectronAPI })
+    .electronAPI;
+  return (
+    <AskUserDialog
+      key={request.id}
+      request={request}
+      onSubmit={(answers) => {
+        bridge?.askUser.respond(request.id, false, answers);
+        setRequest(null);
+      }}
+      onCancel={() => {
+        bridge?.askUser.respond(request.id, true);
         setRequest(null);
       }}
     />

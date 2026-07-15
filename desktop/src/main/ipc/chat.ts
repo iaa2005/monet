@@ -21,6 +21,7 @@ import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
 import type { EffortLevel } from "../provider/types.js";
 import { requestPermissionFromRenderer } from "./permissions.js";
+import { askUserFromRenderer } from "./ask-user.js";
 import type { LLMContentBlock } from "../llm/adapter.js";
 
 interface ChatAttachment {
@@ -244,6 +245,7 @@ export function registerChatIPC(): void {
           modeDirective: MODE_DIRECTIVES[mode],
           permissionMode: mode,
           requestPermission: (ask) => requestPermissionFromRenderer(win, ask),
+          askUser: (questions) => askUserFromRenderer(win, questions),
           space: payload.space,
           effort: payload.effort,
         },

@@ -5,6 +5,7 @@ import type {
   PermissionRequest,
   PermissionDecision,
 } from "../main/ipc/permissions.js";
+import type { AskUserRequest, AskUserAnswer } from "../main/ipc/ask-user.js";
 
 const electronAPI = {
   platform: process.platform,
@@ -143,6 +144,24 @@ const electronAPI = {
     },
     respond: (decision: PermissionDecision): void => {
       ipcRenderer.send("permissions:response", decision);
+    },
+  },
+
+  askUser: {
+    onRequest: (
+      callback: (request: AskUserRequest) => void,
+    ): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, req: AskUserRequest) =>
+        callback(req);
+      ipcRenderer.on("ask:request", handler);
+      return () => ipcRenderer.removeListener("ask:request", handler);
+    },
+    respond: (
+      id: string,
+      cancelled: boolean,
+      answers?: AskUserAnswer[],
+    ): void => {
+      ipcRenderer.send("ask:response", { id, cancelled, answers });
     },
   },
 

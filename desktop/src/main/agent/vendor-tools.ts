@@ -31,6 +31,8 @@ import {
   ListMcpResourcesTool,
   ReadMcpResourceTool,
 } from "./mcp-resource-tools.js";
+import { AskUserQuestionTool } from "./ask-user-tool.js";
+import type { AskUserFn } from "../ipc/ask-user.js";
 import { getSandboxConfig } from "../sandbox/config.js";
 import {
   SandboxListTool,
@@ -61,6 +63,7 @@ const HOME_TOOL_NAMES = new Set([
   "SandboxWrite",
   "TodoWrite",
   "Skill",
+  "AskUserQuestion",
   "WebFetch",
   "WebSearch",
   "SearchPastChats",
@@ -277,6 +280,7 @@ export function getVendorTools(): Tools {
     GrepTool,
     TodoWriteTool,
     InlineSkillTool,
+    AskUserQuestionTool,
     AgentTaskTool,
     SearchPastChatsTool,
     WebFetchTool,
@@ -464,6 +468,8 @@ export async function executeVendorTool(opts: {
   onSubAgentEvent?: (update: SubAgentUpdate) => void;
   /** Workspace ("home" | "code"). Home HARD-BLOCKS non-sandbox tools. */
   space?: string;
+  /** Round-trips a structured question to the user (AskUserQuestion tool). */
+  askUser?: AskUserFn;
 }): Promise<VendorToolResult> {
   const {
     sessionId,
@@ -477,6 +483,7 @@ export async function executeVendorTool(opts: {
     onProgress,
     onSubAgentEvent,
     space,
+    askUser,
   } = opts;
   initVendorRuntime();
 
@@ -561,6 +568,8 @@ export async function executeVendorTool(opts: {
   (context as { sessionId?: string }).sessionId = sessionId;
   // Skill copies its bundle into the sandbox only in Home — needs the space.
   (context as { space?: string }).space = space;
+  // AskUserQuestion round-trips a question to the renderer via this callback.
+  (context as { askUser?: AskUserFn }).askUser = askUser;
   if (onProgress)
     (context as Record<string, unknown>)._subAgentOnProgress = onProgress;
   if (onSubAgentEvent)
