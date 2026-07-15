@@ -83,7 +83,7 @@ export function AskUserDialog({
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-1">
-      <div className="overflow-hidden rounded-xl border border-primary/40 bg-background shadow-lg ring-1 ring-primary/10">
+      <div className="glass-panel overflow-hidden rounded-xl border border-primary/40 bg-background shadow-lg ring-1 ring-primary/10">
         {/* Header — always visible; click to collapse/expand. */}
         <div className="flex items-center gap-2 px-3 py-2">
           <HelpCircle className="size-4 shrink-0 text-primary" />
