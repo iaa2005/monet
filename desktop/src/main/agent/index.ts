@@ -257,10 +257,11 @@ export async function computeContextBreakdown(
   let mcpToolTokens = 0;
   let skillTokens = 0;
   let memoryTokens = 0;
-  // Per-item drill-down (each tool, each MCP server, each skill).
+  // Per-item drill-down (each tool, each MCP server, each skill, each memory src).
   const toolItems: { label: string; tokens: number }[] = [];
   const mcpByServer = new Map<string, number>();
   let skillItems: { label: string; tokens: number }[] = [];
+  let memoryItems: { label: string; tokens: number }[] = [];
   try {
     const [apiTools, basePrompt] = await Promise.all([
       getVendorApiTools(space),
@@ -298,11 +299,22 @@ export async function computeContextBreakdown(
     } catch {
       /* ignore */
     }
+    // "Memory files" isn't just CLAUDE.md — it's every long-term-context block
+    // withUserMemory() folds into basePrompt: the user Profile, the Settings →
+    // Memory facts, and (Code only) the workspace CLAUDE.md. All three live
+    // inside systemTotal, so carving them out here keeps System vs Memory honest
+    // AND makes the popover show WHAT memory is made of instead of a flat 0.
     try {
       const { loadClaudeMd } = await import("../claude-md.js");
       const { getWorkspacePath } = await import("../ipc/workspace.js");
-      const md = loadClaudeMd(getWorkspacePath());
-      memoryTokens = md ? Math.ceil(md.length / 4) : 0;
+      const md = space === "home" ? null : loadClaudeMd(getWorkspacePath());
+      const tok = (s: string | null): number => (s ? Math.ceil(s.length / 4) : 0);
+      memoryItems = [
+        { label: "Profile", tokens: tok(getProfilePrompt()) },
+        { label: "User memory", tokens: tok(buildMemoryPrompt()) },
+        { label: "CLAUDE.md", tokens: tok(md) },
+      ].filter((i) => i.tokens > 0);
+      memoryTokens = memoryItems.reduce((n, i) => n + i.tokens, 0);
     } catch {
       /* ignore */
     }
@@ -365,7 +377,12 @@ export async function computeContextBreakdown(
       tokens: skillTokens,
       items: sortItems(skillItems),
     },
-    { key: "memory", label: "Memory files", tokens: memoryTokens },
+    {
+      key: "memory",
+      label: "Memory files",
+      tokens: memoryTokens,
+      items: sortItems(memoryItems),
+    },
     ...(overhead > 0
       ? [{ key: "overhead", label: "Measured overhead", tokens: overhead }]
       : []),
