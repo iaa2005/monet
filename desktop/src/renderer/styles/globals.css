@@ -303,12 +303,14 @@
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
     border-radius: inherit;
-    transition: background-color 0.3s ease, backdrop-filter 0.3s ease;
 }
-.monet-glass .glass-panel:hover::before {
+.monet-glass .glass-hover::before {
+    transition: background-color 0.3s ease;
+}
+.monet-glass .glass-hover:hover::before {
     background-color: hsl(var(--bg-000) / 0.85);
 }
-.monet-glass .glass-panel.\!bg-sidebar::before {
+.monet-glass .glass-panel.bg-sidebar::before {
     background-color: hsl(var(--bg-100) / 0.45);
     -webkit-backdrop-filter: blur(16px);
     backdrop-filter: blur(16px);

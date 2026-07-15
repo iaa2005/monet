@@ -5,8 +5,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const JSON_URL =
-  "https://raw.githubusercontent.com/iaa2005/monet-paintings/main/monet_paintings.json";
+const BASE = "https://cdn.jsdelivr.net/gh/iaa2005/monet-paintings@main";
+const JSON_URL = `${BASE}/monet_paintings.json`;
 const LS_KEY = "monet.background";
 const LS_ROTATE = "monet.rotate";
 
@@ -53,7 +53,7 @@ async function pickAndFetch(): Promise<{ dataUrl: string; title: string; year: s
       el.crossOrigin = "anonymous";
       el.onload = () => resolve(el);
       el.onerror = reject;
-      el.src = `https://raw.githubusercontent.com/iaa2005/monet-paintings/main/${pick.filename}`;
+      el.src = `${BASE}/${pick.filename}`;
     });
 
     const canvas = document.createElement("canvas");

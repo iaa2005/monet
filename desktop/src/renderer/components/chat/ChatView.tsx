@@ -747,7 +747,7 @@ export function ChatView({
                   key={idea.label}
                   type="button"
                   onClick={() => setComposerDraft(idea.prompt)}
-                  className="glass-panel flex items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left text-sm transition-colors cursor-pointer"
+                  className="glass-panel glass-hover flex items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left text-sm transition-colors cursor-pointer"
                 >
                   <idea.icon className="size-4 shrink-0 text-muted-foreground" />
                   <span className="font-medium">{idea.label}</span>
