@@ -32,6 +32,9 @@ import {
   ReadMcpResourceTool,
 } from "./mcp-resource-tools.js";
 import { AskUserQuestionTool } from "./ask-user-tool.js";
+import { ToolSearchTool } from "./tool-search-tool.js";
+import { getToolSearchConfig } from "./toolsearch-config.js";
+import { getRevealedTools } from "./revealed-tools.js";
 import type { AskUserFn } from "../ipc/ask-user.js";
 import { getSandboxConfig } from "../sandbox/config.js";
 import {
@@ -281,6 +284,7 @@ export function getVendorTools(): Tools {
     TodoWriteTool,
     InlineSkillTool,
     AskUserQuestionTool,
+    ToolSearchTool,
     AgentTaskTool,
     SearchPastChatsTool,
     WebFetchTool,
@@ -352,6 +356,10 @@ export function isSpaceToolAllowed(name: string, space?: string): boolean {
   // when the user actually has connectors configured.
   if (name === "ListMcpResources" || name === "ReadMcpResource")
     return space !== "home" && hasMcpServers();
+  // ToolSearch (opt-in) reveals deferred MCP tools; Code-only, and only useful
+  // when there are connectors whose tools can be deferred.
+  if (name === "ToolSearch")
+    return space !== "home" && getToolSearchConfig().enabled && hasMcpServers();
   if (BROWSER_TOOL_NAMES.has(name)) return getBrowserConfig().enabled;
   if (name === "Computer")
     return getComputerConfig().enabled && activeModelSeesImages();
@@ -370,7 +378,10 @@ const apiToolsCache = new Map<string, LLMTool[]>();
 // (declared before getVendorTools uses it at runtime — module-level const
 // hoisting via TDZ is satisfied because getVendorTools runs post-init)
 
-export async function getVendorApiTools(space?: string): Promise<LLMTool[]> {
+export async function getVendorApiTools(
+  space?: string,
+  sessionId?: string,
+): Promise<LLMTool[]> {
   const tools = getVendorToolsForSpace(space);
   const cacheKey = tools.map((t) => t.name).join(",");
   let base = apiToolsCache.get(cacheKey);
@@ -408,11 +419,18 @@ export async function getVendorApiTools(space?: string): Promise<LLMTool[]> {
   // (and thus the tool list) change as servers connect/disconnect.
   try {
     await ensureConnected();
-    const mcpTools = getMcpTools().map((t) => ({
-      name: t.fullName,
-      description: t.description,
-      input_schema: t.inputSchema,
-    }));
+    // ToolSearch (opt-in): defer MCP tools — advertise only the ones the model
+    // has revealed via ToolSearch this session, so the standing schema stays
+    // small. When disabled, behave exactly as before (advertise all).
+    const deferMcp = getToolSearchConfig().enabled;
+    const revealed = deferMcp ? getRevealedTools(sessionId ?? "default") : null;
+    const mcpTools = getMcpTools()
+      .filter((t) => !revealed || revealed.has(t.fullName))
+      .map((t) => ({
+        name: t.fullName,
+        description: t.description,
+        input_schema: t.inputSchema,
+      }));
     if (mcpTools.length) return [...base, ...mcpTools];
   } catch {
     // MCP is best-effort — never block the toolset on a server failure.

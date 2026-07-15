@@ -32,6 +32,8 @@ import { drainBgResults } from "./bg-agents.js";
 import { buildMemoryPrompt } from "../memory/store.js";
 import { getProfilePrompt } from "../profile.js";
 import { tunablePrompt } from "../prompts/index.js";
+import { clearRevealedTools } from "./revealed-tools.js";
+import { getToolSearchConfig } from "./toolsearch-config.js";
 import type { AskUserFn } from "../ipc/ask-user.js";
 
 /** Prepend finished background-agent reports to the user turn as context. */
@@ -162,6 +164,7 @@ export function resetConversation(sessionId: string): void {
   conversations.delete(sessionId);
   dropSessionContext(sessionId);
   clearSessionGrants(sessionId);
+  clearRevealedTools(sessionId);
 }
 
 /**
@@ -271,7 +274,7 @@ export async function computeContextBreakdown(
   let memoryItems: { label: string; tokens: number }[] = [];
   try {
     const [apiTools, basePrompt] = await Promise.all([
-      getVendorApiTools(space),
+      getVendorApiTools(space, sessionId),
       provider ? buildSystemPrompt(provider.model, space) : Promise.resolve(""),
     ]);
     const directives = space === "home" ? [homeDirective()] : [];
@@ -442,7 +445,7 @@ export async function runAgent(
   let basePrompt;
   try {
     [tools, basePrompt] = await Promise.all([
-      getVendorApiTools(space),
+      getVendorApiTools(space, sessionId),
       buildSystemPrompt(provider.model, space),
     ]);
   } catch (err) {
@@ -483,6 +486,17 @@ export async function runAgent(
       onEvent({ type: "error", error: "Aborted" });
       onEvent({ type: "message_stop", stop_reason: "abort" });
       return;
+    }
+
+    // ToolSearch (opt-in): re-resolve the toolset so tools the model revealed
+    // last turn become callable this turn. Skip turn 0 (the pre-loop build
+    // already covers it) and the whole thing when ToolSearch is disabled.
+    if (turn > 0 && getToolSearchConfig().enabled) {
+      try {
+        tools = await getVendorApiTools(space, sessionId);
+      } catch {
+        /* keep the previous toolset on failure */
+      }
     }
 
     // Auto-compaction: if the running history would overflow the context
