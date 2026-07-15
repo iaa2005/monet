@@ -218,10 +218,39 @@ export function seedConversation(
  * model with a smaller context window). Returns the token estimates, or null
  * when there's nothing to compact / no provider.
  */
+/** Seed the in-memory history from persisted display messages when a reopened
+ * chat hasn't run this process yet — so /compact (and token estimates) work
+ * without first sending a message. Text-only, mirroring seedConversation. */
+async function seedConversationFromStore(sessionId: string): Promise<void> {
+  const existing = conversations.get(sessionId);
+  if (existing && existing.length >= 2) return;
+  try {
+    const { getSessionStore } = await import("../session-store.js");
+    const s = getSessionStore().get(sessionId);
+    if (!s) return;
+    const prior = s.messages
+      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
+      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    if (prior.length >= 2)
+      conversations.set(
+        sessionId,
+        prior.map((m) => ({ ...m })),
+      );
+  } catch {
+    /* best-effort */
+  }
+}
+
 export async function compactSessionNow(
   sessionId: string,
 ): Promise<{ before: number; after: number } | null> {
-  const messages = conversations.get(sessionId);
+  let messages = conversations.get(sessionId);
+  if (!messages || messages.length < 2) {
+    // Reopened chat with no in-process history yet — rebuild it from the
+    // persisted transcript so there's something to compact.
+    await seedConversationFromStore(sessionId);
+    messages = conversations.get(sessionId);
+  }
   if (!messages || messages.length < 2) return null;
   const provider = getProviderManager().getActive();
   if (!provider) return null;
