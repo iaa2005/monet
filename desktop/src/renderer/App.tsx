@@ -9,8 +9,7 @@ import {
 } from "react";
 import {
   useMonetBackground,
-  BG_DARK_OPACITY,
-  BG_LIGHT_OPACITY,
+  BG_OPACITY,
 } from "./components/useMonetBackground.js";
 import {
   Home,
@@ -536,27 +535,16 @@ export default function App(): JSX.Element {
   const { bg, toggle: toggleBg } = useMonetBackground();
 
   return (
-    <div
-      className="relative flex h-screen flex-col bg-sidebar text-foreground"
-      style={
-        bg
-          ? {
-              backgroundImage: `url(${bg})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-              backgroundAttachment: "fixed",
-            }
-          : undefined
-      }
-    >
+    <div className="relative flex h-screen flex-col bg-sidebar text-foreground">
       {bg && (
         <div
           className="pointer-events-none fixed inset-0 z-0"
           style={{
-            backgroundColor:
-              theme === "dark"
-                ? `rgba(0,0,0,${BG_DARK_OPACITY / 100})`
-                : `rgba(255,255,255,${BG_LIGHT_OPACITY / 100})`,
+            backgroundImage: `url(${bg})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundAttachment: "fixed",
+            opacity: BG_OPACITY,
           }}
         />
       )}
