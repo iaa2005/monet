@@ -10,6 +10,7 @@ import {
 import {
   useMonetBackground,
   BG_OPACITY,
+  ROTATE_OPTIONS,
 } from "./components/useMonetBackground.js";
 import {
   Home,
@@ -199,6 +200,7 @@ export default function App(): JSX.Element {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [renameTargetId, setRenameTargetId] = useState<string | undefined>();
+  const [rotateMenuOpen, setRotateMenuOpen] = useState(false);
   const [incognitoCloseOpen, setIncognitoCloseOpen] = useState(false);
   const [transcriptMode, setTranscriptMode] =
     useState<TranscriptMode>("normal");
@@ -532,9 +534,58 @@ export default function App(): JSX.Element {
     [handleSelectSession],
   );
 
-  const { bg, toggle: toggleBg } = useMonetBackground();
-  const lastBg = useRef<string | null>(null);
-  if (bg) lastBg.current = bg;
+  const { bg, title, year, toggle: toggleBg, rotateMs, setRotateMs } = useMonetBackground();
+  const prevBg = useRef<string | null>(null);
+  const fadeRef = useRef<HTMLDivElement>(null);
+  const currentRef = useRef<HTMLDivElement>(null);
+
+  // Background painting layers (managed via refs for smooth crossfade)
+  useEffect(() => {
+    const cur = currentRef.current;
+    if (!cur) return;
+
+    if (!bg) {
+      // Toggle off: React handles opacity transition via style prop
+      prevBg.current = null;
+      return;
+    }
+
+    if (!prevBg.current) {
+      // First show: fade in
+      cur.style.backgroundImage = `url(${bg})`;
+      cur.style.transition = "none";
+      cur.style.opacity = "0";
+      void cur.offsetHeight;
+      cur.style.transition = "opacity 1200ms ease-in-out";
+      cur.style.opacity = String(BG_OPACITY);
+      prevBg.current = bg;
+      return;
+    }
+
+    if (bg === prevBg.current) return;
+
+    // Crossfade to new painting
+    const old = prevBg.current;
+    prevBg.current = bg;
+    const fade = fadeRef.current;
+    if (!old || !fade) return;
+
+    // Snap fade layer to old image at full opacity
+    fade.style.backgroundImage = `url(${old})`;
+    fade.style.transition = "none";
+    fade.style.opacity = String(BG_OPACITY);
+    // Snap current layer to new image at zero opacity
+    cur.style.backgroundImage = `url(${bg})`;
+    cur.style.transition = "none";
+    cur.style.opacity = "0";
+    // Force paint
+    void fade.offsetHeight;
+    // Animate: fade out old, fade in new
+    fade.style.transition = "opacity 1200ms ease-in-out";
+    fade.style.opacity = "0";
+    cur.style.transition = "opacity 1200ms ease-in-out";
+    cur.style.opacity = String(BG_OPACITY);
+  }, [bg]);
 
   // Sync glass class with background fade
   useEffect(() => {
@@ -548,14 +599,27 @@ export default function App(): JSX.Element {
 
   return (
     <div className="relative flex h-screen flex-col bg-sidebar text-foreground">
+      {/* Fade-out layer (old painting) */}
       <div
-        className="pointer-events-none fixed inset-0 transition-opacity duration-700"
+        ref={fadeRef}
+        className="pointer-events-none fixed inset-0"
         style={{
-          backgroundImage: bg || lastBg.current ? `url(${bg || lastBg.current})` : "none",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundAttachment: "fixed",
+          opacity: 0,
+        }}
+      />
+      {/* Current painting */}
+      <div
+        ref={currentRef}
+        className="pointer-events-none fixed inset-0"
+        style={{
           backgroundSize: "cover",
           backgroundPosition: "center",
           backgroundAttachment: "fixed",
           opacity: bg ? BG_OPACITY : 0,
+          transition: bg ? "none" : "opacity 1200ms ease-in-out",
         }}
       />
       <div className="flex flex-col h-full">
@@ -576,13 +640,43 @@ export default function App(): JSX.Element {
         )}
 
         <div className="app-no-drag flex items-center gap-2">
-          <button
-            type="button"
-            onClick={toggleBg}
-            className="font-[Copernicus] text-[15px] font-semibold tracking-tight text-foreground cursor-pointer hover:opacity-80 transition-opacity"
-          >
-            Monet
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={toggleBg}
+              onContextMenu={(e) => { e.preventDefault(); setRotateMenuOpen((o) => !o); }}
+              className="font-[Copernicus] text-[15px] font-semibold tracking-tight text-foreground cursor-pointer hover:opacity-80 transition-opacity"
+            >
+              Monet
+            </button>
+            {bg && title && (
+              <span className="ml-4 text-[11px] text-muted-foreground truncate max-w-[200px]">
+                {title}{year ? `, ${year}` : ""}
+              </span>
+            )}
+            {rotateMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setRotateMenuOpen(false)} />
+                <div className="absolute left-0 top-full z-50 mt-1 w-36 rounded-lg border border-border bg-popover p-1 shadow-lg">
+                  {ROTATE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      onClick={() => { setRotateMs(opt.ms); setRotateMenuOpen(false); if (opt.ms && !bg) toggleBg(); }}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
+                        rotateMs === opt.ms && "text-foreground font-medium",
+                        rotateMs !== opt.ms && "text-muted-foreground",
+                      )}
+                    >
+                      {opt.label}
+                      {rotateMs === opt.ms && <span className="text-brand">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="flex-1" />
