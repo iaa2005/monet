@@ -27,7 +27,9 @@ import {
   FlaskConical,
   GitPullRequest,
   History,
+  Loader2,
   Pencil,
+  Play,
   RotateCcw,
   type LucideIcon,
 } from "lucide-react";
@@ -617,7 +619,31 @@ export function ChatView({
   onOpenSettings?: () => void;
 }): JSX.Element {
   const [podmanWarning, setPodmanWarning] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
   const [profileName, setProfileName] = useState("friend");
+
+  // Start the Podman VM straight from the banner — preparePodman() provisions
+  // (if needed) and starts the Linux backend, which is all a wedged/idle
+  // machine needs. Only the missing-WSL case actually requires Settings.
+  const startPodman = async (): Promise<void> => {
+    setStarting(true);
+    setStartError(null);
+    try {
+      const r = await api()?.sandbox.preparePodman();
+      if (r?.ok) setPodmanWarning(false);
+      else
+        setStartError(
+          r?.needsWsl
+            ? "WSL2 isn't installed — set it up in Settings → Sandbox."
+            : r?.error ?? "Could not start the sandbox. See Settings → Sandbox.",
+        );
+    } catch {
+      setStartError("Could not start the sandbox. See Settings → Sandbox.");
+    } finally {
+      setStarting(false);
+    }
+  };
 
   useEffect(() => {
     const a = api();
@@ -729,17 +755,33 @@ export function ChatView({
           {podmanWarning && (
             <div className="glass-panel glass-amber mt-1 mb-3 flex w-full max-w-2xl items-center justify-between gap-3 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2.5 text-left text-[13px]">
               <span className="text-amber-900 dark:text-amber-200">
-                Podman is not ready.
+                The Home sandbox (Podman) isn&apos;t running.
                 <br />
-                Run Python will not work until you install it in Settings → Sandbox.
+                {startError ??
+                  "Start it to run Python — the first start can take a moment."}
               </span>
-              <button
-                type="button"
-                onClick={onOpenSettings}
-                className="shrink-0 rounded-md border border-amber-600/40 px-2.5 py-1 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-500/10 dark:text-amber-200"
-              >
-                Open settings
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void startPodman()}
+                  disabled={starting}
+                  className="flex items-center gap-1.5 rounded-md bg-amber-500/90 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {starting ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <Play className="size-3" />
+                  )}
+                  {starting ? "Starting…" : "Start"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="rounded-md border border-amber-600/40 px-2.5 py-1 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-500/10 dark:text-amber-200"
+                >
+                  Settings
+                </button>
+              </div>
             </div>
           )}
           <div className="w-full max-w-2xl mt-4.5">
