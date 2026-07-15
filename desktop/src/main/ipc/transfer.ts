@@ -40,6 +40,9 @@ export interface ExportOptions {
   format: "monet" | "markdown";
   includeArtifacts: boolean;
   includeContext: boolean;
+  /** Markdown only: dump full, untruncated tool inputs + outputs (raw). Off by
+   * default (compact one-line tool calls) — on gives another agent full fidelity. */
+  includeRawTools?: boolean;
 }
 
 interface BundleArtifact {
@@ -159,19 +162,25 @@ function toMarkdown(session: SessionWithMessages, opts: ExportOptions): string {
       const t = m.toolCall;
       let input = "";
       try {
-        input = JSON.stringify(t.input);
+        input = JSON.stringify(t.input, null, opts.includeRawTools ? 2 : 0);
       } catch {
         input = "{…}";
       }
-      lines.push(`\n**🔧 Tool: ${t.name}** \`${input.slice(0, 500)}\``);
-      if (t.output) {
-        const out =
-          t.output.length > 6000
-            ? t.output.slice(0, 6000) + "\n…(truncated)"
-            : t.output;
+      if (opts.includeRawTools) {
+        // Full raw fidelity for another agent: untruncated input + output.
+        lines.push(`\n**🔧 Tool: ${t.name}**`);
+        lines.push("```json");
+        lines.push(input);
         lines.push("```");
-        lines.push(out);
-        lines.push("```");
+        if (t.output) {
+          lines.push("Output:");
+          lines.push("```");
+          lines.push(t.output);
+          lines.push("```");
+        }
+      } else {
+        // Compact: name + short input, no output — keeps the transcript light.
+        lines.push(`\n**🔧 ${t.name}** \`${input.slice(0, 120)}\``);
       }
     }
   }

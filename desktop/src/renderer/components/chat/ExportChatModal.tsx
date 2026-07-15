@@ -40,6 +40,7 @@ export function ExportChatModal({
   const [format, setFormat] = useState<"monet" | "markdown">("monet");
   const [includeArtifacts, setIncludeArtifacts] = useState(true);
   const [includeContext, setIncludeContext] = useState(false);
+  const [includeRawTools, setIncludeRawTools] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +53,7 @@ export function ExportChatModal({
         format,
         includeArtifacts,
         includeContext,
+        includeRawTools,
       });
       if (r?.ok && r.path) setSaved(r.path);
       else if (r?.canceled) onClose();
@@ -129,6 +131,18 @@ export function ExportChatModal({
                   </span>
                 </span>
                 <Switch checked={includeArtifacts} onChange={setIncludeArtifacts} />
+              </label>
+            )}
+            {format === "markdown" && (
+              <label className="flex items-center justify-between gap-4 text-sm">
+                <span>
+                  Include raw tool blocks
+                  <span className="mt-0.5 block text-[13px] text-muted-foreground">
+                    Off: compact one-line tool calls. On: full, untruncated tool
+                    inputs &amp; outputs — fuller context for another AI agent.
+                  </span>
+                </span>
+                <Switch checked={includeRawTools} onChange={setIncludeRawTools} />
               </label>
             )}
             <label className="flex items-center justify-between gap-4 text-sm">

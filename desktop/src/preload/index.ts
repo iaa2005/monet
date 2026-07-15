@@ -494,6 +494,7 @@ const electronAPI = {
         format: "monet" | "markdown";
         includeArtifacts: boolean;
         includeContext: boolean;
+        includeRawTools?: boolean;
       },
     ): Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }> =>
       ipcRenderer.invoke("chat:export", sessionId, opts),
