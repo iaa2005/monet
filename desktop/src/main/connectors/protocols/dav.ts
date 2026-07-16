@@ -15,6 +15,18 @@ import type { ProtocolResult, ResolvedAccount } from "../types.js";
 
 type Kind = "caldav" | "carddav";
 
+/**
+ * A client plus the account its calls need.
+ *
+ * `defaultAccountType` is deliberately NOT passed: that makes the client
+ * discover the account eagerly, PROPFINDing the root for
+ * `current-user-principal` — which Google doesn't serve, so it dies with
+ * "cannot find principalUrl" before any calendar is touched. Building the
+ * account ourselves lets a preset supply the principal directly (tsdav skips
+ * the lookup when `principalUrl` is set) while the home is still discovered
+ * from it. Servers that do advertise a principal, like Yandex, take the same
+ * path with nothing supplied.
+ */
 async function client(acct: ResolvedAccount, kind: Kind) {
   const cfg = kind === "caldav" ? acct.preset.caldav : acct.preset.carddav;
   if (!cfg)
@@ -24,12 +36,43 @@ async function client(acct: ResolvedAccount, kind: Kind) {
     throw new Error(
       `No app password stored for ${acct.account.label}. Reconnect it in Settings → Connectors.`,
     );
-  return createDAVClient({
+  const username = acct.account.username;
+  const dav = await createDAVClient({
     serverUrl: cfg.url,
-    credentials: { username: acct.account.username, password },
+    credentials: { username, password },
     authMethod: "Basic",
-    defaultAccountType: kind,
   });
+
+  const principalUrl = cfg.principalTemplate?.replace(
+    "{username}",
+    encodeURIComponent(username),
+  );
+  try {
+    const account = await dav.createAccount({
+      account: {
+        serverUrl: cfg.url,
+        accountType: kind,
+        // rootUrl too, or tsdav still runs service discovery to find one.
+        ...(principalUrl ? { rootUrl: cfg.url, principalUrl } : {}),
+      },
+      loadCollections: false,
+    });
+    return { dav, account };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // tsdav's discovery errors are near-useless on their own: fetchHomeUrl has
+    // no 401 branch at all, so a wrong app password surfaces as "cannot find
+    // homeUrl" — identical to a genuinely wrong URL. Translate into the two
+    // things the user can actually check, cheapest first.
+    if (/principalUrl|homeUrl/i.test(msg))
+      throw new Error(
+        `Couldn't open ${kind === "caldav" ? "the calendar" : "contacts"} for “${username}” on ${acct.preset.name}. ` +
+          `Most likely the app password is wrong or expired — try Test after re-pasting it. ` +
+          `Otherwise ${kind === "caldav" ? "CalDAV" : "CardDAV"} may not be enabled for this account, or the login isn't the full address. ` +
+          `(Underlying: ${msg})`,
+      );
+    throw e;
+  }
 }
 
 /** Pull one property out of an iCal/vCard blob. */
@@ -44,8 +87,8 @@ function ical(dt: Date): string {
 }
 
 export async function calendarList(acct: ResolvedAccount): Promise<ProtocolResult> {
-  const c = await client(acct, "caldav");
-  const cals = await c.fetchCalendars();
+  const { dav, account } = await client(acct, "caldav");
+  const cals = await dav.fetchCalendars({ account });
   const text = cals
     .map((cal) => {
       const name =
@@ -60,8 +103,8 @@ export async function calendarEvents(
   acct: ResolvedAccount,
   opts: { calendarUrl?: string; days?: number },
 ): Promise<ProtocolResult> {
-  const c = await client(acct, "caldav");
-  const cals = await c.fetchCalendars();
+  const { dav, account } = await client(acct, "caldav");
+  const cals = await dav.fetchCalendars({ account });
   const cal = opts.calendarUrl
     ? cals.find((x) => x.url === opts.calendarUrl)
     : cals[0];
@@ -70,7 +113,7 @@ export async function calendarEvents(
   const days = Math.min(Math.max(opts.days ?? 7, 1), 90);
   const start = new Date();
   const end = new Date(Date.now() + days * 86_400_000);
-  const objects = await c.fetchCalendarObjects({
+  const objects = await dav.fetchCalendarObjects({
     calendar: cal,
     timeRange: { start: start.toISOString(), end: end.toISOString() },
   });
@@ -102,8 +145,8 @@ export async function calendarCreate(
     location?: string;
   },
 ): Promise<ProtocolResult> {
-  const c = await client(acct, "caldav");
-  const cals = await c.fetchCalendars();
+  const { dav, account } = await client(acct, "caldav");
+  const cals = await dav.fetchCalendars({ account });
   const cal = opts.calendarUrl
     ? cals.find((x) => x.url === opts.calendarUrl)
     : cals[0];
@@ -132,7 +175,7 @@ export async function calendarCreate(
     .filter(Boolean)
     .join("\r\n");
 
-  await c.createCalendarObject({
+  await dav.createCalendarObject({
     calendar: cal,
     filename: `${uid}.ics`,
     iCalString: vevent,
@@ -144,10 +187,10 @@ export async function contactsList(
   acct: ResolvedAccount,
   opts: { query?: string; limit?: number },
 ): Promise<ProtocolResult> {
-  const c = await client(acct, "carddav");
-  const books = await c.fetchAddressBooks();
+  const { dav, account } = await client(acct, "carddav");
+  const books = await dav.fetchAddressBooks({ account });
   if (!books.length) return { ok: true, text: "(no address books)" };
-  const cards = await c.fetchVCards({ addressBook: books[0] });
+  const cards = await dav.fetchVCards({ addressBook: books[0] });
 
   const q = opts.query?.trim().toLowerCase();
   const rows = cards

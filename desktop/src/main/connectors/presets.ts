@@ -33,7 +33,14 @@ export const PRESETS: ConnectorPreset[] = [
     name: "Google Calendar",
     group: "Google",
     protocols: ["caldav"],
-    caldav: { url: "https://apidata.googleusercontent.com/caldav/v2/" },
+    // Google serves no current-user-principal at the root, so discovery ends in
+    // "cannot find principalUrl". Its principal is documented as
+    // /caldav/v2/{email}/user — hand that over and the home is found from it.
+    caldav: {
+      url: "https://apidata.googleusercontent.com/caldav/v2/",
+      principalTemplate:
+        "https://apidata.googleusercontent.com/caldav/v2/{username}/user",
+    },
     credUrl: "https://myaccount.google.com/apppasswords",
     credLabel: "App password (16 characters)",
     usernameLabel: "you@gmail.com",
@@ -44,7 +51,11 @@ export const PRESETS: ConnectorPreset[] = [
     name: "Google Contacts",
     group: "Google",
     protocols: ["carddav"],
-    carddav: { url: "https://www.googleapis.com/carddav/v1/principals/" },
+    carddav: {
+      url: "https://www.googleapis.com/carddav/v1/principals/",
+      principalTemplate:
+        "https://www.googleapis.com/carddav/v1/principals/{username}",
+    },
     credUrl: "https://myaccount.google.com/apppasswords",
     credLabel: "App password (16 characters)",
     usernameLabel: "you@gmail.com",

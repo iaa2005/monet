@@ -30,6 +30,18 @@ export interface HostPort {
   secure: boolean;
 }
 
+export interface DavEndpoint {
+  url: string;
+  /**
+   * Principal URL, with `{username}` substituted — for servers that don't
+   * answer discovery. The client normally PROPFINDs the root for
+   * `current-user-principal`; Google doesn't serve that at /caldav/v2/, so
+   * discovery dead-ends on "cannot find principalUrl". Handing the principal
+   * over skips that step, and the calendar home is still discovered from it.
+   */
+  principalTemplate?: string;
+}
+
 /** A connectable service. Declarative: this is the whole definition. */
 export interface ConnectorPreset {
   id: string;
@@ -57,8 +69,8 @@ export interface ConnectorPreset {
   imap?: HostPort;
   smtp?: HostPort;
   webdav?: { url: string };
-  caldav?: { url: string };
-  carddav?: { url: string };
+  caldav?: DavEndpoint;
+  carddav?: DavEndpoint;
   /** Telegram needs api_id/api_hash + a phone login rather than a password. */
   telegram?: boolean;
   /**
