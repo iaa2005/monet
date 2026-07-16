@@ -37,6 +37,12 @@ import { getProfilePrompt } from "../profile.js";
 import { tunablePrompt } from "../prompts/index.js";
 import { clearRevealedTools } from "./revealed-tools.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
+import {
+  loadTranscript,
+  replaceTranscript,
+  clearTranscript,
+  recordContextEvent,
+} from "../transcript-store.js";
 import type { AskUserFn } from "../ipc/ask-user.js";
 
 /** Prepend finished background-agent reports to the user turn as context. */
@@ -190,12 +196,51 @@ export interface AgentRunOptions {
  */
 const conversations = new Map<string, LLMMessage[]>();
 
-/** Drop a session's in-memory history (e.g. on "New session"). */
+/** Drop a session's in-memory history AND its durable transcript/context log
+ * (New session, or a rewind/edit that rebuilds the history from a truncation). */
 export function resetConversation(sessionId: string): void {
   conversations.delete(sessionId);
+  clearTranscript(sessionId);
   dropSessionContext(sessionId);
   clearSessionGrants(sessionId);
   clearRevealedTools(sessionId);
+}
+
+/** Write the session's live model history through to the durable transcript. */
+function persistTranscript(sessionId: string): void {
+  const msgs = conversations.get(sessionId);
+  if (msgs) replaceTranscript(sessionId, msgs);
+}
+
+/**
+ * Populate the in-memory history from the durable transcript when a reopened
+ * chat isn't loaded this process — full fidelity (tool blocks included). No-op
+ * once loaded. Deliberately does NOT reconstruct from the display messages: a
+ * cleared transcript (after a rewind/reset) must fall through to the renderer's
+ * explicitly-truncated `seed`, not the possibly-stale display rows.
+ */
+export async function ensureTranscriptLoaded(sessionId: string): Promise<void> {
+  if (conversations.has(sessionId)) return;
+  const stored = loadTranscript(sessionId);
+  if (stored.length > 0) conversations.set(sessionId, stored);
+}
+
+/** Text-only rebuild from the persisted display messages — for /compact on a
+ * reopened chat that has neither in-process history nor a durable transcript
+ * (old, un-migrated). Not used on the send path (which has the seed). */
+async function seedFromDisplayMessages(sessionId: string): Promise<void> {
+  if (conversations.has(sessionId)) return;
+  try {
+    const { getSessionStore } = await import("../session-store.js");
+    const s = getSessionStore().get(sessionId);
+    if (!s) return;
+    const prior = s.messages
+      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
+      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    if (prior.length > 0) conversations.set(sessionId, prior);
+  } catch {
+    /* best-effort */
+  }
 }
 
 /**
@@ -218,43 +263,19 @@ export function seedConversation(
  * model with a smaller context window). Returns the token estimates, or null
  * when there's nothing to compact / no provider.
  */
-/** Seed the in-memory history from persisted display messages when a reopened
- * chat hasn't run this process yet — so /compact (and token estimates) work
- * without first sending a message. Text-only, mirroring seedConversation. */
-async function seedConversationFromStore(sessionId: string): Promise<void> {
-  const existing = conversations.get(sessionId);
-  if (existing && existing.length >= 2) return;
-  try {
-    const { getSessionStore } = await import("../session-store.js");
-    const s = getSessionStore().get(sessionId);
-    if (!s) return;
-    const prior = s.messages
-      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
-    if (prior.length >= 2)
-      conversations.set(
-        sessionId,
-        prior.map((m) => ({ ...m })),
-      );
-  } catch {
-    /* best-effort */
-  }
-}
-
 export async function compactSessionNow(
   sessionId: string,
 ): Promise<{ before: number; after: number } | null> {
-  let messages = conversations.get(sessionId);
-  if (!messages || messages.length < 2) {
-    // Reopened chat with no in-process history yet — rebuild it from the
-    // persisted transcript so there's something to compact.
-    await seedConversationFromStore(sessionId);
-    messages = conversations.get(sessionId);
-  }
+  // Reopened chat with no in-process history yet — load the durable transcript,
+  // then (old chats only) fall back to a text-only rebuild from display rows.
+  await ensureTranscriptLoaded(sessionId);
+  if (!conversations.has(sessionId)) await seedFromDisplayMessages(sessionId);
+  const messages = conversations.get(sessionId);
   if (!messages || messages.length < 2) return null;
   const provider = getProviderManager().getActive();
   if (!provider) return null;
   const adapter = createAdapter(provider);
+  const beforeSnapshot = messages.map((m) => ({ ...m }));
   const before = estimateTokens(messages);
   const compacted = await compactMessages({
     messages,
@@ -266,7 +287,44 @@ export async function compactSessionNow(
     messages.length = 0;
     messages.push(...compacted);
   }
-  return { before, after: estimateTokens(messages) };
+  const after = estimateTokens(messages);
+  // Record the compaction so it can be undone ("rewind through compact"):
+  // the BEFORE snapshot restores the pre-compaction context.
+  if (after < before)
+    recordContextEvent(sessionId, "compact", {
+      manual: true,
+      beforeTokens: before,
+      afterTokens: after,
+      before: beforeSnapshot,
+      after: messages.map((m) => ({ ...m })),
+    });
+  persistTranscript(sessionId);
+  return { before, after };
+}
+
+/**
+ * Undo a compaction: restore the pre-compaction transcript from the event's
+ * `before` snapshot, and drop that event (and any later ones — they no longer
+ * describe the live history). Returns the restored/current token counts.
+ */
+export async function undoCompaction(
+  sessionId: string,
+  eventId: string,
+): Promise<{ restored: number } | null> {
+  const { getContextEvent, dropContextEventsFrom } = await import(
+    "../transcript-store.js"
+  );
+  const ev = getContextEvent(sessionId, eventId);
+  if (!ev || ev.type !== "compact") return null;
+  const before = ev.payload.before as LLMMessage[] | undefined;
+  if (!Array.isArray(before) || before.length === 0) return null;
+  conversations.set(
+    sessionId,
+    before.map((m) => ({ ...m })),
+  );
+  persistTranscript(sessionId);
+  dropContextEventsFrom(sessionId, ev.seq);
+  return { restored: estimateTokens(before) };
 }
 
 /** Rough input-token estimate of a session's in-memory history. */
@@ -526,6 +584,9 @@ export async function runAgent(
       ? `${directives.join("\n\n")}\n\n${basePrompt}`
       : basePrompt;
 
+  // Full-fidelity continuation: load the durable transcript (tool blocks and
+  // all) for a reopened chat before we build on it. No-op if already loaded.
+  await ensureTranscriptLoaded(sessionId);
   let messages = conversations.get(sessionId);
   if (!messages) {
     messages = [];
@@ -540,6 +601,7 @@ export async function runAgent(
       ? mergeBackgroundResults(bgResults, userContent)
       : userContent;
   messages.push({ role: "user", content: turnContent });
+  persistTranscript(sessionId);
 
   for (let turn = 0; turn < maxTurns; turn++) {
     if (signal?.aborted) {
@@ -571,6 +633,8 @@ export async function runAgent(
         compactionThreshold(provider.inputLimit ?? provider.contextLimit),
       )
     ) {
+      const beforeSnapshot = messages.map((m) => ({ ...m }));
+      const beforeTokens = estimateTokens(messages);
       const compacted = await compactMessages({
         messages,
         adapter,
@@ -581,6 +645,16 @@ export async function runAgent(
       if (compacted !== messages) {
         messages.length = 0;
         messages.push(...compacted);
+        // Log the auto-compaction with a BEFORE snapshot so it can be undone
+        // (rewind through compact → restore the pre-compaction context).
+        recordContextEvent(sessionId, "compact", {
+          manual: false,
+          beforeTokens,
+          afterTokens: estimateTokens(messages),
+          before: beforeSnapshot,
+          after: messages.map((m) => ({ ...m })),
+        });
+        persistTranscript(sessionId);
       }
     }
 
@@ -663,6 +737,8 @@ export async function runAgent(
       });
 
     if (toolCalls.length === 0) {
+      // Durable, full-fidelity history for a clean reopen / continuation.
+      persistTranscript(sessionId);
       onEvent({
         type: "message_stop",
         // Propagate the turn's real stop_reason (message_delta): the renderer
@@ -778,10 +854,12 @@ export async function runAgent(
         is_error: r.is_error,
       })),
     });
+    persistTranscript(sessionId);
   }
 
   // Loop fell through maxTurns without a natural end (no more tool calls) —
   // emit the terminal message_stop anyway so the UI doesn't stay stuck
   // "streaming" forever.
+  persistTranscript(sessionId);
   onEvent({ type: "message_stop", stop_reason: "max_turns" });
 }

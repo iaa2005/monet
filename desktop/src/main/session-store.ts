@@ -512,3 +512,9 @@ export function getSessionStore(): SessionStore {
   if (!instance) instance = new SessionStore();
   return instance;
 }
+
+/** The shared SQLite handle (same DB file), for sibling stores like the model
+ * transcript / context-event log. */
+export function getSessionDb(): ReturnType<typeof Database> {
+  return getDb();
+}

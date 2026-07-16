@@ -10,7 +10,9 @@ import {
   runAgent,
   resetConversation,
   seedConversation,
+  ensureTranscriptLoaded,
   compactSessionNow,
+  undoCompaction,
   estimateSessionTokens,
   computeContextBreakdown,
 } from "../agent/index.js";
@@ -211,6 +213,10 @@ export function registerChatIPC(): void {
     if (!win) throw new Error("No window");
 
     const sessionId = payload.sessionId || "default";
+    // Prefer the durable full-fidelity transcript (tool blocks included); the
+    // renderer's text-only `seed` is only a fallback for chats that have none
+    // (seedConversation is a no-op once the transcript is loaded).
+    await ensureTranscriptLoaded(sessionId);
     if (payload.seed && payload.seed.length > 0) {
       seedConversation(sessionId, payload.seed);
     }
@@ -325,6 +331,38 @@ export function registerChatIPC(): void {
   ipcMain.handle("chat:estimate", (_e, sessionId?: string) => {
     return { tokens: estimateSessionTokens(sessionId || "default") };
   });
+
+  // Context-change history (compactions, rewinds) for a session — powers the
+  // "rewind through compact" affordance.
+  ipcMain.handle("chat:contextEvents", async (_e, sessionId?: string) => {
+    const { listContextEvents } = await import("../transcript-store.js");
+    // Strip the heavy before/after snapshots — the UI only needs the summary.
+    return listContextEvents(sessionId || "default").map((ev) => ({
+      id: ev.id,
+      type: ev.type,
+      at: ev.at,
+      manual: ev.payload.manual === true,
+      beforeTokens: (ev.payload.beforeTokens as number) ?? null,
+      afterTokens: (ev.payload.afterTokens as number) ?? null,
+    }));
+  });
+
+  // Undo a compaction: restore the pre-compaction context ("rewind through
+  // compact"). The renderer re-seeds its display from the restored history.
+  ipcMain.handle(
+    "chat:undoCompact",
+    async (_e, sessionId: string, eventId: string) => {
+      try {
+        const r = await undoCompaction(sessionId || "default", eventId);
+        return r ? { ok: true, ...r } : { ok: false, error: "Nothing to undo" };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "Undo failed",
+        };
+      }
+    },
+  );
 
   // Per-category breakdown of what fills the context window right now.
   ipcMain.handle(
