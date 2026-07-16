@@ -36,7 +36,6 @@ import {
   Archive,
   Trash2,
   ExternalLink,
-  Columns2,
   Monitor,
   type LucideIcon,
 } from "lucide-react";
@@ -63,7 +62,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
@@ -732,7 +730,7 @@ export default function App(): JSX.Element {
         )}
 
         <div className="app-no-drag flex items-center gap-0.5 pr-1.5">
-          {appMode === "code" && (
+          {!incognito && (
             <>
               <IconBtn
                 title="Files"
@@ -742,37 +740,40 @@ export default function App(): JSX.Element {
                 <PanelRight className="size-4" />
               </IconBtn>
               <IconBtn
+                title="Artifacts"
+                active={rightTab === "artifacts"}
+                onClick={() => toggleRight("artifacts")}
+              >
+                <Blocks className="size-4" />
+              </IconBtn>
+              <IconBtn
                 title="Terminal"
                 active={terminalOpen}
-                onClick={() => setTerminalOpen((o) => !o)}
+                onClick={() => {
+                  setAppMode("code");
+                  setTerminalOpen((o) => !o);
+                }}
               >
                 <TerminalIcon className="size-4" />
               </IconBtn>
               <IconBtn
                 title="Changes"
                 active={view === "changes"}
-                onClick={() =>
-                  setView((v) => (v === "changes" ? "chat" : "changes"))
-                }
+                onClick={() => {
+                  setAppMode("code");
+                  setView((v) => (v === "changes" ? "chat" : "changes"));
+                }}
               >
                 <FileDiff className="size-4" />
               </IconBtn>
+              <BackgroundTasks
+                onOpen={openBackgroundTask}
+                currentSessionId={currentSessionId}
+              />
+              <IconBtn title="Settings" onClick={() => setSettingsOpen(true)}>
+                <Settings className="size-4" />
+              </IconBtn>
             </>
-          )}
-          {!incognito && (
-            <BackgroundTasks
-              onOpen={openBackgroundTask}
-              currentSessionId={currentSessionId}
-            />
-          )}
-          {appMode === "home" && (
-            <IconBtn
-              title="Artifacts"
-              active={rightTab === "artifacts"}
-              onClick={() => toggleRight("artifacts")}
-            >
-              <Blocks className="size-4" />
-            </IconBtn>
           )}
           {appMode === "home" && (
             <IconBtn
@@ -802,7 +803,7 @@ export default function App(): JSX.Element {
             </IconBtn>
           )}
 
-          {!incognito && (
+          {!incognito && view === "chat" && currentSessionId && (
             <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <button
@@ -815,48 +816,6 @@ export default function App(): JSX.Element {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem
-                  onClick={() => {
-                    toggleRight("artifacts");
-                    setMenuOpen(false);
-                  }}
-                >
-                  <Blocks className="size-4" />
-                  Artifacts
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    toggleRight("files");
-                    setMenuOpen(false);
-                  }}
-                >
-                  <PanelRight className="size-4" />
-                  Files
-                  <DropdownMenuShortcut>Ctrl+^+F</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setAppMode("code");
-                    setTerminalOpen(true);
-                    setMenuOpen(false);
-                  }}
-                >
-                  <TerminalIcon className="size-4" />
-                  Terminal
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setAppMode("code");
-                    toggleRight("files");
-                    setMenuOpen(false);
-                  }}
-                >
-                  <Columns2 className="size-4" />
-                  Split view
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator />
-
                 <DropdownMenuItem
                   onClick={() => {
                     setRenameTargetId(undefined);
@@ -1001,20 +960,8 @@ export default function App(): JSX.Element {
                     />
                     <NavRow
                       icon={Upload}
-                      label="Import chat"
+                      label="Import session"
                       onClick={handleImport}
-                    />
-                    <NavRow
-                      icon={FileText}
-                      label="Files"
-                      active={rightTab === "files"}
-                      onClick={() => toggleRight("files")}
-                    />
-                    <NavRow
-                      icon={Blocks}
-                      label="Artifacts"
-                      active={rightTab === "artifacts"}
-                      onClick={() => toggleRight("artifacts")}
                     />
                     <NavRow
                       icon={Zap}
@@ -1023,11 +970,6 @@ export default function App(): JSX.Element {
                       onClick={() =>
                         setView((v) => (v === "routines" ? "chat" : "routines"))
                       }
-                    />
-                    <NavRow
-                      icon={Settings}
-                      label="Customize"
-                      onClick={() => setSettingsOpen(true)}
                     />
                   </div>
 
