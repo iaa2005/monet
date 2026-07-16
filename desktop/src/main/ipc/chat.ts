@@ -316,9 +316,18 @@ export function registerChatIPC(): void {
   // user turns (tool blocks intact), instead of clearing + reseeding as text.
   ipcMain.handle(
     "chat:rewindTranscript",
-    async (_e, sessionId: string, keepUserTurns: number) => {
+    async (
+      _e,
+      sessionId: string,
+      keepUserTurns: number,
+      totalUserTurns?: number,
+    ) => {
       abortBgAgents(sessionId || "default");
-      return rewindTranscriptToUserTurn(sessionId || "default", keepUserTurns);
+      return rewindTranscriptToUserTurn(
+        sessionId || "default",
+        keepUserTurns,
+        totalUserTurns,
+      );
     },
   );
 

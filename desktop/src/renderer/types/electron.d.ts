@@ -158,6 +158,7 @@ export interface ElectronAPI {
     rewindTranscript: (
       sessionId: string,
       keepUserTurns: number,
+      totalUserTurns?: number,
     ) => Promise<{ fidelity: "full" | "text"; removed: number }>;
     compact: (sessionId?: string) => Promise<{
       ok: boolean;

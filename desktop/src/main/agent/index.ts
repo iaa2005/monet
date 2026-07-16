@@ -38,7 +38,7 @@ import { tunablePrompt } from "../prompts/index.js";
 import { clearRevealedTools } from "./revealed-tools.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import {
-  loadTranscript,
+  loadTranscriptWithMeta,
   replaceTranscript,
   clearTranscript,
   recordContextEvent,
@@ -206,10 +206,23 @@ export function resetConversation(sessionId: string): void {
   clearRevealedTools(sessionId);
 }
 
+/** Transcript user-turn messages with NO display bubble — background-delivery
+ * turns (deliverBackgroundResults sends an empty message that only carries a
+ * finished sub-agent's report). Tracked by object identity so compaction and
+ * truncation "forget" them for free; persisted via the transcript `hidden`
+ * column so the tagging survives a reopen. Excluding them keeps the rewind
+ * user-turn count aligned with the visible user bubbles. */
+const hiddenTurns = new WeakSet<LLMMessage>();
+
 /** Write the session's live model history through to the durable transcript. */
 function persistTranscript(sessionId: string): void {
   const msgs = conversations.get(sessionId);
-  if (msgs) replaceTranscript(sessionId, msgs);
+  if (msgs)
+    replaceTranscript(
+      sessionId,
+      msgs,
+      msgs.map((m) => hiddenTurns.has(m)),
+    );
 }
 
 /**
@@ -221,8 +234,13 @@ function persistTranscript(sessionId: string): void {
  */
 export async function ensureTranscriptLoaded(sessionId: string): Promise<void> {
   if (conversations.has(sessionId)) return;
-  const stored = loadTranscript(sessionId);
-  if (stored.length > 0) conversations.set(sessionId, stored);
+  const { messages, hidden } = loadTranscriptWithMeta(sessionId);
+  if (messages.length > 0) {
+    conversations.set(sessionId, messages);
+    messages.forEach((m, i) => {
+      if (hidden[i]) hiddenTurns.add(m);
+    });
+  }
 }
 
 /** Text-only rebuild from the persisted display messages — for /compact on a
@@ -307,12 +325,28 @@ export async function compactSessionNow(
  * `before` snapshot, and drop that event (and any later ones — they no longer
  * describe the live history). Returns the restored/current token counts.
  */
-/** Whether a transcript message begins a real USER turn (a prompt), as opposed
- * to a tool_result message that continues the preceding assistant turn. */
+/** Whether a transcript message begins a real, VISIBLE user turn (a prompt with
+ * a display bubble) — not a tool_result continuation of the assistant turn, and
+ * not a hidden background-delivery turn. This is what the renderer counts as a
+ * user bubble, so rewind's user-turn index stays exact. */
 function isUserTurnBoundary(m: LLMMessage): boolean {
-  if (m.role !== "user") return false;
+  if (m.role !== "user" || hiddenTurns.has(m)) return false;
   if (typeof m.content === "string") return true;
   return m.content.some((b) => b.type !== "tool_result");
+}
+
+/** A user turn is "empty" (no real prompt) when it carries no text/media — it
+ * exists only to deliver a background sub-agent's report. */
+function isEmptyUserContent(content: string | LLMContentBlock[]): boolean {
+  if (typeof content === "string") return content.trim() === "";
+  return !content.some(
+    (b) =>
+      (b.type === "text" && b.text.trim() !== "") ||
+      b.type === "image" ||
+      b.type === "audio" ||
+      b.type === "document" ||
+      b.type === "video",
+  );
 }
 
 /**
@@ -326,10 +360,19 @@ function isUserTurnBoundary(m: LLMMessage): boolean {
 export async function rewindTranscriptToUserTurn(
   sessionId: string,
   keepUserTurns: number,
+  totalUserTurns?: number,
 ): Promise<{ fidelity: "full" | "text"; removed: number }> {
   await ensureTranscriptLoaded(sessionId);
   const msgs = conversations.get(sessionId);
   if (!msgs || msgs.length === 0) {
+    resetConversation(sessionId);
+    return { fidelity: "text", removed: 0 };
+  }
+  const boundaries = msgs.filter(isUserTurnBoundary).length;
+  // If the transcript's visible user turns don't match the display's, it has
+  // diverged (a compaction folded turns into a summary), so the turn INDEX
+  // can't be trusted — fall back to the safe clear + renderer text seed.
+  if (totalUserTurns != null && boundaries !== totalUserTurns) {
     resetConversation(sessionId);
     return { fidelity: "text", removed: 0 };
   }
@@ -645,11 +688,16 @@ export async function runAgent(
   // model can act on them. Done at the turn boundary (not when they finish) to
   // keep user/assistant alternation intact.
   const bgResults = drainBgResults(sessionId);
+  // A turn that carries ONLY a background report (no user prompt/attachments)
+  // has no display bubble — mark it hidden so rewind's turn count stays aligned.
+  const hiddenTurn = bgResults.length > 0 && isEmptyUserContent(userContent);
   const turnContent =
     bgResults.length > 0
       ? mergeBackgroundResults(bgResults, userContent)
       : userContent;
-  messages.push({ role: "user", content: turnContent });
+  const userMsg: LLMMessage = { role: "user", content: turnContent };
+  messages.push(userMsg);
+  if (hiddenTurn) hiddenTurns.add(userMsg);
   persistTranscript(sessionId);
 
   for (let turn = 0; turn < maxTurns; turn++) {

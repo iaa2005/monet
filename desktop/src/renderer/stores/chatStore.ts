@@ -606,6 +606,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
         .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
       const keepUserTurns = prior.filter((m) => m.role === "user").length;
+      const totalUserTurns = msgs.filter((m) => m.role === "user").length;
 
       mutate(sessionId, (p) => ({
         ...p,
@@ -614,7 +615,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
         error: null,
       }));
       const bridge = electron();
-      await bridge?.chat.rewindTranscript(sessionId, keepUserTurns);
+      await bridge?.chat.rewindTranscript(
+        sessionId,
+        keepUserTurns,
+        totalUserTurns,
+      );
       get().addUserMessage(text);
       get().startStreaming();
       const eff = localStorage.getItem("monet.effort");
@@ -653,13 +658,18 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // to the same user-turn count so the next send continues from here.
       const kept = msgs.slice(0, idx + 1);
       const keepUserTurns = kept.filter((m) => m.role === "user").length;
+      const totalUserTurns = msgs.filter((m) => m.role === "user").length;
       mutate(sessionId, (p) => ({
         ...p,
         messages: kept,
         isStreaming: false,
         error: null,
       }));
-      await bridge?.chat.rewindTranscript(sessionId, keepUserTurns);
+      await bridge?.chat.rewindTranscript(
+        sessionId,
+        keepUserTurns,
+        totalUserTurns,
+      );
     },
 
     rewindAndEdit: async (messageId) => {
@@ -698,13 +708,18 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // continues with full fidelity, and drop the prompt into the composer.
       const prior = msgs.slice(0, idx);
       const keepUserTurns = prior.filter((m) => m.role === "user").length;
+      const totalUserTurns = msgs.filter((m) => m.role === "user").length;
       mutate(sessionId, (p) => ({
         ...p,
         messages: prior,
         isStreaming: false,
         error: null,
       }));
-      await bridge?.chat.rewindTranscript(sessionId, keepUserTurns);
+      await bridge?.chat.rewindTranscript(
+        sessionId,
+        keepUserTurns,
+        totalUserTurns,
+      );
       get().setComposerDraft(text);
     },
 

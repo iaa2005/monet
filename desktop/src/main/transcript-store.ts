@@ -39,6 +39,7 @@ function db(): ReturnType<typeof getSessionDb> {
         seq INTEGER NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
+        hidden INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (session_id, seq)
       );
       CREATE INDEX IF NOT EXISTS idx_transcript_session ON transcript(session_id);
@@ -52,6 +53,13 @@ function db(): ReturnType<typeof getSessionDb> {
       );
       CREATE INDEX IF NOT EXISTS idx_ctxevents_session ON context_events(session_id);
     `);
+    // Upgrade a transcript table created before the `hidden` column (marks
+    // no-display-bubble turns like background-delivery so rewind counts align).
+    const cols = d.prepare("PRAGMA table_info(transcript)").all() as {
+      name: string;
+    }[];
+    if (!cols.some((c) => c.name === "hidden"))
+      d.exec("ALTER TABLE transcript ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0");
     ready = true;
   }
   return d;
@@ -60,18 +68,30 @@ function db(): ReturnType<typeof getSessionDb> {
 // ─── Transcript ─────────────────────────────────────────────────────────────
 
 export function loadTranscript(sessionId: string): LLMMessage[] {
+  return loadTranscriptWithMeta(sessionId).messages;
+}
+
+/** Load the transcript plus each message's `hidden` flag (turns with no display
+ * bubble, e.g. background-delivery), so the in-memory tagging can be restored. */
+export function loadTranscriptWithMeta(sessionId: string): {
+  messages: LLMMessage[];
+  hidden: boolean[];
+} {
   try {
     const rows = db()
       .prepare(
-        "SELECT role, content FROM transcript WHERE session_id = ? ORDER BY seq ASC",
+        "SELECT role, content, hidden FROM transcript WHERE session_id = ? ORDER BY seq ASC",
       )
-      .all(sessionId) as { role: string; content: string }[];
-    return rows.map((r) => ({
-      role: r.role as LLMMessage["role"],
-      content: JSON.parse(r.content) as LLMMessage["content"],
-    }));
+      .all(sessionId) as { role: string; content: string; hidden: number }[];
+    return {
+      messages: rows.map((r) => ({
+        role: r.role as LLMMessage["role"],
+        content: JSON.parse(r.content) as LLMMessage["content"],
+      })),
+      hidden: rows.map((r) => r.hidden === 1),
+    };
   } catch {
-    return [];
+    return { messages: [], hidden: [] };
   }
 }
 
@@ -91,16 +111,23 @@ export function hasTranscript(sessionId: string): boolean {
 export function replaceTranscript(
   sessionId: string,
   messages: LLMMessage[],
+  hidden?: boolean[],
 ): void {
   try {
     const d = db();
     const tx = d.transaction(() => {
       d.prepare("DELETE FROM transcript WHERE session_id = ?").run(sessionId);
       const insert = d.prepare(
-        "INSERT INTO transcript (session_id, seq, role, content) VALUES (?, ?, ?, ?)",
+        "INSERT INTO transcript (session_id, seq, role, content, hidden) VALUES (?, ?, ?, ?, ?)",
       );
       messages.forEach((m, i) =>
-        insert.run(sessionId, i, m.role, JSON.stringify(m.content)),
+        insert.run(
+          sessionId,
+          i,
+          m.role,
+          JSON.stringify(m.content),
+          hidden?.[i] ? 1 : 0,
+        ),
       );
     });
     tx();

@@ -38,8 +38,14 @@ const electronAPI = {
     rewindTranscript: (
       sessionId: string,
       keepUserTurns: number,
+      totalUserTurns?: number,
     ): Promise<{ fidelity: "full" | "text"; removed: number }> =>
-      ipcRenderer.invoke("chat:rewindTranscript", sessionId, keepUserTurns),
+      ipcRenderer.invoke(
+        "chat:rewindTranscript",
+        sessionId,
+        keepUserTurns,
+        totalUserTurns,
+      ),
     compact: (
       sessionId?: string,
     ): Promise<{ ok: boolean; before?: number; after?: number; error?: string }> =>
