@@ -73,7 +73,11 @@ export async function executeRoutine(
     trigger && (trigger.body?.trim() || trigger.source)
       ? `[Triggered by ${trigger.source}${trigger.body?.trim() ? ` with payload:\n${trigger.body.slice(0, 4000)}` : ""}]\n\n`
       : "";
-  let effective = triggerCtx + routine.prompt;
+  let task = triggerCtx + routine.prompt;
+  // Connector output: ask the agent to post the result through the connector.
+  if (routine.output.kind === "connector" && routine.output.connector)
+    task += `\n\nWhen done, post a concise summary of the result to the ${routine.output.connector} connector using its tools.`;
+  let effective = task;
   let useGate = false;
 
   // Event trigger: poll the connector for anything new since the last check and
@@ -113,7 +117,15 @@ export async function executeRoutine(
         space: routine.space,
         permissionMode: "bypassPermissions",
         maxTurns: 30,
-        connectors: routine.connectors,
+        // Scope to declared connectors; ensure the output connector is included.
+        connectors:
+          routine.connectors.length > 0 &&
+          routine.output.kind === "connector" &&
+          routine.output.connector
+            ? Array.from(
+                new Set([...routine.connectors, routine.output.connector]),
+              )
+            : routine.connectors,
       },
     );
   } catch (err) {
@@ -168,6 +180,21 @@ export async function executeRoutine(
   };
   recordRun(run);
   updateRoutine(routine.id, { lastRun: at, lastStatus: "ok" });
+
+  // Notification output: surface the result as a native OS notification.
+  if (routine.output.kind === "notification") {
+    try {
+      const { Notification } = await import("electron");
+      if (Notification.isSupported())
+        new Notification({
+          title: routine.name || "Routine",
+          body: assistantText.trim().slice(0, 220) || "Completed.",
+        }).show();
+    } catch {
+      /* notifications best-effort */
+    }
+  }
+
   notify("routines:ran", {
     routineId: routine.id,
     sessionId: session.id,

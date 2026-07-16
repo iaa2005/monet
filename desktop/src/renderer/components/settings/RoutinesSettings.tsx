@@ -46,6 +46,8 @@ interface Draft {
   eventInterval: number;
   eventFilter: string;
   connectors: string[];
+  outputKind: "chat" | "notification" | "connector";
+  outputConnector: string;
   condition: string;
   enabled: boolean;
 }
@@ -78,7 +80,7 @@ const TEMPLATES: Template[] = [
 ];
 
 function emptyDraft(): Draft {
-  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", eventConnector: "", eventType: "", eventInterval: 15, eventFilter: "", connectors: [], condition: "", enabled: true };
+  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", eventConnector: "", eventType: "", eventInterval: 15, eventFilter: "", connectors: [], outputKind: "chat", outputConnector: "", condition: "", enabled: true };
 }
 
 export function RoutinesSettings({
@@ -240,6 +242,8 @@ export function RoutinesSettings({
                     eventInterval: r.trigger.event?.intervalMinutes ?? 15,
                     eventFilter: r.trigger.event?.filter ?? "",
                     connectors: r.connectors ?? [],
+                    outputKind: r.output?.kind ?? "chat",
+                    outputConnector: r.output?.connector ?? "",
                     condition: r.condition?.prompt ?? "",
                     enabled: r.enabled,
                   })
@@ -421,7 +425,10 @@ function RoutineEditor({
       condition: d.condition.trim()
         ? { kind: "agent" as const, prompt: d.condition.trim() }
         : { kind: "always" as const },
-      output: { kind: "chat" as const },
+      output:
+        d.outputKind === "connector"
+          ? { kind: "connector" as const, connector: d.outputConnector }
+          : { kind: d.outputKind },
       enabled: d.enabled,
     };
     try {
@@ -568,6 +575,47 @@ function RoutineEditor({
             <code className="font-mono">Authorization: Bearer {trig.apiKey}</code>
           </div>
         )}
+        <div>
+          <label className="text-xs text-muted-foreground">Output</label>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <div className="flex rounded-md border border-border p-0.5">
+              {(["chat", "notification", "connector"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => set({ outputKind: k })}
+                  className={cn(
+                    "rounded px-2.5 py-1.5 text-xs font-medium capitalize",
+                    d.outputKind === k ? "bg-card shadow-sm" : "text-muted-foreground",
+                  )}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+            {d.outputKind === "connector" && (
+              <select
+                value={d.outputConnector}
+                onChange={(e) => set({ outputConnector: e.target.value })}
+                className="rounded-md border border-border bg-transparent px-2 py-2 text-sm outline-none focus:border-foreground/30"
+              >
+                <option value="">Pick a connector</option>
+                {servers.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {d.outputKind === "chat"
+              ? "Each run opens a new chat with the result."
+              : d.outputKind === "notification"
+                ? "A native notification with the result (a chat is still saved)."
+                : "The agent posts the result to the connector (a chat is still saved)."}
+          </p>
+        </div>
         <div>
           <label className="text-xs text-muted-foreground">
             Condition (optional) — run only if this holds; the agent checks it first
