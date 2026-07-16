@@ -73,13 +73,32 @@ export async function executeRoutine(
     trigger && (trigger.body?.trim() || trigger.source)
       ? `[Triggered by ${trigger.source}${trigger.body?.trim() ? ` with payload:\n${trigger.body.slice(0, 4000)}` : ""}]\n\n`
       : "";
-  const base = triggerCtx + routine.prompt;
+  let effective = triggerCtx + routine.prompt;
+  let useGate = false;
 
-  const useGate =
-    routine.condition?.kind === "agent" && !!routine.condition.prompt;
-  const prompt = useGate
-    ? withCondition(routine.condition!.prompt!, base)
-    : base;
+  // Event trigger: poll the connector for anything new since the last check and
+  // SKIP when there's nothing — the SKIP path (below) turns that into a no-op.
+  if (routine.trigger.kind === "event") {
+    const ev = routine.trigger.event;
+    const since = routine.lastRun ?? routine.createdAt;
+    effective = [
+      `Check ${ev?.connector || "the connected service"} for new ${ev?.type || "events"} since ${since}.`,
+      ev?.filter ? `Only consider events matching: ${ev.filter}.` : "",
+      `If there is nothing new, reply with exactly "SKIP" and stop.`,
+      `Otherwise, for the new events, do the following:`,
+      "",
+      effective,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    useGate = true;
+  }
+  // Optional agent condition gate on top.
+  if (routine.condition?.kind === "agent" && routine.condition.prompt) {
+    effective = withCondition(routine.condition.prompt, effective);
+    useGate = true;
+  }
+  const prompt = effective;
 
   const session = store.create(routine.name || "Routine", routine.space);
   let assistantText = "";
@@ -172,7 +191,26 @@ export function unschedule(id: string): void {
 
 export function scheduleRoutine(r: Routine): void {
   unschedule(r.id);
-  if (!r.enabled || r.trigger.kind !== "schedule" || !r.trigger.cron) return;
+  if (!r.enabled) return;
+
+  // Event trigger: poll the connector on an interval; the run itself detects
+  // whether anything is new (and SKIPs otherwise).
+  if (r.trigger.kind === "event") {
+    const mins = Math.max(1, r.trigger.event?.intervalMinutes ?? 15);
+    timers.set(
+      r.id,
+      setInterval(() => {
+        void (async () => {
+          const fresh = getRoutine(r.id);
+          if (fresh?.enabled)
+            await executeRoutine(fresh, { source: "event" }).catch(() => {});
+        })();
+      }, mins * 60_000),
+    );
+    return;
+  }
+
+  if (r.trigger.kind !== "schedule" || !r.trigger.cron) return;
   const fields = parseCronExpression(r.trigger.cron);
   if (!fields) return;
   const next = computeNextCronRun(fields, new Date());

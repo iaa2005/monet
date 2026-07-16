@@ -18,8 +18,14 @@ export interface RoutineTrigger {
   cron?: string;
   /** webhook: opaque id embedded in the inbound URL. */
   webhookId?: string;
-  /** event: which connector + event type, with an optional payload filter. */
-  event?: { connector: string; type: string; filter?: Record<string, unknown> };
+  /** event: which connector + event type, polled every intervalMinutes, with an
+   * optional filter description. */
+  event?: {
+    connector: string;
+    type: string;
+    intervalMinutes?: number;
+    filter?: string;
+  };
 }
 
 export interface RoutineCondition {

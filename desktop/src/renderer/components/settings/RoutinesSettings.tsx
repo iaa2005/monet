@@ -38,9 +38,13 @@ interface Draft {
   name: string;
   prompt: string;
   space: "home" | "code";
-  triggerKind: "schedule" | "webhook" | "manual";
+  triggerKind: "schedule" | "webhook" | "manual" | "event";
   cron: string;
   webhookId?: string;
+  eventConnector: string;
+  eventType: string;
+  eventInterval: number;
+  eventFilter: string;
   connectors: string[];
   condition: string;
   enabled: boolean;
@@ -74,7 +78,7 @@ const TEMPLATES: Template[] = [
 ];
 
 function emptyDraft(): Draft {
-  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", connectors: [], condition: "", enabled: true };
+  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", eventConnector: "", eventType: "", eventInterval: 15, eventFilter: "", connectors: [], condition: "", enabled: true };
 }
 
 export function RoutinesSettings({
@@ -160,7 +164,7 @@ export function RoutinesSettings({
       </div>
 
       {/* What do you want automated? */}
-      <div className="rounded-xl border border-border p-3">
+      <div className="glass-panel rounded-xl border border-border p-3">
         <textarea
           value={desc}
           onChange={(e) => setDesc(e.target.value)}
@@ -202,7 +206,7 @@ export function RoutinesSettings({
           {routines.map((r) => (
             <div
               key={r.id}
-              className="flex items-center gap-3 rounded-xl border border-border p-3"
+              className="glass-panel flex items-center gap-3 rounded-xl border border-border p-3"
             >
               <Switch
                 checked={r.enabled}
@@ -226,9 +230,15 @@ export function RoutinesSettings({
                         ? "webhook"
                         : r.trigger.kind === "manual"
                           ? "manual"
-                          : "schedule",
+                          : r.trigger.kind === "event"
+                            ? "event"
+                            : "schedule",
                     cron: r.trigger.cron ?? "0 9 * * 1-5",
                     webhookId: r.trigger.webhookId,
+                    eventConnector: r.trigger.event?.connector ?? "",
+                    eventType: r.trigger.event?.type ?? "",
+                    eventInterval: r.trigger.event?.intervalMinutes ?? 15,
+                    eventFilter: r.trigger.event?.filter ?? "",
                     connectors: r.connectors ?? [],
                     condition: r.condition?.prompt ?? "",
                     enabled: r.enabled,
@@ -239,7 +249,13 @@ export function RoutinesSettings({
                 <div className="truncate text-sm font-medium">{r.name}</div>
                 <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Clock className="size-3" />
-                  {r.humanSchedule ?? r.trigger.cron ?? "manual"}
+                  {r.trigger.kind === "schedule"
+                    ? (r.humanSchedule ?? r.trigger.cron ?? "schedule")
+                    : r.trigger.kind === "event"
+                      ? `every ${r.trigger.event?.intervalMinutes ?? 15}m · ${r.trigger.event?.type || r.trigger.event?.connector || "event"}`
+                      : r.trigger.kind === "webhook"
+                        ? "webhook"
+                        : "manual"}
                   {r.lastStatus && (
                     <span
                       className={cn(
@@ -304,7 +320,7 @@ export function RoutinesSettings({
               key={t.name}
               type="button"
               onClick={() => fromTemplate(t)}
-              className="rounded-xl border border-border p-3 text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+              className="glass-panel glass-hover rounded-xl border border-border p-3 text-left transition-colors"
             >
               <div className="flex items-center gap-2 text-sm font-medium">
                 <t.icon className="size-4" />
@@ -383,7 +399,17 @@ function RoutineEditor({
         ? { kind: "schedule" as const, cron: d.cron }
         : d.triggerKind === "webhook"
           ? { kind: "webhook" as const, webhookId: d.webhookId }
-          : { kind: "manual" as const };
+          : d.triggerKind === "event"
+            ? {
+                kind: "event" as const,
+                event: {
+                  connector: d.eventConnector,
+                  type: d.eventType,
+                  intervalMinutes: d.eventInterval,
+                  filter: d.eventFilter.trim() || undefined,
+                },
+              }
+            : { kind: "manual" as const };
     const input = {
       name: d.name.trim() || "New routine",
       prompt: d.prompt.trim(),
@@ -428,7 +454,7 @@ function RoutineEditor({
           <div>
             <label className="text-xs text-muted-foreground">Trigger</label>
             <div className="mt-1 flex rounded-md border border-border p-0.5">
-              {(["schedule", "webhook", "manual"] as const).map((k) => (
+              {(["schedule", "event", "webhook", "manual"] as const).map((k) => (
                 <button
                   key={k}
                   type="button"
@@ -489,6 +515,47 @@ function RoutineEditor({
                 services need a tunnel (ngrok/cloudflared) to reach it.
               </span>
             )}
+          </div>
+        )}
+        {d.triggerKind === "event" && (
+          <div className="space-y-2 rounded-md border border-border bg-muted/40 p-2.5">
+            <p className="text-[12px] text-muted-foreground">
+              Polls a connector and runs only when something new appears
+              (otherwise it skips). Needs the connector selected below.
+            </p>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-xs text-muted-foreground">Connector</label>
+                <select
+                  value={d.eventConnector}
+                  onChange={(e) => set({ eventConnector: e.target.value })}
+                  className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-2 text-sm outline-none focus:border-foreground/30"
+                >
+                  <option value="">Any connected</option>
+                  {servers.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="w-24">
+                <label className="text-xs text-muted-foreground">Every (min)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={d.eventInterval}
+                  onChange={(e) => set({ eventInterval: Number(e.target.value) || 15 })}
+                  className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-2 text-sm outline-none focus:border-foreground/30"
+                />
+              </div>
+            </div>
+            <input
+              value={d.eventType}
+              onChange={(e) => set({ eventType: e.target.value })}
+              placeholder="Event to watch — e.g. merged pull request, new critical error"
+              className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/30"
+            />
           </div>
         )}
         {d.triggerKind === "manual" && (
