@@ -234,6 +234,26 @@ export function recordRun(run: RoutineRun): void {
     );
 }
 
+/** Chats produced by routine runs (newest run per chat), for the sidebar's
+ * "Routines" section — joined to the sessions table (same DB). */
+export function listRoutineChats(
+  limit = 50,
+): { id: string; title: string; at: string }[] {
+  try {
+    return db()
+      .prepare(
+        `SELECT rr.session_id AS id, MAX(rr.at) AS at, s.title AS title
+         FROM routine_runs rr JOIN sessions s ON s.id = rr.session_id
+         WHERE rr.session_id IS NOT NULL AND rr.status = 'ok'
+         GROUP BY rr.session_id
+         ORDER BY at DESC LIMIT ?`,
+      )
+      .all(limit) as { id: string; title: string; at: string }[];
+  } catch {
+    return [];
+  }
+}
+
 export function listRuns(routineId: string, limit = 20): RoutineRun[] {
   const rows = db()
     .prepare(
