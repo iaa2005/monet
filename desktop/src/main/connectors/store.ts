@@ -1,0 +1,170 @@
+/**
+ * Connector accounts + secrets.
+ *
+ * Secrets here are app passwords — a Gmail app password is full mailbox access,
+ * so they are encrypted at rest with Electron safeStorage (DPAPI/Keychain/
+ * libsecret), the same way LLM provider keys already are. They are kept in a
+ * SEPARATE file from the account list so the account list can be read, logged
+ * and shown freely without ever touching secret material.
+ */
+
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { join } from "path";
+import { randomUUID } from "node:crypto";
+import { safeStorage } from "electron";
+import { getDataSubdir } from "../data-dir.js";
+import { getPreset } from "./presets.js";
+import type {
+  ConnectorAccount,
+  ConnectorSecret,
+  ResolvedAccount,
+} from "./types.js";
+
+function accountsPath(): string {
+  return join(getDataSubdir("connectors"), "accounts.json");
+}
+function secretsPath(): string {
+  return join(getDataSubdir("connectors"), "secrets.json");
+}
+
+function encrypt(text: string): string {
+  if (!text) return "";
+  if (!safeStorage.isEncryptionAvailable()) return text; // fallback: plain
+  return safeStorage.encryptString(text).toString("base64");
+}
+
+function decrypt(blob: string): string {
+  if (!blob) return "";
+  if (!safeStorage.isEncryptionAvailable()) return blob;
+  try {
+    return safeStorage.decryptString(Buffer.from(blob, "base64"));
+  } catch {
+    return blob; // fallback: written before encryption was available
+  }
+}
+
+// ─── Accounts ───────────────────────────────────────────────────────────────
+
+export function listAccounts(): ConnectorAccount[] {
+  try {
+    const p = accountsPath();
+    if (!existsSync(p)) return [];
+    return JSON.parse(readFileSync(p, "utf-8")) as ConnectorAccount[];
+  } catch {
+    return [];
+  }
+}
+
+function writeAccounts(rows: ConnectorAccount[]): void {
+  writeFileSync(accountsPath(), JSON.stringify(rows, null, 2), "utf-8");
+}
+
+export function getAccount(id: string): ConnectorAccount | undefined {
+  return listAccounts().find((a) => a.id === id);
+}
+
+// ─── Secrets ────────────────────────────────────────────────────────────────
+
+type SecretFile = Record<string, string>; // accountId → encrypted JSON
+
+function readSecrets(): SecretFile {
+  try {
+    const p = secretsPath();
+    if (!existsSync(p)) return {};
+    return JSON.parse(readFileSync(p, "utf-8")) as SecretFile;
+  } catch {
+    return {};
+  }
+}
+
+function writeSecrets(map: SecretFile): void {
+  writeFileSync(secretsPath(), JSON.stringify(map, null, 2), "utf-8");
+}
+
+export function getSecret(accountId: string): ConnectorSecret {
+  const blob = readSecrets()[accountId];
+  if (!blob) return {};
+  try {
+    return JSON.parse(decrypt(blob)) as ConnectorSecret;
+  } catch {
+    return {};
+  }
+}
+
+export function setSecret(accountId: string, secret: ConnectorSecret): void {
+  const map = readSecrets();
+  map[accountId] = encrypt(JSON.stringify(secret));
+  writeSecrets(map);
+}
+
+/** Merge into the stored secret — used to persist a Telegram session after login. */
+export function patchSecret(
+  accountId: string,
+  patch: Partial<ConnectorSecret>,
+): void {
+  setSecret(accountId, { ...getSecret(accountId), ...patch });
+}
+
+// ─── CRUD ───────────────────────────────────────────────────────────────────
+
+export function addAccount(input: {
+  presetId: string;
+  label?: string;
+  username: string;
+  secret: ConnectorSecret;
+}): ConnectorAccount {
+  const preset = getPreset(input.presetId);
+  if (!preset) throw new Error(`Unknown connector: ${input.presetId}`);
+  const account: ConnectorAccount = {
+    id: randomUUID(),
+    presetId: input.presetId,
+    label: input.label?.trim() || preset.name,
+    username: input.username.trim(),
+    enabled: true,
+    createdAt: new Date().toISOString(),
+  };
+  writeAccounts([...listAccounts(), account]);
+  setSecret(account.id, input.secret);
+  return account;
+}
+
+export function updateAccount(
+  id: string,
+  patch: Partial<Pick<ConnectorAccount, "label" | "username" | "enabled">>,
+): ConnectorAccount | null {
+  const rows = listAccounts();
+  const i = rows.findIndex((a) => a.id === id);
+  if (i < 0) return null;
+  rows[i] = { ...rows[i], ...patch };
+  writeAccounts(rows);
+  return rows[i];
+}
+
+export function deleteAccount(id: string): boolean {
+  const rows = listAccounts();
+  const next = rows.filter((a) => a.id !== id);
+  if (next.length === rows.length) return false;
+  writeAccounts(next);
+  const secrets = readSecrets();
+  delete secrets[id]; // never leave orphaned credentials behind
+  writeSecrets(secrets);
+  return true;
+}
+
+/** Account + preset + decrypted secret, for the protocol adapters. */
+export function resolveAccount(id: string): ResolvedAccount | null {
+  const account = getAccount(id);
+  if (!account) return null;
+  const preset = getPreset(account.presetId);
+  if (!preset) return null;
+  return { account, preset, secret: getSecret(id) };
+}
+
+/** Enabled accounts that speak a given protocol — drives tool parameters. */
+export function accountsForProtocol(protocol: string): ConnectorAccount[] {
+  return listAccounts().filter((a) => {
+    if (!a.enabled) return false;
+    const p = getPreset(a.presetId);
+    return !!p?.protocols.includes(protocol as never);
+  });
+}

@@ -6,6 +6,10 @@ import type {
   PermissionDecision,
 } from "../main/ipc/permissions.js";
 import type { AskUserRequest, AskUserAnswer } from "../main/ipc/ask-user.js";
+import type {
+  ConnectorAccount,
+  ConnectorPreset,
+} from "../main/connectors/types.js";
 
 const electronAPI = {
   platform: process.platform,
@@ -473,6 +477,40 @@ const electronAPI = {
       deniedApps?: string[];
     }): Promise<{ enabled: boolean; deniedApps: string[] }> =>
       ipcRenderer.invoke("computer:setConfig", patch),
+  },
+
+  connectors: {
+    presets: (): Promise<ConnectorPreset[]> =>
+      ipcRenderer.invoke("connectors:presets"),
+    list: (): Promise<ConnectorAccount[]> => ipcRenderer.invoke("connectors:list"),
+    add: (input: {
+      presetId: string;
+      label?: string;
+      username: string;
+      secret: Record<string, string>;
+    }): Promise<ConnectorAccount> => ipcRenderer.invoke("connectors:add", input),
+    update: (
+      id: string,
+      patch: { label?: string; username?: string; enabled?: boolean },
+    ): Promise<ConnectorAccount | null> =>
+      ipcRenderer.invoke("connectors:update", id, patch),
+    delete: (id: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("connectors:delete", id),
+    test: (id: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("connectors:test", id),
+    telegramSendCode: (opts: {
+      accountId: string;
+      apiId: string;
+      apiHash: string;
+      phone: string;
+    }): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("connectors:telegramSendCode", opts),
+    telegramSignIn: (opts: {
+      accountId: string;
+      code: string;
+      password?: string;
+    }): Promise<{ ok: boolean; error?: string; needsPassword?: boolean }> =>
+      ipcRenderer.invoke("connectors:telegramSignIn", opts),
   },
 
   sandbox: {

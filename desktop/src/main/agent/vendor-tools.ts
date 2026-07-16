@@ -39,6 +39,8 @@ import { LSPTool } from "./lsp-tool.js";
 import { getLspConfig } from "./lsp/config.js";
 import type { AskUserFn } from "../ipc/ask-user.js";
 import { getSandboxConfig, getSessionEngine } from "../sandbox/config.js";
+import { CONNECTOR_TOOLS } from "./connector-tools.js";
+import { accountsForProtocol } from "../connectors/store.js";
 import {
   SandboxListTool,
   SandboxReadTool,
@@ -306,6 +308,7 @@ export function getVendorTools(): Tools {
     BrowserScrollTool,
     BrowserScreenshotTool,
     ComputerTool,
+    ...CONNECTOR_TOOLS,
   ] as unknown as Tool[];
   // Without a POSIX shell the vendor Bash tool errors on every call — drop
   // it so the model goes straight to PowerShell. (ensurePosixShell also
@@ -361,6 +364,22 @@ export function isSpaceToolAllowed(
     const engine = sessionId ? getSessionEngine(sessionId) : getSandboxConfig().engine;
     return engine === "docker" || name === "RunPython";
   }
+  // Connectors reach out to the user's real accounts, so they follow the same
+  // rule as MCP: Code (and routines), never Home's isolated sandbox. Each is
+  // advertised only once an account for its protocol exists — an empty Mail
+  // tool is pure schema tax and invites the model to call it and fail.
+  if (name === "Mail")
+    return space !== "home" && accountsForProtocol("imap").length > 0;
+  if (name === "CloudFiles")
+    return space !== "home" && accountsForProtocol("webdav").length > 0;
+  if (name === "Calendar")
+    return (
+      space !== "home" &&
+      (accountsForProtocol("caldav").length > 0 ||
+        accountsForProtocol("carddav").length > 0)
+    );
+  if (name === "Telegram")
+    return space !== "home" && accountsForProtocol("telegram").length > 0;
   if (name === "SearchPastChats") return getMemoryConfig().searchChats;
   // MCP resources are Code-only (Home has no MCP) and only worth advertising
   // when the user actually has connectors configured.

@@ -28,6 +28,7 @@ import { ConnectorsSettings } from "@/components/settings/ConnectorsSettings";
 import { AutomationSettings } from "@/components/settings/AutomationSettings";
 import { AdvancedSettings } from "@/components/settings/AdvancedSettings";
 import { ConnectorsCatalog } from "@/components/settings/ConnectorsCatalog";
+import { ProtocolConnectors } from "@/components/settings/ProtocolConnectors";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -523,7 +524,12 @@ export function SettingsPanel({
         {section === "automation" && <AutomationSettings />}
         {section === "memory" && <MemorySettings />}
         {section === "reflect" && <ReflectSettings />}
-        {section === "services" && <ConnectorsCatalog />}
+        {section === "services" && (
+          <div className="space-y-8">
+            <ProtocolConnectors />
+            <ConnectorsCatalog />
+          </div>
+        )}
         {section === "advanced" && <AdvancedSettings />}
         {section === "skills" && <SkillsSettings />}
         {section === "agents" && <AgentsSettings />}

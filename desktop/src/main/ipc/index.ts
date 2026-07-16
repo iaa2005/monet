@@ -23,6 +23,7 @@ import { registerGitIPC } from "./git.js";
 import { registerCommandsIPC } from "./commands.js";
 import { registerArtifactsIPC } from "./artifacts.js";
 import { registerSandboxIPC } from "./sandbox.js";
+import { registerConnectorsIPC } from "./connectors.js";
 import { registerIncognitoIPC } from "../incognito.js";
 import { registerBrowserIPC } from "./browser.js";
 import { registerComputerIPC } from "./computer.js";
@@ -52,6 +53,7 @@ export function registerAllIPC(): void {
   registerCommandsIPC();
   registerArtifactsIPC();
   registerSandboxIPC();
+  registerConnectorsIPC();
   registerIncognitoIPC();
   registerBrowserIPC();
   registerComputerIPC();

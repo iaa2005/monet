@@ -4,6 +4,10 @@
 
 import type { LLMEvent, LLMRequest } from "../main/llm/adapter.js";
 import type { LLMProvider, LLMProviderInput } from "../main/provider/types.js";
+import type {
+  ConnectorAccount,
+  ConnectorPreset,
+} from "../main/connectors/types.js";
 import type { ChatMessage } from "./chat";
 import type {
   Routine,
@@ -469,6 +473,33 @@ export interface ElectronAPI {
       enabled?: boolean;
       deniedApps?: string[];
     }) => Promise<{ enabled: boolean; deniedApps: string[] }>;
+  };
+  connectors: {
+    presets: () => Promise<ConnectorPreset[]>;
+    list: () => Promise<ConnectorAccount[]>;
+    add: (input: {
+      presetId: string;
+      label?: string;
+      username: string;
+      secret: Record<string, string>;
+    }) => Promise<ConnectorAccount>;
+    update: (
+      id: string,
+      patch: { label?: string; username?: string; enabled?: boolean },
+    ) => Promise<ConnectorAccount | null>;
+    delete: (id: string) => Promise<{ ok: boolean }>;
+    test: (id: string) => Promise<{ ok: boolean; error?: string }>;
+    telegramSendCode: (opts: {
+      accountId: string;
+      apiId: string;
+      apiHash: string;
+      phone: string;
+    }) => Promise<{ ok: boolean; error?: string }>;
+    telegramSignIn: (opts: {
+      accountId: string;
+      code: string;
+      password?: string;
+    }) => Promise<{ ok: boolean; error?: string; needsPassword?: boolean }>;
   };
   sandbox: {
     getConfig: () => Promise<{ engine: string }>;

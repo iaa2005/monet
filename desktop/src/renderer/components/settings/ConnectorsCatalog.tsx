@@ -128,17 +128,10 @@ const CATALOG: CatalogEntry[] = [
     url: "https://mcp.sentry.dev/mcp",
     tokenUrl: "https://docs.sentry.io/product/sentry-mcp/",
   },
-  {
-    id: "gmail",
-    name: "Gmail",
-    icon: Mail,
-    desc: "Read, search, and draft email.",
-    transport: "stdio",
-    authKind: "manual",
-    tokenUrl: "https://console.cloud.google.com/apis/credentials",
-    note: "Google issues no long-lived token to paste — Gmail is OAuth-only, and there's no official Gmail MCP server. Using one means creating your own OAuth client in Google Cloud and running a third-party server that does its own browser consent.",
-  },
 ];
+// Gmail/Calendar/Yandex/Telegram are NOT here: they have no usable MCP server,
+// but they do speak IMAP/WebDAV/CalDAV/MTProto. They're built-in protocol
+// connectors instead — see ProtocolConnectors.tsx.
 
 interface McpStatus {
   name: string;
