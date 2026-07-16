@@ -6,6 +6,7 @@ import { createTray } from "./tray.js";
 import { applyDataDirEnv } from "./data-dir.js";
 import { purgeIncognitoLeftovers } from "./incognito.js";
 import { ensureBuiltinSkills } from "./builtin-skills.js";
+import { initPowerSaveBlocker } from "./power.js";
 
 // The main bundle is ESM ("type": "module"), where __dirname is not defined.
 // Derive it from import.meta.url so preload/renderer paths resolve.
@@ -111,6 +112,10 @@ app.whenReady().then(() => {
 
   // Ship the built-in skills (created only when missing).
   ensureBuiltinSkills();
+
+  // Re-arm "keep awake" if it was left on — a preference that forgets itself on
+  // restart is worse than none, since the user thinks the machine is held awake.
+  initPowerSaveBlocker();
 
 
   // One-time: give pre-transcript chats a (text-only) durable transcript.

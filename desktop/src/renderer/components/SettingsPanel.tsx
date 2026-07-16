@@ -28,6 +28,7 @@ import { ConnectorsSettings } from "@/components/settings/ConnectorsSettings";
 import { AutomationSettings } from "@/components/settings/AutomationSettings";
 import { AdvancedSettings } from "@/components/settings/AdvancedSettings";
 import { ProtocolConnectors } from "@/components/settings/ProtocolConnectors";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -353,6 +354,60 @@ function SandboxSection(): JSX.Element {
   );
 }
 
+/** Keep the machine awake. Reflects the LIVE blocker, not just the stored flag —
+ * if the OS declined to hold it, the toggle must not claim otherwise. */
+function KeepAwakeSection(): JSX.Element {
+  const [on, setOn] = useState(false);
+  const [active, setActive] = useState(false);
+
+  useEffect(() => {
+    void api()
+      ?.tuning.powerGet()
+      .then((c) => {
+        setOn(c.keepAwake);
+        setActive(c.active);
+      })
+      .catch(() => {});
+  }, []);
+
+  const toggle = (v: boolean): void => {
+    setOn(v);
+    void api()
+      ?.tuning.powerSet({ keepAwake: v })
+      .then((c) => {
+        setOn(c.keepAwake);
+        setActive(c.active);
+      })
+      .catch(() => {});
+  };
+
+  return (
+    <section>
+      <h3 className="text-base font-semibold">Power</h3>
+      <p className="mt-0.5 text-sm text-muted-foreground">
+        How this device behaves while Claude Code is running.
+      </p>
+      <div className="mt-4 flex items-start justify-between gap-4 rounded-xl border border-border p-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">Keep awake</div>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">
+            Stop this computer going to sleep on its own, so a long run isn&apos;t
+            cut off mid-task and a scheduled routine actually fires. The screen
+            still turns off as usual. It can&apos;t wake a sleeping machine, and
+            it won&apos;t override closing the lid.
+          </p>
+          {on && !active && (
+            <p className="mt-1 text-[13px] text-destructive">
+              The system declined the request — sleep isn&apos;t being blocked.
+            </p>
+          )}
+        </div>
+        <Switch checked={on} onChange={toggle} />
+      </div>
+    </section>
+  );
+}
+
 function GeneralSection({
   theme,
   setTheme,
@@ -363,6 +418,7 @@ function GeneralSection({
   return (
     <div className="space-y-8">
       <ProfileSection />
+      <KeepAwakeSection />
       <section>
         <h3 className="text-base font-semibold">Appearance</h3>
         <p className="mt-0.5 text-sm text-muted-foreground">

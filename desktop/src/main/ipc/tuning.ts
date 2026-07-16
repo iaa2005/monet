@@ -13,11 +13,34 @@ import {
   type ToolSearchConfig,
 } from "../agent/toolsearch-config.js";
 import { getLspConfig, setLspConfig, type LspConfig } from "../agent/lsp/config.js";
+import {
+  getPowerConfig,
+  setPowerConfig,
+  isKeepingAwake,
+  type PowerConfig,
+} from "../power.js";
 import { reloadPrompts, promptsDirPath } from "../prompts/index.js";
 import { resetVendorTools } from "../agent/vendor-tools.js";
 import { seedTunablePrompts } from "../agent/index.js";
 
 export function registerTuningIPC(): void {
+  // Keep awake. `active` is the LIVE blocker, not the stored flag: if the OS
+  // refused the block, the toggle must not claim otherwise.
+  ipcMain.handle(
+    "power:get",
+    (): PowerConfig & { active: boolean } => ({
+      ...getPowerConfig(),
+      active: isKeepingAwake(),
+    }),
+  );
+  ipcMain.handle(
+    "power:set",
+    (_e, patch: Partial<PowerConfig>): PowerConfig & { active: boolean } => {
+      const next = setPowerConfig(patch);
+      return { ...next, active: isKeepingAwake() };
+    },
+  );
+
   ipcMain.handle("toolsearch:get", (): ToolSearchConfig => getToolSearchConfig());
   ipcMain.handle(
     "toolsearch:set",

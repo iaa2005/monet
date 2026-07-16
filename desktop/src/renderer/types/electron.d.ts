@@ -527,6 +527,10 @@ export interface ElectronAPI {
     ) => Promise<{ ok: boolean; stdout: string; stderr: string; error?: string }>;
   };
   tuning: {
+    powerGet: () => Promise<{ keepAwake: boolean; active: boolean }>;
+    powerSet: (patch: {
+      keepAwake?: boolean;
+    }) => Promise<{ keepAwake: boolean; active: boolean }>;
     toolSearchGet: () => Promise<{ enabled: boolean }>;
     toolSearchSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
     lspGet: () => Promise<{ enabled: boolean }>;

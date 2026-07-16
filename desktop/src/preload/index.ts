@@ -561,6 +561,12 @@ const electronAPI = {
   },
 
   tuning: {
+    powerGet: (): Promise<{ keepAwake: boolean; active: boolean }> =>
+      ipcRenderer.invoke("power:get"),
+    powerSet: (patch: {
+      keepAwake?: boolean;
+    }): Promise<{ keepAwake: boolean; active: boolean }> =>
+      ipcRenderer.invoke("power:set", patch),
     toolSearchGet: (): Promise<{ enabled: boolean }> =>
       ipcRenderer.invoke("toolsearch:get"),
     toolSearchSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
