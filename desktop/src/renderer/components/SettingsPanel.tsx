@@ -29,6 +29,7 @@ import { ConnectorsSettings } from "@/components/settings/ConnectorsSettings";
 import { AutomationSettings } from "@/components/settings/AutomationSettings";
 import { AdvancedSettings } from "@/components/settings/AdvancedSettings";
 import { RoutinesSettings } from "@/components/settings/RoutinesSettings";
+import { ConnectorsCatalog } from "@/components/settings/ConnectorsCatalog";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -96,6 +97,7 @@ type Section =
   | "advanced"
   | "skills"
   | "agents"
+  | "services"
   | "connectors"
   | "about";
 
@@ -121,6 +123,7 @@ const NAV: {
     items: [
       { id: "skills", label: "Skills", icon: BookMarked },
       { id: "agents", label: "Agents", icon: Bot },
+      { id: "services", label: "Connectors", icon: Boxes },
       { id: "connectors", label: "MCP Servers", icon: Plug },
     ],
   },
@@ -525,6 +528,7 @@ export function SettingsPanel({
         {section === "memory" && <MemorySettings />}
         {section === "reflect" && <ReflectSettings />}
         {section === "routines" && <RoutinesSettings />}
+        {section === "services" && <ConnectorsCatalog />}
         {section === "advanced" && <AdvancedSettings />}
         {section === "skills" && <SkillsSettings />}
         {section === "agents" && <AgentsSettings />}
