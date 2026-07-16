@@ -30,7 +30,16 @@ function check(label: string, ok: boolean, detail?: string) {
   if (!ok) failures++
 }
 
-async function run(name: string, input: Record<string, unknown>) {
+async function run(
+  name: string,
+  input: Record<string, unknown>,
+  // Some tools BEHAVE differently under bypass (CreateRoutine refuses to run
+  // unattended), so a check must be able to pick the mode. Anything other than
+  // bypass needs a prompt channel, or the gate denies before the tool is
+  // reached — hence the auto-allow stub.
+  opts?: { permissionMode?: 'default' | 'bypassPermissions' },
+) {
+  const mode = opts?.permissionMode ?? 'bypassPermissions'
   return executeVendorTool({
     sessionId: 'smoke',
     toolUseID: `toolu_${Math.random().toString(36).slice(2)}`,
@@ -38,7 +47,10 @@ async function run(name: string, input: Record<string, unknown>) {
     input,
     model: MODEL,
     // Backend harness: no UI to prompt, so bypass the permission gate.
-    permissionMode: 'bypassPermissions',
+    permissionMode: mode,
+    ...(mode === 'bypassPermissions'
+      ? {}
+      : { requestPermission: async () => ({ behavior: 'allow' as const }) }),
   })
 }
 
@@ -246,6 +258,59 @@ async function main() {
       CONNECTOR_TOOL_NAMES.has(n),
     ),
   )
+
+  // ── CreateRoutine ──────────────────────────────────────────────────────
+  // A routine is a standing grant that runs with tools pre-approved, so the
+  // guards matter more than the happy path.
+  check('CreateRoutine tool present', tools.some(t => t.name === 'CreateRoutine'))
+
+  const unattended = await run(
+    'CreateRoutine',
+    { name: 'x', prompt: 'y', trigger: 'schedule', cron: '0 9 * * *' },
+    { permissionMode: 'bypassPermissions' },
+  )
+  check(
+    'CreateRoutine refuses to self-replicate in an unattended run',
+    unattended.isError && /can't create routines/i.test(unattended.content),
+  )
+
+  const badCron = await run('CreateRoutine', {
+    name: 'x',
+    prompt: 'y',
+    trigger: 'schedule',
+    cron: 'not a cron',
+  }, { permissionMode: 'default' })
+  check('CreateRoutine rejects an unparseable cron', badCron.isError)
+
+  const neverFires = await run('CreateRoutine', {
+    name: 'x',
+    prompt: 'y',
+    trigger: 'schedule',
+    cron: '0 0 30 2 *', // parses, but Feb 30 never comes
+  }, { permissionMode: 'default' })
+  check(
+    'CreateRoutine rejects a cron that never fires',
+    neverFires.isError && /never comes round/i.test(neverFires.content),
+  )
+
+  const ghost = await run('CreateRoutine', {
+    name: 'x',
+    prompt: 'y',
+    trigger: 'schedule',
+    cron: '0 9 * * *',
+    connectors: ['not-a-connector'],
+  }, { permissionMode: 'default' })
+  check(
+    'CreateRoutine rejects an unknown connector',
+    ghost.isError && /not connected/i.test(ghost.content),
+  )
+
+  const noCron = await run('CreateRoutine', {
+    name: 'x',
+    prompt: 'y',
+    trigger: 'schedule',
+  }, { permissionMode: 'default' })
+  check('CreateRoutine requires cron for a schedule', noCron.isError)
 
   // Presets must never carry a guessed endpoint again: every non-MCP protocol
   // preset needs a real host, and everything needs a way to get credentials.

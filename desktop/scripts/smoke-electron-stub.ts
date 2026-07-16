@@ -58,6 +58,12 @@ export const globalShortcut = {
   unregister: (..._args: unknown[]) => undefined,
   unregisterAll: () => undefined,
 }
+// net-fetch prefers net.fetch (it survives VPNs where plain fetch doesn't) and
+// falls back to global fetch when it's absent — which is what we want here, so
+// this only has to exist. It entered the graph with CreateRoutine: the tool can
+// arm the scheduler, and the scheduler pulls in the agent to run a routine.
+export const net = {}
+
 export const app = {
   getPath: (_name: string) => process.cwd(),
   getAppPath: () => process.cwd(),
@@ -83,4 +89,5 @@ export default {
   globalShortcut,
   app,
   safeStorage,
+  net,
 }

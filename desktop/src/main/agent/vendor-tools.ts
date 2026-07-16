@@ -44,6 +44,7 @@ import {
   CONNECTOR_TOOL_NAMES,
   connectorToolNames,
 } from "./connector-tools.js";
+import { CreateRoutineTool } from "./routine-tool.js";
 import { accountsForProtocol } from "../connectors/store.js";
 import {
   SandboxListTool,
@@ -314,6 +315,7 @@ export function getVendorTools(): Tools {
     BrowserScreenshotTool,
     ComputerTool,
     ...CONNECTOR_TOOLS,
+    CreateRoutineTool,
   ] as unknown as Tool[];
   // Without a POSIX shell the vendor Bash tool errors on every call — drop
   // it so the model goes straight to PowerShell. (ensurePosixShell also
@@ -383,6 +385,9 @@ export function isSpaceToolAllowed(
       accountsForProtocol("carddav").length > 0
     );
   if (name === "Telegram") return accountsForProtocol("telegram").length > 0;
+  // Routines exist for both spaces, so the tool does too. It's still gated by
+  // the permission prompt, and it refuses outright inside an unattended run.
+  if (name === "CreateRoutine") return true;
   if (name === "SearchPastChats") return getMemoryConfig().searchChats;
   // MCP resources are Code-only (Home has no MCP) and only worth advertising
   // when the user actually has connectors configured.
@@ -655,6 +660,9 @@ export async function executeVendorTool(opts: {
   (context as { sessionId?: string }).sessionId = sessionId;
   // Skill copies its bundle into the sandbox only in Home — needs the space.
   (context as { space?: string }).space = space;
+  // CreateRoutine refuses to run unattended: inside a routine there's nobody to
+  // approve a new standing task, so it must be able to see the mode.
+  (context as { permissionMode?: string }).permissionMode = permissionMode;
   // AskUserQuestion round-trips a question to the renderer via this callback.
   (context as { askUser?: AskUserFn }).askUser = askUser;
   if (onProgress)
