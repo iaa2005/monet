@@ -320,13 +320,15 @@ export function RoutinesSettings({
               key={t.name}
               type="button"
               onClick={() => fromTemplate(t)}
-              className="glass-panel glass-hover rounded-xl border border-border p-3 text-left transition-colors"
+              className="glass-panel glass-hover rounded-xl border border-border p-3 text-left transition-colors min-h-30 flex flex-col justify-between"
             >
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <t.icon className="size-4" />
-                {t.name}
+              <div>
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <t.icon className="size-4" />
+                  {t.name}
+                </div>
+                <p className="mt-1 text-[13px] text-muted-foreground">{t.desc}</p>
               </div>
-              <p className="mt-1 text-[13px] text-muted-foreground">{t.desc}</p>
               {t.worksWith && (
                 <p className="mt-1 text-[11px] text-muted-foreground/70">
                   Works with {t.worksWith}
