@@ -3,7 +3,7 @@
  * folder. These map to <dataDir>/toolsearch.json, lsp.json and prompts/*.md.
  */
 import { useEffect, useState } from "react";
-import { FolderOpen, RotateCcw, Check } from "lucide-react";
+import { FolderOpen, RotateCcw, Check, History, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -38,6 +38,8 @@ export function AdvancedSettings(): JSX.Element {
   const [lsp, setLsp] = useState(false);
   const [reloaded, setReloaded] = useState(false);
   const [promptsDir, setPromptsDir] = useState<string>("");
+  const [migrating, setMigrating] = useState(false);
+  const [migrated, setMigrated] = useState<string | null>(null);
 
   useEffect(() => {
     api()?.tuning.toolSearchGet().then((c) => setToolSearch(c.enabled)).catch(() => {});
@@ -61,6 +63,16 @@ export function AdvancedSettings(): JSX.Element {
   const reveal = async (): Promise<void> => {
     const r = await api()?.tuning.promptsReveal();
     if (r?.dir) setPromptsDir(r.dir);
+  };
+  const migrate = async (): Promise<void> => {
+    setMigrating(true);
+    setMigrated(null);
+    try {
+      const r = await api()?.tuning.migrateTranscripts();
+      if (r) setMigrated(`Converted ${r.migrated}, skipped ${r.skipped}.`);
+    } finally {
+      setMigrating(false);
+    }
   };
 
   return (
@@ -116,6 +128,34 @@ export function AdvancedSettings(): JSX.Element {
             {promptsDir}
           </p>
         )}
+      </section>
+
+      <section>
+        <h3 className="text-base font-semibold">Chat transcripts</h3>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          New chats store a full model transcript so a reopened chat keeps the
+          exact context (and rewind through compaction works). Convert older
+          chats to a text-only transcript — runs automatically once; use this to
+          re-run it.
+        </p>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void migrate()}
+            disabled={migrating}
+            className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] disabled:opacity-60 dark:hover:bg-white/[0.05]"
+          >
+            {migrating ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <History className="size-4" />
+            )}
+            Convert old chats
+          </button>
+          {migrated && (
+            <span className="text-[13px] text-muted-foreground">{migrated}</span>
+          )}
+        </div>
       </section>
     </div>
   );

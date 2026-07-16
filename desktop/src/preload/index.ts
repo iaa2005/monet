@@ -485,6 +485,8 @@ const electronAPI = {
       ipcRenderer.invoke("prompts:reload"),
     promptsReveal: (): Promise<{ ok: boolean; dir: string }> =>
       ipcRenderer.invoke("prompts:reveal"),
+    migrateTranscripts: (): Promise<{ migrated: number; skipped: number }> =>
+      ipcRenderer.invoke("transcripts:migrate"),
   },
 
   transfer: {

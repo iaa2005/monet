@@ -460,6 +460,7 @@ export interface ElectronAPI {
     lspSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
     promptsReload: () => Promise<{ ok: boolean }>;
     promptsReveal: () => Promise<{ ok: boolean; dir: string }>;
+    migrateTranscripts: () => Promise<{ migrated: number; skipped: number }>;
   };
   transfer: {
     exportChat: (

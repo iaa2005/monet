@@ -50,4 +50,13 @@ export function registerTuningIPC(): void {
       return { ok: true, dir };
     },
   );
+
+  // Convert pre-transcript chats to durable (text-only) transcripts on demand.
+  ipcMain.handle(
+    "transcripts:migrate",
+    async (): Promise<{ migrated: number; skipped: number }> => {
+      const { migrateTranscripts } = await import("../migrate-transcripts.js");
+      return migrateTranscripts();
+    },
+  );
 }

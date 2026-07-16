@@ -112,6 +112,14 @@ app.whenReady().then(() => {
   // Ship the built-in skills (created only when missing).
   ensureBuiltinSkills();
 
+  // One-time: give pre-transcript chats a (text-only) durable transcript.
+  // Deferred + guarded by a marker so it never blocks startup.
+  setTimeout(() => {
+    void import("./migrate-transcripts.js")
+      .then((m) => m.migrateTranscriptsOnce())
+      .catch(() => {});
+  }, 2_000);
+
   // Put a bundled/previously-downloaded portable Podman on PATH so the engine
   // finds it; if Podman is the selected sandbox, provision it in the
   // background so the first run doesn't stall on the download.
