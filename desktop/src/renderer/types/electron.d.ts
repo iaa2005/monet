@@ -219,6 +219,7 @@ export interface ElectronAPI {
     ) => Promise<{ ok: boolean; savedTo?: string; error?: string }>;
   };
   shell: {
+    openExternal: (url: string) => Promise<{ ok: boolean }>;
     run: (
       command: string,
       cwd?: string,

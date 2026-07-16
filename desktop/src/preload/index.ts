@@ -127,6 +127,8 @@ const electronAPI = {
   },
 
   shell: {
+    openExternal: (url: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("shell:openExternal", url),
     run: (
       command: string,
       cwd?: string,

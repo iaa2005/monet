@@ -11,6 +11,19 @@ export function registerShellIPC(): void {
     await shell.showItemInFolder(filePath);
   });
 
+  // Open a URL in the user's real browser. Guarded to http(s) so a renderer
+  // string can't launch file:// or a custom protocol handler. Use this instead
+  // of <a target="_blank">: with no setWindowOpenHandler, that opens a bare
+  // Electron window — the wrong place to sign into Notion/GitHub.
+  ipcMain.handle(
+    "shell:openExternal",
+    async (_event, url: string): Promise<{ ok: boolean }> => {
+      if (!/^https?:\/\//i.test(url)) return { ok: false };
+      await shell.openExternal(url);
+      return { ok: true };
+    },
+  );
+
   ipcMain.handle("shell:run", async (_event, command: string, cwd?: string) => {
     const isWin = process.platform === "win32";
 
