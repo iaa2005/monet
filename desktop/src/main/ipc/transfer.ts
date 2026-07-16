@@ -26,6 +26,7 @@ import {
 } from "../session-store.js";
 import { artifactSessionDir, saveArtifactBuffer } from "./artifacts.js";
 import { mediaTypeOf } from "../sandbox/index.js";
+import { listSandboxFiles, copyBufferIntoSandbox } from "../sandbox/files.js";
 import { getProfilePrompt } from "../profile.js";
 import { buildMemoryPrompt } from "../memory/store.js";
 import { loadClaudeMd } from "../claude-md.js";
@@ -56,6 +57,15 @@ interface BundleArtifact {
   base64: string;
 }
 
+/** A file from the Home sandbox work tree, at its relative path (subfolders
+ * preserved) — restored into the imported chat's sandbox so RunPython /
+ * SandboxRead and the Files tab see it. */
+interface BundleSandboxFile {
+  path: string;
+  mediaType: string;
+  base64: string;
+}
+
 interface Bundle {
   format: typeof BUNDLE_FORMAT;
   version: number;
@@ -73,6 +83,8 @@ interface Bundle {
    * rebuild. Absent in v1 bundles / chats without a transcript. */
   transcript?: { messages: LLMMessage[]; hidden: boolean[] };
   artifacts?: BundleArtifact[];
+  /** The Home sandbox work tree (subfolders preserved). */
+  sandboxFiles?: BundleSandboxFile[];
   context?: { profile?: string; memory?: string; claudeMd?: string };
 }
 
@@ -88,8 +100,30 @@ function sysContext(): { profile?: string; memory?: string; claudeMd?: string } 
   return { profile, memory, claudeMd };
 }
 
-/** Read the session's artifact files (newest-per-name), embedded as base64. */
-function collectArtifacts(sessionId: string): BundleArtifact[] {
+/** The Home sandbox work tree (recursive, subfolders preserved) as base64.
+ * Empty for Code chats / chats that produced no sandbox files. */
+function collectSandboxFiles(sessionId: string): BundleSandboxFile[] {
+  const out: BundleSandboxFile[] = [];
+  let total = 0;
+  for (const f of listSandboxFiles(sessionId)) {
+    if (f.size > MAX_ARTIFACT_FILE || total + f.size > MAX_ARTIFACT_TOTAL) continue;
+    try {
+      out.push({
+        path: f.name,
+        mediaType: mediaTypeOf(f.name),
+        base64: readFileSync(f.path).toString("base64"),
+      });
+      total += f.size;
+    } catch {
+      /* skip unreadable */
+    }
+  }
+  return out;
+}
+
+/** Read the session's artifact files (newest-per-name), embedded as base64.
+ * `skip` basenames already carried by the sandbox tree are omitted (dedup). */
+function collectArtifacts(sessionId: string, skip?: Set<string>): BundleArtifact[] {
   const dir = artifactSessionDir(sessionId);
   let entries: string[];
   try {
@@ -114,6 +148,7 @@ function collectArtifacts(sessionId: string): BundleArtifact[] {
   const out: BundleArtifact[] = [];
   let total = 0;
   for (const [name, { full }] of newest) {
+    if (skip?.has(name)) continue; // already exported in the sandbox tree
     let size: number;
     try {
       size = statSync(full).size;
@@ -253,9 +288,18 @@ export function registerTransferIPC(): void {
               const t = loadTranscriptWithMeta(sessionId);
               return t.messages.length > 0 ? { transcript: t } : {};
             })(),
-            ...(opts.includeArtifacts
-              ? { artifacts: collectArtifacts(sessionId) }
-              : {}),
+            ...(() => {
+              if (!opts.includeArtifacts) return {};
+              // Sandbox work tree (structured) is canonical; artifacts (flat)
+              // cover attachments/preview — dedup the Home overlap by basename.
+              const sandboxFiles = collectSandboxFiles(sessionId);
+              const skip = new Set(sandboxFiles.map((f) => basename(f.path)));
+              const artifacts = collectArtifacts(sessionId, skip);
+              return {
+                ...(sandboxFiles.length ? { sandboxFiles } : {}),
+                ...(artifacts.length ? { artifacts } : {}),
+              };
+            })(),
             ...(opts.includeContext ? { context: sysContext() } : {}),
           };
           writeFileSync(picked.filePath, JSON.stringify(bundle, null, 2), "utf-8");
@@ -294,9 +338,22 @@ export function registerTransferIPC(): void {
           bundle.session?.space || "code",
         );
 
-        // Materialise embedded files into the new session's artifacts, and map
-        // basename → new path so attachment previews/opens work post-import.
+        // Materialise embedded files into the new session, mapping basename →
+        // new artifact path so attachment previews/opens work post-import.
         const pathByName = new Map<string, string>();
+        // Sandbox work tree first: restore into the new chat's sandbox (subdirs
+        // preserved, so RunPython/SandboxRead/Files see it) AND keep a flat
+        // artifact copy for attachment remap.
+        for (const sf of bundle.sandboxFiles ?? []) {
+          try {
+            const bytes = Buffer.from(sf.base64, "base64");
+            copyBufferIntoSandbox(created.id, sf.path, bytes);
+            const base = basename(sf.path);
+            pathByName.set(base, saveArtifactBuffer(created.id, base, bytes));
+          } catch {
+            /* skip bad sandbox file */
+          }
+        }
         for (const a of bundle.artifacts ?? []) {
           try {
             const bytes = Buffer.from(a.base64, "base64");
