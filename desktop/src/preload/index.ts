@@ -501,6 +501,12 @@ const electronAPI = {
       ipcRenderer.invoke("connectors:delete", id),
     test: (id: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("connectors:test", id),
+    googleSignIn: (opts: {
+      presetId: string;
+      clientId: string;
+      clientSecret: string;
+    }): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("connectors:googleSignIn", opts),
     telegramSendCode: (opts: {
       accountId: string;
       apiId: string;

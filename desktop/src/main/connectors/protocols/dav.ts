@@ -11,6 +11,8 @@
  */
 
 import { createDAVClient } from "tsdav";
+import { GOOGLE_TOKEN_URL } from "../oauth/google.js";
+import { patchSecret } from "../store.js";
 import type { ProtocolResult, ResolvedAccount } from "../types.js";
 
 type Kind = "caldav" | "carddav";
@@ -31,16 +33,36 @@ async function client(acct: ResolvedAccount, kind: Kind) {
   const cfg = kind === "caldav" ? acct.preset.caldav : acct.preset.carddav;
   if (!cfg)
     throw new Error(`${acct.preset.name} has no ${kind.toUpperCase()} endpoint.`);
-  const password = acct.secret.password;
-  if (!password)
-    throw new Error(
-      `No app password stored for ${acct.account.label}. Reconnect it in Settings → Connectors.`,
-    );
   const username = acct.account.username;
+
+  // Two ways in, same adapter. Google refuses an app password for DAV and wants
+  // OAuth; Yandex takes the password. tsdav handles the token dance itself —
+  // given clientId/secret/refreshToken it refreshes an expired access token and
+  // writes the new one back into this credentials object, which is why it's a
+  // named variable: we persist whatever it leaves there.
+  const oauth = acct.preset.oauth && acct.secret.refreshToken;
+  const credentials = oauth
+    ? {
+        clientId: acct.secret.clientId,
+        clientSecret: acct.secret.clientSecret,
+        refreshToken: acct.secret.refreshToken,
+        accessToken: acct.secret.accessToken,
+        expiration: acct.secret.expiry,
+        tokenUrl: GOOGLE_TOKEN_URL,
+      }
+    : { username, password: acct.secret.password };
+
+  if (!oauth && !acct.secret.password)
+    throw new Error(
+      acct.preset.oauth
+        ? `${acct.account.label} isn't signed in. Connect it again in Settings → Connectors.`
+        : `No app password stored for ${acct.account.label}. Reconnect it in Settings → Connectors.`,
+    );
+
   const dav = await createDAVClient({
     serverUrl: cfg.url,
-    credentials: { username, password },
-    authMethod: "Basic",
+    credentials,
+    authMethod: oauth ? "Oauth" : "Basic",
   });
 
   const principalUrl = cfg.principalTemplate?.replace(
@@ -57,6 +79,14 @@ async function client(acct: ResolvedAccount, kind: Kind) {
       },
       loadCollections: false,
     });
+    // Keep the token tsdav just refreshed, or every call pays for a new one and
+    // a revoked refresh token would never be noticed until something failed.
+    if (oauth && credentials.accessToken !== acct.secret.accessToken)
+      patchSecret(acct.account.id, {
+        accessToken: credentials.accessToken,
+        refreshToken: credentials.refreshToken,
+        expiry: credentials.expiration,
+      });
     return { dav, account };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

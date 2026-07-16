@@ -35,29 +35,48 @@ export const PRESETS: ConnectorPreset[] = [
     // App passwords do NOT work here, whatever the WWW-Authenticate header
     // says. Proven the only way that settles it: the same app password that
     // Gmail accepts over IMAP is refused by CalDAV, which answers the GData
-    // error `loginRequired` — so Google wants OAuth for calendars even though
-    // it takes a password for mail. The `basic realm="Google APIs"` challenge
-    // these endpoints send is a leftover and means nothing.
-    protocols: [],
-    unavailable:
-      "Google Calendar needs OAuth — unlike Gmail, it refuses an app password (the same one Gmail accepts is rejected here). Options: use Yandex Calendar if it suits, or add Google Calendar's read-only secret iCal address, which needs no login at all.",
-    unavailableLabel: "Needs OAuth — read why",
-    credLabel: "Google Calendar settings",
-    credUrl: "https://calendar.google.com/calendar/r/settings",
+    // error `loginRequired`. The `basic realm="Google APIs"` challenge these
+    // endpoints send is a leftover and means nothing — hence OAuth.
+    //
+    // Still CalDAV underneath: Google documents OAuth over CalDAV, so the same
+    // adapter serves this and Yandex, only the auth differs. The principal is
+    // spelled out because Google serves no current-user-principal at the root.
+    protocols: ["caldav"],
+    caldav: {
+      url: "https://apidata.googleusercontent.com/caldav/v2/",
+      principalTemplate:
+        "https://apidata.googleusercontent.com/caldav/v2/{username}/user",
+    },
+    oauth: {
+      provider: "google",
+      scopes: ["https://www.googleapis.com/auth/calendar"],
+    },
+    credUrl: "https://console.cloud.google.com/apis/credentials",
+    credLabel: "OAuth client (Desktop app)",
+    usernameLabel: "you@gmail.com",
+    note: "Google refuses an app password here, so this signs in instead. One-time setup: in Google Cloud create an OAuth client of type “Desktop app”, enable the Calendar API, and add yourself as a test user on the consent screen — then paste the client id/secret below and sign in. The “unverified app” warning is expected; it's your own client.",
   },
   {
     id: "google-contacts",
     name: "Google Contacts",
     group: "Google",
     // Same story as the calendar: CardDAV answers a supplied app password with
-    // `UNAUTHENTICATED`. Not tested end-to-end like Calendar was, but it's the
-    // same auth stack and the same refusal, so promising it would be a guess.
-    protocols: [],
-    unavailable:
-      "Google Contacts needs OAuth, like Google Calendar — an app password is refused even though Gmail accepts one.",
-    unavailableLabel: "Needs OAuth — read why",
-    credLabel: "Google Contacts",
-    credUrl: "https://contacts.google.com/",
+    // `UNAUTHENTICATED`, so it signs in too. Shares the calendar's client — one
+    // OAuth client covers every Google scope.
+    protocols: ["carddav"],
+    carddav: {
+      url: "https://www.googleapis.com/carddav/v1/principals/",
+      principalTemplate:
+        "https://www.googleapis.com/carddav/v1/principals/{username}",
+    },
+    oauth: {
+      provider: "google",
+      scopes: ["https://www.googleapis.com/auth/carddav"],
+    },
+    credUrl: "https://console.cloud.google.com/apis/credentials",
+    credLabel: "OAuth client (Desktop app)",
+    usernameLabel: "you@gmail.com",
+    note: "Same OAuth client as Google Calendar — reuse the id/secret. Enable the CardDAV API in Google Cloud for this one.",
   },
   // Drive is the one Google service with NO app-password path: Gmail has IMAP,
   // Calendar has CalDAV, Contacts has CardDAV — Drive has no legacy protocol at

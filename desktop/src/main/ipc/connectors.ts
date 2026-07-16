@@ -144,6 +144,55 @@ export function registerConnectorsIPC(): void {
     },
   );
 
+  // ─── Google sign-in ──────────────────────────────────────────────────────
+  // Runs the consent flow, then stores the account. Deliberately one call: the
+  // tokens never reach the renderer, and a half-made account can't be left
+  // behind if the user closes the browser tab.
+  ipcMain.handle(
+    "connectors:googleSignIn",
+    async (
+      _e,
+      opts: { presetId: string; clientId: string; clientSecret: string },
+    ): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const preset = getPreset(opts.presetId);
+        if (!preset?.oauth) return { ok: false, error: "Not an OAuth connector." };
+        const { googleSignIn } = await import("../connectors/oauth/google.js");
+        const tokens = await googleSignIn({
+          clientId: opts.clientId.trim(),
+          clientSecret: opts.clientSecret.trim(),
+          scopes: preset.oauth.scopes,
+        });
+        // Ask Google who just signed in, rather than making the user type it:
+        // the address IS the CalDAV principal, so a typo here is a dead account.
+        let email = "";
+        try {
+          const { fetchRetry } = await import("../net-fetch.js");
+          const r = await fetchRetry(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            { headers: { authorization: `Bearer ${tokens.accessToken}` } },
+          );
+          email = ((await r.json()) as { email?: string }).email ?? "";
+        } catch {
+          /* falls back to the form's login below */
+        }
+        addAccount({
+          presetId: opts.presetId,
+          username: email,
+          secret: {
+            clientId: opts.clientId.trim(),
+            clientSecret: opts.clientSecret.trim(),
+            ...tokens,
+          },
+        });
+        resetVendorTools();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
   // ─── Telegram login (two steps: code → sign-in) ──────────────────────────
   ipcMain.handle(
     "connectors:telegramSendCode",

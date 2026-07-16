@@ -346,6 +346,15 @@ async function main() {
     bad.map(p => p.id).join(',') || undefined,
   )
 
+  // An OAuth preset with no scopes signs in and can touch nothing; one that
+  // also kept a password field would just re-run the Google Calendar mistake.
+  const badOauth = PRESETS.filter(p => p.oauth && !p.oauth.scopes?.length)
+  check(
+    'every OAuth preset declares scopes',
+    badOauth.length === 0,
+    badOauth.map(p => p.id).join(',') || undefined,
+  )
+
   rmSync(dir, { recursive: true, force: true })
   console.log(failures ? `\n${failures} FAILURES` : '\nALL SMOKE CHECKS PASSED')
   process.exit(failures ? 1 : 0)

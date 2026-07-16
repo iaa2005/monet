@@ -74,6 +74,12 @@ export interface ConnectorPreset {
   /** Telegram needs api_id/api_hash + a phone login rather than a password. */
   telegram?: boolean;
   /**
+   * Sign in with Google instead of a password. Needed for Calendar/Contacts:
+   * Google takes an app password for mail and refuses one here. The user brings
+   * their own Desktop OAuth client, so `scopes` is all we declare.
+   */
+  oauth?: { provider: "google"; scopes: string[] };
+  /**
    * A local MCP stdio server (Notion, GitHub…). MCP-over-stdio is just another
    * protocol here: the token lives encrypted with every other secret and is
    * injected into the server's env at spawn time, so it never reaches
@@ -103,6 +109,13 @@ export interface ConnectorSecret {
   apiHash?: string;
   /** GramJS StringSession, written back after a successful phone login. */
   session?: string;
+  /** OAuth (Google): the user's own Desktop client, plus what sign-in returned.
+   * accessToken/expiry are a cache — the refresh token is what matters. */
+  clientId?: string;
+  clientSecret?: string;
+  refreshToken?: string;
+  accessToken?: string;
+  expiry?: number;
 }
 
 export interface ResolvedAccount {

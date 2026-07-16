@@ -492,6 +492,11 @@ export interface ElectronAPI {
     ) => Promise<ConnectorAccount | null>;
     delete: (id: string) => Promise<{ ok: boolean }>;
     test: (id: string) => Promise<{ ok: boolean; error?: string }>;
+    googleSignIn: (opts: {
+      presetId: string;
+      clientId: string;
+      clientSecret: string;
+    }) => Promise<{ ok: boolean; error?: string }>;
     telegramSendCode: (opts: {
       accountId: string;
       apiId: string;

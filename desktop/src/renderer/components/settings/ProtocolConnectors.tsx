@@ -244,6 +244,9 @@ function ConnectForm({
   const isTelegram = !!preset.telegram;
   // MCP servers authenticate with the token alone — there's no login to ask for.
   const isMcp = !!preset.mcp;
+  // OAuth asks for the user's own client, then hands off to the browser; the
+  // login comes back from Google, so there's no field for it either.
+  const isOauth = !!preset.oauth;
 
   // No app-password path (Google Drive): say why, and point at the way in.
   if (preset.unavailable) {
@@ -275,6 +278,18 @@ function ConnectForm({
     setBusy(true);
     setError(null);
     try {
+      if (isOauth) {
+        // One call: main runs the consent flow and stores the account, so the
+        // tokens never touch the renderer.
+        const r = await api()?.connectors.googleSignIn({
+          presetId: preset.id,
+          clientId: apiId,
+          clientSecret: apiHash,
+        });
+        if (!r?.ok) throw new Error(r?.error ?? "Sign-in failed.");
+        onDone();
+        return;
+      }
       if (isTelegram) {
         // Create the account first: its id keys both the pending login and the
         // session we write back after the code is confirmed.
@@ -349,7 +364,7 @@ function ConnectForm({
 
         {stage === "form" ? (
           <>
-            {!isMcp && (
+            {!isMcp && !isOauth && (
               <div>
                 <label className="text-xs text-muted-foreground">
                   {isTelegram ? "Phone number" : "Login"}
@@ -363,7 +378,31 @@ function ConnectForm({
               </div>
             )}
 
-            {isTelegram ? (
+            {isOauth ? (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {preset.credLabel}
+                  </span>
+                  {preset.credUrl && (
+                    <OpenLink url={preset.credUrl} label="Google Cloud" />
+                  )}
+                </div>
+                <input
+                  value={apiId}
+                  onChange={(e) => setApiId(e.target.value)}
+                  placeholder="Client ID (…apps.googleusercontent.com)"
+                  className={cn(field, "font-mono text-xs")}
+                />
+                <input
+                  type="password"
+                  value={apiHash}
+                  onChange={(e) => setApiHash(e.target.value)}
+                  placeholder="Client secret"
+                  className={cn(field, "font-mono text-xs")}
+                />
+              </>
+            ) : isTelegram ? (
               <>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs text-muted-foreground">
@@ -455,7 +494,15 @@ function ConnectForm({
             className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
           >
             {busy && <Loader2 className="size-3.5 animate-spin" />}
-            {stage === "form" ? (isTelegram ? "Send code" : "Connect") : "Sign in"}
+            {stage === "form"
+              ? isOauth
+                ? busy
+                  ? "Waiting for the browser…"
+                  : "Sign in with Google"
+                : isTelegram
+                  ? "Send code"
+                  : "Connect"
+              : "Sign in"}
           </button>
         </div>
       </div>
