@@ -41,6 +41,8 @@ import {
   telegramChats,
   telegramHistory,
   telegramSend,
+  telegramSendFile,
+  telegramTopics,
 } from "../connectors/protocols/telegram.js";
 import type { ProtocolResult } from "../connectors/types.js";
 import { tunablePrompt } from "../prompts/index.js";
@@ -357,14 +359,35 @@ export const CalendarTool = buildTool({
 
 const tgSchema = lazySchema(() =>
   z.strictObject({
-    action: z.enum(["chats", "history", "send"]),
+    action: z.enum(["chats", "topics", "history", "send", "send_file"]),
     account: z.string().optional(),
     chat: z
       .string()
       .optional()
-      .describe("Chat id or @username, from chats."),
+      .describe(
+        "Chat id or @username, from chats. Works for DMs, groups and channels alike.",
+      ),
+    topic: z
+      .number()
+      .optional()
+      .describe(
+        "Forum topic id, from topics. Required to post into a forum group — without it the message lands in General.",
+      ),
     query: z.string().optional().describe("history: search within the chat."),
     message: z.string().optional().describe("send: message text."),
+    file: z
+      .string()
+      .optional()
+      .describe(
+        "send_file: a path or an https URL. In Home the path must be inside this chat's sandbox.",
+      ),
+    caption: z.string().optional().describe("send_file: caption for the media."),
+    asDocument: z
+      .boolean()
+      .optional()
+      .describe(
+        "send_file: send as a plain file. Default false, so images and video arrive as photo/video.",
+      ),
     limit: z.number().optional().describe("Default 30."),
   }),
 );
@@ -392,9 +415,13 @@ export const TelegramTool = buildTool({
         "tool-telegram",
         [
           "Read, search and send Telegram messages as the user (MTProto — this",
-          "is their personal account, not a bot). Messages you send appear as",
-          "the user, so never send one they did not ask for; show the text",
-          "first. Use chats to find a chat id, then history or send.",
+          "is their personal account, not a bot), in DMs, groups and channels.",
+          "Messages you send appear as the user, so never send one they did not",
+          "ask for; show the text first. Use chats to find a chat id, then",
+          "history or send. A chat listed as `forum` needs a topic id from",
+          "topics — send without one and it goes to General. send_file takes a",
+          "path or an https URL and picks photo/video/document by extension;",
+          "pass asDocument to force a plain file.",
         ].join(" "),
       ),
       `Connected accounts: ${accountHint("telegram") || "(none)"}.`,
@@ -403,12 +430,17 @@ export const TelegramTool = buildTool({
   async description() {
     return "Read, search and send Telegram messages from the user's account.";
   },
-  async call(input: z.infer<TgInput>, _context: ToolUseContext) {
+  async call(input: z.infer<TgInput>, context: ToolUseContext) {
     try {
       const acct = pickAccount("telegram", input.account);
       switch (input.action) {
         case "chats":
           return toOutput(await telegramChats(acct, { limit: input.limit }));
+        case "topics":
+          if (!input.chat) return fail(new Error("topics needs a chat."));
+          return toOutput(
+            await telegramTopics(acct, { chat: input.chat, limit: input.limit }),
+          );
         case "history":
           if (!input.chat) return fail(new Error("history needs a chat."));
           return toOutput(
@@ -416,13 +448,33 @@ export const TelegramTool = buildTool({
               chat: input.chat,
               limit: input.limit,
               query: input.query,
+              topic: input.topic,
             }),
           );
         case "send":
           if (!input.chat || !input.message)
             return fail(new Error("send needs chat and message."));
           return toOutput(
-            await telegramSend(acct, { chat: input.chat, message: input.message }),
+            await telegramSend(acct, {
+              chat: input.chat,
+              message: input.message,
+              topic: input.topic,
+            }),
+          );
+        case "send_file":
+          if (!input.chat || !input.file)
+            return fail(new Error("send_file needs chat and file."));
+          return toOutput(
+            await telegramSendFile(acct, {
+              chat: input.chat,
+              file: input.file,
+              caption: input.caption,
+              topic: input.topic,
+              asDocument: input.asDocument,
+              // Space + session decide whether a path is fenced to the sandbox.
+              space: (context as { space?: string }).space,
+              sessionId: (context as { sessionId?: string }).sessionId,
+            }),
           );
       }
     } catch (e) {

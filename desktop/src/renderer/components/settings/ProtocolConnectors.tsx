@@ -17,6 +17,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { ConnectorIcon, hasConnectorIcon } from "./connector-icons";
 import type { ElectronAPI } from "@/types/electron";
@@ -71,6 +72,15 @@ export function ProtocolConnectors(): JSX.Element {
     load();
   };
 
+  // Off = the tools vanish from the model's toolset and the MCP server is shut
+  // down, without throwing the credential away. The safety valve for "connected,
+  // but not right now" — deleting and re-pasting a token is not that.
+  const setEnabled = async (id: string, enabled: boolean): Promise<void> => {
+    setAccounts((p) => p.map((a) => (a.id === id ? { ...a, enabled } : a)));
+    await api()?.connectors.update(id, { enabled });
+    load();
+  };
+
   const groups = Array.from(new Set(presets.map((p) => p.group)));
 
   return (
@@ -96,12 +106,23 @@ export function ProtocolConnectors(): JSX.Element {
                 className="flex items-center gap-3 rounded-xl border border-border p-2.5"
               >
                 {hasConnectorIcon(a.presetId) ? (
-                  <ConnectorIcon presetId={a.presetId} className="size-5" />
+                  <ConnectorIcon
+                    presetId={a.presetId}
+                    className={cn("size-5", !a.enabled && "opacity-40 grayscale")}
+                  />
                 ) : (
                   <Plug className="size-4 shrink-0 text-muted-foreground" />
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{a.label}</div>
+                  <div
+                    className={cn(
+                      "truncate text-sm font-medium",
+                      !a.enabled && "text-muted-foreground",
+                    )}
+                  >
+                    {a.label}
+                    {!a.enabled && " — off"}
+                  </div>
                   <div className="truncate text-xs text-muted-foreground">
                     {/* MCP connectors have no login — just a token. */}
                     {[a.username, preset?.protocols.join(", ")]
@@ -123,8 +144,8 @@ export function ProtocolConnectors(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => void test(a.id)}
-                  disabled={testing === a.id}
-                  className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                  disabled={testing === a.id || !a.enabled}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40"
                 >
                   {testing === a.id ? (
                     <Loader2 className="size-3.5 animate-spin" />
@@ -132,6 +153,10 @@ export function ProtocolConnectors(): JSX.Element {
                     "Test"
                   )}
                 </button>
+                <Switch
+                  checked={a.enabled}
+                  onChange={(v) => void setEnabled(a.id, v)}
+                />
                 <button
                   type="button"
                   onClick={() => void remove(a.id)}

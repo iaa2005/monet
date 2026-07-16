@@ -12,7 +12,10 @@
 
 import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
+import { existsSync } from "fs";
+import { resolve, sep } from "path";
 import { patchSecret } from "../store.js";
+import { sandboxWorkDir } from "../../sandbox/podman-engine.js";
 import type { ProtocolResult, ResolvedAccount } from "../types.js";
 
 interface Pending {
@@ -137,21 +140,63 @@ export async function telegramChats(
       limit: Math.min(Math.max(opts.limit ?? 30, 1), 100),
     });
     const rows = dialogs.map((d) => {
+      const e = d.entity as { forum?: boolean; broadcast?: boolean } | undefined;
+      // Spelling out the kind saves a round-trip: a forum needs a topic id to
+      // post into, and a broadcast channel needs admin rights to post at all.
+      const kind = d.isUser
+        ? "dm"
+        : e?.broadcast
+          ? "channel"
+          : e?.forum
+            ? "forum"
+            : d.isChannel || d.isGroup
+              ? "group"
+              : "chat";
       const unread = d.unreadCount ? ` [${d.unreadCount} unread]` : "";
-      return `${d.id?.toString() ?? "?"}  ${d.title ?? d.name ?? "(untitled)"}${unread}`;
+      return `${d.id?.toString() ?? "?"}  ${kind.padEnd(7)} ${d.title ?? d.name ?? "(untitled)"}${unread}`;
     });
     return { ok: true, text: rows.join("\n") || "(no chats)" };
   });
 }
 
+/** Forum topics of a group. Their ids double as the reply target you post to. */
+export async function telegramTopics(
+  acct: ResolvedAccount,
+  opts: { chat: string; limit?: number },
+): Promise<ProtocolResult> {
+  return withClient(acct, async (c) => {
+    const entity = await c.getInputEntity(opts.chat);
+    const res = (await c.invoke(
+      new Api.channels.GetForumTopics({
+        channel: entity,
+        limit: Math.min(Math.max(opts.limit ?? 50, 1), 100),
+        offsetDate: 0,
+        offsetId: 0,
+        offsetTopic: 0,
+      }),
+    )) as unknown as {
+      topics: { id?: number; title?: string; closed?: boolean }[];
+    };
+    const rows = (res.topics ?? []).map(
+      (t) => `${t.id}  ${t.title ?? "(untitled)"}${t.closed ? " [closed]" : ""}`,
+    );
+    return {
+      ok: true,
+      text: rows.join("\n") || "(no topics — this chat isn't a forum)",
+    };
+  });
+}
+
 export async function telegramHistory(
   acct: ResolvedAccount,
-  opts: { chat: string; limit?: number; query?: string },
+  opts: { chat: string; limit?: number; query?: string; topic?: number },
 ): Promise<ProtocolResult> {
   return withClient(acct, async (c) => {
     const msgs = await c.getMessages(opts.chat, {
       limit: Math.min(Math.max(opts.limit ?? 30, 1), 100),
       ...(opts.query ? { search: opts.query } : {}),
+      // Messages of a forum topic are the replies to its root message.
+      ...(opts.topic ? { replyTo: opts.topic } : {}),
     });
     const rows = msgs
       .filter((m) => m.message)
@@ -172,10 +217,77 @@ export async function telegramHistory(
 
 export async function telegramSend(
   acct: ResolvedAccount,
-  opts: { chat: string; message: string },
+  opts: { chat: string; message: string; topic?: number },
 ): Promise<ProtocolResult> {
   return withClient(acct, async (c) => {
-    await c.sendMessage(opts.chat, { message: opts.message });
-    return { ok: true, text: `Sent to ${opts.chat}.` };
+    // A forum topic IS a message — posting into one is a reply to its root.
+    await c.sendMessage(opts.chat, {
+      message: opts.message,
+      ...(opts.topic ? { replyTo: opts.topic } : {}),
+    });
+    return {
+      ok: true,
+      text: `Sent to ${opts.chat}${opts.topic ? ` (topic ${opts.topic})` : ""}.`,
+    };
+  });
+}
+
+/**
+ * Resolve what to upload.
+ *
+ * A URL is handed to Telegram to fetch itself. A path is where this gets
+ * sharp: in Home it MUST stay inside the chat's sandbox. The Telegram tool now
+ * works in Home, and sendFile happily takes any local path — without this, a
+ * model could read C:\Users\…\secrets and post it out, straight through the
+ * isolation Home exists to provide. Code has no such fence: the agent already
+ * reads and writes the workspace there, so a file it could Read it can send.
+ */
+function resolveUpload(
+  file: string,
+  space: string | undefined,
+  sessionId: string | undefined,
+): string {
+  if (/^https?:\/\//i.test(file)) return file;
+  if (space !== "home") return file;
+
+  const root = resolve(sandboxWorkDir(sessionId || "default"));
+  const full = resolve(root, file);
+  // `${root}${sep}` on purpose: startsWith(root) alone would also accept a
+  // sibling directory whose name merely begins with the sandbox's.
+  if (full !== root && !full.startsWith(root + sep))
+    throw new Error(
+      `In Home you can only send files from this chat's sandbox. “${file}” is outside it — put it in the sandbox first, or pass a URL.`,
+    );
+  if (!existsSync(full))
+    throw new Error(`No such file in the sandbox: ${file}`);
+  return full;
+}
+
+export async function telegramSendFile(
+  acct: ResolvedAccount,
+  opts: {
+    chat: string;
+    file: string;
+    caption?: string;
+    topic?: number;
+    asDocument?: boolean;
+    space?: string;
+    sessionId?: string;
+  },
+): Promise<ProtocolResult> {
+  const file = resolveUpload(opts.file, opts.space, opts.sessionId);
+  return withClient(acct, async (c) => {
+    await c.sendFile(opts.chat, {
+      file,
+      ...(opts.caption ? { caption: opts.caption } : {}),
+      ...(opts.topic ? { replyTo: opts.topic } : {}),
+      // Off by default, so an .mp4/.jpg arrives as playable video / a viewable
+      // photo rather than a file to download.
+      forceDocument: opts.asDocument === true,
+    });
+    return {
+      ok: true,
+      text: `Sent ${opts.file} to ${opts.chat}${opts.topic ? ` (topic ${opts.topic})` : ""}.`,
+    };
   });
 }
