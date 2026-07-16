@@ -30,9 +30,14 @@ import { getProfilePrompt } from "../profile.js";
 import { buildMemoryPrompt } from "../memory/store.js";
 import { loadClaudeMd } from "../claude-md.js";
 import { getWorkspacePath } from "./workspace.js";
+import {
+  loadTranscriptWithMeta,
+  replaceTranscript,
+} from "../transcript-store.js";
+import type { LLMMessage } from "../llm/adapter.js";
 
 const BUNDLE_FORMAT = "monet-chat";
-const BUNDLE_VERSION = 1;
+const BUNDLE_VERSION = 2;
 const MAX_ARTIFACT_FILE = 20 * 1024 * 1024; // 20 MB per file
 const MAX_ARTIFACT_TOTAL = 60 * 1024 * 1024; // 60 MB total
 
@@ -63,6 +68,10 @@ interface Bundle {
     updatedAt?: string;
   };
   messages: ChatMessage[];
+  /** The durable model transcript (tool_use/tool_result blocks) + hidden flags,
+   * so an imported chat continues with the SAME context, not a text-only
+   * rebuild. Absent in v1 bundles / chats without a transcript. */
+  transcript?: { messages: LLMMessage[]; hidden: boolean[] };
   artifacts?: BundleArtifact[];
   context?: { profile?: string; memory?: string; claudeMd?: string };
 }
@@ -237,6 +246,13 @@ export function registerTransferIPC(): void {
               updatedAt: session.updatedAt,
             },
             messages: session.messages,
+            // The full model transcript — so the recipient continues with the
+            // exact context (tool blocks), not a text-only rebuild. Only when
+            // the chat actually has one (new chats do; migrated ones are text).
+            ...(() => {
+              const t = loadTranscriptWithMeta(sessionId);
+              return t.messages.length > 0 ? { transcript: t } : {};
+            })(),
             ...(opts.includeArtifacts
               ? { artifacts: collectArtifacts(sessionId) }
               : {}),
@@ -311,6 +327,21 @@ export function registerTransferIPC(): void {
           messageCount: messages.length,
           messages,
         });
+
+        // Restore the durable model transcript so the imported chat continues
+        // with full fidelity (tool blocks). Absent → it self-migrates to
+        // text-only on first continuation, like any pre-transcript chat.
+        if (
+          bundle.transcript &&
+          Array.isArray(bundle.transcript.messages) &&
+          bundle.transcript.messages.length > 0
+        ) {
+          replaceTranscript(
+            created.id,
+            bundle.transcript.messages,
+            bundle.transcript.hidden,
+          );
+        }
 
         return { ok: true, session: store.get(created.id) ?? undefined };
       } catch (err) {
