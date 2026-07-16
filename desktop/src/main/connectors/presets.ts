@@ -32,33 +32,32 @@ export const PRESETS: ConnectorPreset[] = [
     id: "google-calendar",
     name: "Google Calendar",
     group: "Google",
-    protocols: ["caldav"],
-    // Google serves no current-user-principal at the root, so discovery ends in
-    // "cannot find principalUrl". Its principal is documented as
-    // /caldav/v2/{email}/user — hand that over and the home is found from it.
-    caldav: {
-      url: "https://apidata.googleusercontent.com/caldav/v2/",
-      principalTemplate:
-        "https://apidata.googleusercontent.com/caldav/v2/{username}/user",
-    },
-    credUrl: "https://myaccount.google.com/apppasswords",
-    credLabel: "App password (16 characters)",
-    usernameLabel: "you@gmail.com",
-    note: "Same app password as Gmail — CalDAV accepts it, so no OAuth client needed.",
+    // App passwords do NOT work here, whatever the WWW-Authenticate header
+    // says. Proven the only way that settles it: the same app password that
+    // Gmail accepts over IMAP is refused by CalDAV, which answers the GData
+    // error `loginRequired` — so Google wants OAuth for calendars even though
+    // it takes a password for mail. The `basic realm="Google APIs"` challenge
+    // these endpoints send is a leftover and means nothing.
+    protocols: [],
+    unavailable:
+      "Google Calendar needs OAuth — unlike Gmail, it refuses an app password (the same one Gmail accepts is rejected here). Options: use Yandex Calendar if it suits, or add Google Calendar's read-only secret iCal address, which needs no login at all.",
+    unavailableLabel: "Needs OAuth — read why",
+    credLabel: "Google Calendar settings",
+    credUrl: "https://calendar.google.com/calendar/r/settings",
   },
   {
     id: "google-contacts",
     name: "Google Contacts",
     group: "Google",
-    protocols: ["carddav"],
-    carddav: {
-      url: "https://www.googleapis.com/carddav/v1/principals/",
-      principalTemplate:
-        "https://www.googleapis.com/carddav/v1/principals/{username}",
-    },
-    credUrl: "https://myaccount.google.com/apppasswords",
-    credLabel: "App password (16 characters)",
-    usernameLabel: "you@gmail.com",
+    // Same story as the calendar: CardDAV answers a supplied app password with
+    // `UNAUTHENTICATED`. Not tested end-to-end like Calendar was, but it's the
+    // same auth stack and the same refusal, so promising it would be a guess.
+    protocols: [],
+    unavailable:
+      "Google Contacts needs OAuth, like Google Calendar — an app password is refused even though Gmail accepts one.",
+    unavailableLabel: "Needs OAuth — read why",
+    credLabel: "Google Contacts",
+    credUrl: "https://contacts.google.com/",
   },
   // Drive is the one Google service with NO app-password path: Gmail has IMAP,
   // Calendar has CalDAV, Contacts has CardDAV — Drive has no legacy protocol at
@@ -115,6 +114,10 @@ export const PRESETS: ConnectorPreset[] = [
     credUrl: "https://id.yandex.ru/security/app-passwords",
     credLabel: "App password — pick the “Calendar (CalDAV)” type",
     usernameLabel: "you@yandex.ru",
+    // Unlike Google, Yandex documents app passwords for CalDAV — but its 401
+    // challenge looks identical to Google's, and that challenge is exactly what
+    // fooled us there. Hit Test after connecting; only that settles it.
+    note: "Yandex documents app passwords for CalDAV, but this hasn't been confirmed end-to-end — press Test after connecting.",
   },
   {
     id: "yandex-contacts",
