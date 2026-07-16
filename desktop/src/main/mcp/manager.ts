@@ -17,7 +17,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { getDataDir } from "../data-dir.js";
 import { getPreset } from "../connectors/presets.js";
-import { addAccount, getSecret, listAccounts } from "../connectors/store.js";
+import { getSecret, listAccounts } from "../connectors/store.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -99,42 +99,10 @@ export function effectiveConfig(): McpConfig {
   return { mcpServers: { ...loadConfig().mcpServers, ...connectorServers() } };
 }
 
-/**
- * Lift tokens the old catalog wrote into mcp-servers.json as plain text out to
- * encrypted connector accounts, and drop those servers from the file — the
- * connector now supplies them. Idempotent: a server whose preset already has an
- * account is just deleted from the file, so this is safe to run every launch.
- *
- * Hand-written servers are left exactly as they are: they may hold secrets too,
- * but they're the user's own config, meant to be edited by hand, and silently
- * rewriting them would break that.
- */
-export function migrateMcpTokensToConnectors(): number {
-  let moved = 0;
-  try {
-    const config = loadConfig();
-    let dirty = false;
-    for (const [name, cfg] of Object.entries(config.mcpServers)) {
-      const preset = getPreset(name);
-      if (!preset?.mcp) continue;
-      const token = cfg.env?.[preset.mcp.envKey];
-      const already = listAccounts().some((a) => a.presetId === name);
-      if (token && !already) {
-        addAccount({
-          presetId: name,
-          username: "",
-          secret: { password: token },
-        });
-        moved++;
-      }
-      delete config.mcpServers[name];
-      dirty = true;
-    }
-    if (dirty) saveConfig(config);
-  } catch {
-    /* best-effort: a failed migration must not block startup */
-  }
-  return moved;
+/** Names of the MCP servers a connector account supplies (Notion, GitHub…), as
+ * opposed to hand-written ones from the file. Home is allowed the former only. */
+export function connectorServerNames(): Set<string> {
+  return new Set(Object.keys(connectorServers()));
 }
 
 // ─── Tool + status types ─────────────────────────────────────────────────

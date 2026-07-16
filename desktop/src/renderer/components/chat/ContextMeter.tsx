@@ -55,6 +55,7 @@ const COLORS: Record<string, string> = {
   messages: "#3b82f6",
   system: "#8b5cf6",
   tools: "#0ea5e9",
+  connectors: "#14b8a6",
   mcp: "#f59e0b",
   skills: "#10b981",
   memory: "#ec4899",

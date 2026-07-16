@@ -17,7 +17,7 @@ import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
-import { accountHint, pickAccount } from "../connectors/index.js";
+import { accountHint, getPreset, pickAccount } from "../connectors/index.js";
 import {
   mailFolders,
   mailRead,
@@ -441,3 +441,34 @@ export const CONNECTOR_TOOLS = [
   CalendarTool,
   TelegramTool,
 ];
+
+/** Tools that exist only because a connector is configured. Used to bill them
+ * to "Connectors" in the context breakdown and to scope them for a routine. */
+export const CONNECTOR_TOOL_NAMES = new Set(["Mail", "CloudFiles", "Calendar", "Telegram"]);
+
+/** Which tool serves which protocol. `mcp` is absent on purpose — those
+ * connectors are served by their own MCP server, not by a tool of ours. */
+const PROTOCOL_TOOL: Record<string, string> = {
+  imap: "Mail",
+  smtp: "Mail",
+  webdav: "CloudFiles",
+  caldav: "Calendar",
+  carddav: "Calendar",
+  telegram: "Telegram",
+};
+
+/**
+ * The connector tools a set of preset ids implies — how a routine that declares
+ * ["gmail", "notion"] gets Mail but not Telegram. (Notion is an MCP server, so
+ * it's filtered on the MCP side instead.)
+ */
+export function connectorToolNames(presetIds: string[]): Set<string> {
+  const out = new Set<string>();
+  for (const id of presetIds) {
+    for (const p of getPreset(id)?.protocols ?? []) {
+      const tool = PROTOCOL_TOOL[p];
+      if (tool) out.add(tool);
+    }
+  }
+  return out;
+}

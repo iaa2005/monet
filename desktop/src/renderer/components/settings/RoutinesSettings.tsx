@@ -371,14 +371,16 @@ function RoutineEditor({
   const [preview, setPreview] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [trig, setTrig] = useState<{ baseUrl: string; apiKey: string } | null>(null);
-  const [servers, setServers] = useState<string[]>([]);
+  // Connector accounts AND raw MCP servers — mcp.list() alone went blank once
+  // connectors moved out of mcp-servers.json into the encrypted store.
+  const [servers, setServers] = useState<
+    { id: string; label: string; kind: "connector" | "mcp" }[]
+  >([]);
   const set = (patch: Partial<Draft>): void => setD((p) => ({ ...p, ...patch }));
 
   useEffect(() => {
     void api()?.routines.triggerInfo().then(setTrig);
-    void api()
-      ?.mcp.list()
-      .then((rows) => setServers((rows as { name: string }[]).map((r) => r.name)));
+    void api()?.connectors.options().then(setServers).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -538,8 +540,8 @@ function RoutineEditor({
                 >
                   <option value="">Any connected</option>
                   {servers.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
+                    <option key={s.id} value={s.id}>
+                      {s.label}
                     </option>
                   ))}
                 </select>
@@ -601,8 +603,8 @@ function RoutineEditor({
               >
                 <option value="">Pick a connector</option>
                 {servers.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                  <option key={s.id} value={s.id}>
+                    {s.label}
                   </option>
                 ))}
               </select>
@@ -634,16 +636,17 @@ function RoutineEditor({
             </label>
             <div className="mt-1 flex flex-wrap gap-1.5">
               {servers.map((s) => {
-                const on = d.connectors.includes(s);
+                const on = d.connectors.includes(s.id);
                 return (
                   <button
-                    key={s}
+                    key={s.id}
                     type="button"
+                    title={s.kind === "mcp" ? "Raw MCP server" : "Connector"}
                     onClick={() =>
                       set({
                         connectors: on
-                          ? d.connectors.filter((x) => x !== s)
-                          : [...d.connectors, s],
+                          ? d.connectors.filter((x) => x !== s.id)
+                          : [...d.connectors, s.id],
                       })
                     }
                     className={cn(
@@ -653,7 +656,7 @@ function RoutineEditor({
                         : "border-border text-muted-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
                     )}
                   >
-                    {s}
+                    {s.label}
                   </button>
                 );
               })}

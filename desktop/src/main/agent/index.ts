@@ -21,6 +21,9 @@ import {
   getSystemPrompt as getFallbackSystemPrompt,
   getSubAgentPrompt,
 } from "./prompts-vendor.js";
+import { CONNECTOR_TOOL_NAMES } from "./connector-tools.js";
+import { connectorServerNames } from "../mcp/manager.js";
+import { getPreset } from "../connectors/presets.js";
 import {
   executeVendorTool,
   getVendorApiTools,
@@ -482,11 +485,16 @@ export async function computeContextBreakdown(
   let systemTokens = 0;
   let toolTokens = 0;
   let mcpToolTokens = 0;
+  let connectorTokens = 0;
   let skillTokens = 0;
   let memoryTokens = 0;
   // Per-item drill-down (each tool, each MCP server, each skill, each memory src).
   const toolItems: { label: string; tokens: number }[] = [];
   const mcpByServer = new Map<string, number>();
+  // Connectors are billed apart from both: they're the user's own accounts, and
+  // they come in two shapes — our protocol tools (Mail…) and an MCP server the
+  // connector supplies (Notion…). Grouped per connector, not per shape.
+  const connectorByName = new Map<string, number>();
   let skillItems: { label: string; tokens: number }[] = [];
   let memoryItems: { label: string; tokens: number }[] = [];
   try {
@@ -502,13 +510,25 @@ export async function computeContextBreakdown(
       .join("\n\n");
     const systemTotal = Math.ceil(systemPrompt.length / 4);
 
+    const connectorServers = connectorServerNames();
+    const connectorLabel = (id: string): string =>
+      getPreset(id)?.name ?? id;
     for (const t of apiTools) {
       const size = Math.ceil(JSON.stringify(t).length / 4);
       if (t.name.startsWith("mcp__")) {
-        mcpToolTokens += size;
         // mcp__<server>__<tool> → group by server for the drill-down.
         const server = t.name.split("__")[1] || "mcp";
-        mcpByServer.set(server, (mcpByServer.get(server) ?? 0) + size);
+        if (connectorServers.has(server)) {
+          connectorTokens += size;
+          const label = connectorLabel(server);
+          connectorByName.set(label, (connectorByName.get(label) ?? 0) + size);
+        } else {
+          mcpToolTokens += size;
+          mcpByServer.set(server, (mcpByServer.get(server) ?? 0) + size);
+        }
+      } else if (CONNECTOR_TOOL_NAMES.has(t.name)) {
+        connectorTokens += size;
+        connectorByName.set(t.name, (connectorByName.get(t.name) ?? 0) + size);
       } else {
         toolTokens += size;
         toolItems.push({ label: t.name, tokens: size });
@@ -559,6 +579,7 @@ export async function computeContextBreakdown(
     systemTokens +
     toolTokens +
     mcpToolTokens +
+    connectorTokens +
     skillTokens +
     memoryTokens;
 
@@ -593,6 +614,14 @@ export async function computeContextBreakdown(
       label: "System tools",
       tokens: toolTokens,
       items: sortItems(toolItems),
+    },
+    {
+      key: "connectors",
+      label: "Connectors",
+      tokens: connectorTokens,
+      items: sortItems(
+        [...connectorByName].map(([label, tokens]) => ({ label, tokens })),
+      ),
     },
     {
       key: "mcp",

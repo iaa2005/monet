@@ -112,16 +112,6 @@ app.whenReady().then(() => {
   // Ship the built-in skills (created only when missing).
   ensureBuiltinSkills();
 
-  // Get connector tokens out of plain-text mcp-servers.json and into the OS
-  // keychain. Runs before anything connects, so a token never sits readable on
-  // disk a moment longer than it has to. Idempotent and best-effort.
-  void import("./mcp/manager.js")
-    .then((m) => {
-      const moved = m.migrateMcpTokensToConnectors();
-      if (moved > 0)
-        console.log(`[connectors] encrypted ${moved} MCP token(s) into safeStorage`);
-    })
-    .catch(() => {});
 
   // One-time: give pre-transcript chats a (text-only) durable transcript.
   // Deferred + guarded by a marker so it never blocks startup.

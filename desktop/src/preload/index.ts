@@ -483,6 +483,9 @@ const electronAPI = {
     presets: (): Promise<ConnectorPreset[]> =>
       ipcRenderer.invoke("connectors:presets"),
     list: (): Promise<ConnectorAccount[]> => ipcRenderer.invoke("connectors:list"),
+    options: (): Promise<
+      { id: string; label: string; kind: "connector" | "mcp" }[]
+    > => ipcRenderer.invoke("connectors:options"),
     add: (input: {
       presetId: string;
       label?: string;

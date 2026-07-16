@@ -477,6 +477,9 @@ export interface ElectronAPI {
   connectors: {
     presets: () => Promise<ConnectorPreset[]>;
     list: () => Promise<ConnectorAccount[]>;
+    options: () => Promise<
+      { id: string; label: string; kind: "connector" | "mcp" }[]
+    >;
     add: (input: {
       presetId: string;
       label?: string;

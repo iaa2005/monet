@@ -39,7 +39,11 @@ import { LSPTool } from "./lsp-tool.js";
 import { getLspConfig } from "./lsp/config.js";
 import type { AskUserFn } from "../ipc/ask-user.js";
 import { getSandboxConfig, getSessionEngine } from "../sandbox/config.js";
-import { CONNECTOR_TOOLS } from "./connector-tools.js";
+import {
+  CONNECTOR_TOOLS,
+  CONNECTOR_TOOL_NAMES,
+  connectorToolNames,
+} from "./connector-tools.js";
 import { accountsForProtocol } from "../connectors/store.js";
 import {
   SandboxListTool,
@@ -96,6 +100,7 @@ const BROWSER_TOOL_NAMES = new Set([
 ]);
 import {
   callMcpTool,
+  connectorServerNames,
   ensureConnected,
   getMcpTools,
   hasMcpServers,
@@ -364,22 +369,20 @@ export function isSpaceToolAllowed(
     const engine = sessionId ? getSessionEngine(sessionId) : getSandboxConfig().engine;
     return engine === "docker" || name === "RunPython";
   }
-  // Connectors reach out to the user's real accounts, so they follow the same
-  // rule as MCP: Code (and routines), never Home's isolated sandbox. Each is
-  // advertised only once an account for its protocol exists — an empty Mail
-  // tool is pure schema tax and invites the model to call it and fail.
-  if (name === "Mail")
-    return space !== "home" && accountsForProtocol("imap").length > 0;
-  if (name === "CloudFiles")
-    return space !== "home" && accountsForProtocol("webdav").length > 0;
+  // Connectors work in BOTH spaces. Home's isolation is about the user's
+  // machine — its files and shells — not about the network: WebFetch and
+  // WebSearch have always lived there. A connector only ever reaches the one
+  // remote service the user signed in to, so it doesn't widen that boundary.
+  // Each is advertised only once an account for its protocol exists — an empty
+  // Mail tool is pure schema tax and invites the model to call it and fail.
+  if (name === "Mail") return accountsForProtocol("imap").length > 0;
+  if (name === "CloudFiles") return accountsForProtocol("webdav").length > 0;
   if (name === "Calendar")
     return (
-      space !== "home" &&
-      (accountsForProtocol("caldav").length > 0 ||
-        accountsForProtocol("carddav").length > 0)
+      accountsForProtocol("caldav").length > 0 ||
+      accountsForProtocol("carddav").length > 0
     );
-  if (name === "Telegram")
-    return space !== "home" && accountsForProtocol("telegram").length > 0;
+  if (name === "Telegram") return accountsForProtocol("telegram").length > 0;
   if (name === "SearchPastChats") return getMemoryConfig().searchChats;
   // MCP resources are Code-only (Home has no MCP) and only worth advertising
   // when the user actually has connectors configured.
@@ -451,10 +454,16 @@ export async function getVendorApiTools(
     apiToolsCache.set(cacheKey, base);
   }
 
-  // Home's sandbox is isolated — no MCP there (connectors reach out to the
-  // machine and services). Browser/Computer Use, when enabled, are already
-  // included above via isSpaceToolAllowed.
-  if (space === "home") return base;
+  // Routine scoping for the connector TOOLS: a routine that declares ["gmail"]
+  // gets Mail and not Telegram. Filtering here (not in the cached build) keeps
+  // one cache entry serving every routine. MCP-backed connectors are scoped by
+  // server name below instead.
+  if (allowedMcpServers && allowedMcpServers.length > 0) {
+    const allowedTools = connectorToolNames(allowedMcpServers);
+    base = base.filter(
+      (t) => !CONNECTOR_TOOL_NAMES.has(t.name) || allowedTools.has(t.name),
+    );
+  }
 
   // Append live MCP tools. Not cached with the vendor tools — connections
   // (and thus the tool list) change as servers connect/disconnect.
@@ -469,9 +478,15 @@ export async function getVendorApiTools(
       allowedMcpServers && allowedMcpServers.length > 0
         ? new Set(allowedMcpServers)
         : null;
+    // Home may use MCP, but only the servers a CONNECTOR supplies: those talk
+    // to one signed-in service. A hand-written server is arbitrary — it could
+    // be a filesystem or shell server, and that is the machine, which is
+    // exactly what Home's isolation exists to keep out.
+    const spaceAllowed = space === "home" ? connectorServerNames() : null;
     const mcpTools = getMcpTools()
       .filter((t) => !revealed || revealed.has(t.fullName))
       .filter((t) => !allow || allow.has(t.serverName))
+      .filter((t) => !spaceAllowed || spaceAllowed.has(t.serverName))
       .map((t) => ({
         name: t.fullName,
         description: t.description,
@@ -565,12 +580,20 @@ export async function executeVendorTool(opts: {
       isError: true,
     };
   }
-  // Home never gets MCP (connectors reach the machine and services).
+  // Home may use MCP, but only servers a connector supplies — those talk to one
+  // signed-in service. A hand-written server is arbitrary (it could be a
+  // filesystem or shell server), so it stays Code-only, enforced here and not
+  // just by advertisement: the model can name a tool it saw in an earlier chat.
   if (mcp && space === "home") {
-    return {
-      content: `MCP tools aren't available in Home. Switch to Code to use connectors.`,
-      isError: true,
-    };
+    const server = name.split("__")[1] ?? "";
+    if (!connectorServerNames().has(server)) {
+      return {
+        content:
+          `The MCP server "${server}" isn't available in Home — only connectors are. ` +
+          `Add it as a connector in Settings, or switch to Code.`,
+        isError: true,
+      };
+    }
   }
 
   // MCP tools (mcp__<server>__<tool>) are served by the connection manager,

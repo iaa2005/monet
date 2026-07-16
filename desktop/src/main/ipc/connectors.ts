@@ -23,12 +23,42 @@ import { mailFolders } from "../connectors/protocols/mail.js";
 import { filesList } from "../connectors/protocols/files.js";
 import { calendarList } from "../connectors/protocols/dav.js";
 import { getPreset } from "../connectors/presets.js";
-import { ensureConnected, getConnectorServerStatus } from "../mcp/manager.js";
+import {
+  ensureConnected,
+  getConnectorServerStatus,
+  loadConfig,
+} from "../mcp/manager.js";
 import type { ConnectorAccount, ConnectorSecret } from "../connectors/types.js";
 
 export function registerConnectorsIPC(): void {
   ipcMain.handle("connectors:presets", () => PRESETS);
   ipcMain.handle("connectors:list", (): ConnectorAccount[] => listAccounts());
+
+  /**
+   * Everything a routine can be scoped to, in one list: connector accounts plus
+   * any hand-written MCP server. Routines used to read mcp.list() directly,
+   * which silently went empty once connectors stopped living in that file.
+   * The id is what a routine stores — a preset id for a connector, the server
+   * name for a raw MCP server; both are what the tool scoping matches on.
+   */
+  ipcMain.handle(
+    "connectors:options",
+    (): { id: string; label: string; kind: "connector" | "mcp" }[] => {
+      const out: { id: string; label: string; kind: "connector" | "mcp" }[] = [];
+      const seen = new Set<string>();
+      for (const a of listAccounts()) {
+        if (!a.enabled || seen.has(a.presetId)) continue;
+        seen.add(a.presetId);
+        out.push({ id: a.presetId, label: a.label, kind: "connector" });
+      }
+      for (const name of Object.keys(loadConfig().mcpServers)) {
+        if (seen.has(name)) continue;
+        seen.add(name);
+        out.push({ id: name, label: name, kind: "mcp" });
+      }
+      return out;
+    },
+  );
 
   ipcMain.handle(
     "connectors:add",

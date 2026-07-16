@@ -214,6 +214,55 @@ async function main() {
   const badUrl = await run('WebFetch', { url: 'notaurl' })
   check('WebFetch rejects bad URL', badUrl.isError && /invalid url/i.test(badUrl.content))
 
+  // ── Connectors ─────────────────────────────────────────────────────────
+  // Scoping is what a routine relies on to stay inside its declared services,
+  // and it's pure logic over the presets — cheap to pin down here.
+  const { connectorToolNames, CONNECTOR_TOOL_NAMES } = await import(
+    '../src/main/agent/connector-tools.js'
+  )
+  const names = (ids: string[]) => [...connectorToolNames(ids)].sort().join(',')
+
+  check('connector scope: gmail → Mail only', names(['gmail']) === 'Mail')
+  check(
+    'connector scope: yandex-disk → CloudFiles only',
+    names(['yandex-disk']) === 'CloudFiles',
+  )
+  check(
+    'connector scope: calendar presets → Calendar',
+    names(['google-calendar', 'yandex-contacts']) === 'Calendar',
+  )
+  check(
+    'connector scope: gmail+telegram → both, nothing else',
+    names(['gmail', 'telegram']) === 'Mail,Telegram',
+  )
+  // An MCP-backed connector must NOT pull in a protocol tool — it's scoped by
+  // server name instead. Getting this wrong would hand a Notion routine the
+  // user's mailbox.
+  check('connector scope: notion (MCP) → no protocol tools', names(['notion']) === '')
+  check('connector scope: unknown id → nothing', names(['nope']) === '')
+  check(
+    'connector tool names cover all four',
+    ['Mail', 'CloudFiles', 'Calendar', 'Telegram'].every(n =>
+      CONNECTOR_TOOL_NAMES.has(n),
+    ),
+  )
+
+  // Presets must never carry a guessed endpoint again: every non-MCP protocol
+  // preset needs a real host, and everything needs a way to get credentials.
+  const { PRESETS } = await import('../src/main/connectors/presets.js')
+  const bad = PRESETS.filter(p => {
+    if (p.unavailable) return false
+    if (p.mcp) return !p.mcp.command || !p.mcp.envKey || !p.credUrl
+    const hasEndpoint =
+      !!p.imap || !!p.webdav || !!p.caldav || !!p.carddav || !!p.telegram
+    return !hasEndpoint || !p.credUrl
+  })
+  check(
+    'every connectable preset has an endpoint + a credential link',
+    bad.length === 0,
+    bad.map(p => p.id).join(',') || undefined,
+  )
+
   rmSync(dir, { recursive: true, force: true })
   console.log(failures ? `\n${failures} FAILURES` : '\nALL SMOKE CHECKS PASSED')
   process.exit(failures ? 1 : 0)
