@@ -41,6 +41,7 @@ interface Draft {
   triggerKind: "schedule" | "webhook" | "manual";
   cron: string;
   webhookId?: string;
+  connectors: string[];
   condition: string;
   enabled: boolean;
 }
@@ -73,7 +74,7 @@ const TEMPLATES: Template[] = [
 ];
 
 function emptyDraft(): Draft {
-  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", condition: "", enabled: true };
+  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", connectors: [], condition: "", enabled: true };
 }
 
 export function RoutinesSettings({
@@ -228,6 +229,7 @@ export function RoutinesSettings({
                           : "schedule",
                     cron: r.trigger.cron ?? "0 9 * * 1-5",
                     webhookId: r.trigger.webhookId,
+                    connectors: r.connectors ?? [],
                     condition: r.condition?.prompt ?? "",
                     enabled: r.enabled,
                   })
@@ -347,10 +349,14 @@ function RoutineEditor({
   const [preview, setPreview] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [trig, setTrig] = useState<{ baseUrl: string; apiKey: string } | null>(null);
+  const [servers, setServers] = useState<string[]>([]);
   const set = (patch: Partial<Draft>): void => setD((p) => ({ ...p, ...patch }));
 
   useEffect(() => {
     void api()?.routines.triggerInfo().then(setTrig);
+    void api()
+      ?.mcp.list()
+      .then((rows) => setServers((rows as { name: string }[]).map((r) => r.name)));
   }, []);
 
   useEffect(() => {
@@ -382,7 +388,7 @@ function RoutineEditor({
       name: d.name.trim() || "New routine",
       prompt: d.prompt.trim(),
       space: d.space,
-      connectors: [],
+      connectors: d.connectors,
       trigger,
       condition: d.condition.trim()
         ? { kind: "agent" as const, prompt: d.condition.trim() }
@@ -508,6 +514,39 @@ function RoutineEditor({
             className="mt-1 w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/30"
           />
         </div>
+        {servers.length > 0 && (
+          <div>
+            <label className="text-xs text-muted-foreground">
+              Connectors — tools this routine may use (none selected = all)
+            </label>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {servers.map((s) => {
+                const on = d.connectors.includes(s);
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() =>
+                      set({
+                        connectors: on
+                          ? d.connectors.filter((x) => x !== s)
+                          : [...d.connectors, s],
+                      })
+                    }
+                    className={cn(
+                      "rounded-md border px-2 py-1 text-xs transition-colors",
+                      on
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border text-muted-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
+                    )}
+                  >
+                    {s}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between border-t border-border pt-3">
           <label className="flex items-center gap-2 text-sm">
             <Switch checked={d.enabled} onChange={(v) => set({ enabled: v })} />

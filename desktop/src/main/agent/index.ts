@@ -187,6 +187,8 @@ export interface AgentRunOptions {
   space?: string;
   /** Reasoning effort requested from the composer (absent = provider default). */
   effort?: EffortLevel;
+  /** Restrict MCP tools to these connector/server names (routines scope). */
+  connectors?: string[];
 }
 
 /**
@@ -649,13 +651,14 @@ export async function runAgent(
     askUser,
     space,
     effort,
+    connectors,
   } = options;
 
   let tools;
   let basePrompt;
   try {
     [tools, basePrompt] = await Promise.all([
-      getVendorApiTools(space, sessionId),
+      getVendorApiTools(space, sessionId, connectors),
       buildSystemPrompt(provider.model, space),
     ]);
   } catch (err) {
@@ -712,7 +715,7 @@ export async function runAgent(
     // already covers it) and the whole thing when ToolSearch is disabled.
     if (turn > 0 && getToolSearchConfig().enabled) {
       try {
-        tools = await getVendorApiTools(space, sessionId);
+        tools = await getVendorApiTools(space, sessionId, connectors);
       } catch {
         /* keep the previous toolset on failure */
       }

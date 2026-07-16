@@ -90,7 +90,12 @@ export async function executeRoutine(
       (ev) => {
         if (ev.type === "text_delta") assistantText += ev.text;
       },
-      { space: routine.space, permissionMode: "bypassPermissions", maxTurns: 30 },
+      {
+        space: routine.space,
+        permissionMode: "bypassPermissions",
+        maxTurns: 30,
+        connectors: routine.connectors,
+      },
     );
   } catch (err) {
     store.delete(session.id);

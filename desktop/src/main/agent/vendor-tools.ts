@@ -386,6 +386,9 @@ const apiToolsCache = new Map<string, LLMTool[]>();
 export async function getVendorApiTools(
   space?: string,
   sessionId?: string,
+  /** When set (non-empty), restrict MCP tools to these server names — used by a
+   * routine to scope its toolset to its declared connectors. */
+  allowedMcpServers?: string[],
 ): Promise<LLMTool[]> {
   const tools = getVendorToolsForSpace(space);
   const cacheKey = tools.map((t) => t.name).join(",");
@@ -429,8 +432,13 @@ export async function getVendorApiTools(
     // small. When disabled, behave exactly as before (advertise all).
     const deferMcp = getToolSearchConfig().enabled;
     const revealed = deferMcp ? getRevealedTools(sessionId ?? "default") : null;
+    const allow =
+      allowedMcpServers && allowedMcpServers.length > 0
+        ? new Set(allowedMcpServers)
+        : null;
     const mcpTools = getMcpTools()
       .filter((t) => !revealed || revealed.has(t.fullName))
+      .filter((t) => !allow || allow.has(t.serverName))
       .map((t) => ({
         name: t.fullName,
         description: t.description,
