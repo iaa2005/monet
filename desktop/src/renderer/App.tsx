@@ -795,22 +795,25 @@ export default function App(): JSX.Element {
         )}
 
         <div className="app-no-drag flex items-center gap-0.5 pr-1.5">
+          {/* Files + Artifacts are the sandbox surfaces this chat produces —
+              useful in incognito too (they're purged with the chat on exit). */}
+          <IconBtn
+            title="Files"
+            active={rightTab === "files"}
+            onClick={() => toggleRight("files")}
+          >
+            <Files className="size-4" />
+          </IconBtn>
+          <IconBtn
+            title="Artifacts"
+            active={rightTab === "artifacts"}
+            onClick={() => toggleRight("artifacts")}
+          >
+            <Blocks className="size-4" />
+          </IconBtn>
+          {/* Code-only IDE surfaces + background tasks — hidden in incognito. */}
           {!incognito && (
             <>
-              <IconBtn
-                title="Files"
-                active={rightTab === "files"}
-                onClick={() => toggleRight("files")}
-              >
-                <Files className="size-4" />
-              </IconBtn>
-              <IconBtn
-                title="Artifacts"
-                active={rightTab === "artifacts"}
-                onClick={() => toggleRight("artifacts")}
-              >
-                <Blocks className="size-4" />
-              </IconBtn>
               <IconBtn
                 title="Terminal"
                 active={terminalOpen}
