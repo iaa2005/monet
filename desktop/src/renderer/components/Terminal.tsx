@@ -60,12 +60,31 @@ function isDark(): boolean {
   return document.documentElement.classList.contains("dark");
 }
 
-export function Terminal(): JSX.Element {
+export interface TerminalRunResult {
+  stdout?: string;
+  stderr?: string;
+  error?: string;
+}
+
+interface TerminalProps {
+  /** Command runner. Defaults to the host shell (`electronAPI.shell.run`).
+   * Home passes a runner that executes inside the chat's sandbox. */
+  runner?: (command: string) => Promise<TerminalRunResult>;
+  /** Header lines printed on open (before the first prompt). */
+  intro?: string[];
+}
+
+export function Terminal({ runner, intro }: TerminalProps = {}): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const inputBuffer = useRef("");
   const themeRef = useRef(isDark());
+  // Keep the latest runner/intro without re-initializing xterm on every render.
+  const runnerRef = useRef(runner);
+  runnerRef.current = runner;
+  const introRef = useRef(intro);
+  introRef.current = intro;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -114,8 +133,11 @@ export function Terminal(): JSX.Element {
 
     termRef.current = term;
 
-    term.writeln("Claude Code Desktop — Terminal");
-    term.writeln("Type commands, Enter to run, Ctrl+C to cancel.");
+    const introLines = introRef.current ?? [
+      "Claude Code Desktop — Terminal",
+      "Type commands, Enter to run, Ctrl+C to cancel.",
+    ];
+    for (const line of introLines) term.writeln(line);
     term.write("\r\n$ ");
 
     const api = (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
@@ -129,9 +151,13 @@ export function Terminal(): JSX.Element {
           term.clear();
         } else if (cmd) {
           try {
-            const result = await api.shell.run(cmd);
-            if (result.stdout) term.write(result.stdout);
-            if (result.stderr) term.write(result.stderr);
+            const run = runnerRef.current;
+            const result = run ? await run(cmd) : await api.shell.run(cmd);
+            // Normalize CR/LF so xterm advances lines instead of overwriting.
+            const write = (s: string): void =>
+              term.write(s.replace(/\r?\n/g, "\r\n"));
+            if (result.stdout) write(result.stdout);
+            if (result.stderr) write(result.stderr);
             if (result.error) term.write(`\x1b[31m${result.error}\x1b[0m`);
           } catch (err) {
             term.write(`\x1b[31mError: ${err}\x1b[0m`);

@@ -10,7 +10,7 @@
 import { extname } from "path";
 import { getSandboxConfig } from "./config.js";
 import { runPyodide } from "./pyodide-engine.js";
-import { runSubprocess } from "./subprocess-engine.js";
+import { runSubprocess, runSubprocessCommand } from "./subprocess-engine.js";
 import { runPodman, runPodmanCommand } from "./podman-engine.js";
 import { saveArtifactBuffer } from "../ipc/artifacts.js";
 import type { SandboxRunResult } from "./types.js";
@@ -94,5 +94,46 @@ export async function runCommandInSandbox(
     stderr: raw.stderr,
     files,
     error: raw.error,
+  };
+}
+
+/** Whether the active engine has a real shell (Home terminal). Pyodide is
+ * WebAssembly with no process model, so it has none. */
+export function sandboxSupportsShell(): boolean {
+  return getSandboxConfig().engine !== "pyodide";
+}
+
+/**
+ * Run an interactive-terminal command in the chat's sandbox (the Home shell).
+ *
+ * Podman  → a fresh container over the chat's /work mount (isolated).
+ * Subprocess → a host shell scoped to the chat's folder (weak isolation).
+ * Pyodide → no shell; returns an error telling the user to switch engines.
+ *
+ * Each command runs independently — shell state (cwd, env, background jobs)
+ * does NOT persist between commands; only files written into the folder do
+ * (they show up in Home's Files panel). We don't copy them into Artifacts here,
+ * to avoid flooding it on every `ls`/build; the sandbox folder is the source of
+ * truth the Files panel already reads.
+ */
+export async function runShellInSandbox(
+  sessionId: string,
+  command: string,
+): Promise<{ ok: boolean; stdout: string; stderr: string; error?: string }> {
+  const engine = getSandboxConfig().engine;
+  if (engine === "docker") {
+    const r = await runPodmanCommand(sessionId, command);
+    return { ok: r.ok, stdout: r.stdout, stderr: r.stderr, error: r.error };
+  }
+  if (engine === "subprocess") {
+    const r = await runSubprocessCommand(sessionId, command);
+    return { ok: r.ok, stdout: r.stdout, stderr: r.stderr, error: r.error };
+  }
+  return {
+    ok: false,
+    stdout: "",
+    stderr: "",
+    error:
+      "The Pyodide sandbox has no shell (it runs in WebAssembly). Switch the engine to Podman or Subprocess in Settings → Sandbox to use a terminal.",
   };
 }

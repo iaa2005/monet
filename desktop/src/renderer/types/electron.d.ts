@@ -478,6 +478,11 @@ export interface ElectronAPI {
     warmPodman: () => Promise<{ ok: boolean }>;
     listFiles: (sessionId?: string) => Promise<SandboxFileEntry[]>;
     workDir: (sessionId?: string) => Promise<string>;
+    supportsShell: () => Promise<{ ok: boolean }>;
+    shellRun: (
+      sessionId: string,
+      command: string,
+    ) => Promise<{ ok: boolean; stdout: string; stderr: string; error?: string }>;
   };
   tuning: {
     toolSearchGet: () => Promise<{ enabled: boolean }>;

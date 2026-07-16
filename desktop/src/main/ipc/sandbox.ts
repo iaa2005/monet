@@ -18,7 +18,11 @@ import {
   warmPodman,
 } from "../sandbox/podman-engine.js";
 import { listSandboxFiles } from "../sandbox/files.js";
-import { mediaTypeOf } from "../sandbox/index.js";
+import {
+  mediaTypeOf,
+  runShellInSandbox,
+  sandboxSupportsShell,
+} from "../sandbox/index.js";
 
 export function registerSandboxIPC(): void {
   ipcMain.handle("sandbox:getConfig", (): SandboxConfig => getSandboxConfig());
@@ -83,5 +87,22 @@ export function registerSandboxIPC(): void {
   // Home Files tree — it's a real directory, so the Code FileTree can browse it.
   ipcMain.handle("sandbox:workDir", (_e, sessionId?: string): string =>
     sandboxWorkDir(sessionId || "default"),
+  );
+
+  // Does the active engine have a shell? (Home terminal button visibility.)
+  ipcMain.handle("sandbox:supportsShell", (): { ok: boolean } => ({
+    ok: sandboxSupportsShell(),
+  }));
+
+  // Run one command in the chat's sandbox — the Home terminal. Podman/subprocess
+  // only; Pyodide returns an error result (guarded in runShellInSandbox).
+  ipcMain.handle(
+    "sandbox:shellRun",
+    (
+      _e,
+      sessionId: string,
+      command: string,
+    ): Promise<{ ok: boolean; stdout: string; stderr: string; error?: string }> =>
+      runShellInSandbox(sessionId || "default", command),
   );
 }

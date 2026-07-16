@@ -499,6 +499,13 @@ const electronAPI = {
     > => ipcRenderer.invoke("sandbox:listFiles", sessionId),
     workDir: (sessionId?: string): Promise<string> =>
       ipcRenderer.invoke("sandbox:workDir", sessionId),
+    supportsShell: (): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("sandbox:supportsShell"),
+    shellRun: (
+      sessionId: string,
+      command: string,
+    ): Promise<{ ok: boolean; stdout: string; stderr: string; error?: string }> =>
+      ipcRenderer.invoke("sandbox:shellRun", sessionId, command),
   },
 
   tuning: {

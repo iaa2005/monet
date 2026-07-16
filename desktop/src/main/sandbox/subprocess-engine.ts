@@ -193,3 +193,47 @@ export async function runSubprocess(
     files,
   };
 }
+
+/**
+ * Run a raw shell command in the chat's sandbox folder (the Home terminal for
+ * the subprocess engine). Weak isolation only — cwd is the per-chat folder and
+ * a wall-clock timeout applies, but the command runs on the host with the
+ * user's PATH. Files it writes into the folder are surfaced like other runs.
+ */
+export async function runSubprocessCommand(
+  sessionId: string,
+  command: string,
+): Promise<EngineResult> {
+  const dir = sessionDir(sessionId);
+  const before = snapshotFiles(dir);
+  const isWin = process.platform === "win32";
+  const cmd = isWin ? "powershell.exe" : "sh";
+  const args = isWin
+    ? [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `[Console]::OutputEncoding = [Text.Encoding]::UTF8; ${command}`,
+      ]
+    : ["-c", command];
+  const result = await run(cmd, args, dir);
+
+  const after = snapshotFiles(dir);
+  const files: SandboxFile[] = [];
+  for (const [name, sig] of after) {
+    if (before.get(name) === sig) continue;
+    try {
+      files.push({ name, bytes: readFileSync(join(dir, name)) });
+    } catch {
+      /* skip */
+    }
+  }
+
+  return {
+    ok: result.code === 0,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    files,
+    error: result.spawnError,
+  };
+}

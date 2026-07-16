@@ -271,6 +271,9 @@ export default function App(): JSX.Element {
   const [transcriptMode, setTranscriptMode] =
     useState<TranscriptMode>("normal");
   const [terminalOpen, setTerminalOpen] = useState(false);
+  // Home terminal is only available when the sandbox engine has a real shell
+  // (Podman / subprocess). Pyodide is WebAssembly — no shell.
+  const [homeShellSupported, setHomeShellSupported] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>(null);
   const [openFilePath, setOpenFilePath] = useState<string | null>(null);
   const [diffs] = useState<DiffFile[]>([]);
@@ -396,6 +399,35 @@ export default function App(): JSX.Element {
   useEffect(() => {
     useChatStore.getState().setSpace(appMode);
   }, [appMode]);
+
+  // Does the active sandbox engine expose a shell? Re-read when entering Home
+  // and whenever Settings closes (the engine may have been switched there).
+  useEffect(() => {
+    if (appMode !== "home") {
+      setHomeShellSupported(false);
+      return;
+    }
+    let alive = true;
+    void api()
+      ?.sandbox.supportsShell()
+      .then((r) => {
+        if (alive) setHomeShellSupported(r.ok);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [appMode, settingsOpen]);
+
+  // Runner for the Home terminal: execute inside the current chat's sandbox.
+  const sandboxRunner = useCallback(
+    async (command: string) => {
+      const sid = currentSessionId;
+      if (!sid) return { error: "Open or start a Home chat first." };
+      const r = await api()?.sandbox.shellRun(sid, command);
+      return r ?? { error: "Sandbox unavailable." };
+    },
+    [currentSessionId],
+  );
 
   // Auto-title from main (first completed exchange names the chat) — update
   // the header when it's the visible chat, refresh the sidebar always.
@@ -814,6 +846,17 @@ export default function App(): JSX.Element {
               <Blocks className="size-4" />
             </IconBtn>
           )}
+          {/* Home sandbox shell — only when the engine has one (Podman /
+              subprocess). Runs inside the chat's sandbox, not on the host. */}
+          {appMode === "home" && homeShellSupported && (
+            <IconBtn
+              title="Sandbox terminal"
+              active={terminalOpen}
+              onClick={() => setTerminalOpen((o) => !o)}
+            >
+              <TerminalIcon className="size-4" />
+            </IconBtn>
+          )}
           {/* Terminal + Changes are Code IDE surfaces — Code only (a host shell
               and git diffs don't belong in Home's isolated sandbox). */}
           {appMode === "code" && (
@@ -1084,34 +1127,75 @@ export default function App(): JSX.Element {
           {/* Content panel group */}
           <ResizablePanel defaultSize={sidebarOpen ? 82 : 100} minSize={30}>
             {appMode === "home" ? (
-              // Home: a plain, centered chat — no IDE chrome (terminal, files,
-              // changes). It CAN open the Artifacts panel on the right, since
-              // Home produces files in the sandbox.
+              // Home: a plain, centered chat. It CAN open the Artifacts/Files
+              // panel on the right, and — when the sandbox engine has a shell
+              // (Podman/subprocess) — a Sandbox terminal below that runs inside
+              // this chat's sandbox (never the host).
               <ResizablePanelGroup direction="horizontal" className="gap-1">
                 <ResizablePanel minSize={30}>
-                  <div className="h-full min-h-0 overflow-hidden">
-                    {viewerArtifact ? (
-                      <FileViewer item={viewerArtifact} onClose={closeArtifactViewer} />
-                    ) : openFilePath ? (
-                      <FileViewer path={openFilePath} onClose={closeFileViewer} />
-                    ) : view === "routines" ? (
-                      <div className="h-full overflow-auto">
-                        <div className="mx-auto max-w-4xl px-6 py-8">
-                          <RoutinesSettings />
-                        </div>
+                  <ResizablePanelGroup direction="vertical" className="gap-1">
+                    <ResizablePanel minSize={20}>
+                      <div className="h-full min-h-0 overflow-hidden">
+                        {viewerArtifact ? (
+                          <FileViewer item={viewerArtifact} onClose={closeArtifactViewer} />
+                        ) : openFilePath ? (
+                          <FileViewer path={openFilePath} onClose={closeFileViewer} />
+                        ) : view === "routines" ? (
+                          <div className="h-full overflow-auto">
+                            <div className="mx-auto max-w-4xl px-6 py-8">
+                              <RoutinesSettings />
+                            </div>
+                          </div>
+                        ) : (
+                          <ChatView
+                            transcriptMode={transcriptMode}
+                            sessionTitle={sessionTitle}
+                            home
+                            onOpenSettings={() => {
+                              setSettingsSection("sandbox");
+                              setSettingsOpen(true);
+                            }}
+                          />
+                        )}
                       </div>
-                    ) : (
-                      <ChatView
-                        transcriptMode={transcriptMode}
-                        sessionTitle={sessionTitle}
-                        home
-                        onOpenSettings={() => {
-                          setSettingsSection("sandbox");
-                          setSettingsOpen(true);
-                        }}
-                      />
+                    </ResizablePanel>
+                    {terminalOpen && homeShellSupported && (
+                      <>
+                        <ResizableHandle withHandle />
+                        <ResizablePanel defaultSize={32} minSize={12}>
+                          <Panel>
+                            <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                Sandbox terminal
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setTerminalOpen(false)}
+                                className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                              >
+                                <X className="size-3.5" />
+                              </button>
+                            </div>
+                            <Suspense
+                              fallback={
+                                <div className="p-3 text-xs text-muted-foreground">
+                                  Loading terminal…
+                                </div>
+                              }
+                            >
+                              <Terminal
+                                runner={sandboxRunner}
+                                intro={[
+                                  "Home sandbox — commands run inside this chat's sandbox, not on your machine.",
+                                  "Files you create show up in the Files panel. Shell state (cwd, env) resets each command.",
+                                ]}
+                              />
+                            </Suspense>
+                          </Panel>
+                        </ResizablePanel>
+                      </>
                     )}
-                  </div>
+                  </ResizablePanelGroup>
                 </ResizablePanel>
                 {rightTab && (
                   <>
