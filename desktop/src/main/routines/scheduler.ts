@@ -46,7 +46,10 @@ function withCondition(conditionPrompt: string, task: string): string {
   ].join("\n");
 }
 
-export async function executeRoutine(routine: Routine): Promise<RoutineRun> {
+export async function executeRoutine(
+  routine: Routine,
+  trigger?: { source: string; body?: string },
+): Promise<RoutineRun> {
   const at = new Date().toISOString();
   const runId = randomUUID();
   const store = getSessionStore();
@@ -65,11 +68,18 @@ export async function executeRoutine(routine: Routine): Promise<RoutineRun> {
     return run;
   }
 
+  // Fold any trigger payload (webhook/API body) in as context for the run.
+  const triggerCtx =
+    trigger && (trigger.body?.trim() || trigger.source)
+      ? `[Triggered by ${trigger.source}${trigger.body?.trim() ? ` with payload:\n${trigger.body.slice(0, 4000)}` : ""}]\n\n`
+      : "";
+  const base = triggerCtx + routine.prompt;
+
   const useGate =
     routine.condition?.kind === "agent" && !!routine.condition.prompt;
   const prompt = useGate
-    ? withCondition(routine.condition!.prompt!, routine.prompt)
-    : routine.prompt;
+    ? withCondition(routine.condition!.prompt!, base)
+    : base;
 
   const session = store.create(routine.name || "Routine", routine.space);
   let assistantText = "";

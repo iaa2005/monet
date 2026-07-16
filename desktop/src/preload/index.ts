@@ -532,6 +532,8 @@ const electronAPI = {
       ipcRenderer.invoke("routines:runNow", id),
     listRuns: (id: string): Promise<unknown[]> =>
       ipcRenderer.invoke("routines:listRuns", id),
+    triggerInfo: (): Promise<{ baseUrl: string; apiKey: string }> =>
+      ipcRenderer.invoke("routines:triggerInfo"),
     cronPreview: (
       cron: string,
     ): Promise<

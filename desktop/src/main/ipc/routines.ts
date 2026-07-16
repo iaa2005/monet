@@ -23,6 +23,8 @@ import {
 } from "../routines/scheduler.js";
 import { getProviderManager } from "../provider/manager.js";
 import { createAdapter } from "../llm/adapter.js";
+import { getTriggerConfig, triggerBaseUrl } from "../routines/trigger-server.js";
+import { randomUUID } from "node:crypto";
 
 function withHuman(r: Routine): Routine & { humanSchedule?: string } {
   if (r.trigger.kind === "schedule" && r.trigger.cron) {
@@ -43,10 +45,22 @@ export function registerRoutinesIPC(): void {
   });
 
   ipcMain.handle("routines:create", (_e, input: RoutineInput) => {
+    // Webhook routines need a stable secret id embedded in their inbound URL.
+    if (input.trigger.kind === "webhook" && !input.trigger.webhookId)
+      input = {
+        ...input,
+        trigger: { ...input.trigger, webhookId: randomUUID().replace(/-/g, "") },
+      };
     const r = createRoutine(input);
     scheduleRoutine(r);
     return withHuman(r);
   });
+
+  // Base URL + API key so the editor can show the webhook / API trigger URLs.
+  ipcMain.handle("routines:triggerInfo", () => ({
+    baseUrl: triggerBaseUrl(),
+    apiKey: getTriggerConfig().apiKey,
+  }));
 
   ipcMain.handle(
     "routines:update",

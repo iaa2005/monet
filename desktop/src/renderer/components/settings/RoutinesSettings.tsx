@@ -37,7 +37,9 @@ interface Draft {
   name: string;
   prompt: string;
   space: "home" | "code";
+  triggerKind: "schedule" | "webhook" | "manual";
   cron: string;
+  webhookId?: string;
   condition: string;
   enabled: boolean;
 }
@@ -70,7 +72,7 @@ const TEMPLATES: Template[] = [
 ];
 
 function emptyDraft(): Draft {
-  return { name: "", prompt: "", space: "code", cron: "0 9 * * 1-5", condition: "", enabled: true };
+  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", condition: "", enabled: true };
 }
 
 export function RoutinesSettings(): JSX.Element {
@@ -202,7 +204,14 @@ export function RoutinesSettings(): JSX.Element {
                     name: r.name,
                     prompt: r.prompt,
                     space: r.space,
+                    triggerKind:
+                      r.trigger.kind === "webhook"
+                        ? "webhook"
+                        : r.trigger.kind === "manual"
+                          ? "manual"
+                          : "schedule",
                     cron: r.trigger.cron ?? "0 9 * * 1-5",
+                    webhookId: r.trigger.webhookId,
                     condition: r.condition?.prompt ?? "",
                     enabled: r.enabled,
                   })
@@ -311,7 +320,12 @@ function RoutineEditor({
   const [d, setD] = useState<Draft>(draft);
   const [preview, setPreview] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  const [trig, setTrig] = useState<{ baseUrl: string; apiKey: string } | null>(null);
   const set = (patch: Partial<Draft>): void => setD((p) => ({ ...p, ...patch }));
+
+  useEffect(() => {
+    void api()?.routines.triggerInfo().then(setTrig);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -332,12 +346,18 @@ function RoutineEditor({
 
   const save = async (): Promise<void> => {
     setBusy(true);
+    const trigger =
+      d.triggerKind === "schedule"
+        ? { kind: "schedule" as const, cron: d.cron }
+        : d.triggerKind === "webhook"
+          ? { kind: "webhook" as const, webhookId: d.webhookId }
+          : { kind: "manual" as const };
     const input = {
       name: d.name.trim() || "New routine",
       prompt: d.prompt.trim(),
       space: d.space,
       connectors: [],
-      trigger: { kind: "schedule" as const, cron: d.cron },
+      trigger,
       condition: d.condition.trim()
         ? { kind: "agent" as const, prompt: d.condition.trim() }
         : { kind: "always" as const },
@@ -372,15 +392,24 @@ function RoutineEditor({
             className="mt-1 w-full resize-none rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/30"
           />
         </div>
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <label className="text-xs text-muted-foreground">Schedule (cron)</label>
-            <input
-              value={d.cron}
-              onChange={(e) => set({ cron: e.target.value })}
-              className="mt-1 w-full rounded-md border border-border bg-transparent px-3 py-2 font-mono text-sm outline-none focus:border-foreground/30"
-            />
-            <p className="mt-1 text-[11px] text-muted-foreground">{preview}</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <label className="text-xs text-muted-foreground">Trigger</label>
+            <div className="mt-1 flex rounded-md border border-border p-0.5">
+              {(["schedule", "webhook", "manual"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => set({ triggerKind: k })}
+                  className={cn(
+                    "rounded px-2.5 py-1.5 text-xs font-medium capitalize",
+                    d.triggerKind === k ? "bg-card shadow-sm" : "text-muted-foreground",
+                  )}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
           </div>
           <div>
             <label className="text-xs text-muted-foreground">Space</label>
@@ -392,9 +421,7 @@ function RoutineEditor({
                   onClick={() => set({ space: s })}
                   className={cn(
                     "rounded px-2.5 py-1.5 text-xs font-medium capitalize",
-                    d.space === s
-                      ? "bg-card shadow-sm"
-                      : "text-muted-foreground",
+                    d.space === s ? "bg-card shadow-sm" : "text-muted-foreground",
                   )}
                 >
                   {s}
@@ -403,6 +430,47 @@ function RoutineEditor({
             </div>
           </div>
         </div>
+
+        {d.triggerKind === "schedule" && (
+          <div>
+            <label className="text-xs text-muted-foreground">Schedule (cron)</label>
+            <input
+              value={d.cron}
+              onChange={(e) => set({ cron: e.target.value })}
+              className="mt-1 w-full rounded-md border border-border bg-transparent px-3 py-2 font-mono text-sm outline-none focus:border-foreground/30"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">{preview}</p>
+          </div>
+        )}
+        {d.triggerKind === "webhook" && (
+          <div className="rounded-md border border-border bg-muted/40 p-2.5 text-[12px]">
+            {d.webhookId && trig ? (
+              <>
+                <div className="text-muted-foreground">POST this URL to run it:</div>
+                <code className="mt-1 block break-all font-mono text-[11px]">
+                  {trig.baseUrl}/webhook/{d.webhookId}
+                </code>
+              </>
+            ) : (
+              <span className="text-muted-foreground">
+                Save first — the webhook URL is generated on create. External
+                services need a tunnel (ngrok/cloudflared) to reach it.
+              </span>
+            )}
+          </div>
+        )}
+        {d.triggerKind === "manual" && (
+          <p className="text-[12px] text-muted-foreground">
+            Runs only when you press Run, or via the API below.
+          </p>
+        )}
+        {d.id && trig && (
+          <div className="rounded-md border border-border bg-muted/40 p-2.5 text-[11px] text-muted-foreground">
+            API: <code className="font-mono">POST {trig.baseUrl}/run/{d.id}</code>{" "}
+            with header{" "}
+            <code className="font-mono">Authorization: Bearer {trig.apiKey}</code>
+          </div>
+        )}
         <div>
           <label className="text-xs text-muted-foreground">
             Condition (optional) — run only if this holds; the agent checks it first

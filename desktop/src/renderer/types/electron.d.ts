@@ -497,6 +497,7 @@ export interface ElectronAPI {
     delete: (id: string) => Promise<{ ok: boolean }>;
     runNow: (id: string) => Promise<RoutineRun | null>;
     listRuns: (id: string) => Promise<RoutineRun[]>;
+    triggerInfo: () => Promise<{ baseUrl: string; apiKey: string }>;
     cronPreview: (
       cron: string,
     ) => Promise<

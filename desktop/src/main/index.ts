@@ -120,10 +120,13 @@ app.whenReady().then(() => {
       .catch(() => {});
   }, 2_000);
 
-  // Arm scheduled routines (cron) after the app has settled.
+  // Arm scheduled routines (cron) + the localhost webhook/API trigger server.
   setTimeout(() => {
     void import("./routines/scheduler.js")
       .then((m) => m.startScheduler())
+      .catch(() => {});
+    void import("./routines/trigger-server.js")
+      .then((m) => m.startTriggerServer())
       .catch(() => {});
   }, 3_000);
 
