@@ -21,7 +21,8 @@ export type ProtocolId =
   | "webdav"
   | "caldav"
   | "carddav"
-  | "telegram";
+  | "telegram"
+  | "mcp";
 
 export interface HostPort {
   host: string;
@@ -60,6 +61,13 @@ export interface ConnectorPreset {
   carddav?: { url: string };
   /** Telegram needs api_id/api_hash + a phone login rather than a password. */
   telegram?: boolean;
+  /**
+   * A local MCP stdio server (Notion, GitHub…). MCP-over-stdio is just another
+   * protocol here: the token lives encrypted with every other secret and is
+   * injected into the server's env at spawn time, so it never reaches
+   * mcp-servers.json. `envKey` is the variable that server reads it from.
+   */
+  mcp?: { command: string; args: string[]; envKey: string };
 }
 
 /** An account the user connected. Secrets live encrypted, never here. */

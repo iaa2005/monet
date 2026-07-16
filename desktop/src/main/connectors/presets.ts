@@ -116,6 +116,79 @@ export const PRESETS: ConnectorPreset[] = [
     usernameLabel: "you@yandex.ru",
   },
 
+  // ─── Developer tools (MCP over stdio) ────────────────────────────────────
+  // These ship real MCP servers, so the "protocol" is MCP itself: we spawn the
+  // vendor's server locally and hand it the token via env. Their REMOTE servers
+  // are deliberately not used — Notion's is OAuth-only (401 to a pasted token)
+  // and GitHub's is Copilot-gated (402).
+  {
+    id: "github",
+    name: "GitHub",
+    group: "Developer tools",
+    protocols: ["mcp"],
+    mcp: {
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-github"],
+      envKey: "GITHUB_PERSONAL_ACCESS_TOKEN",
+    },
+    credUrl: "https://github.com/settings/tokens",
+    credLabel: "Personal access token",
+    note: "Classic tokens work; give it repo scope. GitHub's remote MCP server needs a Copilot subscription, so this runs the local one with your token.",
+  },
+  {
+    id: "notion",
+    name: "Notion",
+    group: "Developer tools",
+    protocols: ["mcp"],
+    mcp: {
+      command: "npx",
+      args: ["-y", "@notionhq/notion-mcp-server"],
+      envKey: "NOTION_TOKEN",
+    },
+    credUrl: "https://app.notion.com/developers/tokens",
+    credLabel: "Internal integration token (ntn_…)",
+    note: "After connecting, open each page or database in Notion → ••• → Connections → add your integration. Without that it authenticates fine but sees nothing.",
+  },
+  {
+    id: "slack",
+    name: "Slack",
+    group: "Developer tools",
+    protocols: ["mcp"],
+    mcp: {
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-slack"],
+      envKey: "SLACK_BOT_TOKEN",
+    },
+    credUrl: "https://api.slack.com/apps",
+    credLabel: "Bot token (xoxb-…)",
+    note: "Create an app → OAuth & Permissions → add bot scopes → install to workspace, then copy the Bot User OAuth Token.",
+  },
+  // Linear and Sentry run OAuth-only remote MCP servers: probed, both answer a
+  // pasted token with 401 invalid_token + WWW-Authenticate: Bearer realm="OAuth".
+  // Until the app does the OAuth sign-in flow there is nothing to paste here.
+  {
+    id: "linear",
+    name: "Linear",
+    group: "Developer tools",
+    protocols: [],
+    unavailable:
+      "Linear's MCP server signs you in with your account (OAuth) rather than a token — it answers a pasted token with 401. This app doesn't do the OAuth sign-in flow yet, so Linear can't be connected from here.",
+    unavailableLabel: "Needs OAuth — read why",
+    credLabel: "Linear MCP docs",
+    credUrl: "https://linear.app/docs/mcp",
+  },
+  {
+    id: "sentry",
+    name: "Sentry",
+    group: "Developer tools",
+    protocols: [],
+    unavailable:
+      "Sentry's MCP server signs you in with your account (OAuth) rather than a token — it answers a pasted token with 401. This app doesn't do the OAuth sign-in flow yet, so Sentry can't be connected from here.",
+    unavailableLabel: "Needs OAuth — read why",
+    credLabel: "Sentry MCP docs",
+    credUrl: "https://docs.sentry.io/product/sentry-mcp/",
+  },
+
   // ─── Telegram ────────────────────────────────────────────────────────────
   // MTProto against YOUR account (GramJS), so it can read your real chats — a
   // bot only ever sees chats it was added to. api_id/api_hash come from

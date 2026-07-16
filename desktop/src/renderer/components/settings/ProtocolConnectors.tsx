@@ -76,11 +76,12 @@ export function ProtocolConnectors(): JSX.Element {
   return (
     <div className="space-y-4">
       <section>
-        <h3 className="text-base font-semibold">Built-in connectors</h3>
+        <h3 className="text-base font-semibold">Connectors</h3>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Your mail, files, calendar and Telegram — over their standard
-          protocols, with an app password instead of an OAuth client. Passwords
-          are encrypted with your OS keychain, never stored as plain text.
+          Your mail, files, calendar, Telegram and dev tools. Each connects with
+          a token or app password — no OAuth client to register — and every
+          secret is encrypted with your OS keychain, never written as plain
+          text. For a server that isn&apos;t listed here, use MCP Servers.
         </p>
       </section>
 
@@ -102,8 +103,10 @@ export function ProtocolConnectors(): JSX.Element {
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{a.label}</div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {a.username}
-                    {preset ? ` · ${preset.protocols.join(", ")}` : ""}
+                    {/* MCP connectors have no login — just a token. */}
+                    {[a.username, preset?.protocols.join(", ")]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </div>
                   {res && res !== "ok" && (
                     <div className="mt-1 flex items-start gap-1 text-xs text-destructive">
@@ -214,6 +217,8 @@ function ConnectForm({
   const [error, setError] = useState<string | null>(null);
 
   const isTelegram = !!preset.telegram;
+  // MCP servers authenticate with the token alone — there's no login to ask for.
+  const isMcp = !!preset.mcp;
 
   // No app-password path (Google Drive): say why, and point at the way in.
   if (preset.unavailable) {
@@ -319,17 +324,19 @@ function ConnectForm({
 
         {stage === "form" ? (
           <>
-            <div>
-              <label className="text-xs text-muted-foreground">
-                {isTelegram ? "Phone number" : "Login"}
-              </label>
-              <input
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder={preset.usernameLabel}
-                className={field}
-              />
-            </div>
+            {!isMcp && (
+              <div>
+                <label className="text-xs text-muted-foreground">
+                  {isTelegram ? "Phone number" : "Login"}
+                </label>
+                <input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder={preset.usernameLabel}
+                  className={field}
+                />
+              </div>
+            )}
 
             {isTelegram ? (
               <>

@@ -23,6 +23,7 @@ import { mailFolders } from "../connectors/protocols/mail.js";
 import { filesList } from "../connectors/protocols/files.js";
 import { calendarList } from "../connectors/protocols/dav.js";
 import { getPreset } from "../connectors/presets.js";
+import { ensureConnected, getConnectorServerStatus } from "../mcp/manager.js";
 import type { ConnectorAccount, ConnectorSecret } from "../connectors/types.js";
 
 export function registerConnectorsIPC(): void {
@@ -42,6 +43,9 @@ export function registerConnectorsIPC(): void {
     ): ConnectorAccount => {
       const account = addAccount(input);
       resetVendorTools(); // tool advertisement depends on which accounts exist
+      // MCP-backed connector: bring its server up now, so the token is proven
+      // (or the error surfaced) while the user is still looking at the form.
+      if (getPreset(input.presetId)?.mcp) void ensureConnected().catch(() => {});
       return account;
     },
   );
@@ -55,6 +59,8 @@ export function registerConnectorsIPC(): void {
     ) => {
       const row = updateAccount(id, patch);
       resetVendorTools();
+      // Enabling/disabling an MCP connector adds or drops its server.
+      void ensureConnected().catch(() => {});
       return row;
     },
   );
@@ -62,6 +68,8 @@ export function registerConnectorsIPC(): void {
   ipcMain.handle("connectors:delete", (_e, id: string): { ok: boolean } => {
     const ok = deleteAccount(id);
     resetVendorTools();
+    // The server is gone from the effective config now — this closes it.
+    void ensureConnected().catch(() => {});
     return { ok };
   });
 
@@ -78,6 +86,15 @@ export function registerConnectorsIPC(): void {
         const preset = getPreset(account.presetId);
         if (!preset) return { ok: false, error: "Unknown connector." };
 
+        if (preset.mcp) {
+          // Spawning the server IS the test: it fails loudly on a bad token.
+          await ensureConnected();
+          const s = getConnectorServerStatus(account.presetId);
+          if (!s) return { ok: false, error: "Server did not start." };
+          return s.status === "connected"
+            ? { ok: true }
+            : { ok: false, error: s.error ?? `Server is ${s.status}.` };
+        }
         if (preset.protocols.includes("imap")) {
           const r = await mailFolders(pickAccount("imap", id));
           return { ok: r.ok, error: r.error };

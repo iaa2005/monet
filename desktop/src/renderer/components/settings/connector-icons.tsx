@@ -15,7 +15,9 @@
  * with no <script> or external references.
  */
 
+import github from "@/assets/connectors/github.svg?raw";
 import gmail from "@/assets/connectors/gmail.svg?raw";
+import notion from "@/assets/connectors/notion.svg?raw";
 import googleCalendar from "@/assets/connectors/google-calendar.svg?raw";
 import googleContacts from "@/assets/connectors/google-contacts.svg?raw";
 import googleDrive from "@/assets/connectors/google-drive.svg?raw";
@@ -27,6 +29,8 @@ import { cn } from "@/lib/utils";
 
 /** presetId → raw SVG. Add a connector icon by adding a line. */
 const ICONS: Record<string, string> = {
+  github,
+  notion,
   gmail,
   "google-calendar": googleCalendar,
   "google-contacts": googleContacts,

@@ -16,6 +16,8 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { getDataDir } from "../data-dir.js";
+import { getPreset } from "../connectors/presets.js";
+import { addAccount, getSecret, listAccounts } from "../connectors/store.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -56,6 +58,83 @@ export function saveConfig(config: McpConfig): void {
   const p = configPath();
   if (!existsSync(dirname(p))) mkdirSync(dirname(p), { recursive: true });
   writeFileSync(p, JSON.stringify(config, null, 2), "utf-8");
+}
+
+/**
+ * Servers contributed by connector accounts (Notion, GitHub, Slack…).
+ *
+ * Built fresh on every read with the token decrypted straight from safeStorage,
+ * so the secret exists only in memory and in the spawned child's env — it is
+ * never part of loadConfig/saveConfig and so can never land in
+ * mcp-servers.json. That's the whole point of routing these through connectors.
+ */
+function connectorServers(): Record<string, McpServerConfig> {
+  const out: Record<string, McpServerConfig> = {};
+  try {
+    for (const account of listAccounts()) {
+      if (!account.enabled) continue;
+      const preset = getPreset(account.presetId);
+      if (!preset?.mcp) continue;
+      const token = getSecret(account.id).password;
+      if (!token) continue;
+      out[account.presetId] = {
+        command: preset.mcp.command,
+        args: preset.mcp.args,
+        env: { [preset.mcp.envKey]: token },
+      };
+    }
+  } catch {
+    /* connectors unavailable — fall back to file servers only */
+  }
+  return out;
+}
+
+/**
+ * What actually gets connected: hand-written servers from the file, plus the
+ * connector-backed ones. Use this for connecting and for "is anything
+ * configured"; use loadConfig() for the raw MCP Servers UI, which edits the
+ * file and must never see (or rewrite) a connector's secret.
+ */
+export function effectiveConfig(): McpConfig {
+  return { mcpServers: { ...loadConfig().mcpServers, ...connectorServers() } };
+}
+
+/**
+ * Lift tokens the old catalog wrote into mcp-servers.json as plain text out to
+ * encrypted connector accounts, and drop those servers from the file — the
+ * connector now supplies them. Idempotent: a server whose preset already has an
+ * account is just deleted from the file, so this is safe to run every launch.
+ *
+ * Hand-written servers are left exactly as they are: they may hold secrets too,
+ * but they're the user's own config, meant to be edited by hand, and silently
+ * rewriting them would break that.
+ */
+export function migrateMcpTokensToConnectors(): number {
+  let moved = 0;
+  try {
+    const config = loadConfig();
+    let dirty = false;
+    for (const [name, cfg] of Object.entries(config.mcpServers)) {
+      const preset = getPreset(name);
+      if (!preset?.mcp) continue;
+      const token = cfg.env?.[preset.mcp.envKey];
+      const already = listAccounts().some((a) => a.presetId === name);
+      if (token && !already) {
+        addAccount({
+          presetId: name,
+          username: "",
+          secret: { password: token },
+        });
+        moved++;
+      }
+      delete config.mcpServers[name];
+      dirty = true;
+    }
+    if (dirty) saveConfig(config);
+  } catch {
+    /* best-effort: a failed migration must not block startup */
+  }
+  return moved;
 }
 
 // ─── Tool + status types ─────────────────────────────────────────────────
@@ -163,7 +242,7 @@ async function connectServer(name: string, config: McpServerConfig): Promise<voi
 /** Connect every enabled server that isn't already connected. Called before an
  * agent run and by the Connectors UI. */
 export async function ensureConnected(): Promise<void> {
-  const config = loadConfig();
+  const config = effectiveConfig();
   const entries = Object.entries(config.mcpServers);
 
   await Promise.all(
@@ -264,7 +343,17 @@ export interface McpResource {
 
 /** Any MCP servers configured at all (gates the resource tools' advertisement). */
 export function hasMcpServers(): boolean {
-  return Object.keys(loadConfig().mcpServers).length > 0;
+  return Object.keys(effectiveConfig().mcpServers).length > 0;
+}
+
+/** Live status of a connector-backed server, for the Connectors "Test" button.
+ * Deliberately returns no config — that would carry the token to the renderer. */
+export function getConnectorServerStatus(
+  presetId: string,
+): { status: McpStatus; toolCount: number; error?: string } | null {
+  const s = servers.get(presetId);
+  if (!s) return null;
+  return { status: s.status, toolCount: s.tools.length, error: s.error };
 }
 
 /** List resources across every connected server. Servers that don't implement
