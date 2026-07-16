@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
+import { ConnectorIcon, hasConnectorIcon } from "./connector-icons";
 import type { ElectronAPI } from "@/types/electron";
 import type {
   ConnectorAccount,
@@ -93,7 +94,11 @@ export function ProtocolConnectors(): JSX.Element {
                 key={a.id}
                 className="flex items-center gap-3 rounded-xl border border-border p-2.5"
               >
-                <Plug className="size-4 shrink-0 text-muted-foreground" />
+                {hasConnectorIcon(a.presetId) ? (
+                  <ConnectorIcon presetId={a.presetId} className="size-5" />
+                ) : (
+                  <Plug className="size-4 shrink-0 text-muted-foreground" />
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{a.label}</div>
                   <div className="truncate text-xs text-muted-foreground">
@@ -151,10 +156,18 @@ export function ProtocolConnectors(): JSX.Element {
                   onClick={() => setEntry(p)}
                   className="flex items-start gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                 >
+                  {hasConnectorIcon(p.id) ? (
+                    <ConnectorIcon
+                      presetId={p.id}
+                      className={cn("mt-0.5 size-6", p.unavailable && "opacity-40")}
+                    />
+                  ) : (
+                    <Plug className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium">{p.name}</div>
                     <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {p.protocols.join(", ")}
+                      {p.unavailable ? "Needs OAuth — read why" : p.protocols.join(", ")}
                     </div>
                   </div>
                 </button>
@@ -199,6 +212,32 @@ function ConnectForm({
   const [error, setError] = useState<string | null>(null);
 
   const isTelegram = !!preset.telegram;
+
+  // No app-password path (Google Drive): say why, and point at the way in.
+  if (preset.unavailable) {
+    return (
+      <Modal open onClose={onClose} title={preset.name}>
+        <div className="space-y-3">
+          {hasConnectorIcon(preset.id) && (
+            <ConnectorIcon presetId={preset.id} className="size-9" />
+          )}
+          <p className="text-[13px] text-muted-foreground">{preset.unavailable}</p>
+          <div className="flex justify-end gap-2 border-t border-border pt-3">
+            {preset.credUrl && (
+              <OpenLink url={preset.credUrl} label="Google Drive for Desktop" />
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
 
   const submit = async (): Promise<void> => {
     setBusy(true);
@@ -267,6 +306,9 @@ function ConnectForm({
   return (
     <Modal open onClose={onClose} title={`Connect ${preset.name}`}>
       <div className="space-y-3">
+        {hasConnectorIcon(preset.id) && (
+          <ConnectorIcon presetId={preset.id} className="size-9" />
+        )}
         {preset.note && (
           <p className="rounded-md border border-border bg-black/[0.02] p-2 text-[13px] text-muted-foreground dark:bg-white/[0.03]">
             {preset.note}

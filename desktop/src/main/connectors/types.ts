@@ -44,6 +44,12 @@ export interface ConnectorPreset {
   note?: string;
   /** Login hint, e.g. "you@gmail.com". */
   usernameLabel?: string;
+  /**
+   * Set when the service CANNOT be connected with an app password, explaining
+   * why. The card still shows (the service is real and people look for it), but
+   * offers this instead of a form that would only ever return 401/403.
+   */
+  unavailable?: string;
   imap?: HostPort;
   smtp?: HostPort;
   webdav?: { url: string };

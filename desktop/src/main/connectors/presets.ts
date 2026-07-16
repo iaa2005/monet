@@ -49,6 +49,22 @@ export const PRESETS: ConnectorPreset[] = [
     credLabel: "App password (16 characters)",
     usernameLabel: "you@gmail.com",
   },
+  // Drive is the one Google service with NO app-password path: Gmail has IMAP,
+  // Calendar has CalDAV, Contacts has CardDAV — Drive has no legacy protocol at
+  // all, only an API behind OAuth. Probed: a Basic-auth call to
+  // googleapis.com/drive/v3/files returns 403 "Method doesn't allow
+  // unregistered callers … use API Key or other form of API consumer identity",
+  // PROPFIND on drive.google.com is 405, and there is no DAV endpoint. So it
+  // gets an honest card rather than a form that cannot work.
+  {
+    id: "google-drive",
+    name: "Google Drive",
+    group: "Google",
+    protocols: [],
+    unavailable:
+      "Drive has no app-password path — unlike Gmail (IMAP) or Calendar (CalDAV) it has no standard protocol, only an API behind OAuth, and it rejects a password outright. Two ways in: install Google Drive for Desktop and it becomes an ordinary folder the agent can already read and write; or wire OAuth with a one-time Google Cloud client.",
+    credUrl: "https://www.google.com/drive/download/",
+  },
 
   // ─── Yandex ──────────────────────────────────────────────────────────────
   // One app password covers all of these; scope is picked when creating it.
