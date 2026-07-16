@@ -31,6 +31,7 @@ import {
   Pencil,
   FileText,
   Upload,
+  Zap,
   GitFork,
   Archive,
   Trash2,
@@ -54,6 +55,7 @@ import { WindowControls } from "@/components/WindowControls";
 import { AccountMenu } from "@/components/AccountMenu";
 import { AboutPanel } from "@/components/AboutPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { RoutinesSettings } from "@/components/settings/RoutinesSettings";
 import { Modal } from "@/components/ui/modal";
 import {
   DropdownMenu,
@@ -80,7 +82,7 @@ const Terminal = lazy(() =>
   import("@/components/Terminal").then((m) => ({ default: m.Terminal })),
 );
 
-type View = "chat" | "changes" | "skills";
+type View = "chat" | "changes" | "skills" | "routines";
 type RightTab = "files" | "artifacts" | null;
 type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
@@ -994,6 +996,14 @@ export default function App(): JSX.Element {
                       onClick={() => toggleRight("artifacts")}
                     />
                     <NavRow
+                      icon={Zap}
+                      label="Routines"
+                      active={view === "routines"}
+                      onClick={() =>
+                        setView((v) => (v === "routines" ? "chat" : "routines"))
+                      }
+                    />
+                    <NavRow
                       icon={Settings}
                       label="Customize"
                       onClick={() => setSettingsOpen(true)}
@@ -1150,6 +1160,13 @@ export default function App(): JSX.Element {
                             {view === "skills" && (
                               <div className="h-full overflow-auto">
                                 <SkillsPanel />
+                              </div>
+                            )}
+                            {view === "routines" && (
+                              <div className="h-full overflow-auto">
+                                <div className="mx-auto max-w-4xl px-6 py-8">
+                                  <RoutinesSettings />
+                                </div>
                               </div>
                             )}
                           </>

@@ -17,7 +17,6 @@ import {
   MousePointerClick,
   Loader2,
   SlidersHorizontal,
-  Zap,
 } from "lucide-react";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { SkillsSettings } from "@/components/settings/SkillsSettings";
@@ -28,7 +27,6 @@ import { ReflectSettings } from "@/components/settings/ReflectSettings";
 import { ConnectorsSettings } from "@/components/settings/ConnectorsSettings";
 import { AutomationSettings } from "@/components/settings/AutomationSettings";
 import { AdvancedSettings } from "@/components/settings/AdvancedSettings";
-import { RoutinesSettings } from "@/components/settings/RoutinesSettings";
 import { ConnectorsCatalog } from "@/components/settings/ConnectorsCatalog";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
@@ -93,7 +91,6 @@ type Section =
   | "automation"
   | "memory"
   | "reflect"
-  | "routines"
   | "advanced"
   | "skills"
   | "agents"
@@ -114,7 +111,6 @@ const NAV: {
       { id: "automation", label: "Automation", icon: MousePointerClick },
       { id: "memory", label: "Memory", icon: Brain },
       { id: "reflect", label: "Reflect", icon: Sun },
-      { id: "routines", label: "Routines", icon: Zap },
       { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
     ],
   },
@@ -527,7 +523,6 @@ export function SettingsPanel({
         {section === "automation" && <AutomationSettings />}
         {section === "memory" && <MemorySettings />}
         {section === "reflect" && <ReflectSettings />}
-        {section === "routines" && <RoutinesSettings />}
         {section === "services" && <ConnectorsCatalog />}
         {section === "advanced" && <AdvancedSettings />}
         {section === "skills" && <SkillsSettings />}
