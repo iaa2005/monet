@@ -83,12 +83,44 @@ export function ContextMeter({
   const msgTokens = useMemo(() => estimateMessageTokens(messages), [messages]);
   const [data, setData] = useState<ContextBreakdown | null>(null);
   const [loading, setLoading] = useState(false);
+  const [compactions, setCompactions] = useState<
+    { id: string; at: string; beforeTokens: number | null; afterTokens: number | null }[]
+  >([]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Drop the previous chat's breakdown the instant the session changes, so a
   // new/old chat never shows the last chat's numbers while the refetch runs.
   useEffect(() => {
     setData(null);
+    setCompactions([]);
   }, [sessionId]);
+
+  // Compaction history for this chat — powers "rewind through compact".
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const evs = await api()?.chat.contextEvents(sessionId ?? "default");
+      if (cancelled || !evs) return;
+      setCompactions(
+        evs
+          .filter((e) => e.type === "compact")
+          .map((e) => ({
+            id: e.id,
+            at: e.at,
+            beforeTokens: e.beforeTokens,
+            afterTokens: e.afterTokens,
+          })),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, msgTokens, refreshKey]);
+
+  const undoCompact = async (id: string): Promise<void> => {
+    await api()?.chat.undoCompact(sessionId ?? "default", id);
+    setRefreshKey((k) => k + 1);
+  };
 
   // Recompute whenever the session, space, or the visible message tokens change
   // (message tokens move on every turn AND on chat switches), passing the
@@ -208,6 +240,42 @@ export function ContextMeter({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {compactions.length > 0 && (
+          <div className="mt-2.5 border-t border-border pt-2">
+            <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+              Compactions
+            </div>
+            <div className="space-y-1">
+              {compactions.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-center gap-2 text-[11px]"
+                >
+                  <span className="flex-1 truncate text-muted-foreground">
+                    {c.beforeTokens != null && c.afterTokens != null
+                      ? `${fmt(c.beforeTokens)} → ${fmt(c.afterTokens)}`
+                      : "compacted"}
+                    <span className="ml-1 opacity-60">
+                      {new Date(c.at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void undoCompact(c.id)}
+                    className="shrink-0 rounded border border-border px-1.5 py-0.5 font-medium text-foreground transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                    title="Restore the pre-compaction context (rewind through compact)"
+                  >
+                    Undo
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

@@ -162,6 +162,20 @@ export interface ElectronAPI {
       error?: string;
     }>;
     estimate: (sessionId?: string) => Promise<{ tokens: number }>;
+    contextEvents: (sessionId?: string) => Promise<
+      {
+        id: string;
+        type: "compact" | "rewind" | "command";
+        at: string;
+        manual: boolean;
+        beforeTokens: number | null;
+        afterTokens: number | null;
+      }[]
+    >;
+    undoCompact: (
+      sessionId: string,
+      eventId: string,
+    ) => Promise<{ ok: boolean; restored?: number; error?: string }>;
     contextBreakdown: (
       sessionId?: string,
       space?: string,

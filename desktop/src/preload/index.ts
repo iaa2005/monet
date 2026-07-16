@@ -41,6 +41,23 @@ const electronAPI = {
       ipcRenderer.invoke("chat:compact", sessionId),
     estimate: (sessionId?: string): Promise<{ tokens: number }> =>
       ipcRenderer.invoke("chat:estimate", sessionId),
+    contextEvents: (
+      sessionId?: string,
+    ): Promise<
+      {
+        id: string;
+        type: "compact" | "rewind" | "command";
+        at: string;
+        manual: boolean;
+        beforeTokens: number | null;
+        afterTokens: number | null;
+      }[]
+    > => ipcRenderer.invoke("chat:contextEvents", sessionId),
+    undoCompact: (
+      sessionId: string,
+      eventId: string,
+    ): Promise<{ ok: boolean; restored?: number; error?: string }> =>
+      ipcRenderer.invoke("chat:undoCompact", sessionId, eventId),
     contextBreakdown: (
       sessionId?: string,
       space?: string,
