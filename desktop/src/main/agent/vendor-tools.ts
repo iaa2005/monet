@@ -554,6 +554,9 @@ export async function executeVendorTool(opts: {
   space?: string;
   /** Round-trips a structured question to the user (AskUserQuestion tool). */
   askUser?: AskUserFn;
+  /** Nobody is watching (a routine firing) — distinct from bypassPermissions,
+   * which a user enables while sitting right there. */
+  unattended?: boolean;
 }): Promise<VendorToolResult> {
   const {
     sessionId,
@@ -568,6 +571,7 @@ export async function executeVendorTool(opts: {
     onSubAgentEvent,
     space,
     askUser,
+    unattended,
   } = opts;
   initVendorRuntime();
 
@@ -660,9 +664,11 @@ export async function executeVendorTool(opts: {
   (context as { sessionId?: string }).sessionId = sessionId;
   // Skill copies its bundle into the sandbox only in Home — needs the space.
   (context as { space?: string }).space = space;
-  // CreateRoutine refuses to run unattended: inside a routine there's nobody to
-  // approve a new standing task, so it must be able to see the mode.
-  (context as { permissionMode?: string }).permissionMode = permissionMode;
+  // CreateRoutine refuses to run with nobody watching. This is deliberately NOT
+  // permissionMode: "Skip all approvals" is also bypassPermissions, and that
+  // user is sitting right there — keying off the mode refused them their own
+  // routine.
+  (context as { unattended?: boolean }).unattended = unattended === true;
   // AskUserQuestion round-trips a question to the renderer via this callback.
   (context as { askUser?: AskUserFn }).askUser = askUser;
   if (onProgress)

@@ -51,6 +51,18 @@ function label(id: string): string {
   return getPreset(id)?.name ?? id;
 }
 
+/** The machine's zone, named and with its offset, e.g. `Europe/Moscow (UTC+3)`. */
+function localZone(): string {
+  const name = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
+  // getTimezoneOffset is minutes BEHIND UTC, so the sign is inverted.
+  const mins = -new Date().getTimezoneOffset();
+  const sign = mins < 0 ? "-" : "+";
+  const abs = Math.abs(mins);
+  const hh = Math.floor(abs / 60);
+  const mm = abs % 60;
+  return `${name} (UTC${sign}${hh}${mm ? `:${String(mm).padStart(2, "0")}` : ""})`;
+}
+
 const inputSchema = lazySchema(() =>
   z.strictObject({
     name: z.string().describe("Short human name, e.g. “Morning news digest”."),
@@ -136,13 +148,17 @@ export const CreateRoutineTool = buildTool({
           "Create a routine: a task that runs on a schedule, on a connector",
           "event, by webhook, or manually. Write `prompt` as a self-contained",
           "instruction — a routine starts with an empty conversation, so it",
-          "cannot refer to “this chat” or anything discussed here. Cron is",
-          "5-field, local time. Scope `connectors` to what the task actually",
-          "needs. Routines run unattended with tools pre-approved, so confirm",
-          "the schedule and the task with the user before creating one, and",
-          "never create one they didn't ask for.",
+          "cannot refer to “this chat” or anything discussed here. Scope",
+          "`connectors` to what the task actually needs. Routines run",
+          "unattended with tools pre-approved, so confirm the schedule and the",
+          "task with the user before creating one, and never create one they",
+          "didn't ask for.",
         ].join(" "),
       ),
+      // Spelled out because the model otherwise guesses, and guesses wrong: it
+      // converts to UTC "in case the server runs on it" and the routine fires
+      // hours off. Cron here is evaluated in the machine's own zone.
+      `Cron is 5-field and runs in THIS machine's local time — ${localZone()}. Do not convert to UTC.`,
       `Connectors available: ${knownConnectors().map(label).join(", ") || "(none)"}.`,
     ].join("\n");
   },
@@ -150,8 +166,9 @@ export const CreateRoutineTool = buildTool({
     return "Create a scheduled/event-triggered routine that runs an agent task unattended.";
   },
   async call(input: z.infer<InputSchema>, context: ToolUseContext) {
-    const mode = (context as { permissionMode?: string }).permissionMode;
-    if (mode === "bypassPermissions") {
+    // Only a routine firing on its own counts as unattended. A user with "Skip
+    // all approvals" on is still present, and this used to refuse them.
+    if ((context as { unattended?: boolean }).unattended === true) {
       return {
         data: {
           text: "Routines can't create routines — there's no one present to approve a new standing task. Ask the user to add it themselves.",
@@ -262,7 +279,7 @@ export const CreateRoutineTool = buildTool({
       const lines = [
         `Created “${created.name}” (${space}).`,
         kind === "schedule"
-          ? `Runs ${human}. Next: ${next}.`
+          ? `Runs ${human} — ${localZone()}. Next: ${next}.`
           : kind === "event"
             ? `Polls ${label(input.eventConnector as string)} every ${input.eventIntervalMinutes ?? 15} min for ${input.eventType ?? "new items"}.`
             : `Trigger: ${kind}.`,

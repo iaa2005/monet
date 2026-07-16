@@ -197,6 +197,14 @@ export interface AgentRunOptions {
   effort?: EffortLevel;
   /** Restrict MCP tools to these connector/server names (routines scope). */
   connectors?: string[];
+  /**
+   * No human is watching this run (a routine firing on its schedule).
+   *
+   * NOT the same as permissionMode "bypassPermissions": a user who turned on
+   * "Skip all approvals" is still sitting right there. Tools that need a person
+   * — not merely a permission — must key off this instead.
+   */
+  unattended?: boolean;
 }
 
 /**
@@ -688,6 +696,7 @@ export async function runAgent(
     space,
     effort,
     connectors,
+    unattended,
   } = options;
 
   let tools;
@@ -927,6 +936,7 @@ export async function runAgent(
         askUser,
         signal,
         space,
+        unattended,
         onProgress: (text) => {
           onEvent({
             type: "tool_result",

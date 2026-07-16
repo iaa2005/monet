@@ -33,11 +33,14 @@ function check(label: string, ok: boolean, detail?: string) {
 async function run(
   name: string,
   input: Record<string, unknown>,
-  // Some tools BEHAVE differently under bypass (CreateRoutine refuses to run
-  // unattended), so a check must be able to pick the mode. Anything other than
+  // A check may need to pick the permission mode, and separately to say whether
+  // anyone is watching — CreateRoutine keys off the latter. Anything other than
   // bypass needs a prompt channel, or the gate denies before the tool is
   // reached — hence the auto-allow stub.
-  opts?: { permissionMode?: 'default' | 'bypassPermissions' },
+  opts?: {
+    permissionMode?: 'default' | 'bypassPermissions'
+    unattended?: boolean
+  },
 ) {
   const mode = opts?.permissionMode ?? 'bypassPermissions'
   return executeVendorTool({
@@ -48,6 +51,7 @@ async function run(
     model: MODEL,
     // Backend harness: no UI to prompt, so bypass the permission gate.
     permissionMode: mode,
+    unattended: opts?.unattended,
     ...(mode === 'bypassPermissions'
       ? {}
       : { requestPermission: async () => ({ behavior: 'allow' as const }) }),
@@ -267,11 +271,25 @@ async function main() {
   const unattended = await run(
     'CreateRoutine',
     { name: 'x', prompt: 'y', trigger: 'schedule', cron: '0 9 * * *' },
-    { permissionMode: 'bypassPermissions' },
+    { unattended: true },
   )
   check(
     'CreateRoutine refuses to self-replicate in an unattended run',
     unattended.isError && /can't create routines/i.test(unattended.content),
+  )
+
+  // The regression that shipped: "Skip all approvals" is bypassPermissions too,
+  // so keying the guard off the permission mode refused a user their own
+  // routine while they sat watching. Attended means attended, whatever the mode.
+  const skipAll = await run(
+    'CreateRoutine',
+    { name: 'x', prompt: 'y', trigger: 'schedule', cron: 'nonsense' },
+    { permissionMode: 'bypassPermissions' },
+  )
+  check(
+    'CreateRoutine still works for a user with Skip all approvals on',
+    skipAll.isError && !/can't create routines/i.test(skipAll.content),
+    skipAll.content.slice(0, 60),
   )
 
   const badCron = await run('CreateRoutine', {

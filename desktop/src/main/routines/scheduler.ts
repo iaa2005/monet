@@ -116,6 +116,9 @@ export async function executeRoutine(
       {
         space: routine.space,
         permissionMode: "bypassPermissions",
+        // This is the one place with no user behind it — tools that need a
+        // person (CreateRoutine) refuse on this, not on the permission mode.
+        unattended: true,
         maxTurns: 30,
         // Scope to declared connectors; ensure the output connector is included.
         connectors:
