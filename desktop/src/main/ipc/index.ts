@@ -28,6 +28,7 @@ import { registerBrowserIPC } from "./browser.js";
 import { registerComputerIPC } from "./computer.js";
 import { registerTuningIPC } from "./tuning.js";
 import { registerTransferIPC } from "./transfer.js";
+import { registerRoutinesIPC } from "./routines.js";
 
 export function registerAllIPC(): void {
   registerChatIPC();
@@ -56,4 +57,5 @@ export function registerAllIPC(): void {
   registerComputerIPC();
   registerTuningIPC();
   registerTransferIPC();
+  registerRoutinesIPC();
 }

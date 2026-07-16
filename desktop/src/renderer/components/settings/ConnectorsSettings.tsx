@@ -388,10 +388,12 @@ export function ConnectorsSettings(): JSX.Element {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-base font-semibold">Connectors (MCP)</h3>
+          <h3 className="text-base font-semibold">MCP Servers</h3>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Model Context Protocol servers. Connected tools become available to
-            the agent as <span className="font-mono text-xs">mcp__…</span>.
+            Raw Model Context Protocol servers (stdio/http/sse). Connected tools
+            become available to the agent as{" "}
+            <span className="font-mono text-xs">mcp__…</span>. For one-click
+            service integrations, use Connectors.
           </p>
         </div>
         <div className="flex items-center gap-2">

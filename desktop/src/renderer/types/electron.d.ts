@@ -6,6 +6,13 @@ import type { LLMEvent, LLMRequest } from "../main/llm/adapter.js";
 import type { LLMProvider, LLMProviderInput } from "../main/provider/types.js";
 import type { ChatMessage } from "./chat";
 import type {
+  Routine,
+  RoutineInput,
+  RoutineRun,
+} from "../main/routines/store.js";
+
+export type { Routine, RoutineInput, RoutineRun };
+import type {
   PermissionRequest,
   PermissionDecision,
 } from "../main/ipc/permissions.js";
@@ -480,6 +487,36 @@ export interface ElectronAPI {
     promptsReload: () => Promise<{ ok: boolean }>;
     promptsReveal: () => Promise<{ ok: boolean; dir: string }>;
     migrateTranscripts: () => Promise<{ migrated: number; skipped: number }>;
+  };
+  routines: {
+    list: () => Promise<(Routine & { humanSchedule?: string })[]>;
+    get: (id: string) => Promise<(Routine & { humanSchedule?: string }) | null>;
+    create: (input: RoutineInput) => Promise<Routine>;
+    update: (id: string, patch: Partial<Routine>) => Promise<Routine | null>;
+    setEnabled: (id: string, enabled: boolean) => Promise<Routine | null>;
+    delete: (id: string) => Promise<{ ok: boolean }>;
+    runNow: (id: string) => Promise<RoutineRun | null>;
+    listRuns: (id: string) => Promise<RoutineRun[]>;
+    cronPreview: (
+      cron: string,
+    ) => Promise<
+      { valid: false } | { valid: true; human: string; next: string | null }
+    >;
+    draft: (
+      description: string,
+      space: "home" | "code",
+    ) => Promise<{
+      ok: boolean;
+      draft?: { name: string; prompt: string; cron: string; space: "home" | "code" };
+      error?: string;
+    }>;
+    onRan: (
+      callback: (p: {
+        routineId: string;
+        sessionId?: string;
+        status: string;
+      }) => void,
+    ) => () => void;
   };
   transfer: {
     exportChat: (

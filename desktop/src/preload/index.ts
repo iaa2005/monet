@@ -517,6 +517,46 @@ const electronAPI = {
       ipcRenderer.invoke("transcripts:migrate"),
   },
 
+  routines: {
+    list: (): Promise<unknown[]> => ipcRenderer.invoke("routines:list"),
+    get: (id: string): Promise<unknown> => ipcRenderer.invoke("routines:get", id),
+    create: (input: unknown): Promise<unknown> =>
+      ipcRenderer.invoke("routines:create", input),
+    update: (id: string, patch: unknown): Promise<unknown> =>
+      ipcRenderer.invoke("routines:update", id, patch),
+    setEnabled: (id: string, enabled: boolean): Promise<unknown> =>
+      ipcRenderer.invoke("routines:setEnabled", id, enabled),
+    delete: (id: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("routines:delete", id),
+    runNow: (id: string): Promise<unknown> =>
+      ipcRenderer.invoke("routines:runNow", id),
+    listRuns: (id: string): Promise<unknown[]> =>
+      ipcRenderer.invoke("routines:listRuns", id),
+    cronPreview: (
+      cron: string,
+    ): Promise<
+      { valid: false } | { valid: true; human: string; next: string | null }
+    > => ipcRenderer.invoke("routines:cronPreview", cron),
+    draft: (
+      description: string,
+      space: "home" | "code",
+    ): Promise<{
+      ok: boolean;
+      draft?: { name: string; prompt: string; cron: string; space: "home" | "code" };
+      error?: string;
+    }> => ipcRenderer.invoke("routines:draft", description, space),
+    onRan: (
+      callback: (p: { routineId: string; sessionId?: string; status: string }) => void,
+    ): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        p: { routineId: string; sessionId?: string; status: string },
+      ): void => callback(p);
+      ipcRenderer.on("routines:ran", handler);
+      return () => ipcRenderer.removeListener("routines:ran", handler);
+    },
+  },
+
   transfer: {
     exportChat: (
       sessionId: string,

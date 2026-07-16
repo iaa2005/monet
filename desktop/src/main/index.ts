@@ -120,6 +120,13 @@ app.whenReady().then(() => {
       .catch(() => {});
   }, 2_000);
 
+  // Arm scheduled routines (cron) after the app has settled.
+  setTimeout(() => {
+    void import("./routines/scheduler.js")
+      .then((m) => m.startScheduler())
+      .catch(() => {});
+  }, 3_000);
+
   // Put a bundled/previously-downloaded portable Podman on PATH so the engine
   // finds it; if Podman is the selected sandbox, provision it in the
   // background so the first run doesn't stall on the download.
