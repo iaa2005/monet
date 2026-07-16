@@ -19,6 +19,7 @@ import {
   Play,
   Trash2,
   Loader2,
+  ExternalLink,
   type LucideIcon,
 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
@@ -75,7 +76,11 @@ function emptyDraft(): Draft {
   return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", condition: "", enabled: true };
 }
 
-export function RoutinesSettings(): JSX.Element {
+export function RoutinesSettings({
+  onOpenChat,
+}: {
+  onOpenChat?: (sessionId: string) => void;
+} = {}): JSX.Element {
   const [routines, setRoutines] = useState<RoutineRow[]>([]);
   const [desc, setDesc] = useState("");
   const [drafting, setDrafting] = useState(false);
@@ -112,11 +117,22 @@ export function RoutinesSettings(): JSX.Element {
   const runNow = async (id: string): Promise<void> => {
     setRunningId(id);
     try {
-      await api()?.routines.runNow(id);
+      const run = (await api()?.routines.runNow(id)) as
+        | { sessionId?: string; status?: string }
+        | null;
       load();
+      if (run?.sessionId && onOpenChat) onOpenChat(run.sessionId);
     } finally {
       setRunningId(null);
     }
+  };
+
+  const openLastResult = async (id: string): Promise<void> => {
+    const runs = (await api()?.routines.listRuns(id)) as
+      | { sessionId?: string }[]
+      | undefined;
+    const last = runs?.find((r) => r.sessionId);
+    if (last?.sessionId && onOpenChat) onOpenChat(last.sessionId);
   };
 
   return (
@@ -236,6 +252,16 @@ export function RoutinesSettings(): JSX.Element {
                   )}
                 </div>
               </button>
+              {r.lastStatus === "ok" && onOpenChat && (
+                <button
+                  type="button"
+                  onClick={() => void openLastResult(r.id)}
+                  title="Open last result chat"
+                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+                >
+                  <ExternalLink className="size-4" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => void runNow(r.id)}

@@ -434,6 +434,27 @@ export default function App(): JSX.Element {
     setView("chat");
   }, [handleSelectSession]);
 
+  const openChatById = useCallback(
+    async (id: string) => {
+      try {
+        const s = (await api()?.sessions.getById(id)) as
+          | { id: string; title: string; messages: ChatMessage[]; workspace?: string }
+          | null
+          | undefined;
+        if (s)
+          handleSelectSession({
+            id: s.id,
+            title: s.title,
+            messages: s.messages,
+            workspace: s.workspace,
+          });
+      } catch {
+        /* session may be gone */
+      }
+    },
+    [handleSelectSession],
+  );
+
   const handleImport = useCallback(async () => {
     try {
       const r = await api()?.transfer.importChat();
@@ -1171,7 +1192,7 @@ export default function App(): JSX.Element {
                             {view === "routines" && (
                               <div className="h-full overflow-auto">
                                 <div className="mx-auto max-w-4xl px-6 py-8">
-                                  <RoutinesSettings />
+                                  <RoutinesSettings onOpenChat={openChatById} />
                                 </div>
                               </div>
                             )}
