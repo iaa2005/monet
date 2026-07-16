@@ -795,8 +795,8 @@ export default function App(): JSX.Element {
         )}
 
         <div className="app-no-drag flex items-center gap-0.5 pr-1.5">
-          {/* Files + Artifacts are the sandbox surfaces this chat produces —
-              useful in incognito too (they're purged with the chat on exit). */}
+          {/* Files: both modes (Code = workspace, Home = sandbox tree — this is
+              how you "dig around" the sandbox; no host terminal needed here). */}
           <IconBtn
             title="Files"
             active={rightTab === "files"}
@@ -804,41 +804,43 @@ export default function App(): JSX.Element {
           >
             <Files className="size-4" />
           </IconBtn>
-          <IconBtn
-            title="Artifacts"
-            active={rightTab === "artifacts"}
-            onClick={() => toggleRight("artifacts")}
-          >
-            <Blocks className="size-4" />
-          </IconBtn>
-          {/* Code-only IDE surfaces + background tasks — hidden in incognito. */}
-          {!incognito && (
+          {/* Artifacts: a sandbox surface — Home only. */}
+          {appMode === "home" && (
+            <IconBtn
+              title="Artifacts"
+              active={rightTab === "artifacts"}
+              onClick={() => toggleRight("artifacts")}
+            >
+              <Blocks className="size-4" />
+            </IconBtn>
+          )}
+          {/* Terminal + Changes are Code IDE surfaces — Code only (a host shell
+              and git diffs don't belong in Home's isolated sandbox). */}
+          {appMode === "code" && (
             <>
               <IconBtn
                 title="Terminal"
                 active={terminalOpen}
-                onClick={() => {
-                  setAppMode("code");
-                  setTerminalOpen((o) => !o);
-                }}
+                onClick={() => setTerminalOpen((o) => !o)}
               >
                 <TerminalIcon className="size-4" />
               </IconBtn>
               <IconBtn
                 title="Changes"
                 active={view === "changes"}
-                onClick={() => {
-                  setAppMode("code");
-                  setView((v) => (v === "changes" ? "chat" : "changes"));
-                }}
+                onClick={() =>
+                  setView((v) => (v === "changes" ? "chat" : "changes"))
+                }
               >
                 <FileDiff className="size-4" />
               </IconBtn>
-              <BackgroundTasks
-                onOpen={openBackgroundTask}
-                currentSessionId={currentSessionId}
-              />
             </>
+          )}
+          {!incognito && (
+            <BackgroundTasks
+              onOpen={openBackgroundTask}
+              currentSessionId={currentSessionId}
+            />
           )}
           {appMode === "home" && (
             <IconBtn
