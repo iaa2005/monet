@@ -492,15 +492,11 @@ function RoutineEditor({
         </div>
 
         {d.triggerKind === "schedule" && (
-          <div>
-            <label className="text-xs text-muted-foreground">Schedule (cron)</label>
-            <input
-              value={d.cron}
-              onChange={(e) => set({ cron: e.target.value })}
-              className="mt-1 w-full rounded-md border border-border bg-transparent px-3 py-2 font-mono text-sm outline-none focus:border-foreground/30"
-            />
-            <p className="mt-1 text-[11px] text-muted-foreground">{preview}</p>
-          </div>
+          <SchedulePicker
+            cron={d.cron}
+            human={preview}
+            onChange={(c) => set({ cron: c })}
+          />
         )}
         {d.triggerKind === "webhook" && (
           <div className="rounded-md border border-border bg-muted/40 p-2.5 text-[12px]">
@@ -642,5 +638,145 @@ function RoutineEditor({
         </div>
       </div>
     </Modal>
+  );
+}
+
+// ─── Schedule picker (human-friendly cron) ─────────────────────────────────
+
+type SchedMode = "hourly" | "daily" | "weekdays" | "weekly" | "custom";
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const SCHED_LABEL: Record<SchedMode, string> = {
+  hourly: "Hourly",
+  daily: "Daily",
+  weekdays: "Weekdays",
+  weekly: "Weekly",
+  custom: "Custom",
+};
+const pad = (n: number): string => String(n).padStart(2, "0");
+
+function schedToCron(mode: SchedMode, time: string, weekday: number): string {
+  const [h, m] = time.split(":").map((x) => Number(x) || 0);
+  switch (mode) {
+    case "hourly":
+      return `${m} * * * *`;
+    case "daily":
+      return `${m} ${h} * * *`;
+    case "weekdays":
+      return `${m} ${h} * * 1-5`;
+    case "weekly":
+      return `${m} ${h} * * ${weekday}`;
+    default:
+      return "";
+  }
+}
+
+function cronToSched(cron: string): {
+  mode: SchedMode;
+  time: string;
+  weekday: number;
+} {
+  const p = cron.trim().split(/\s+/);
+  if (p.length !== 5) return { mode: "custom", time: "09:00", weekday: 1 };
+  const [min, hr, dom, mon, dow] = p;
+  const m = Number(min);
+  const h = Number(hr);
+  if (hr === "*" && Number.isFinite(m))
+    return { mode: "hourly", time: `09:${pad(m)}`, weekday: 1 };
+  if (!Number.isFinite(m) || !Number.isFinite(h))
+    return { mode: "custom", time: "09:00", weekday: 1 };
+  const time = `${pad(h)}:${pad(m)}`;
+  if (dom === "*" && mon === "*") {
+    if (dow === "1-5") return { mode: "weekdays", time, weekday: 1 };
+    if (dow === "*") return { mode: "daily", time, weekday: 1 };
+    if (/^[0-6]$/.test(dow)) return { mode: "weekly", time, weekday: Number(dow) };
+  }
+  return { mode: "custom", time, weekday: 1 };
+}
+
+function SchedulePicker({
+  cron,
+  human,
+  onChange,
+}: {
+  cron: string;
+  human: string;
+  onChange: (cron: string) => void;
+}): JSX.Element {
+  const init = cronToSched(cron);
+  const [mode, setMode] = useState<SchedMode>(init.mode);
+  const [time, setTime] = useState(init.time);
+  const [weekday, setWeekday] = useState(init.weekday);
+
+  const apply = (m: SchedMode, t: string, w: number): void => {
+    setMode(m);
+    setTime(t);
+    setWeekday(w);
+    if (m !== "custom") onChange(schedToCron(m, t, w));
+  };
+
+  return (
+    <div>
+      <label className="text-xs text-muted-foreground">Schedule</label>
+      <div className="mt-1 flex flex-wrap gap-1.5">
+        {(["hourly", "daily", "weekdays", "weekly", "custom"] as SchedMode[]).map(
+          (k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => apply(k, time, weekday)}
+              className={cn(
+                "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                mode === k
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border text-muted-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
+              )}
+            >
+              {SCHED_LABEL[k]}
+            </button>
+          ),
+        )}
+      </div>
+
+      {mode !== "hourly" && mode !== "custom" && (
+        <div className="mt-2 flex items-end gap-2">
+          <div>
+            <label className="text-xs text-muted-foreground">Time</label>
+            <input
+              type="time"
+              value={time}
+              onChange={(e) => apply(mode, e.target.value, weekday)}
+              className="mt-1 block rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/30"
+            />
+          </div>
+          {mode === "weekly" && (
+            <div>
+              <label className="text-xs text-muted-foreground">Day</label>
+              <select
+                value={weekday}
+                onChange={(e) => apply(mode, time, Number(e.target.value))}
+                className="mt-1 block rounded-md border border-border bg-transparent px-2 py-2 text-sm outline-none focus:border-foreground/30"
+              >
+                {DOW.map((d, i) => (
+                  <option key={d} value={i}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+
+      {mode === "custom" && (
+        <input
+          value={cron}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="minute hour day month weekday"
+          className="mt-2 w-full rounded-md border border-border bg-transparent px-3 py-2 font-mono text-sm outline-none focus:border-foreground/30"
+        />
+      )}
+
+      <p className="mt-1.5 text-[11px] text-muted-foreground">{human}</p>
+    </div>
   );
 }
