@@ -46,10 +46,13 @@ export interface ConnectorPreset {
   usernameLabel?: string;
   /**
    * Set when the service CANNOT be connected with an app password, explaining
-   * why. The card still shows (the service is real and people look for it), but
-   * offers this instead of a form that would only ever return 401/403.
+   * what to do instead. The card still shows (the service is real and people
+   * look for it), but offers this instead of a form that would only ever
+   * return 401/403.
    */
   unavailable?: string;
+  /** Card subtitle for an `unavailable` preset (keep it short and actionable). */
+  unavailableLabel?: string;
   imap?: HostPort;
   smtp?: HostPort;
   webdav?: { url: string };

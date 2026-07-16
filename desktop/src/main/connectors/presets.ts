@@ -54,15 +54,20 @@ export const PRESETS: ConnectorPreset[] = [
   // all, only an API behind OAuth. Probed: a Basic-auth call to
   // googleapis.com/drive/v3/files returns 403 "Method doesn't allow
   // unregistered callers … use API Key or other form of API consumer identity",
-  // PROPFIND on drive.google.com is 405, and there is no DAV endpoint. So it
-  // gets an honest card rather than a form that cannot work.
+  // PROPFIND on drive.google.com is 405, and there is no DAV endpoint.
+  //
+  // Rather than an OAuth client, we point at Drive for Desktop: it mounts Drive
+  // as a real drive letter, which the file tools already handle — the best
+  // connector here is no connector.
   {
     id: "google-drive",
     name: "Google Drive",
     group: "Google",
     protocols: [],
     unavailable:
-      "Drive has no app-password path — unlike Gmail (IMAP) or Calendar (CalDAV) it has no standard protocol, only an API behind OAuth, and it rejects a password outright. Two ways in: install Google Drive for Desktop and it becomes an ordinary folder the agent can already read and write; or wire OAuth with a one-time Google Cloud client.",
+      "Drive needs no connector — install Google Drive for Desktop and it mounts as an ordinary drive (usually G:). Open that folder as a workspace in Code and the agent reads and writes it with the normal file tools, with no password to paste and nothing to keep in sync. (Drive is the one Google service with no app-password path: it has no IMAP/CalDAV-style protocol, only an API behind OAuth, and it refuses a password outright.)",
+    unavailableLabel: "Use Drive for Desktop — read how",
+    credLabel: "Download Drive for Desktop",
     credUrl: "https://www.google.com/drive/download/",
   },
 

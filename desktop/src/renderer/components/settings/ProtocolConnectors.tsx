@@ -167,7 +167,9 @@ export function ProtocolConnectors(): JSX.Element {
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium">{p.name}</div>
                     <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {p.unavailable ? "Needs OAuth — read why" : p.protocols.join(", ")}
+                      {p.unavailable
+                        ? (p.unavailableLabel ?? "Read how to connect this")
+                        : p.protocols.join(", ")}
                     </div>
                   </div>
                 </button>
@@ -224,7 +226,7 @@ function ConnectForm({
           <p className="text-[13px] text-muted-foreground">{preset.unavailable}</p>
           <div className="flex justify-end gap-2 border-t border-border pt-3">
             {preset.credUrl && (
-              <OpenLink url={preset.credUrl} label="Google Drive for Desktop" />
+              <OpenLink url={preset.credUrl} label={preset.credLabel ?? "Learn more"} />
             )}
             <button
               type="button"
