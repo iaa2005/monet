@@ -307,6 +307,55 @@ export async function compactSessionNow(
  * `before` snapshot, and drop that event (and any later ones — they no longer
  * describe the live history). Returns the restored/current token counts.
  */
+/** Whether a transcript message begins a real USER turn (a prompt), as opposed
+ * to a tool_result message that continues the preceding assistant turn. */
+function isUserTurnBoundary(m: LLMMessage): boolean {
+  if (m.role !== "user") return false;
+  if (typeof m.content === "string") return true;
+  return m.content.some((b) => b.type !== "tool_result");
+}
+
+/**
+ * Full-fidelity rewind: truncate the durable transcript to the first
+ * `keepUserTurns` user turns — keeping their assistant/tool continuations
+ * (tool_use/tool_result blocks intact), instead of the old reset + reseed-as-
+ * text. A chat with no durable transcript (old, un-migrated) falls back to a
+ * clear so the renderer's already-truncated text `seed` applies on the next
+ * send. Returns which fidelity was used.
+ */
+export async function rewindTranscriptToUserTurn(
+  sessionId: string,
+  keepUserTurns: number,
+): Promise<{ fidelity: "full" | "text"; removed: number }> {
+  await ensureTranscriptLoaded(sessionId);
+  const msgs = conversations.get(sessionId);
+  if (!msgs || msgs.length === 0) {
+    resetConversation(sessionId);
+    return { fidelity: "text", removed: 0 };
+  }
+  let seen = 0;
+  let cut = msgs.length;
+  for (let i = 0; i < msgs.length; i++) {
+    if (isUserTurnBoundary(msgs[i])) {
+      if (seen === keepUserTurns) {
+        cut = i;
+        break;
+      }
+      seen++;
+    }
+  }
+  const removed = msgs.length - cut;
+  msgs.length = cut; // truncate in place — keeps the conversations Map ref
+  persistTranscript(sessionId);
+  if (removed > 0)
+    recordContextEvent(sessionId, "rewind", { keepUserTurns, removed });
+  // Discarded turns leave stale derived state.
+  lastUsageBySession.delete(sessionId);
+  dropSessionContext(sessionId);
+  clearRevealedTools(sessionId);
+  return { fidelity: "full", removed };
+}
+
 export async function undoCompaction(
   sessionId: string,
   eventId: string,

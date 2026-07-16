@@ -597,13 +597,15 @@ export const useChatStore = create<ChatStore>((set, get) => {
       const text = (newText ?? msgs[idx].content).trim();
       if (!text) return;
 
-      // History strictly BEFORE the target user message becomes the seed; the
-      // renderer is truncated to it and the main-process history is reset so the
-      // seed re-applies (seedConversation only seeds an empty session).
+      // Truncate the renderer to the history strictly BEFORE the target user
+      // message; the main-process durable transcript is truncated to the same
+      // point (keeping tool blocks) so the resend continues with full fidelity.
+      // `seed` is the text fallback for chats with no durable transcript.
       const prior = msgs.slice(0, idx);
       const seed = prior
         .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
         .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+      const keepUserTurns = prior.filter((m) => m.role === "user").length;
 
       mutate(sessionId, (p) => ({
         ...p,
@@ -612,7 +614,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         error: null,
       }));
       const bridge = electron();
-      await bridge?.chat.reset(sessionId);
+      await bridge?.chat.rewindTranscript(sessionId, keepUserTurns);
       get().addUserMessage(text);
       get().startStreaming();
       const eff = localStorage.getItem("monet.effort");
@@ -647,16 +649,17 @@ export const useChatStore = create<ChatStore>((set, get) => {
           return;
         }
       }
-      // Truncate to and including this message; reset the main-process history
-      // so the next send continues from here (it re-seeds from the renderer).
+      // Truncate to and including this message; truncate the durable transcript
+      // to the same user-turn count so the next send continues from here.
       const kept = msgs.slice(0, idx + 1);
+      const keepUserTurns = kept.filter((m) => m.role === "user").length;
       mutate(sessionId, (p) => ({
         ...p,
         messages: kept,
         isStreaming: false,
         error: null,
       }));
-      await bridge?.chat.reset(sessionId);
+      await bridge?.chat.rewindTranscript(sessionId, keepUserTurns);
     },
 
     rewindAndEdit: async (messageId) => {
@@ -690,16 +693,18 @@ export const useChatStore = create<ChatStore>((set, get) => {
         }
       }
 
-      // Truncate to BEFORE this user message, reset the main-process history so
-      // the next send re-seeds from here, and drop the prompt into the composer.
+      // Truncate to BEFORE this user message, truncate the durable transcript
+      // to the same user-turn count (tool blocks kept) so the next send
+      // continues with full fidelity, and drop the prompt into the composer.
       const prior = msgs.slice(0, idx);
+      const keepUserTurns = prior.filter((m) => m.role === "user").length;
       mutate(sessionId, (p) => ({
         ...p,
         messages: prior,
         isStreaming: false,
         error: null,
       }));
-      await bridge?.chat.reset(sessionId);
+      await bridge?.chat.rewindTranscript(sessionId, keepUserTurns);
       get().setComposerDraft(text);
     },
 

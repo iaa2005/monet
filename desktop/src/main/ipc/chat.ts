@@ -13,6 +13,7 @@ import {
   ensureTranscriptLoaded,
   compactSessionNow,
   undoCompaction,
+  rewindTranscriptToUserTurn,
   estimateSessionTokens,
   computeContextBreakdown,
 } from "../agent/index.js";
@@ -310,6 +311,16 @@ export function registerChatIPC(): void {
     resetConversation(sessionId || "default");
     return { ok: true };
   });
+
+  // Full-fidelity rewind: truncate the durable transcript to keep the first N
+  // user turns (tool blocks intact), instead of clearing + reseeding as text.
+  ipcMain.handle(
+    "chat:rewindTranscript",
+    async (_e, sessionId: string, keepUserTurns: number) => {
+      abortBgAgents(sessionId || "default");
+      return rewindTranscriptToUserTurn(sessionId || "default", keepUserTurns);
+    },
+  );
 
   // Manual compaction — used when switching to a model with a smaller
   // context window than the current conversation.

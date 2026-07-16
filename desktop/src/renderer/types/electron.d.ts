@@ -155,6 +155,10 @@ export interface ElectronAPI {
     }) => Promise<{ ok: boolean }>;
     abort: (sessionId?: string) => Promise<{ ok: boolean }>;
     reset: (sessionId?: string) => Promise<{ ok: boolean }>;
+    rewindTranscript: (
+      sessionId: string,
+      keepUserTurns: number,
+    ) => Promise<{ fidelity: "full" | "text"; removed: number }>;
     compact: (sessionId?: string) => Promise<{
       ok: boolean;
       before?: number;

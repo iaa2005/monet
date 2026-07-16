@@ -35,6 +35,11 @@ const electronAPI = {
       ipcRenderer.invoke("chat:abort", sessionId),
     reset: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:reset", sessionId),
+    rewindTranscript: (
+      sessionId: string,
+      keepUserTurns: number,
+    ): Promise<{ fidelity: "full" | "text"; removed: number }> =>
+      ipcRenderer.invoke("chat:rewindTranscript", sessionId, keepUserTurns),
     compact: (
       sessionId?: string,
     ): Promise<{ ok: boolean; before?: number; after?: number; error?: string }> =>
