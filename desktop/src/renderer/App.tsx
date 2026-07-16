@@ -17,11 +17,10 @@ import {
   Code,
   Plus,
   Sparkles,
-  Settings,
+  Files,
   Blocks,
   Terminal as TerminalIcon,
   FileDiff,
-  PanelRight,
   PanelLeft,
   MoreVertical,
   Ghost,
@@ -803,7 +802,7 @@ export default function App(): JSX.Element {
                 active={rightTab === "files"}
                 onClick={() => toggleRight("files")}
               >
-                <PanelRight className="size-4" />
+                <Files className="size-4" />
               </IconBtn>
               <IconBtn
                 title="Artifacts"
@@ -836,9 +835,6 @@ export default function App(): JSX.Element {
                 onOpen={openBackgroundTask}
                 currentSessionId={currentSessionId}
               />
-              <IconBtn title="Settings" onClick={() => setSettingsOpen(true)}>
-                <Settings className="size-4" />
-              </IconBtn>
             </>
           )}
           {appMode === "home" && (
