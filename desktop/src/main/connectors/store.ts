@@ -107,6 +107,19 @@ export function patchSecret(
 
 // ─── CRUD ───────────────────────────────────────────────────────────────────
 
+/**
+ * Add a connector, or re-connect one.
+ *
+ * Two mailboxes are a real thing — work and personal Gmail — so a second
+ * account under the same preset is allowed when the login differs. What is NOT
+ * allowed is a silent twin: an MCP connector is keyed by its preset (one Notion
+ * server, one token), so a duplicate would quietly shadow the first, leaving two
+ * rows in the UI where only one is live and Test checking the wrong token.
+ *
+ * So the same preset with the same login — or any second MCP account — REPLACES
+ * the existing one. That's also the common case: re-pasting a password that
+ * expired.
+ */
 export function addAccount(input: {
   presetId: string;
   label?: string;
@@ -115,11 +128,28 @@ export function addAccount(input: {
 }): ConnectorAccount {
   const preset = getPreset(input.presetId);
   if (!preset) throw new Error(`Unknown connector: ${input.presetId}`);
+
+  const username = input.username.trim();
+  const existing = listAccounts().find(
+    (a) =>
+      a.presetId === input.presetId &&
+      (!!preset.mcp || a.username.toLowerCase() === username.toLowerCase()),
+  );
+  if (existing) {
+    setSecret(existing.id, input.secret);
+    const updated = updateAccount(existing.id, {
+      username,
+      label: input.label?.trim() || existing.label,
+      enabled: true,
+    });
+    return updated ?? existing;
+  }
+
   const account: ConnectorAccount = {
     id: randomUUID(),
     presetId: input.presetId,
     label: input.label?.trim() || preset.name,
-    username: input.username.trim(),
+    username,
     enabled: true,
     createdAt: new Date().toISOString(),
   };

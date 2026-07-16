@@ -155,6 +155,11 @@ function getDb(): ReturnType<typeof Database> {
     // Per-chat working directory: each session remembers its own folder.
     if (!has("workspace"))
       db.exec("ALTER TABLE sessions ADD COLUMN workspace TEXT");
+    // Which routine produced this chat. Provenance belongs on the chat: it used
+    // to be derived from the run history, so deleting a routine dropped its
+    // chats into Recents as if they'd been typed by hand.
+    if (!has("routine_id"))
+      db.exec("ALTER TABLE sessions ADD COLUMN routine_id TEXT");
     // Attachment metadata on messages (JSON array of {name,mediaType,kind}).
     const msgCols = db.prepare("PRAGMA table_info(messages)").all() as {
       name: string;
@@ -179,6 +184,18 @@ function attachmentsJson(m: ChatMessage): string | null {
 }
 
 export class SessionStore {
+  /** Tag a chat as produced by a routine. Survives the routine's deletion —
+   * that's the point: the chat is still a routine's output either way. */
+  markRoutineChat(sessionId: string, routineId: string): void {
+    try {
+      getDb()
+        .prepare("UPDATE sessions SET routine_id = ? WHERE id = ?")
+        .run(routineId, sessionId);
+    } catch {
+      /* best-effort */
+    }
+  }
+
   create(title?: string, space: string = "code"): SessionWithMessages {
     const d = getDb();
     const id = randomUUID();
@@ -339,7 +356,10 @@ export class SessionStore {
     sortDir = "desc",
   ): Session[] {
     const d = getDb();
-    let query = "SELECT * FROM sessions WHERE 1=1";
+    // Routine output has its own collapsible section above Recents — listing it
+    // here too would double it up, and bury hand-written chats under a daily
+    // routine's history.
+    let query = "SELECT * FROM sessions WHERE routine_id IS NULL";
     const params: (string | number)[] = [];
 
     if (space) {

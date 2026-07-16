@@ -99,6 +99,22 @@ function db(): ReturnType<typeof getSessionDb> {
       );
       CREATE INDEX IF NOT EXISTS idx_runs_routine ON routine_runs(routine_id);
     `);
+    // Backfill chats that predate sessions.routine_id, from the run history —
+    // done here because routine_runs is guaranteed to exist by this point.
+    // Chats whose routine was already deleted are unrecoverable: their runs went
+    // with it. That's the bug this column exists to stop repeating.
+    try {
+      d.exec(`
+        UPDATE sessions SET routine_id = (
+          SELECT rr.routine_id FROM routine_runs rr
+          WHERE rr.session_id = sessions.id LIMIT 1
+        )
+        WHERE routine_id IS NULL
+          AND id IN (SELECT session_id FROM routine_runs WHERE session_id IS NOT NULL)
+      `);
+    } catch {
+      /* best-effort: a failed backfill must not break routines */
+    }
     ready = true;
   }
   return d;
@@ -236,17 +252,24 @@ export function recordRun(run: RoutineRun): void {
 
 /** Chats produced by routine runs (newest run per chat), for the sidebar's
  * "Routines" section — joined to the sessions table (same DB). */
+/**
+ * Chats produced by routines.
+ *
+ * Reads the chat's own routine_id, NOT the run history: runs are deleted with
+ * their routine, so deriving it from them meant deleting a routine silently
+ * reclassified its past chats as ordinary Recents. A chat a routine wrote stays
+ * a chat a routine wrote.
+ */
 export function listRoutineChats(
   limit = 50,
 ): { id: string; title: string; at: string }[] {
   try {
     return db()
       .prepare(
-        `SELECT rr.session_id AS id, MAX(rr.at) AS at, s.title AS title
-         FROM routine_runs rr JOIN sessions s ON s.id = rr.session_id
-         WHERE rr.session_id IS NOT NULL AND rr.status = 'ok'
-         GROUP BY rr.session_id
-         ORDER BY at DESC LIMIT ?`,
+        `SELECT s.id AS id, s.title AS title, s.updated_at AS at
+         FROM sessions s
+         WHERE s.routine_id IS NOT NULL AND s.archived = 0
+         ORDER BY s.updated_at DESC LIMIT ?`,
       )
       .all(limit) as { id: string; title: string; at: string }[];
   } catch {

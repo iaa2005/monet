@@ -105,6 +105,9 @@ export async function executeRoutine(
   const prompt = effective;
 
   const session = store.create(routine.name || "Routine", routine.space);
+  // Tag it now, not on success: a run that errors still produced this chat, and
+  // the tag is what keeps it out of Recents.
+  store.markRoutineChat(session.id, routine.id);
   let assistantText = "";
   try {
     await runAgent(
