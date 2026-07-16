@@ -1059,6 +1059,12 @@ export default function App(): JSX.Element {
                       <FileViewer item={viewerArtifact} onClose={closeArtifactViewer} />
                     ) : openFilePath ? (
                       <FileViewer path={openFilePath} onClose={closeFileViewer} />
+                    ) : view === "routines" ? (
+                      <div className="h-full overflow-auto">
+                        <div className="mx-auto max-w-4xl px-6 py-8">
+                          <RoutinesSettings />
+                        </div>
+                      </div>
                     ) : (
                       <ChatView
                         transcriptMode={transcriptMode}
