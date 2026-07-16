@@ -2,7 +2,7 @@ import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
-import { getSandboxConfig } from "../sandbox/config.js";
+import { getSessionEngine } from "../sandbox/config.js";
 import { runCommandInSandbox } from "../sandbox/index.js";
 import { artifactReference } from "../ipc/artifacts.js";
 import { tunablePrompt } from "../prompts/index.js";
@@ -48,10 +48,10 @@ export const RunCommandTool = buildTool({
     return "Run a command inside the isolated Podman sandbox.";
   },
   async call({ command }: z.infer<InputSchema>, context: ToolUseContext) {
-    if (getSandboxConfig().engine !== "docker") {
+    const sessionId = (context as { sessionId?: string }).sessionId || "default";
+    if (getSessionEngine(sessionId) !== "docker") {
       return { data: { text: "RunCommand is available only with the Podman sandbox.", isError: true } };
     }
-    const sessionId = (context as { sessionId?: string }).sessionId || "default";
     const r = await runCommandInSandbox(sessionId, command);
     const parts: string[] = [];
     if (r.stdout.trim()) parts.push(r.stdout.trimEnd());

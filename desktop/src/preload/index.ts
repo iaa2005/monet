@@ -484,8 +484,17 @@ const electronAPI = {
       ipcRenderer.invoke("sandbox:checkPodman"),
     isPodmanReady: (): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("sandbox:isPodmanReady"),
-    warmPodman: (): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke("sandbox:warmPodman"),
+    warmPodman: (sessionId?: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("sandbox:warmPodman", sessionId),
+    getSessionConfig: (
+      sessionId: string,
+    ): Promise<{ engine: string; override: string | null }> =>
+      ipcRenderer.invoke("sandbox:getSessionConfig", sessionId),
+    setSessionConfig: (
+      sessionId: string,
+      engine: string | null,
+    ): Promise<{ engine: string }> =>
+      ipcRenderer.invoke("sandbox:setSessionConfig", sessionId, engine),
     listFiles: (
       sessionId?: string,
     ): Promise<
@@ -499,8 +508,8 @@ const electronAPI = {
     > => ipcRenderer.invoke("sandbox:listFiles", sessionId),
     workDir: (sessionId?: string): Promise<string> =>
       ipcRenderer.invoke("sandbox:workDir", sessionId),
-    supportsShell: (): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke("sandbox:supportsShell"),
+    supportsShell: (sessionId?: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("sandbox:supportsShell", sessionId),
     shellRun: (
       sessionId: string,
       command: string,

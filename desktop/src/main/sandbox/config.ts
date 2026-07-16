@@ -53,3 +53,70 @@ export function setSandboxConfig(patch: Partial<SandboxConfig>): SandboxConfig {
   }
   return next;
 }
+
+// ─── Per-chat engine override ────────────────────────────────────────────────
+//
+// The engine above is the GLOBAL default. A chat may pin its own engine — its
+// /work folder is engine-agnostic (a real host dir), so switching a chat's
+// engine keeps its files; only the runtime changes. Stored as a flat
+// sessionId → engine map, separate from the global default so clearing an
+// override falls back to it.
+
+function overridesPath(): string {
+  return join(getDataDir(), "sandbox-sessions.json");
+}
+
+function readOverrides(): Record<string, SandboxEngine> {
+  try {
+    const p = overridesPath();
+    if (!existsSync(p)) return {};
+    const raw = JSON.parse(readFileSync(p, "utf-8")) as Record<string, unknown>;
+    const out: Record<string, SandboxEngine> = {};
+    for (const [id, v] of Object.entries(raw))
+      if (v === "pyodide" || v === "subprocess" || v === "docker")
+        out[id] = v;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function writeOverrides(map: Record<string, SandboxEngine>): void {
+  try {
+    writeFileSync(overridesPath(), JSON.stringify(map, null, 2), "utf-8");
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** The engine a specific chat runs on: its override, else the global default. */
+export function getSessionEngine(sessionId: string): SandboxEngine {
+  const ov = readOverrides()[sessionId];
+  return ov ?? getSandboxConfig().engine;
+}
+
+/** Does the chat have an explicit override (vs. inheriting the global default)? */
+export function getSessionEngineOverride(sessionId: string): SandboxEngine | null {
+  return readOverrides()[sessionId] ?? null;
+}
+
+/** Pin a chat to an engine, or pass null to clear the override (inherit global). */
+export function setSessionEngine(
+  sessionId: string,
+  engine: SandboxEngine | null,
+): SandboxEngine {
+  const map = readOverrides();
+  if (engine === null) delete map[sessionId];
+  else map[sessionId] = engine;
+  writeOverrides(map);
+  return getSessionEngine(sessionId);
+}
+
+/** Drop a chat's override — called when the chat is deleted. */
+export function clearSessionEngine(sessionId: string): void {
+  const map = readOverrides();
+  if (sessionId in map) {
+    delete map[sessionId];
+    writeOverrides(map);
+  }
+}

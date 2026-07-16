@@ -475,10 +475,17 @@ export interface ElectronAPI {
     preparePodman: () => Promise<{ ok: boolean; error?: string; needsWsl?: boolean }>;
     checkPodman: () => Promise<{ ok: boolean; error?: string; needsWsl?: boolean }>;
     isPodmanReady: () => Promise<{ ok: boolean }>;
-    warmPodman: () => Promise<{ ok: boolean }>;
+    warmPodman: (sessionId?: string) => Promise<{ ok: boolean }>;
+    getSessionConfig: (
+      sessionId: string,
+    ) => Promise<{ engine: string; override: string | null }>;
+    setSessionConfig: (
+      sessionId: string,
+      engine: string | null,
+    ) => Promise<{ engine: string }>;
     listFiles: (sessionId?: string) => Promise<SandboxFileEntry[]>;
     workDir: (sessionId?: string) => Promise<string>;
-    supportsShell: () => Promise<{ ok: boolean }>;
+    supportsShell: (sessionId?: string) => Promise<{ ok: boolean }>;
     shellRun: (
       sessionId: string,
       command: string,

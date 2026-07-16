@@ -14,7 +14,7 @@ import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import { runInSandbox } from "../sandbox/index.js";
 import { artifactReference } from "../ipc/artifacts.js";
-import { getSandboxConfig } from "../sandbox/config.js";
+import { getSandboxConfig, type SandboxEngine } from "../sandbox/config.js";
 import { tunablePrompt } from "../prompts/index.js";
 
 // ── Per-engine prompt sections ────────────────────────────────────────────
@@ -129,8 +129,12 @@ export const RunPythonTool = buildTool({
   isConcurrencySafe() {
     return false;
   },
-  async prompt() {
-    const engine = getSandboxConfig().engine;
+  async prompt(opts?: { sandboxEngine?: SandboxEngine; [key: string]: unknown }) {
+    // Per-chat engine (threaded from getVendorApiTools); global default otherwise
+    // — the description must match the engine THIS chat actually runs on.
+    const engine =
+      (opts?.sandboxEngine as SandboxEngine | undefined) ??
+      getSandboxConfig().engine;
     const [key, specific] =
       engine === "subprocess"
         ? (["tool-run-python-subprocess", PROMPT_SUBPROCESS] as const)

@@ -622,6 +622,8 @@ export function ChatView({
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [profileName, setProfileName] = useState("friend");
+  // This chat's id — the Podman banner resolves its per-chat engine below.
+  const sessionId = useChatStore((s) => s.currentSessionId);
 
   // Start the Podman VM straight from the banner — preparePodman() provisions
   // (if needed) and starts the Linux backend, which is all a wedged/idle
@@ -660,8 +662,10 @@ export function ChatView({
     if (!home) return;
     let cancelled = false;
     let timer: number | undefined;
+    // Resolve THIS chat's engine (per-chat override, else global) — a chat pinned
+    // to Podman warms even when the default is Pyodide, and vice versa.
     void api()
-      ?.sandbox.getConfig()
+      ?.sandbox.getSessionConfig(sessionId ?? "default")
       .then(async (config) => {
         if (config.engine !== "docker" || cancelled) return;
         const result = await api()?.sandbox.isPodmanReady();
@@ -674,7 +678,7 @@ export function ChatView({
         // hidden behind reading/typing) and poll until it comes up, clearing
         // the banner without any user action.
         setPodmanWarning(true);
-        void api()?.sandbox.warmPodman();
+        void api()?.sandbox.warmPodman(sessionId ?? "default");
         const started = Date.now();
         const poll = async (): Promise<void> => {
           if (cancelled) return;
@@ -696,7 +700,7 @@ export function ChatView({
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [home]);
+  }, [home, sessionId]);
   const messages = useChatStore((s) => s.messages);
   const error = useChatStore((s) => s.error);
   const isStreaming = useChatStore((s) => s.isStreaming);

@@ -38,7 +38,7 @@ import { getRevealedTools } from "./revealed-tools.js";
 import { LSPTool } from "./lsp-tool.js";
 import { getLspConfig } from "./lsp/config.js";
 import type { AskUserFn } from "../ipc/ask-user.js";
-import { getSandboxConfig } from "../sandbox/config.js";
+import { getSandboxConfig, getSessionEngine } from "../sandbox/config.js";
 import {
   SandboxListTool,
   SandboxReadTool,
@@ -345,14 +345,21 @@ function activeModelSeesImages(): boolean {
  * follows the space: Home = the sandbox subset only (no MCP, no shell/fs);
  * Code = everything except the sandbox-scoped tools.
  */
-export function isSpaceToolAllowed(name: string, space?: string): boolean {
+export function isSpaceToolAllowed(
+  name: string,
+  space?: string,
+  sessionId?: string,
+): boolean {
   if (name === "RunPython" || name === "RunCommand") {
     if (space !== "home") return false;
     // Don't gate on live Podman readiness — the tools provision/repair Podman
     // lazily and report errors, so hiding them on a transient wedge (which is
     // common: the WSL2 machine idles) would silently strip Home's ability to
     // run code. RunCommand needs the Podman engine; RunPython works on any.
-    return getSandboxConfig().engine === "docker" || name === "RunPython";
+    // Engine is per-chat (override) when a sessionId is known, else the global
+    // default (system-prompt build path has no session).
+    const engine = sessionId ? getSessionEngine(sessionId) : getSandboxConfig().engine;
+    return engine === "docker" || name === "RunPython";
   }
   if (name === "SearchPastChats") return getMemoryConfig().searchChats;
   // MCP resources are Code-only (Home has no MCP) and only worth advertising
@@ -372,8 +379,8 @@ export function isSpaceToolAllowed(name: string, space?: string): boolean {
   return !SANDBOX_ONLY_NAMES.has(name);
 }
 
-export function getVendorToolsForSpace(space?: string): Tools {
-  return getVendorTools().filter((t) => isSpaceToolAllowed(t.name, space));
+export function getVendorToolsForSpace(space?: string, sessionId?: string): Tools {
+  return getVendorTools().filter((t) => isSpaceToolAllowed(t.name, space, sessionId));
 }
 
 // ─── API schema conversion (adapter-facing) ─────────────────────────────
@@ -390,14 +397,21 @@ export async function getVendorApiTools(
    * routine to scope its toolset to its declared connectors. */
   allowedMcpServers?: string[],
 ): Promise<LLMTool[]> {
-  const tools = getVendorToolsForSpace(space);
-  const cacheKey = tools.map((t) => t.name).join(",");
+  const tools = getVendorToolsForSpace(space, sessionId);
+  // The RunPython description is engine-specific, so the same tool-name set can
+  // yield different text per chat — key the cache by the resolved engine too.
+  const sandboxEngine = sessionId
+    ? getSessionEngine(sessionId)
+    : getSandboxConfig().engine;
+  const cacheKey = `${sandboxEngine}::${tools.map((t) => t.name).join(",")}`;
   let base = apiToolsCache.get(cacheKey);
   if (!base) {
     const promptOptions = {
       getToolPermissionContext: async () => getAppState().toolPermissionContext,
       tools,
       agents: [],
+      // Threaded into RunPython.prompt() so its guidance matches this chat.
+      sandboxEngine,
     };
     base = await Promise.all(
       tools.map(async (tool) => {
@@ -523,7 +537,7 @@ export async function executeVendorTool(opts: {
   // disabled Browser/Computer tool) is refused even if the model names it from
   // memory. Browser/Computer Use, when enabled, ARE allowed in both spaces.
   const mcp = isMcpToolName(name);
-  if (!mcp && !isSpaceToolAllowed(name, space)) {
+  if (!mcp && !isSpaceToolAllowed(name, space, sessionId)) {
     return {
       content:
         `Tool "${name}" is not available here. In Home, use RunPython / the ` +

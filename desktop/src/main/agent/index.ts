@@ -71,13 +71,18 @@ import {
 async function buildSystemPrompt(
   model: string,
   space?: string,
+  sessionId?: string,
 ): Promise<string> {
   initVendorRuntime();
   try {
     const { getSystemPrompt } = await import("@vendor/constants/prompts.js");
     // Space-filtered: in Home the prompt must not even MENTION Bash/FileEdit —
-    // a model that reads about a tool will try to call it.
-    const sections = await getSystemPrompt(getVendorToolsForSpace(space), model);
+    // a model that reads about a tool will try to call it. sessionId resolves the
+    // chat's engine so RunCommand is listed only when this chat runs on Podman.
+    const sections = await getSystemPrompt(
+      getVendorToolsForSpace(space, sessionId),
+      model,
+    );
     const prompt = sections.filter(Boolean).join("\n\n");
     if (prompt.trim().length > 0) return withUserMemory(prompt);
     throw new Error("vendor system prompt came back empty");
@@ -487,7 +492,9 @@ export async function computeContextBreakdown(
   try {
     const [apiTools, basePrompt] = await Promise.all([
       getVendorApiTools(space, sessionId),
-      provider ? buildSystemPrompt(provider.model, space) : Promise.resolve(""),
+      provider
+        ? buildSystemPrompt(provider.model, space, sessionId)
+        : Promise.resolve(""),
     ]);
     const directives = space === "home" ? [homeDirective()] : [];
     const systemPrompt = [...directives, basePrompt]
@@ -659,7 +666,7 @@ export async function runAgent(
   try {
     [tools, basePrompt] = await Promise.all([
       getVendorApiTools(space, sessionId, connectors),
-      buildSystemPrompt(provider.model, space),
+      buildSystemPrompt(provider.model, space, sessionId),
     ]);
   } catch (err) {
     onEvent({

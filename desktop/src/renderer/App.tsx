@@ -37,6 +37,8 @@ import {
   ExternalLink,
   Monitor,
   ChevronRight,
+  Cpu,
+  Check,
   type LucideIcon,
 } from "lucide-react";
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
@@ -138,6 +140,18 @@ function IconBtn({
     </button>
   );
 }
+
+/** Per-chat sandbox-engine picker labels (Home header). */
+const ENGINE_LABEL: Record<"pyodide" | "subprocess" | "docker", string> = {
+  pyodide: "Pyodide",
+  subprocess: "Subprocess",
+  docker: "Podman",
+};
+const ENGINE_DESC: Record<"pyodide" | "subprocess" | "docker", string> = {
+  pyodide: "WebAssembly · isolated · no shell",
+  subprocess: "Host Python/Node · weak isolation",
+  docker: "Container · full shell, pip, LaTeX",
+};
 
 /** Sidebar navigation row. */
 function NavRow({
@@ -271,8 +285,11 @@ export default function App(): JSX.Element {
   const [transcriptMode, setTranscriptMode] =
     useState<TranscriptMode>("normal");
   const [terminalOpen, setTerminalOpen] = useState(false);
-  // Home terminal is only available when the sandbox engine has a real shell
-  // (Podman / subprocess). Pyodide is WebAssembly — no shell.
+  // The engine THIS chat runs on (per-chat override, else the global default).
+  // Home terminal is available only when it has a real shell (Podman /
+  // subprocess); Pyodide is WebAssembly — no shell.
+  const [sessionEngine, setSessionEngine] =
+    useState<"pyodide" | "subprocess" | "docker">("pyodide");
   const [homeShellSupported, setHomeShellSupported] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>(null);
   const [openFilePath, setOpenFilePath] = useState<string | null>(null);
@@ -400,23 +417,40 @@ export default function App(): JSX.Element {
     useChatStore.getState().setSpace(appMode);
   }, [appMode]);
 
-  // Does the active sandbox engine expose a shell? Re-read when entering Home
-  // and whenever Settings closes (the engine may have been switched there).
+  // Resolve THIS chat's engine + whether it has a shell. Re-read when the chat
+  // changes and when Settings closes (the global default may have changed).
   useEffect(() => {
-    if (appMode !== "home") {
+    if (appMode !== "home" || !currentSessionId) {
       setHomeShellSupported(false);
       return;
     }
     let alive = true;
     void api()
-      ?.sandbox.supportsShell()
-      .then((r) => {
-        if (alive) setHomeShellSupported(r.ok);
+      ?.sandbox.getSessionConfig(currentSessionId)
+      .then((c) => {
+        if (!alive) return;
+        setSessionEngine(c.engine as "pyodide" | "subprocess" | "docker");
+        setHomeShellSupported(c.engine !== "pyodide");
       });
     return () => {
       alive = false;
     };
-  }, [appMode, settingsOpen]);
+  }, [appMode, currentSessionId, settingsOpen]);
+
+  // Pin the current chat to an engine (per-chat override). Files in /work carry
+  // over — only the runtime changes — so switching mid-chat is safe.
+  const changeSessionEngine = useCallback(
+    (engine: "pyodide" | "subprocess" | "docker") => {
+      const sid = currentSessionId;
+      if (!sid) return;
+      setSessionEngine(engine);
+      const hasShell = engine !== "pyodide";
+      setHomeShellSupported(hasShell);
+      if (!hasShell) setTerminalOpen(false); // Pyodide has no terminal
+      void api()?.sandbox.setSessionConfig(sid, engine);
+    },
+    [currentSessionId],
+  );
 
   // Runner for the Home terminal: execute inside the current chat's sandbox.
   const sandboxRunner = useCallback(
@@ -836,6 +870,45 @@ export default function App(): JSX.Element {
           >
             <Files className="size-4" />
           </IconBtn>
+          {/* Per-chat sandbox engine (VM). Global default unless pinned here —
+              files carry over on switch, only the runtime changes. */}
+          {appMode === "home" && currentSessionId && !incognito && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  title="Sandbox engine for this chat"
+                  aria-label="Sandbox engine for this chat"
+                  className="app-no-drag flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+                >
+                  <Cpu className="size-3.5" />
+                  {ENGINE_LABEL[sessionEngine]}
+                  <ChevronDown className="size-3" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                {(["pyodide", "subprocess", "docker"] as const).map((e) => (
+                  <DropdownMenuItem
+                    key={e}
+                    onClick={() => changeSessionEngine(e)}
+                  >
+                    <Check
+                      className={cn(
+                        "size-4 shrink-0",
+                        sessionEngine === e ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    <div className="flex flex-col">
+                      <span>{ENGINE_LABEL[e]}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {ENGINE_DESC[e]}
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           {/* Artifacts: a sandbox surface — Home only. */}
           {appMode === "home" && (
             <IconBtn

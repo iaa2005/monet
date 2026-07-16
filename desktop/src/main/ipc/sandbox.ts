@@ -7,7 +7,11 @@ import { ipcMain } from "electron";
 import {
   getSandboxConfig,
   setSandboxConfig,
+  getSessionEngine,
+  getSessionEngineOverride,
+  setSessionEngine,
   type SandboxConfig,
+  type SandboxEngine,
 } from "../sandbox/config.js";
 import { resetVendorTools } from "../agent/vendor-tools.js";
 import { ensurePodmanBinary } from "../sandbox/podman-binary.js";
@@ -68,11 +72,49 @@ export function registerSandboxIPC(): void {
   );
 
   // Fire-and-forget: start warming the Podman VM in the background (called when
-  // a Home chat opens with the Podman engine) so the boot is hidden.
-  ipcMain.handle("sandbox:warmPodman", (): { ok: true } => {
-    if (getSandboxConfig().engine === "docker") warmPodman();
+  // a Home chat opens with the Podman engine) so the boot is hidden. Resolves
+  // the CHAT's engine (override, else global) so a Podman-pinned chat warms even
+  // when the global default is something else.
+  ipcMain.handle("sandbox:warmPodman", (_e, sessionId?: string): { ok: true } => {
+    const engine = sessionId
+      ? getSessionEngine(sessionId)
+      : getSandboxConfig().engine;
+    if (engine === "docker") warmPodman();
     return { ok: true };
   });
+
+  // The chat's resolved engine + whether it's an explicit override (for the Home
+  // engine picker: it shows the effective engine and marks "inherited" vs pinned).
+  ipcMain.handle(
+    "sandbox:getSessionConfig",
+    (
+      _e,
+      sessionId: string,
+    ): { engine: SandboxEngine; override: SandboxEngine | null } => ({
+      engine: getSessionEngine(sessionId || "default"),
+      override: getSessionEngineOverride(sessionId || "default"),
+    }),
+  );
+
+  // Pin a chat to an engine (or null to inherit the global default). Refresh the
+  // toolset — advertisement + the engine-specific RunPython prompt are cached —
+  // and provision Podman when pinning to it so the first run doesn't stall.
+  ipcMain.handle(
+    "sandbox:setSessionConfig",
+    (
+      _e,
+      sessionId: string,
+      engine: SandboxEngine | null,
+    ): { engine: SandboxEngine } => {
+      const next = setSessionEngine(sessionId || "default", engine);
+      resetVendorTools();
+      if (next === "docker") {
+        void ensurePodmanBinary();
+        warmPodman();
+      }
+      return { engine: next };
+    },
+  );
 
   // All files in a chat's sandbox (the /work dir), for the Home Files panel —
   // the full on-disk set, not just files surfaced in the transcript.
@@ -89,9 +131,9 @@ export function registerSandboxIPC(): void {
     sandboxWorkDir(sessionId || "default"),
   );
 
-  // Does the active engine have a shell? (Home terminal button visibility.)
-  ipcMain.handle("sandbox:supportsShell", (): { ok: boolean } => ({
-    ok: sandboxSupportsShell(),
+  // Does this chat's engine have a shell? (Home terminal button visibility.)
+  ipcMain.handle("sandbox:supportsShell", (_e, sessionId?: string): { ok: boolean } => ({
+    ok: sandboxSupportsShell(sessionId || "default"),
   }));
 
   // Run one command in the chat's sandbox — the Home terminal. Podman/subprocess

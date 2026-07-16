@@ -10,6 +10,7 @@ import {
 } from "../session-store.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
+import { clearSessionEngine } from "../sandbox/config.js";
 
 async function generateSessionTitle(
   session: SessionWithMessages,
@@ -83,6 +84,7 @@ export function registerSessionsIPC(): void {
   );
 
   ipcMain.handle("sessions:delete", (_e, id: string): boolean => {
+    clearSessionEngine(id); // drop any per-chat sandbox-engine override
     return store.delete(id);
   });
 

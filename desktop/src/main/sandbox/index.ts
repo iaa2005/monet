@@ -8,7 +8,7 @@
  */
 
 import { extname } from "path";
-import { getSandboxConfig } from "./config.js";
+import { getSessionEngine } from "./config.js";
 import { runPyodide } from "./pyodide-engine.js";
 import { runSubprocess, runSubprocessCommand } from "./subprocess-engine.js";
 import { runPodman, runPodmanCommand } from "./podman-engine.js";
@@ -41,7 +41,7 @@ export async function runInSandbox(
   sessionId: string,
   code: string,
 ): Promise<SandboxRunResult> {
-  const engine = getSandboxConfig().engine;
+  const engine = getSessionEngine(sessionId);
   const raw =
     engine === "subprocess"
       ? await runSubprocess(sessionId, "python", code)
@@ -97,10 +97,10 @@ export async function runCommandInSandbox(
   };
 }
 
-/** Whether the active engine has a real shell (Home terminal). Pyodide is
+/** Whether the chat's engine has a real shell (Home terminal). Pyodide is
  * WebAssembly with no process model, so it has none. */
-export function sandboxSupportsShell(): boolean {
-  return getSandboxConfig().engine !== "pyodide";
+export function sandboxSupportsShell(sessionId: string): boolean {
+  return getSessionEngine(sessionId) !== "pyodide";
 }
 
 /**
@@ -120,7 +120,7 @@ export async function runShellInSandbox(
   sessionId: string,
   command: string,
 ): Promise<{ ok: boolean; stdout: string; stderr: string; error?: string }> {
-  const engine = getSandboxConfig().engine;
+  const engine = getSessionEngine(sessionId);
   if (engine === "docker") {
     const r = await runPodmanCommand(sessionId, command);
     return { ok: r.ok, stdout: r.stdout, stderr: r.stderr, error: r.error };
