@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Filter, Check, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -65,9 +66,14 @@ export function FilterDropdown({
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setHovered(null);
+      const target = e.target as Node;
+      if (ref.current && !ref.current.contains(target)) {
+        // Check if click is inside a portal-rendered submenu
+        const submenu = document.querySelector("[data-filter-submenu]");
+        if (!submenu?.contains(target)) {
+          setOpen(false);
+          setHovered(null);
+        }
       }
     };
     document.addEventListener("mousedown", h);
@@ -185,10 +191,18 @@ export function FilterDropdown({
             </button>
           ))}
           {/* Flyout submenu — separate card, anchored inside menu */}
-          {activeSub && (
+          {activeSub && createPortal(
             <div
-              className="absolute left-full z-50 ml-1 w-36 rounded-lg border border-border bg-popover p-1 shadow-md text-xs"
-              style={{ top: subTop }}
+              data-filter-submenu
+              className="absolute z-[9999] w-36 rounded-lg border border-border bg-popover p-1 shadow-md text-xs"
+              style={{
+                left: menuRef.current
+                  ? menuRef.current.getBoundingClientRect().right + 4
+                  : 0,
+                top: menuRef.current
+                  ? menuRef.current.getBoundingClientRect().top + subTop
+                  : 0,
+              }}
             >
               {activeSub.options.map((o) => (
                 <button
@@ -220,8 +234,9 @@ export function FilterDropdown({
                   )}
                 </button>
               ))}
-            </div>
-          )}
+        </div>,
+        document.body,
+      )}
         </div>
       )}
     </div>
