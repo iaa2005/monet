@@ -79,6 +79,14 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
   },
   renderer: {
+    // NOT the default 5173: Windows' WinNAT/Hyper-V (here: the Podman WSL2
+    // machine) reserves dynamic port ranges, and 5173 landed inside one
+    // (5162–5261 at the time of writing) — dev then dies with
+    // "listen EACCES: permission denied ::1:5173" even though nothing is
+    // listening. `netsh interface ipv4 show excludedportrange protocol=tcp`
+    // shows the ranges; a winnat restart clears them only until the next boot,
+    // so a port far outside the reserved clusters is the durable fix.
+    server: { port: 17173 },
     resolve: {
       alias: [
         { find: '@', replacement: resolve('src/renderer') },
