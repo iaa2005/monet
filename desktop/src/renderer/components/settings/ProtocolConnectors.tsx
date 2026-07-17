@@ -362,6 +362,28 @@ function ConnectForm({
           </p>
         )}
 
+        {/* Numbered walkthrough. Console setup is six steps and each omission
+            fails blaming something else, so it's laid out rather than prosed. */}
+        {stage === "form" && preset.setupSteps && preset.setupSteps.length > 0 && (
+          <ol className="space-y-2 rounded-md border border-border p-3">
+            {preset.setupSteps.map((s, i) => (
+              <li key={i} className="flex gap-2.5 text-[13px]">
+                <span className="mt-px flex size-4 shrink-0 items-center justify-center rounded-full bg-black/[0.06] text-[10px] font-medium text-muted-foreground dark:bg-white/[0.1]">
+                  {i + 1}
+                </span>
+                <span className="min-w-0 flex-1 text-muted-foreground">
+                  {s.text}
+                  {s.url && (
+                    <span className="ml-1 inline-block align-text-bottom">
+                      <OpenLink url={s.url} label={s.urlLabel ?? "Open"} />
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+
         {stage === "form" ? (
           <>
             {!isMcp && !isOauth && (

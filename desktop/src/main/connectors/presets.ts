@@ -9,7 +9,49 @@
  * header of types.ts) — this file must never contain a guessed host.
  */
 
-import type { ConnectorPreset } from "./types.js";
+import type { ConnectorPreset, SetupStep } from "./types.js";
+
+/**
+ * The Google Cloud walkthrough, shared by every Google connector — one OAuth
+ * client covers them all, so only the API to enable differs.
+ *
+ * Written out step by step because each omission fails in a way that blames the
+ * wrong thing: no API → 403 on first use; no test user → "access_denied, app not
+ * verified", which reads as if the app is broken; still in Testing → works, then
+ * silently dies in a week.
+ */
+function googleSetup(api: { name: string; url: string }): SetupStep[] {
+  return [
+    {
+      text: "Open Google Cloud Console and create a project (or pick one you already have).",
+      url: "https://console.cloud.google.com/projectcreate",
+      urlLabel: "New project",
+    },
+    {
+      text: `Enable the ${api.name} for that project — without it every call comes back 403, even after a perfect sign-in.`,
+      url: api.url,
+      urlLabel: `Enable ${api.name}`,
+    },
+    {
+      text: "Credentials → Create credentials → OAuth client ID. Application type: Desktop app. Name it anything. Create — then keep the client ID and secret (the JSON download has both).",
+      url: "https://console.cloud.google.com/apis/credentials",
+      urlLabel: "Credentials",
+    },
+    {
+      text: "Audience → Test users → Add users → your own Gmail address. Miss this and sign-in dies with “access_denied — app not verified”, as if the app were broken. It isn't: you're just not on your own guest list.",
+      url: "https://console.cloud.google.com/auth/audience",
+      urlLabel: "Audience",
+    },
+    {
+      text: "Same page: Publish app. Optional, but while it stays in “Testing” Google expires the sign-in about every 7 days and the connector quietly stops. Verification isn't needed — that's for handing the app to other people.",
+      url: "https://console.cloud.google.com/auth/audience",
+      urlLabel: "Audience",
+    },
+    {
+      text: "Paste the client ID and secret below, then Sign in with Google. The browser will warn “Google hasn't verified this app” — expected, it's your own client: Advanced → Go to … → Allow.",
+    },
+  ];
+}
 
 export const PRESETS: ConnectorPreset[] = [
   // ─── Google ──────────────────────────────────────────────────────────────
@@ -54,7 +96,11 @@ export const PRESETS: ConnectorPreset[] = [
     credUrl: "https://console.cloud.google.com/apis/credentials",
     credLabel: "OAuth client (Desktop app)",
     usernameLabel: "you@gmail.com",
-    note: "Google refuses an app password here, so this signs in instead. One-time setup in Google Cloud: (1) create an OAuth client of type “Desktop app”; (2) enable the Calendar API; (3) on the consent screen add YOUR OWN address under Test users — miss this and sign-in dies with “access_denied, app not verified”; (4) paste the client id/secret here. While the consent screen stays in “Testing”, Google expires the sign-in about weekly — set it to “In production” to stop that. The “unverified app” warning is expected: it's your own client, so click through it.",
+    note: "Google takes an app password for Gmail but refuses one here, so Calendar signs in instead. Set up once — the same client then works for every Google connector.",
+    setupSteps: googleSetup({
+      name: "Google Calendar API",
+      url: "https://console.cloud.google.com/apis/library/calendar-json.googleapis.com",
+    }),
   },
   {
     id: "google-contacts",
@@ -76,7 +122,11 @@ export const PRESETS: ConnectorPreset[] = [
     credUrl: "https://console.cloud.google.com/apis/credentials",
     credLabel: "OAuth client (Desktop app)",
     usernameLabel: "you@gmail.com",
-    note: "Same OAuth client as Google Calendar — reuse the id/secret. Enable the CardDAV API in Google Cloud for this one.",
+    note: "Reuse the SAME client ID/secret as Google Calendar — one client covers every Google connector. If you already set that up, only step 2 is new.",
+    setupSteps: googleSetup({
+      name: "CardDAV API",
+      url: "https://console.cloud.google.com/apis/library/carddav.googleapis.com",
+    }),
   },
   // Drive is the one Google service with NO app-password path: Gmail has IMAP,
   // Calendar has CalDAV, Contacts has CardDAV — Drive has no legacy protocol at

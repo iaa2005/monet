@@ -30,6 +30,15 @@ export interface HostPort {
   secure: boolean;
 }
 
+/** One numbered step in a connector's setup. Data, not prose: the OAuth dance
+ * is six console steps and any of them missed fails in its own way. */
+export interface SetupStep {
+  text: string;
+  /** Opens in the real browser — usually the exact console page for the step. */
+  url?: string;
+  urlLabel?: string;
+}
+
 export interface DavEndpoint {
   url: string;
   /**
@@ -55,6 +64,8 @@ export interface ConnectorPreset {
   credLabel?: string;
   /** Caveat shown on the form (2FA requirement, sharing rules, …). */
   note?: string;
+  /** Numbered setup walkthrough, shown above the form. */
+  setupSteps?: SetupStep[];
   /** Login hint, e.g. "you@gmail.com". */
   usernameLabel?: string;
   /**
