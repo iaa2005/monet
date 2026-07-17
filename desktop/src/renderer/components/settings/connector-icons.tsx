@@ -17,7 +17,10 @@
 
 import github from "@/assets/connectors/github.svg?raw";
 import gmail from "@/assets/connectors/gmail.svg?raw";
+import linear from "@/assets/connectors/linear.svg?raw";
 import notion from "@/assets/connectors/notion.svg?raw";
+import sentry from "@/assets/connectors/sentry.svg?raw";
+import slack from "@/assets/connectors/slack.svg?raw";
 import googleCalendar from "@/assets/connectors/google-calendar.svg?raw";
 import googleContacts from "@/assets/connectors/google-contacts.svg?raw";
 import googleDrive from "@/assets/connectors/google-drive.svg?raw";
@@ -31,6 +34,9 @@ import { cn } from "@/lib/utils";
 const ICONS: Record<string, string> = {
   github,
   notion,
+  slack,
+  linear,
+  sentry,
   gmail,
   "google-calendar": googleCalendar,
   "google-contacts": googleContacts,
