@@ -89,10 +89,8 @@ function writeSecrets(map: SecretFile): void {
  * then rejects a password the user can see is correct, which is unfalsifiable
  * from their side — they re-copy it and get the same 401.
  *
- * Applied on READ as well as write, so values already stored with the extra
- * whitespace are repaired without anyone re-entering them. Nothing here can
- * legitimately start or end with whitespace: not an app password, not a token,
- * not an api_id, not a session string.
+ * ON WRITE ONLY. Cleaning what arrives is fair; rewriting what's already stored
+ * is not — see getSecret.
  */
 function trimSecret(secret: ConnectorSecret): ConnectorSecret {
   const out: Record<string, unknown> = { ...secret };
@@ -105,7 +103,12 @@ export function getSecret(accountId: string): ConnectorSecret {
   const blob = readSecrets()[accountId];
   if (!blob) return {};
   try {
-    return trimSecret(JSON.parse(decrypt(blob)) as ConnectorSecret);
+    // NOT trimmed. Trimming reads rewrites credentials the user never
+    // re-entered, and doing that broke a connector that had been working —
+    // Yandex Contacts authenticated fine until reads started "repairing" what
+    // was stored. Whatever the mechanism, silently rewriting data you cannot
+    // see is a guess, not a repair. Cleaning happens on write only.
+    return JSON.parse(decrypt(blob)) as ConnectorSecret;
   } catch {
     return {};
   }
