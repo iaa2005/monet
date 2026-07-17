@@ -9,7 +9,6 @@
 
 import { useEffect, useState } from "react";
 import {
-  Check,
   Eye,
   EyeOff,
   Pencil,
@@ -120,15 +119,8 @@ function ProviderModal({
       ];
     return [{ id: newModelId(), name: "" }];
   });
-  const [activeModelId, setActiveModelId] = useState<string | undefined>(
-    provider?.activeModelId,
-  );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-
-  const inUseId = models.some((m) => m.id === activeModelId)
-    ? activeModelId
-    : models[0]?.id;
 
   const patchModel = (id: string, patch: Partial<ProviderModel>): void =>
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)));
@@ -141,10 +133,8 @@ function ProviderModal({
       setError("Name, Base URL, and at least one model are required");
       return;
     }
-    const activeId = clean.some((m) => m.id === inUseId)
-      ? inUseId
-      : clean[0].id;
-    const active = clean.find((m) => m.id === activeId)!;
+    const activeId = clean[0].id;
+    const active = clean[0];
 
     setSaving(true);
     setError("");
@@ -256,45 +246,18 @@ function ProviderModal({
             />
           </div>
 
-          <div className="mb-1.5 mt-5 flex items-center justify-between">
+          <div className="mb-1.5 mt-5">
             <span className="text-sm font-medium">Models</span>
-            <button
-              type="button"
-              onClick={() =>
-                setModels((prev) => [...prev, { id: newModelId(), name: "" }])
-              }
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
-            >
-              <Plus className="size-3.5" />
-              Add model
-            </button>
           </div>
 
           <div className="space-y-2 pb-3">
             {models.map((m) => {
-              const inUse = m.id === inUseId;
               return (
                 <div
                   key={m.id}
-                  className={cn(
-                    "rounded-xl border border-border p-3",
-                    inUse && "border-foreground/20 bg-black/[0.02] dark:bg-white/[0.03]",
-                  )}
+                  className="rounded-xl border border-border p-3"
                 >
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      title={inUse ? "In use" : "Use this model"}
-                      onClick={() => setActiveModelId(m.id)}
-                      className={cn(
-                        "flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors",
-                        inUse
-                          ? "border-transparent bg-foreground text-background"
-                          : "border-border text-transparent hover:border-foreground/40",
-                      )}
-                    >
-                      <Check className="size-3" />
-                    </button>
                     <input
                       value={m.name}
                       onChange={(e) =>
@@ -411,6 +374,17 @@ function ProviderModal({
                 </div>
               );
             })}
+
+            <button
+              type="button"
+              onClick={() =>
+                setModels((prev) => [...prev, { id: newModelId(), name: "" }])
+              }
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.04]"
+            >
+              <Plus className="size-4" />
+              Add model
+            </button>
           </div>
         </div>
 
@@ -443,7 +417,7 @@ export function ProviderSettings({
 }: {
   className?: string;
 }): JSX.Element {
-  const { providers, loading, error, load, remove, setActive } =
+  const { providers, loading, error, load, remove, setActive, setActiveModel } =
     useProviderStore();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -558,19 +532,16 @@ export function ProviderSettings({
                   {p.models.map((m) => {
                     const inUse = m.id === (current?.id ?? "");
                     return (
-                      <div
+                      <button
+                        type="button"
                         key={m.id}
+                        onClick={() => setActiveModel(p.id, m.id)}
                         className={cn(
-                          "flex items-center gap-2 rounded-md px-2 py-1 text-[13px]",
+                          "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]",
                           inUse && "bg-black/[0.04] dark:bg-white/[0.06]",
                           m.hidden && "opacity-50",
                         )}
                       >
-                        {inUse ? (
-                          <Check className="size-3.5 shrink-0 text-link" />
-                        ) : (
-                          <span className="w-3.5 shrink-0" />
-                        )}
                         <span className="truncate">{m.label || m.name}</span>
                         <ModalityBadges modalities={m.modalities} />
                         {m.hidden && (
@@ -579,7 +550,7 @@ export function ProviderSettings({
                         <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
                           {fmtK(m.contextLength)} ctx
                         </span>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>

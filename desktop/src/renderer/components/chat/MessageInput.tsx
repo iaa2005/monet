@@ -1071,7 +1071,7 @@ export function MessageInput({
             )}
 
             {/* Model / provider */}
-            <DropdownMenu>
+            <DropdownMenu onOpenChange={(open) => { if (open) loadProviders(); }}>
               <DropdownMenuTrigger asChild>
                 <button type="button" className={pillBtn}>
                   <span className="max-w-[18ch] truncate">{modelLabel}</span>
@@ -1184,9 +1184,6 @@ export function MessageInput({
                     </button>
                   ) : null;
                 })()}
-                <DropdownMenuItem onClick={loadProviders}>
-                  Refresh
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
