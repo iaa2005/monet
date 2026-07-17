@@ -23,6 +23,16 @@ import { fetchRetry } from "../../net-fetch.js";
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
+/**
+ * Always requested on top of whatever a preset asks for.
+ *
+ * Without it /oauth2/v3/userinfo returns no address, and the account is stored
+ * with an empty login — which for CalDAV means a principal of
+ * `/caldav/v2//user` and a connector that signs in perfectly and then can't
+ * find anything. The address IS the principal here; it isn't optional.
+ */
+const EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
+
 /** Consent can involve account-picking, 2FA and an "unverified app" warning. */
 const CONSENT_TIMEOUT_MS = 5 * 60_000;
 
@@ -99,7 +109,7 @@ export async function googleSignIn(opts: {
         client_id: opts.clientId,
         redirect_uri: `http://127.0.0.1:${port}`,
         response_type: "code",
-        scope: opts.scopes.join(" "),
+        scope: [...new Set([...opts.scopes, EMAIL_SCOPE])].join(" "),
         // offline + consent, or Google hands back a refresh token only on the
         // very first authorisation ever — reconnecting later would silently get
         // none, and the connector would die at the first token expiry.

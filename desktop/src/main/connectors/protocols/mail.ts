@@ -41,9 +41,23 @@ async function withImap<T>(
     greetingTimeout: 15_000,
     socketTimeout: 60_000,
   });
-  await client.connect();
+  // MUST come before connect(). ImapFlow is an EventEmitter, and an 'error' with
+  // no listener is a hard throw — so a socket that times out AFTER its command
+  // resolved (which is the normal end of a connection Yandex has already
+  // dropped) took down the whole main process with "A JavaScript error occurred".
+  // The awaited calls below report failures on their own; this event has nobody
+  // left to tell, so swallow it.
+  client.on("error", () => {});
+
+  try {
+    await client.connect();
+  } catch (e) {
+    throw imapError(e, acct);
+  }
   try {
     return await fn(client);
+  } catch (e) {
+    throw imapError(e, acct);
   } finally {
     try {
       await client.logout();
@@ -51,6 +65,30 @@ async function withImap<T>(
       /* best-effort */
     }
   }
+}
+
+/**
+ * imapflow throws a bare `Error("Command failed")` and hides the server's own
+ * words on `responseText` — which is a shame, because they're usually the whole
+ * answer. Yandex, for one, replies "invalid credentials or IMAP is disabled":
+ * two very different problems, and the second isn't fixable by re-checking the
+ * password you already checked.
+ */
+function imapError(e: unknown, acct: ResolvedAccount): Error {
+  const err = e as {
+    message?: string;
+    responseText?: string;
+    authenticationFailed?: boolean;
+  };
+  const said = err.responseText?.trim();
+  if (!said) return e instanceof Error ? e : new Error(String(e));
+
+  const hint = /IMAP is disabled/i.test(said)
+    ? ` — turn IMAP on in ${acct.preset.name}'s settings (Mail → Mail clients), then Test again. If it's already on, the app password may be the wrong type.`
+    : /credentials|AUTHENTICATIONFAILED/i.test(said)
+      ? ` — check the app password, and that it's the type this connector needs.`
+      : "";
+  return new Error(`${acct.preset.name} said: ${said}${hint}`);
 }
 
 export async function mailFolders(acct: ResolvedAccount): Promise<ProtocolResult> {

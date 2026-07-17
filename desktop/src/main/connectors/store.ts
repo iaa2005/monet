@@ -133,7 +133,11 @@ export function addAccount(input: {
   const existing = listAccounts().find(
     (a) =>
       a.presetId === input.presetId &&
-      (!!preset.mcp || a.username.toLowerCase() === username.toLowerCase()),
+      (!!preset.mcp ||
+        a.username.toLowerCase() === username.toLowerCase() ||
+        // An account with no login is broken by construction — it can't be
+        // addressed — so reconnecting replaces it instead of sitting next to it.
+        a.username === ""),
   );
   if (existing) {
     setSecret(existing.id, input.secret);

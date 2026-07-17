@@ -179,8 +179,17 @@ export function registerConnectorsIPC(): void {
           );
           email = ((await r.json()) as { email?: string }).email ?? "";
         } catch {
-          /* falls back to the form's login below */
+          /* handled below */
         }
+        // Refuse rather than store a login-less account: for CalDAV the address
+        // IS the principal, so an empty one signs in fine and then fails with a
+        // baffling "cannot find homeUrl" days later.
+        if (!email)
+          return {
+            ok: false,
+            error:
+              "Signed in, but Google didn't return your address — the connector can't be addressed without it. Sign in again and make sure the consent screen isn't blocking the email permission.",
+          };
         addAccount({
           presetId: opts.presetId,
           username: email,

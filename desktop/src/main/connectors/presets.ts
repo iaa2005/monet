@@ -165,7 +165,21 @@ export const PRESETS: ConnectorPreset[] = [
     credUrl: "https://id.yandex.ru/security/app-passwords",
     credLabel: "App password — pick the “Mail” type",
     usernameLabel: "you@yandex.ru",
-    note: "Turn on IMAP in Yandex Mail settings first (Settings → Mail clients).",
+    // The two things that actually go wrong, in the order they go wrong.
+    note: "Two steps, and both bite: (1) turn IMAP ON in Yandex Mail → Settings → Mail clients — until you do, Yandex refuses every password with “invalid credentials or IMAP is disabled”, which reads like a bad password; (2) the app password must be the MAIL type. Yandex scopes app passwords per service, so one password will not cover Mail, Disk and Calendar — create one each.",
+    setupSteps: [
+      {
+        text: "Yandex Mail → Settings → Mail clients → tick “From the imap.yandex.ru server via IMAP”, and save. Skipping this makes every password look wrong.",
+        url: "https://mail.yandex.ru/#setup/client",
+        urlLabel: "Mail clients",
+      },
+      {
+        text: "Create an app password of type “Mail”. A password made for Disk or Calendar will NOT work here — Yandex scopes them per service.",
+        url: "https://id.yandex.ru/security/app-passwords",
+        urlLabel: "App passwords",
+      },
+      { text: "Paste your full address and that password below." },
+    ],
   },
   {
     id: "yandex-disk",
@@ -176,6 +190,7 @@ export const PRESETS: ConnectorPreset[] = [
     credUrl: "https://id.yandex.ru/security/app-passwords",
     credLabel: "App password — pick the “Files (WebDAV)” type",
     usernameLabel: "you@yandex.ru",
+    note: "The app password must be the FILES (WebDAV) type — Yandex scopes them per service, so a Mail password gives 401 here no matter how correct it looks.",
   },
   {
     id: "yandex-calendar",
@@ -189,7 +204,7 @@ export const PRESETS: ConnectorPreset[] = [
     // Unlike Google, Yandex documents app passwords for CalDAV — but its 401
     // challenge looks identical to Google's, and that challenge is exactly what
     // fooled us there. Hit Test after connecting; only that settles it.
-    note: "Yandex documents app passwords for CalDAV, but this hasn't been confirmed end-to-end — press Test after connecting.",
+    note: "The app password must be the CALENDAR (CalDAV) type — Yandex scopes them per service, so a Mail password gives 401 here. Not yet confirmed end-to-end: press Test after connecting.",
   },
   {
     id: "yandex-contacts",
