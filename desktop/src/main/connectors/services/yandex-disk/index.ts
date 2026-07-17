@@ -32,7 +32,7 @@ export const YandexDisk: ConnectorService = {
   },
   credUrl: "https://id.yandex.ru/security/app-passwords",
   credLabel: "Create app password",
-  note: "A new app password only starts working 2–3 hours after creation — a fresh one returns 401. Don't recreate it; wait.",
+  note: "New app passwords activate 2–3 hours after creation — a fresh one returns 401.",
   setupSteps: yandexSetupSteps({ type: "Files (WebDAV)" }),
   capabilities: { files: ops },
   test: (acct) => ops.list(acct, { path: "/" }),

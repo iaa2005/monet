@@ -31,7 +31,7 @@ export const YandexMail: ConnectorService = {
   },
   credUrl: "https://id.yandex.ru/security/app-passwords",
   credLabel: "Create app password",
-  note: "Two things bite here: IMAP must be enabled in Yandex Mail's settings, and a new app password only starts working 2–3 hours after creation.",
+  note: "Enable IMAP in Yandex Mail settings first. New app passwords activate 2–3 hours after creation.",
   setupSteps: yandexSetupSteps({
     type: "Mail",
     extra: [

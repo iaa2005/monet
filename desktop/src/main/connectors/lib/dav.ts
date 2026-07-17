@@ -249,7 +249,38 @@ export function makeCarddavOps(cfg: DavConfig): ContactOps {
       const { dav, account } = await makeClient(cfg, "carddav", acct);
       const books = await dav.fetchAddressBooks({ account });
       if (!books.length) return { ok: true, text: "(no address books)" };
-      const cards = await dav.fetchVCards({ addressBook: books[0] });
+      const book = books[0];
+
+      let cards;
+      try {
+        cards = await dav.fetchVCards({ addressBook: book });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // Yandex answers the enumeration REPORT (addressbook-query) with
+        // 403 <supported-report/> — it simply doesn't implement it. Enumerate
+        // with plain PROPFIND Depth:1 instead (baseline WebDAV, universally
+        // supported) and hand the urls over: fetchVCards then skips the REPORT
+        // and multigets the cards directly.
+        if (!/supported-report|Collection query failed/i.test(msg)) throw e;
+        const listing = await dav.propfind({
+          url: book.url,
+          props: { "d:getetag": {} },
+          depth: "1",
+        });
+        const objectUrls = listing
+          .map((r) => r.href ?? "")
+          .filter((h) => h && !h.endsWith("/"));
+        try {
+          cards = await dav.fetchVCards({ addressBook: book, objectUrls });
+        } catch {
+          // Some servers lack multiget too — fall back to plain GETs.
+          cards = await dav.fetchVCards({
+            addressBook: book,
+            objectUrls,
+            useMultiGet: false,
+          });
+        }
+      }
 
       const q = opts.query?.trim().toLowerCase();
       const rows = cards
