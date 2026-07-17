@@ -54,7 +54,7 @@ export const PRESETS: ConnectorPreset[] = [
     credUrl: "https://console.cloud.google.com/apis/credentials",
     credLabel: "OAuth client (Desktop app)",
     usernameLabel: "you@gmail.com",
-    note: "Google refuses an app password here, so this signs in instead. One-time setup: in Google Cloud create an OAuth client of type “Desktop app”, enable the Calendar API, and add yourself as a test user on the consent screen — then paste the client id/secret below and sign in. The “unverified app” warning is expected; it's your own client.",
+    note: "Google refuses an app password here, so this signs in instead. One-time setup in Google Cloud: (1) create an OAuth client of type “Desktop app”; (2) enable the Calendar API; (3) on the consent screen add YOUR OWN address under Test users — miss this and sign-in dies with “access_denied, app not verified”; (4) paste the client id/secret here. While the consent screen stays in “Testing”, Google expires the sign-in about weekly — set it to “In production” to stop that. The “unverified app” warning is expected: it's your own client, so click through it.",
   },
   {
     id: "google-contacts",

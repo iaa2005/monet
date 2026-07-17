@@ -153,3 +153,71 @@ export async function googleSignIn(opts: {
     expiry: Date.now() + (json.expires_in ?? 3600) * 1000,
   };
 }
+
+/**
+ * A usable access token, refreshing if needed.
+ *
+ * We do this rather than let tsdav do it, because tsdav's refresh CANNOT fail
+ * loudly: on a non-ok response it returns `{}`, so the request then goes out
+ * with no Authorization header at all and comes back 401 — surfacing as "cannot
+ * find homeUrl", i.e. an app-password error message on an account that has no
+ * app password. An expired grant has to say so.
+ *
+ * It expires more often than you'd think: while the OAuth consent screen is in
+ * "Testing", Google expires refresh tokens after about a week, so this path is
+ * the normal weekly experience until the client is published.
+ */
+export async function googleAccessToken(secret: {
+  clientId?: string;
+  clientSecret?: string;
+  refreshToken?: string;
+  accessToken?: string;
+  expiry?: number;
+}): Promise<GoogleTokens> {
+  const { clientId, clientSecret, refreshToken } = secret;
+  if (!clientId || !clientSecret || !refreshToken)
+    throw new Error("Not signed in to Google — connect it again in Settings.");
+
+  // 60s of slack: a token that expires mid-request is the same as expired.
+  if (secret.accessToken && (secret.expiry ?? 0) > Date.now() + 60_000)
+    return {
+      accessToken: secret.accessToken,
+      refreshToken,
+      expiry: secret.expiry as number,
+    };
+
+  const res = await fetchRetry(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }).toString(),
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    access_token?: string;
+    expires_in?: number;
+    error?: string;
+    error_description?: string;
+  };
+  if (!res.ok || !json.access_token) {
+    // invalid_grant is the one worth naming: expired, revoked, or the client
+    // was rebuilt. Nothing here is fixable by retrying.
+    if (json.error === "invalid_grant")
+      throw new Error(
+        "Your Google sign-in has expired — connect the connector again. " +
+          "If this keeps happening weekly, it's because the OAuth consent screen is still in “Testing”: " +
+          "Google expires those refresh tokens after ~7 days. Set the app to “In production” in Google Cloud to stop it.",
+      );
+    throw new Error(
+      `Google refused to refresh the token: ${json.error_description ?? json.error ?? res.status}`,
+    );
+  }
+  return {
+    accessToken: json.access_token,
+    refreshToken,
+    expiry: Date.now() + (json.expires_in ?? 3600) * 1000,
+  };
+}

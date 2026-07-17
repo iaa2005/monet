@@ -11,7 +11,7 @@
  */
 
 import { createDAVClient } from "tsdav";
-import { GOOGLE_TOKEN_URL } from "../oauth/google.js";
+import { GOOGLE_TOKEN_URL, googleAccessToken } from "../oauth/google.js";
 import { patchSecret } from "../store.js";
 import type { ProtocolResult, ResolvedAccount } from "../types.js";
 
@@ -40,17 +40,7 @@ async function client(acct: ResolvedAccount, kind: Kind) {
   // given clientId/secret/refreshToken it refreshes an expired access token and
   // writes the new one back into this credentials object, which is why it's a
   // named variable: we persist whatever it leaves there.
-  const oauth = acct.preset.oauth && acct.secret.refreshToken;
-  const credentials = oauth
-    ? {
-        clientId: acct.secret.clientId,
-        clientSecret: acct.secret.clientSecret,
-        refreshToken: acct.secret.refreshToken,
-        accessToken: acct.secret.accessToken,
-        expiration: acct.secret.expiry,
-        tokenUrl: GOOGLE_TOKEN_URL,
-      }
-    : { username, password: acct.secret.password };
+  const oauth = !!(acct.preset.oauth && acct.secret.refreshToken);
 
   if (!oauth && !acct.secret.password)
     throw new Error(
@@ -58,6 +48,27 @@ async function client(acct: ResolvedAccount, kind: Kind) {
         ? `${acct.account.label} isn't signed in. Connect it again in Settings → Connectors.`
         : `No app password stored for ${acct.account.label}. Reconnect it in Settings → Connectors.`,
     );
+
+  // Refresh up front rather than leaving it to tsdav, whose refresh returns {}
+  // on failure and then sends the request unauthenticated — an expired grant
+  // would arrive as a bogus "wrong app password". Handing it a token that's
+  // already valid means its own refresh path never runs.
+  let credentials;
+  if (oauth) {
+    const tokens = await googleAccessToken(acct.secret);
+    if (tokens.accessToken !== acct.secret.accessToken)
+      patchSecret(acct.account.id, tokens);
+    credentials = {
+      clientId: acct.secret.clientId,
+      clientSecret: acct.secret.clientSecret,
+      refreshToken: tokens.refreshToken,
+      accessToken: tokens.accessToken,
+      expiration: tokens.expiry,
+      tokenUrl: GOOGLE_TOKEN_URL,
+    };
+  } else {
+    credentials = { username, password: acct.secret.password };
+  }
 
   const dav = await createDAVClient({
     serverUrl: cfg.url,
@@ -79,14 +90,6 @@ async function client(acct: ResolvedAccount, kind: Kind) {
       },
       loadCollections: false,
     });
-    // Keep the token tsdav just refreshed, or every call pays for a new one and
-    // a revoked refresh token would never be noticed until something failed.
-    if (oauth && credentials.accessToken !== acct.secret.accessToken)
-      patchSecret(acct.account.id, {
-        accessToken: credentials.accessToken,
-        refreshToken: credentials.refreshToken,
-        expiry: credentials.expiration,
-      });
     return { dav, account };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -97,9 +100,11 @@ async function client(acct: ResolvedAccount, kind: Kind) {
     if (/principalUrl|homeUrl/i.test(msg))
       throw new Error(
         `Couldn't open ${kind === "caldav" ? "the calendar" : "contacts"} for “${username}” on ${acct.preset.name}. ` +
-          `Most likely the app password is wrong or expired — try Test after re-pasting it. ` +
-          `Otherwise ${kind === "caldav" ? "CalDAV" : "CardDAV"} may not be enabled for this account, or the login isn't the full address. ` +
-          `(Underlying: ${msg})`,
+          (oauth
+            ? `The sign-in worked, so check the ${kind === "caldav" ? "Calendar" : "CardDAV"} API is enabled for your OAuth client in Google Cloud, and that the consent screen granted the scope.`
+            : `Most likely the app password is wrong or expired — try Test after re-pasting it. ` +
+              `Otherwise ${kind === "caldav" ? "CalDAV" : "CardDAV"} may not be enabled for this account, or the login isn't the full address.`) +
+          ` (Underlying: ${msg})`,
       );
     throw e;
   }
