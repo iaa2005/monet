@@ -106,26 +106,21 @@ export const PRESETS: ConnectorPreset[] = [
     id: "google-contacts",
     name: "Google Contacts",
     group: "Google",
-    // Same story as the calendar: CardDAV answers a supplied app password with
-    // `UNAUTHENTICATED`, so it signs in too. Shares the calendar's client — one
-    // OAuth client covers every Google scope.
-    protocols: ["carddav"],
-    carddav: {
-      url: "https://www.googleapis.com/carddav/v1/principals/",
-      principalTemplate:
-        "https://www.googleapis.com/carddav/v1/principals/{username}",
-    },
+    // NOT CardDAV. Google's CardDAV answers a valid OAuth token with a 404 HTML
+    // page, and its principal paths aren't documented anywhere reachable — three
+    // guesses, three misses. People API is what Google documents for contacts.
+    protocols: ["gpeople"],
     oauth: {
       provider: "google",
-      scopes: ["https://www.googleapis.com/auth/carddav"],
+      scopes: ["https://www.googleapis.com/auth/contacts.readonly"],
     },
     credUrl: "https://console.cloud.google.com/apis/credentials",
     credLabel: "OAuth client (Desktop app)",
     usernameLabel: "you@gmail.com",
-    note: "Reuse the SAME client ID/secret as Google Calendar — one client covers every Google connector. If you already set that up, only step 2 is new.",
+    note: "Reuse the SAME client ID/secret as Google Calendar — one client covers every Google connector. If you already set that up, only step 2 is new. Read-only.",
     setupSteps: googleSetup({
-      name: "CardDAV API",
-      url: "https://console.cloud.google.com/apis/library/carddav.googleapis.com",
+      name: "People API",
+      url: "https://console.cloud.google.com/apis/library/people.googleapis.com",
     }),
   },
   // Drive has no standard protocol at all — no DAV, only its REST API behind

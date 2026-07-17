@@ -253,6 +253,12 @@ async function main() {
     'connector scope: calendar presets → Calendar',
     names(['google-calendar', 'yandex-contacts']) === 'Calendar',
   )
+  // Google Contacts moved off CardDAV to the People API; it must still land on
+  // the same tool, or a routine scoped to it would silently get nothing.
+  check(
+    'connector scope: google-contacts (People API) → Calendar',
+    names(['google-contacts']) === 'Calendar',
+  )
   check(
     'connector scope: gmail+telegram → both, nothing else',
     names(['gmail', 'telegram']) === 'Mail,Telegram',
@@ -346,7 +352,9 @@ async function main() {
     // fixed in the adapter (MTProto, the Drive API), so declaring the protocol
     // is the endpoint. Everything else must name a host, or it's a guess again.
     const fixedEndpoint =
-      !!p.telegram || p.protocols.includes('gdrive' as never)
+      !!p.telegram ||
+      p.protocols.includes('gdrive' as never) ||
+      p.protocols.includes('gpeople' as never)
     const hasEndpoint =
       !!p.imap || !!p.webdav || !!p.caldav || !!p.carddav || fixedEndpoint
     return !hasEndpoint || !p.credUrl
@@ -360,12 +368,11 @@ async function main() {
   // Every connectable protocol needs a Test branch. CardDAV had none and fell
   // through to `ok: true`, so Contacts reported "works" without a single packet
   // — and that false green sent a real debugging session after the wrong cause.
-  const TESTED = ['mcp', 'imap', 'webdav', 'gdrive', 'caldav', 'carddav']
+  const TESTED = ['mcp', 'imap', 'webdav', 'gdrive', 'caldav', 'carddav', 'gpeople', 'telegram']
   const untestable = PRESETS.filter(
     p =>
       !p.unavailable &&
       !p.mcp &&
-      !p.telegram &&
       !p.protocols.some(x => TESTED.includes(x)),
   )
   check(

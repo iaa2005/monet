@@ -146,6 +146,20 @@ export function registerConnectorsIPC(): void {
           const r = await contactsList(pickAccount("carddav", id), { limit: 1 });
           return { ok: r.ok, error: r.error };
         }
+        if (preset.protocols.includes("gpeople")) {
+          const { peopleList } = await import("../connectors/protocols/gpeople.js");
+          const r = await peopleList(pickAccount("gpeople", id), { limit: 1 });
+          return { ok: r.ok, error: r.error };
+        }
+        if (preset.protocols.includes("telegram")) {
+          // Listing one chat proves the stored session still authenticates —
+          // which is the thing that silently expires.
+          const { telegramChats } = await import(
+            "../connectors/protocols/telegram.js"
+          );
+          const r = await telegramChats(pickAccount("telegram", id), { limit: 1 });
+          return { ok: r.ok, error: r.error };
+        }
         // NEVER default to ok. This used to `return { ok: true }`, so CardDAV —
         // which had no branch — reported "works" without touching the network.
         // A green tick that proves nothing is worse than no tick: it sent a real

@@ -22,6 +22,9 @@ export type ProtocolId =
   /** Google Drive's REST API — it has no DAV of any kind, so it can't share the
    * webdav adapter, but it serves the same CloudFiles tool. */
   | "gdrive"
+  /** Google Contacts via the People API — its CardDAV 404s a valid token and
+   * its paths aren't documented, so contacts go through the documented API. */
+  | "gpeople"
   | "caldav"
   | "carddav"
   | "telegram"

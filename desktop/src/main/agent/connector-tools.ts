@@ -49,6 +49,7 @@ import {
   calendarList,
   contactsList,
 } from "../connectors/protocols/dav.js";
+import { peopleList } from "../connectors/protocols/gpeople.js";
 import {
   telegramChats,
   telegramHistory,
@@ -346,7 +347,7 @@ export const CalendarTool = buildTool({
         ].join(" "),
       ),
       `Connected calendars: ${accountHint("caldav") || "(none)"}.`,
-      `Connected contact books: ${accountHint("carddav") || "(none)"}.`,
+      `Connected contact books: ${[accountHint("carddav"), accountHint("gpeople")].filter(Boolean).join(", ") || "(none)"}.`,
     ].join("\n");
   },
   async description() {
@@ -355,6 +356,15 @@ export const CalendarTool = buildTool({
   async call(input: z.infer<CalInput>, _context: ToolUseContext) {
     try {
       if (input.action === "contacts") {
+        // Google speaks People API here, everyone else CardDAV — same action.
+        const people = accountsForProtocol("gpeople");
+        if (people.length > 0 && (!input.account || people.some((a) => a.presetId === input.account || a.id === input.account)))
+          return toOutput(
+            await peopleList(pickAccount("gpeople", input.account), {
+              query: input.query,
+              limit: input.limit,
+            }),
+          );
         const acct = pickAccount("carddav", input.account);
         return toOutput(
           await contactsList(acct, { query: input.query, limit: input.limit }),
@@ -546,6 +556,7 @@ const PROTOCOL_TOOL: Record<string, string> = {
   gdrive: "CloudFiles",
   caldav: "Calendar",
   carddav: "Calendar",
+  gpeople: "Calendar",
   telegram: "Telegram",
 };
 

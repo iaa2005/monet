@@ -386,7 +386,8 @@ export function isSpaceToolAllowed(
   if (name === "Calendar")
     return (
       accountsForProtocol("caldav").length > 0 ||
-      accountsForProtocol("carddav").length > 0
+      accountsForProtocol("carddav").length > 0 ||
+      accountsForProtocol("gpeople").length > 0
     );
   if (name === "Telegram") return accountsForProtocol("telegram").length > 0;
   // Routines exist for both spaces, so the tool does too. It's still gated by
