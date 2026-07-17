@@ -80,6 +80,21 @@ export function registerWorkspaceIPC(): void {
   ipcMain.handle("workspace:getClaudeMd", () => claudeMdContent);
 }
 
+/**
+ * Make `path` the effective workspace for an incoming run: updates the global
+ * cwd state and reloads CLAUDE.md so the agent's prompt and tools resolve
+ * against THIS chat's folder. Unlike the workspace:set IPC it does NOT persist
+ * the folder as the user's saved default or retitle the window — it's the
+ * per-chat pin the send path applies before running, since the renderer's
+ * restore-on-open is async and can lose the race. No-op when the path is
+ * empty, already current, or gone.
+ */
+export function applyWorkspaceForRun(path: string): void {
+  if (!path || path === workspacePath || !existsSync(path)) return;
+  applyWorkspace(path);
+  claudeMdContent = loadClaudeMd(path);
+}
+
 export function getWorkspacePath(): string {
   return workspacePath;
 }

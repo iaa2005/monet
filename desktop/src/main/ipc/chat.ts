@@ -20,6 +20,7 @@ import {
 import { expandSlashCommand } from "../agent/skill-tool.js";
 import { abortAllBgAgents, abortBgAgents } from "../agent/bg-agents.js";
 import { getSessionStore } from "../session-store.js";
+import { applyWorkspaceForRun, getWorkspacePath } from "./workspace.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
 import type { EffortLevel } from "../provider/types.js";
@@ -227,6 +228,17 @@ export function registerChatIPC(): void {
     const abort = new AbortController();
     aborts.set(sessionId, abort);
 
+    // Pin this run to the chat's OWN folder. The renderer restores a chat's
+    // directory when you open it, but that's async and fire-and-forget — a
+    // quick send (or a parallel/background chat) can otherwise run against a
+    // stale global cwd and report the wrong "Working directory". The main
+    // process is authoritative at run time; Home has no filesystem workspace.
+    if (payload.space !== "home") {
+      const savedWs = getSessionStore().getWorkspace(sessionId);
+      if (savedWs) applyWorkspaceForRun(savedWs);
+    }
+    const runCwd = getWorkspacePath();
+
     const mode =
       payload.mode && VALID_MODES.has(payload.mode)
         ? (payload.mode as
@@ -246,23 +258,29 @@ export function registerChatIPC(): void {
     }
 
     try {
-      await runAgent(
-        sessionId,
-        buildUserContent(message, payload.attachments),
-        (event) => {
-          // Tag every event with its session so the renderer routes it to the
-          // right chat even after the user switched away.
-          win.webContents.send("chat:token", { sessionId, event });
-        },
-        {
-          signal: abort.signal,
-          modeDirective: modeDirectiveFor(mode),
-          permissionMode: mode,
-          requestPermission: (ask) => requestPermissionFromRenderer(win, ask),
-          askUser: (questions) => askUserFromRenderer(win, questions),
-          space: payload.space,
-          effort: payload.effort,
-        },
+      // AsyncLocalStorage-scoped cwd so this run's vendor prompt AND every tool
+      // it calls see THIS chat's directory, even if a concurrent chat flips the
+      // global mid-stream. (The vendor ships this exact primitive for it.)
+      const { runWithCwdOverride } = await import("@vendor/utils/cwd.js");
+      await runWithCwdOverride(runCwd, () =>
+        runAgent(
+          sessionId,
+          buildUserContent(message, payload.attachments),
+          (event) => {
+            // Tag every event with its session so the renderer routes it to the
+            // right chat even after the user switched away.
+            win.webContents.send("chat:token", { sessionId, event });
+          },
+          {
+            signal: abort.signal,
+            modeDirective: modeDirectiveFor(mode),
+            permissionMode: mode,
+            requestPermission: (ask) => requestPermissionFromRenderer(win, ask),
+            askUser: (questions) => askUserFromRenderer(win, questions),
+            space: payload.space,
+            effort: payload.effort,
+          },
+        ),
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
