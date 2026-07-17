@@ -17,7 +17,7 @@ import type { LLMContentBlock, LLMMessage } from "../llm/adapter.js";
 import type { AgentDefinition } from "./agent-defs.js";
 import { getSubAgentPrompt } from "./prompts-vendor.js";
 import { executeVendorTool, getVendorApiTools } from "./vendor-tools.js";
-import { getWorkspacePath } from "../ipc/workspace.js";
+import { getCwd } from "@vendor/utils/cwd.js";
 
 const SUBAGENT_MAX_TURNS = 20;
 
@@ -77,8 +77,10 @@ export async function runSubAgent(opts: {
     const deny = new Set(def.disallowedTools);
     tools = tools.filter((t) => !deny.has(t.name));
   }
+  // getCwd() (not the workspace global) so a child inherits the SAME per-run
+  // directory as its parent — the run executes inside the parent's cwd override.
   const system = (def?.systemPrompt || getSubAgentPrompt())
-    + `\n\n# Environment\n- Working directory: ${getWorkspacePath()}`
+    + `\n\n# Environment\n- Working directory: ${getCwd()}`
 
   const messages: LLMMessage[] = [{ role: "user", content: prompt }];
   const sessionId = `sub:${Math.random().toString(36).slice(2)}`;
