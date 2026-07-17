@@ -1,9 +1,10 @@
 /**
  * CalDAV + CardDAV adapter — calendars and contacts.
  *
- * One adapter, two protocols: tsdav speaks both, and Google and Yandex both
- * accept Basic auth with an app password here (Google CardDAV answers
- * `basic realm="Google APIs"`), so this is the OAuth-free path to a calendar.
+ * One adapter, two protocols, two ways to authenticate: Yandex takes an app
+ * password, Google refuses one and wants OAuth. (Google's endpoints do send a
+ * `basic realm="Google APIs"` challenge — it's a leftover. Believing it cost
+ * three rounds of debugging aimed at a password that was never the problem.)
  *
  * Events are emitted/parsed as raw iCalendar. A full iCal library would be
  * heavier than the few fields an agent actually needs, so we do minimal
@@ -11,6 +12,7 @@
  */
 
 import { createDAVClient } from "tsdav";
+import { fetchRetry } from "../../net-fetch.js";
 import { GOOGLE_TOKEN_URL, googleAccessToken } from "../oauth/google.js";
 import { patchSecret } from "../store.js";
 import type { ProtocolResult, ResolvedAccount } from "../types.js";
@@ -93,10 +95,16 @@ async function client(acct: ResolvedAccount, kind: Kind) {
     return { dav, account };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    // tsdav's discovery errors are near-useless on their own: fetchHomeUrl has
-    // no 401 branch at all, so a wrong app password surfaces as "cannot find
-    // homeUrl" — identical to a genuinely wrong URL. Translate into the two
-    // things the user can actually check, cheapest first.
+    // tsdav discards the server's reply, so ask it ourselves and quote it. For
+    // Google that reply is the whole answer — a disabled API says exactly that,
+    // the same way Drive's did, instead of hiding behind "cannot find homeUrl".
+    if (oauth && principalUrl && /principalUrl|homeUrl/i.test(msg)) {
+      const said = await davSays(principalUrl, credentials.accessToken as string);
+      if (said) throw new Error(`${acct.preset.name} said: ${said}`);
+    }
+    // Fallback wording: tsdav collapses everything to "cannot find …", and
+    // fetchHomeUrl has no 401 branch at all, so a wrong app password looks
+    // exactly like a wrong URL. Name what's worth checking, cheapest first.
     if (/principalUrl|homeUrl/i.test(msg))
       throw new Error(
         `Couldn't open ${kind === "caldav" ? "the calendar" : "contacts"} for “${username}” on ${acct.preset.name}. ` +
@@ -107,6 +115,40 @@ async function client(acct: ResolvedAccount, kind: Kind) {
           ` (Underlying: ${msg})`,
       );
     throw e;
+  }
+}
+
+/**
+ * Ask the principal URL directly and report what the server actually said.
+ *
+ * Everything in tsdav's discovery collapses to "cannot find principalUrl" or
+ * "cannot find homeUrl" — the response is dropped. Google's response, though,
+ * usually names the problem outright ("Calendar API has not been used in
+ * project N before or it is disabled"), which is the difference between a fix
+ * and an afternoon. Returns null when the reply adds nothing.
+ */
+async function davSays(url: string, bearer: string): Promise<string | null> {
+  try {
+    const res = await fetchRetry(url, {
+      method: "PROPFIND",
+      headers: {
+        authorization: `Bearer ${bearer}`,
+        depth: "0",
+        "content-type": "application/xml; charset=utf-8",
+      },
+      body: `<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:current-user-principal/></d:prop></d:propfind>`,
+    });
+    if (res.ok) return null; // reachable — the failure is elsewhere
+    const text = (await res.text().catch(() => "")).trim();
+    // Google answers JSON for API-level problems and XML for DAV ones; the JSON
+    // message is the useful one, the XML is usually noise.
+    const json = /^\s*\{/.test(text)
+      ? (JSON.parse(text) as { error?: { message?: string } }).error?.message
+      : null;
+    const said = json ?? text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    return said ? `${res.status} — ${said.slice(0, 400)}` : `HTTP ${res.status}`;
+  } catch {
+    return null;
   }
 }
 
