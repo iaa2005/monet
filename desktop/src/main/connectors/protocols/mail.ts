@@ -12,6 +12,7 @@
 
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
+import { passwordShape } from "../store.js";
 import type { ProtocolResult, ResolvedAccount } from "../types.js";
 
 const MAX_BODY = 8_000;
@@ -83,11 +84,12 @@ function imapError(e: unknown, acct: ResolvedAccount): Error {
   const said = err.responseText?.trim();
   if (!said) return e instanceof Error ? e : new Error(String(e));
 
-  const hint = /IMAP is disabled/i.test(said)
-    ? ` — turn IMAP on in ${acct.preset.name}'s settings (Mail → Mail clients), then Test again. If it's already on, the app password may be the wrong type.`
-    : /credentials|AUTHENTICATIONFAILED/i.test(said)
-      ? ` — check the app password, and that it's the type this connector needs.`
-      : "";
+  // Yandex says "invalid credentials or IMAP is disabled" for both, so name both
+  // — and the password's length, since "it's definitely right" is otherwise
+  // unarguable. Compare it against a connector that works.
+  const hint = /credentials|IMAP is disabled|AUTHENTICATIONFAILED/i.test(said)
+    ? ` — if IMAP is already on in ${acct.preset.name}'s settings, then the app password is the problem: it must be the MAIL type, since app passwords are scoped per service. ${passwordShape(acct.account.id)}; compare it with a connector that works.`
+    : "";
   return new Error(`${acct.preset.name} said: ${said}${hint}`);
 }
 

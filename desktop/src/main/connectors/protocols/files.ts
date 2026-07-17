@@ -7,6 +7,7 @@
  * `WWW-Authenticate: Basic realm="Yandex.Disk"`.
  */
 
+import { passwordShape } from "../store.js";
 import type { ProtocolResult, ResolvedAccount } from "../types.js";
 
 const MAX_TEXT = 20_000;
@@ -42,13 +43,30 @@ interface DavStat {
   filename: string;
 }
 
+/** The webdav lib throws a bare "Invalid response: 401 Unauthorized", which
+ * tells the user nothing they can act on — least of all that Yandex scopes app
+ * passwords per service, so a Mail password is refused here on principle. */
+function davError(e: unknown, acct: ResolvedAccount): Error {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (!/401|unauthor/i.test(msg)) return e instanceof Error ? e : new Error(msg);
+  return new Error(
+    `${acct.preset.name} refused the credentials for “${acct.account.username}”. ` +
+      `The app password must be the Files (WebDAV) type — one made for Mail or Calendar is rejected here. ` +
+      `${passwordShape(acct.account.id)}; compare it with a connector that works. (Underlying: ${msg})`,
+  );
+}
+
 export async function filesList(
   acct: ResolvedAccount,
   opts: { path?: string },
 ): Promise<ProtocolResult> {
   const c = await client(acct);
   const path = opts.path?.trim() || "/";
-  const rows = (await c.getDirectoryContents(path)) as DavStat[];
+  const rows = (await c
+    .getDirectoryContents(path)
+    .catch((e: unknown) => {
+      throw davError(e, acct);
+    })) as DavStat[];
   if (!rows.length) return { ok: true, text: `${path} is empty.` };
   const text = rows
     .map((r) =>

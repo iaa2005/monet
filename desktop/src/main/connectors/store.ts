@@ -81,11 +81,31 @@ function writeSecrets(map: SecretFile): void {
   writeFileSync(secretsPath(), JSON.stringify(map, null, 2), "utf-8");
 }
 
+/**
+ * Trim every string in a secret.
+ *
+ * Credentials are pasted, and a paste brings company: app passwords get copied
+ * out of a web page with a trailing space or newline riding along. The server
+ * then rejects a password the user can see is correct, which is unfalsifiable
+ * from their side — they re-copy it and get the same 401.
+ *
+ * Applied on READ as well as write, so values already stored with the extra
+ * whitespace are repaired without anyone re-entering them. Nothing here can
+ * legitimately start or end with whitespace: not an app password, not a token,
+ * not an api_id, not a session string.
+ */
+function trimSecret(secret: ConnectorSecret): ConnectorSecret {
+  const out: Record<string, unknown> = { ...secret };
+  for (const [k, v] of Object.entries(out))
+    if (typeof v === "string") out[k] = v.trim();
+  return out as ConnectorSecret;
+}
+
 export function getSecret(accountId: string): ConnectorSecret {
   const blob = readSecrets()[accountId];
   if (!blob) return {};
   try {
-    return JSON.parse(decrypt(blob)) as ConnectorSecret;
+    return trimSecret(JSON.parse(decrypt(blob)) as ConnectorSecret);
   } catch {
     return {};
   }
@@ -93,8 +113,23 @@ export function getSecret(accountId: string): ConnectorSecret {
 
 export function setSecret(accountId: string, secret: ConnectorSecret): void {
   const map = readSecrets();
-  map[accountId] = encrypt(JSON.stringify(secret));
+  map[accountId] = encrypt(JSON.stringify(trimSecret(secret)));
   writeSecrets(map);
+}
+
+/**
+ * A shape hint for a credential, safe to show: length only, never content.
+ *
+ * "The password is right and the server still says 401" is unfalsifiable from
+ * the user's side — they re-copy the same string and get the same answer. A
+ * length they can compare against a connector that DOES work turns that into a
+ * fact: same length means look elsewhere, different means a different string
+ * got pasted than they think.
+ */
+export function passwordShape(accountId: string): string {
+  const p = getSecret(accountId).password;
+  if (!p) return "no password stored";
+  return `stored password: ${p.length} chars`;
 }
 
 /** Merge into the stored secret — used to persist a Telegram session after login. */

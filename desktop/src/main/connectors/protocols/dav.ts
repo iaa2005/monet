@@ -14,7 +14,7 @@
 import { createDAVClient } from "tsdav";
 import { fetchRetry } from "../../net-fetch.js";
 import { GOOGLE_TOKEN_URL, googleAccessToken } from "../oauth/google.js";
-import { patchSecret } from "../store.js";
+import { passwordShape, patchSecret } from "../store.js";
 import type { ProtocolResult, ResolvedAccount } from "../types.js";
 
 type Kind = "caldav" | "carddav";
@@ -105,13 +105,13 @@ async function client(acct: ResolvedAccount, kind: Kind) {
     // Fallback wording: tsdav collapses everything to "cannot find …", and
     // fetchHomeUrl has no 401 branch at all, so a wrong app password looks
     // exactly like a wrong URL. Name what's worth checking, cheapest first.
-    if (/principalUrl|homeUrl/i.test(msg))
+    if (/principalUrl|homeUrl|401|credentials/i.test(msg))
       throw new Error(
         `Couldn't open ${kind === "caldav" ? "the calendar" : "contacts"} for “${username}” on ${acct.preset.name}. ` +
           (oauth
             ? `The sign-in worked, so check the ${kind === "caldav" ? "Calendar" : "CardDAV"} API is enabled for your OAuth client in Google Cloud, and that the consent screen granted the scope.`
-            : `Most likely the app password is wrong or expired — try Test after re-pasting it. ` +
-              `Otherwise ${kind === "caldav" ? "CalDAV" : "CardDAV"} may not be enabled for this account, or the login isn't the full address.`) +
+            : `The app password must be the ${kind === "caldav" ? "Calendar (CalDAV)" : "Contacts (CardDAV)"} type — a password made for another service is refused here. ` +
+              `${passwordShape(acct.account.id)}; compare it with a connector that works.`) +
           ` (Underlying: ${msg})`,
       );
     throw e;
