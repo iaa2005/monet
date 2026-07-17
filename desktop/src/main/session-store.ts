@@ -354,6 +354,7 @@ export class SessionStore {
     status = "all",
     sort = "recency",
     sortDir = "desc",
+    activityDays?: number,
   ): Session[] {
     const d = getDb();
     // Routine output has its own collapsible section above Recents — listing it
@@ -371,11 +372,19 @@ export class SessionStore {
     } else if (status === "archived") {
       query += " AND archived = 1";
     }
+    // Last-activity window. The cutoff is computed here as ISO rather than via
+    // SQLite datetime(): updated_at is stored as toISOString() ("…T…Z"), and
+    // datetime('now') renders "YYYY-MM-DD HH:MM:SS" — lexicographic comparison
+    // across the two formats is off by the 'T', so same-format strings only.
+    if (activityDays && activityDays > 0) {
+      query += " AND updated_at >= ?";
+      params.push(new Date(Date.now() - activityDays * 86_400_000).toISOString());
+    }
 
     const dir = sortDir === "asc" ? "ASC" : "DESC";
     const orderBy =
       sort === "name"
-        ? `title ${dir}`
+        ? `title COLLATE NOCASE ${dir}`
         : sort === "activity"
           ? `message_count ${dir}, updated_at ${dir}`
           : `pinned DESC, updated_at ${dir}`;

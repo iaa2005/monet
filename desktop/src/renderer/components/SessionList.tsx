@@ -99,6 +99,11 @@ export function SessionList({
       const status = filters?.status ?? "all";
       const sort = filters?.sort ?? "recency";
       const sortDir = filters?.sortDir ?? "desc";
+      // "1d"/"3d"/"7d"/"30d" → a days window for the query; "all" → none.
+      const activityDays =
+        filters?.activity && filters.activity !== "all"
+          ? Number.parseInt(filters.activity, 10) || undefined
+          : undefined;
       const result = await api()?.sessions.list(
         50,
         0,
@@ -106,6 +111,7 @@ export function SessionList({
         status,
         sort,
         sortDir,
+        activityDays,
       );
       if (result) setAllSessions(result as SessionSummary[]);
     } catch (err) {
@@ -125,7 +131,51 @@ export function SessionList({
   useEffect(() => {
     loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, space, filters?.status, filters?.sort, filters?.sortDir]);
+  }, [
+    version,
+    space,
+    filters?.status,
+    filters?.activity,
+    filters?.sort,
+    filters?.sortDir,
+  ]);
+
+  // "Group by" renders section headers between rows. Buckets are computed from
+  // what's already loaded — grouping changes presentation, not the query.
+  const grouped = useMemo((): { title: string; items: SessionSummary[] }[] => {
+    const mode = filters?.group ?? "none";
+    if (mode === "date") {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const buckets: [string, (d: Date) => boolean][] = [
+        ["Today", (d) => d >= today],
+        ["Yesterday", (d) => d >= new Date(today.getTime() - 86_400_000)],
+        ["This week", (d) => d >= new Date(today.getTime() - 6 * 86_400_000)],
+        ["This month", (d) => d >= new Date(today.getTime() - 29 * 86_400_000)],
+        ["Older", () => true],
+      ];
+      const out = buckets.map(([title]) => ({
+        title,
+        items: [] as SessionSummary[],
+      }));
+      for (const s of allSessions) {
+        const d = new Date(s.updatedAt);
+        out[buckets.findIndex(([, test]) => test(d))].items.push(s);
+      }
+      return out.filter((g) => g.items.length > 0);
+    }
+    if (mode === "state") {
+      const out = [
+        { title: "Pinned", items: [] as SessionSummary[] },
+        { title: "Active", items: [] as SessionSummary[] },
+        { title: "Archived", items: [] as SessionSummary[] },
+      ];
+      for (const s of allSessions)
+        out[s.pinned ? 0 : s.archived ? 2 : 1].items.push(s);
+      return out.filter((g) => g.items.length > 0);
+    }
+    return [{ title: "", items: allSessions }];
+  }, [allSessions, filters?.group]);
 
   const setArchived = async (id: string, v: boolean): Promise<void> => {
     setOpenMenuId(null);
@@ -192,7 +242,14 @@ export function SessionList({
         </p>
       ) : (
         <div className="flex flex-col gap-0.5 pb-2">
-          {allSessions.map((s) => {
+          {grouped.map((g) => (
+            <div key={g.title || "all"} className="flex flex-col gap-0.5">
+              {g.title && (
+                <div className="px-2 pb-0.5 pt-2 text-[11px] font-medium text-muted-foreground/70">
+                  {g.title}
+                </div>
+              )}
+              {g.items.map((s) => {
             const active = s.id === currentSessionId;
             const menuOpen = openMenuId === s.id;
             return (
@@ -346,7 +403,9 @@ export function SessionList({
                 )}
               </div>
             );
-          })}
+              })}
+            </div>
+          ))}
         </div>
       )}
       {exportSession && (

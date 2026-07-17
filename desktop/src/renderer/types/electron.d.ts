@@ -277,6 +277,7 @@ export interface ElectronAPI {
       status?: string,
       sort?: string,
       sortDir?: string,
+      activityDays?: number,
     ) => Promise<unknown[]>;
     search: (query: string, limit?: number) => Promise<unknown[]>;
     deleteById: (id: string) => Promise<boolean>;

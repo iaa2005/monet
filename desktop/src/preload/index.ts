@@ -221,6 +221,7 @@ const electronAPI = {
       status?: string,
       sort?: string,
       sortDir?: string,
+      activityDays?: number,
     ): Promise<unknown[]> =>
       ipcRenderer.invoke(
         "sessions:list",
@@ -230,6 +231,7 @@ const electronAPI = {
         status,
         sort,
         sortDir,
+        activityDays,
       ),
     search: (query: string, limit?: number): Promise<unknown[]> =>
       ipcRenderer.invoke("sessions:search", query, limit),

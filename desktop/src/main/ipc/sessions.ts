@@ -71,8 +71,9 @@ export function registerSessionsIPC(): void {
       status?: string,
       sort?: string,
       sortDir?: string,
+      activityDays?: number,
     ): Session[] => {
-      return store.list(limit, offset, space, status, sort, sortDir);
+      return store.list(limit, offset, space, status, sort, sortDir, activityDays);
     },
   );
 

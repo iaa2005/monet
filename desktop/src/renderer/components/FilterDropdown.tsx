@@ -34,12 +34,12 @@ const ACTIVITY_OPTS: FilterOption[] = [
   { label: "30d", value: "30d" },
   { label: "All", value: "all" },
 ];
+// Only groupings that EXIST. This used to list "PR status" and "Custom
+// groups" — features this app has never had; options that select nothing are
+// the UI equivalent of a guessed endpoint.
 const GROUP_OPTS: FilterOption[] = [
   { label: "Date", value: "date" },
   { label: "State", value: "state" },
-  { label: "PR status", value: "pr" },
-  { label: "Custom groups", value: "custom" },
-  { label: "—", value: "divider" },
   { label: "None", value: "none" },
 ];
 const SORT_OPTS: FilterOption[] = [
