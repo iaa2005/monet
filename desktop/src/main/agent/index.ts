@@ -193,6 +193,13 @@ export interface AgentRunOptions {
   askUser?: AskUserFn;
   /** Workspace ("home" | "code") — selects the advertised toolset. */
   space?: string;
+  /**
+   * This run's working directory. The chat's own folder, resolved by the send
+   * path from the session. Absent = fall back to the current global (Home has
+   * no filesystem workspace). runAgent pins the whole run to it so concurrent
+   * chats/routines can't move each other's cwd.
+   */
+  cwd?: string;
   /** Reasoning effort requested from the composer (absent = provider default). */
   effort?: EffortLevel;
   /** Restrict MCP tools to these connector/server names (routines scope). */
@@ -676,6 +683,30 @@ export async function runAgent(
   onEvent: (event: LLMEvent) => void,
   options: AgentRunOptions = {},
 ): Promise<void> {
+  // This run OWNS its working directory. An explicit cwd (the chat's own folder,
+  // resolved from the session by the send path) wins; else fall back to the
+  // current global. Applying it keeps desktop-side reads (checkpoints, CLAUDE.md,
+  // the vendor state sync in initVendorRuntime) consistent, and the vendor's
+  // runWithCwdOverride pins the cwd for the prompt AND every tool call — so a
+  // concurrent chat or a routine firing mid-stream can't move it out from under
+  // this run. All the actual work lives in runAgentScoped.
+  const { runWithCwdOverride } = await import("@vendor/utils/cwd.js");
+  const { applyWorkspaceForRun, getWorkspacePath } = await import(
+    "../ipc/workspace.js"
+  );
+  if (options.cwd) applyWorkspaceForRun(options.cwd);
+  const runCwd = options.cwd ?? getWorkspacePath();
+  return runWithCwdOverride(runCwd, () =>
+    runAgentScoped(sessionId, userContent, onEvent, options),
+  );
+}
+
+async function runAgentScoped(
+  sessionId: string,
+  userContent: string | LLMContentBlock[],
+  onEvent: (event: LLMEvent) => void,
+  options: AgentRunOptions = {},
+): Promise<void> {
   const provider = getProviderManager().getActive();
   if (!provider) {
     onEvent({
@@ -893,11 +924,12 @@ export async function runAgent(
       });
       // Code Rewind: snapshot the workspace AFTER the reply is done (never
       // blocks it) so this turn can be restored later. Home has no workspace.
+      // getCwd() (not the global) so the snapshot is taken in THIS run's folder.
       if (space && space !== "home") {
         try {
-          const { getWorkspacePath } = await import("../ipc/workspace.js");
+          const { getCwd } = await import("@vendor/utils/cwd.js");
           const { snapshotWorkspace } = await import("./checkpoints.js");
-          const sha = await snapshotWorkspace(sessionId, getWorkspacePath());
+          const sha = await snapshotWorkspace(sessionId, getCwd());
           if (sha) onEvent({ type: "checkpoint", sha });
         } catch {
           /* best-effort */
