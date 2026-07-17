@@ -378,7 +378,11 @@ export function isSpaceToolAllowed(
   // Each is advertised only once an account for its protocol exists — an empty
   // Mail tool is pure schema tax and invites the model to call it and fail.
   if (name === "Mail") return accountsForProtocol("imap").length > 0;
-  if (name === "CloudFiles") return accountsForProtocol("webdav").length > 0;
+  if (name === "CloudFiles")
+    return (
+      accountsForProtocol("webdav").length > 0 ||
+      accountsForProtocol("gdrive").length > 0
+    );
   if (name === "Calendar")
     return (
       accountsForProtocol("caldav").length > 0 ||

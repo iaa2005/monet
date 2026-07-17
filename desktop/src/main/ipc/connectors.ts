@@ -133,6 +133,11 @@ export function registerConnectorsIPC(): void {
           const r = await filesList(pickAccount("webdav", id), { path: "/" });
           return { ok: r.ok, error: r.error };
         }
+        if (preset.protocols.includes("gdrive")) {
+          const { driveList } = await import("../connectors/protocols/gdrive.js");
+          const r = await driveList(pickAccount("gdrive", id), { path: "/" });
+          return { ok: r.ok, error: r.error };
+        }
         if (preset.protocols.includes("caldav")) {
           const r = await calendarList(pickAccount("caldav", id));
           return { ok: r.ok, error: r.error };

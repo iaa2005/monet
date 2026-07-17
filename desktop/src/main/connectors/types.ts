@@ -19,6 +19,9 @@ export type ProtocolId =
   | "imap"
   | "smtp"
   | "webdav"
+  /** Google Drive's REST API — it has no DAV of any kind, so it can't share the
+   * webdav adapter, but it serves the same CloudFiles tool. */
+  | "gdrive"
   | "caldav"
   | "carddav"
   | "telegram"

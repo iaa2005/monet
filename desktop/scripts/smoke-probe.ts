@@ -243,6 +243,12 @@ async function main() {
     'connector scope: yandex-disk → CloudFiles only',
     names(['yandex-disk']) === 'CloudFiles',
   )
+  // Drive speaks REST, not WebDAV, but serves the same tool — a routine scoped
+  // to it must still get CloudFiles.
+  check(
+    'connector scope: google-drive → CloudFiles',
+    names(['google-drive']) === 'CloudFiles',
+  )
   check(
     'connector scope: calendar presets → Calendar',
     names(['google-calendar', 'yandex-contacts']) === 'Calendar',
@@ -336,8 +342,13 @@ async function main() {
   const bad = PRESETS.filter(p => {
     if (p.unavailable) return false
     if (p.mcp) return !p.mcp.command || !p.mcp.envKey || !p.credUrl
+    // telegram and gdrive have no endpoint FIELD by nature — their addresses are
+    // fixed in the adapter (MTProto, the Drive API), so declaring the protocol
+    // is the endpoint. Everything else must name a host, or it's a guess again.
+    const fixedEndpoint =
+      !!p.telegram || p.protocols.includes('gdrive' as never)
     const hasEndpoint =
-      !!p.imap || !!p.webdav || !!p.caldav || !!p.carddav || !!p.telegram
+      !!p.imap || !!p.webdav || !!p.caldav || !!p.carddav || fixedEndpoint
     return !hasEndpoint || !p.credUrl
   })
   check(

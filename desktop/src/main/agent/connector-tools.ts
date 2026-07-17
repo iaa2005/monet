@@ -17,7 +17,12 @@ import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
-import { accountHint, getPreset, pickAccount } from "../connectors/index.js";
+import {
+  accountHint,
+  accountsForProtocol,
+  getPreset,
+  pickAccount,
+} from "../connectors/index.js";
 import {
   mailFolders,
   mailRead,
@@ -31,6 +36,13 @@ import {
   filesRead,
   filesWrite,
 } from "../connectors/protocols/files.js";
+import {
+  driveDelete,
+  driveList,
+  driveMkdir,
+  driveRead,
+  driveWrite,
+} from "../connectors/protocols/gdrive.js";
 import {
   calendarCreate,
   calendarEvents,
@@ -216,12 +228,14 @@ export const CloudFilesTool = buildTool({
       tunablePrompt(
         "tool-cloudfiles",
         [
-          "Browse and edit files on the user's cloud drive over WebDAV (Yandex",
-          "Disk, Nextcloud…). This is the user's real drive, not the sandbox —",
-          "deleting or overwriting is not undoable, so confirm before you do.",
+          "Browse and edit files on the user's cloud drives — Yandex Disk and",
+          "Nextcloud over WebDAV, Google Drive over its API. Address everything",
+          "by path either way. This is the user's real drive, not the sandbox,",
+          "so confirm before overwriting or deleting. On Drive, delete moves to",
+          "its trash; Google Docs/Sheets are exported as text/CSV on read.",
         ].join(" "),
       ),
-      `Connected drives: ${accountHint("webdav") || "(none)"}.`,
+      `Connected drives: ${[accountHint("webdav"), accountHint("gdrive")].filter(Boolean).join(", ") || "(none)"}.`,
     ].join("\n");
   },
   async description() {
@@ -229,22 +243,47 @@ export const CloudFilesTool = buildTool({
   },
   async call(input: z.infer<FilesInput>, _context: ToolUseContext) {
     try {
-      const acct = pickAccount("webdav", input.account);
+      // One tool, two protocols: a Drive account speaks REST, everything else
+      // WebDAV. The model addresses both the same way — by path.
+      const drive = accountsForProtocol("gdrive").some(
+        (a) =>
+          !input.account ||
+          a.id === input.account ||
+          a.label.toLowerCase() === input.account.toLowerCase() ||
+          a.presetId === input.account ||
+          a.username.toLowerCase() === input.account.toLowerCase(),
+      );
+      const acct = pickAccount(drive ? "gdrive" : "webdav", input.account);
+      const ops = drive
+        ? {
+            list: driveList,
+            read: driveRead,
+            write: driveWrite,
+            del: driveDelete,
+            mkdir: driveMkdir,
+          }
+        : {
+            list: filesList,
+            read: filesRead,
+            write: filesWrite,
+            del: filesDelete,
+            mkdir: filesMkdir,
+          };
       switch (input.action) {
         case "list":
-          return toOutput(await filesList(acct, { path: input.path }));
+          return toOutput(await ops.list(acct, { path: input.path }));
         case "read":
-          return toOutput(await filesRead(acct, { path: input.path }));
+          return toOutput(await ops.read(acct, { path: input.path }));
         case "write":
           if (input.content == null)
             return fail(new Error("write needs content."));
           return toOutput(
-            await filesWrite(acct, { path: input.path, content: input.content }),
+            await ops.write(acct, { path: input.path, content: input.content }),
           );
         case "delete":
-          return toOutput(await filesDelete(acct, { path: input.path }));
+          return toOutput(await ops.del(acct, { path: input.path }));
         case "mkdir":
-          return toOutput(await filesMkdir(acct, { path: input.path }));
+          return toOutput(await ops.mkdir(acct, { path: input.path }));
       }
     } catch (e) {
       return fail(e);
@@ -504,6 +543,7 @@ const PROTOCOL_TOOL: Record<string, string> = {
   imap: "Mail",
   smtp: "Mail",
   webdav: "CloudFiles",
+  gdrive: "CloudFiles",
   caldav: "Calendar",
   carddav: "Calendar",
   telegram: "Telegram",

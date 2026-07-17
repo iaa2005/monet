@@ -128,26 +128,29 @@ export const PRESETS: ConnectorPreset[] = [
       url: "https://console.cloud.google.com/apis/library/carddav.googleapis.com",
     }),
   },
-  // Drive is the one Google service with NO app-password path: Gmail has IMAP,
-  // Calendar has CalDAV, Contacts has CardDAV — Drive has no legacy protocol at
-  // all, only an API behind OAuth. Probed: a Basic-auth call to
-  // googleapis.com/drive/v3/files returns 403 "Method doesn't allow
-  // unregistered callers … use API Key or other form of API consumer identity",
-  // PROPFIND on drive.google.com is 405, and there is no DAV endpoint.
-  //
-  // Rather than an OAuth client, we point at Drive for Desktop: it mounts Drive
-  // as a real drive letter, which the file tools already handle — the best
-  // connector here is no connector.
+  // Drive has no standard protocol at all — no DAV, only its REST API behind
+  // OAuth (a Basic call to /drive/v3/files answers 403 "unregistered callers";
+  // PROPFIND on drive.google.com is 405). So it rides the same OAuth client as
+  // Calendar and gets its own adapter behind the shared CloudFiles tool.
   {
     id: "google-drive",
     name: "Google Drive",
     group: "Google",
-    protocols: [],
-    unavailable:
-      "Drive needs no connector — install Google Drive for Desktop and it mounts as an ordinary drive (usually G:). Open that folder as a workspace in Code and the agent reads and writes it with the normal file tools, with no password to paste and nothing to keep in sync. (Drive is the one Google service with no app-password path: it has no IMAP/CalDAV-style protocol, only an API behind OAuth, and it refuses a password outright.)",
-    unavailableLabel: "Use Drive for Desktop — read how",
-    credLabel: "Download Drive for Desktop",
-    credUrl: "https://www.google.com/drive/download/",
+    protocols: ["gdrive"],
+    oauth: {
+      provider: "google",
+      // Full Drive: anything narrower (drive.file) only sees files this app
+      // itself created, which is useless for reading the user's own Drive.
+      scopes: ["https://www.googleapis.com/auth/drive"],
+    },
+    credUrl: "https://console.cloud.google.com/apis/credentials",
+    credLabel: "OAuth client (Desktop app)",
+    usernameLabel: "you@gmail.com",
+    note: "Reuse the SAME client ID/secret as Google Calendar — one client covers every Google connector; only step 2 differs. Drive's scope is a “restricted” one, so expect the unverified-app warning to be firmer. Prefer no setup at all? Google Drive for Desktop mounts Drive as an ordinary drive (usually G:) that the file tools already read — no connector needed.",
+    setupSteps: googleSetup({
+      name: "Google Drive API",
+      url: "https://console.cloud.google.com/apis/library/drive.googleapis.com",
+    }),
   },
 
   // ─── Yandex ──────────────────────────────────────────────────────────────
