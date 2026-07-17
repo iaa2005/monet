@@ -13,7 +13,7 @@ const REASON =
 export const Linear: ConnectorService = {
   id: "linear",
   name: "Linear",
-  company: "Developer tools",
+  company: "Linear",
   description: "Issues, projects, triage.",
   iconSvg: icon,
   auth: { kind: "unavailable", reason: REASON },

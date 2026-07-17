@@ -13,7 +13,7 @@ import type { ConnectorService } from "../types.js";
 export const Notion: ConnectorService = {
   id: "notion",
   name: "Notion",
-  company: "Developer tools",
+  company: "Notion",
   description: "Pages and databases via Notion's MCP server.",
   iconSvg: icon,
   auth: {

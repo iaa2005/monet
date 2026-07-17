@@ -368,6 +368,25 @@ async function main() {
     badName.length === 0,
     badName.map(sv => `${sv.id}→${sv.name}`).join(',') || undefined,
   )
+  // Settings shows the spaced human form, derived from company + name; the
+  // compact name stays what the model, routines and the meter use.
+  const { displayNameOf } = await import('../src/main/connectors/services/types.js')
+  const DISPLAY_FOR: Record<string, string> = {
+    gmail: 'Google Gmail',
+    'google-drive': 'Google Drive',
+    'yandex-disk': 'Yandex Disk',
+    'yandex-contacts': 'Yandex Contacts',
+    github: 'GitHub',
+    telegram: 'Telegram',
+  }
+  const badDisplay = SERVICES.filter(
+    sv => DISPLAY_FOR[sv.id] && displayNameOf(sv) !== DISPLAY_FOR[sv.id],
+  )
+  check(
+    'settings display names are spaced by company',
+    badDisplay.length === 0,
+    badDisplay.map(sv => `${sv.id}→${displayNameOf(sv)}`).join(',') || undefined,
+  )
   const noTest = SERVICES.filter(sv => typeof sv.test !== 'function')
   check('every service carries a test', noTest.length === 0, noTest.map(sv => sv.id).join(',') || undefined)
   const noCred = SERVICES.filter(sv => sv.auth.kind !== 'unavailable' && !sv.credUrl)

@@ -10,7 +10,7 @@ import type { ConnectorService } from "../types.js";
 export const Slack: ConnectorService = {
   id: "slack",
   name: "Slack",
-  company: "Developer tools",
+  company: "Slack",
   description: "Post and read channel messages via Slack's MCP server.",
   iconSvg: icon,
   auth: {

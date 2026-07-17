@@ -162,7 +162,9 @@ export interface ConnectorService {
   id: string;
   /** Display name, company-prefixed: "YandexDisk", "GoogleGmail", "Telegram". */
   name: string;
-  /** Grouping header in the UI: "Google", "Yandex", "Developer tools"… */
+  /** The actual company/brand ("Google", "Yandex", "GitHub"; "" if none).
+   * Settings groups services under a company header only when it has TWO OR
+   * MORE services — a company of one lands in the shared "Other" bucket. */
   company: string;
   /** One line on the card. */
   description: string;
@@ -196,7 +198,12 @@ export interface ConnectorService {
 
 export interface UiConnectorService {
   id: string;
+  /** Compact identifier-style name ("GoogleGmail") — what the model, routines
+   * and the context meter use. */
   name: string;
+  /** Human form for Settings ("Google Gmail") — derived: company + space +
+   * product when the name starts with the company, else the name as-is. */
+  displayName: string;
   company: string;
   description: string;
   iconSvg?: string;
@@ -214,10 +221,22 @@ export interface UiConnectorService {
   capabilities: string[];
 }
 
+/** "GoogleGmail" + company "Google" → "Google Gmail"; "GitHub" stays "GitHub". */
+export function displayNameOf(s: ConnectorService): string {
+  if (
+    s.company &&
+    s.name.startsWith(s.company) &&
+    s.name.length > s.company.length
+  )
+    return `${s.company} ${s.name.slice(s.company.length)}`;
+  return s.name;
+}
+
 export function toUiService(s: ConnectorService): UiConnectorService {
   return {
     id: s.id,
     name: s.name,
+    displayName: displayNameOf(s),
     company: s.company,
     description: s.description,
     iconSvg: s.iconSvg,

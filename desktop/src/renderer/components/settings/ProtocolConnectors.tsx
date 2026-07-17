@@ -87,10 +87,24 @@ export function ProtocolConnectors(): JSX.Element {
     () => new Map(services.map((s) => [s.id, s])),
     [services],
   );
-  const companies = useMemo(
-    () => [...new Set(services.map((s) => s.company))],
-    [services],
-  );
+  // A company header exists only when it has TWO OR MORE services; companies
+  // of one (GitHub, Notion…) share the "Other" bucket. Order follows the
+  // registry.
+  const groups = useMemo(() => {
+    const byCompany = new Map<string, UiConnectorService[]>();
+    for (const s of services) {
+      const key = s.company || "";
+      byCompany.set(key, [...(byCompany.get(key) ?? []), s]);
+    }
+    const named: { title: string; items: UiConnectorService[] }[] = [];
+    const singles: UiConnectorService[] = [];
+    for (const [company, items] of byCompany) {
+      if (company && items.length >= 2) named.push({ title: company, items });
+      else singles.push(...items);
+    }
+    if (singles.length) named.push({ title: "Other", items: singles });
+    return named;
+  }, [services]);
 
   const test = async (id: string): Promise<void> => {
     setTesting(id);
@@ -143,7 +157,7 @@ export function ProtocolConnectors(): JSX.Element {
                       !a.enabled && "text-muted-foreground",
                     )}
                   >
-                    {svc?.name ?? a.label}
+                    {svc?.displayName ?? a.label}
                     {!a.enabled && " — off"}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
@@ -193,15 +207,13 @@ export function ProtocolConnectors(): JSX.Element {
         </div>
       )}
 
-      {companies.map((g) => (
-        <div key={g}>
+      {groups.map((g) => (
+        <div key={g.title}>
           <div className="mb-1.5 text-xs font-medium text-muted-foreground">
-            {g}
+            {g.title}
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {services
-              .filter((s) => s.company === g)
-              .map((s) => (
+            {g.items.map((s) => (
                 <button
                   key={s.id}
                   type="button"
@@ -214,7 +226,7 @@ export function ProtocolConnectors(): JSX.Element {
                     dim={s.auth.kind === "unavailable"}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium">{s.name}</div>
+                    <div className="text-sm font-medium">{s.displayName}</div>
                     <div className="mt-0.5 truncate text-xs text-muted-foreground">
                       {s.auth.kind === "unavailable"
                         ? "Not connectable yet — read why"
@@ -359,7 +371,7 @@ function ConnectForm({
   const kind = service.auth.kind;
 
   return (
-    <Modal open onClose={onClose} title={`Connect ${service.name}`}>
+    <Modal open onClose={onClose} title={`Connect ${service.displayName}`}>
       <div className="space-y-3">
         <ServiceIcon svg={service.iconSvg} className="size-9" />
 

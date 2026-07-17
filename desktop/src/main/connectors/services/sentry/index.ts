@@ -13,7 +13,7 @@ const REASON =
 export const Sentry: ConnectorService = {
   id: "sentry",
   name: "Sentry",
-  company: "Developer tools",
+  company: "Sentry",
   description: "Errors and issue details.",
   iconSvg: icon,
   auth: { kind: "unavailable", reason: REASON },

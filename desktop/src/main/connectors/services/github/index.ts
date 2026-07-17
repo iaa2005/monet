@@ -12,7 +12,7 @@ import type { ConnectorService } from "../types.js";
 export const GitHub: ConnectorService = {
   id: "github",
   name: "GitHub",
-  company: "Developer tools",
+  company: "GitHub",
   description: "Issues, pull requests, repositories via GitHub's MCP server.",
   iconSvg: icon,
   auth: {

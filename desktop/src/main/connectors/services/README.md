@@ -208,9 +208,22 @@ server by name). The routine UI's picker, event-trigger source list and output
 list all come from `connectors:options` — your service appears there the moment
 an account is connected, under its display `name`. Nothing to wire.
 
-## Naming
+## Naming and grouping
 
-`name` is CompanyProduct with no space — `GoogleGmail`, `YandexDisk`,
-`Telegram` when the product IS the company. `id` is kebab-case and eternal:
-user accounts on disk reference it, so renaming an id orphans accounts.
-`company` is the UI grouping header.
+- `id` — kebab-case and **eternal**: user accounts on disk reference it, so
+  renaming an id orphans accounts.
+- `name` — CompanyProduct with no space (`GoogleGmail`, `YandexDisk`,
+  `Telegram` when the product IS the company). This is what the model, routine
+  scoping chips and the context meter show.
+- Settings shows the derived **display name**: when `name` starts with
+  `company`, a space is inserted — `Google Gmail`, `Yandex Disk`; otherwise the
+  name as-is (`GitHub`).
+- `company` — the actual brand (`Google`, `GitHub`; `""` if none). Settings
+  creates a company section only when it holds **two or more** services; a
+  company of one lands in the shared "Other" bucket, so `GitHub` sits under
+  Other until a second GitHub service exists.
+
+Context-meter note: the four lines named `Mail` / `CloudFiles` / `Calendar` /
+`Telegram` are the shared TOOLS (one schema per capability family, flat however
+many accounts are connected); MCP-backed services (Notion, GitHub) appear under
+their own names because each server advertises its own tool schemas.
