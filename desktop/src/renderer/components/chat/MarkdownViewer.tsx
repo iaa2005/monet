@@ -32,9 +32,15 @@ function artifactFromPath(path: string, alt: string) {
 }
 
 export function MarkdownViewer({
-  content,
+  content: raw,
   className,
 }: MarkdownViewerProps): JSX.Element {
+  // Extract YAML frontmatter so it can be rendered as a code block.
+  const { frontmatter, body } = useMemo(() => {
+    const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(raw);
+    return m ? { frontmatter: m[1].trimEnd(), body: m[2] } : { frontmatter: null, body: raw };
+  }, [raw]);
+
   const components = useMemo(() => ({
     p: ({ node: _n, ...p }: any) => <p className="my-2" {...p} />,
     h1: ({ node: _n, ...p }: any) => <h1 className="mt-5 mb-2 font-semibold" {...p} />,
@@ -86,12 +92,15 @@ export function MarkdownViewer({
         className,
       )}
     >
+      {frontmatter && (
+        <CodeBlock code={frontmatter} language="yaml" className="mb-3" />
+      )}
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={components}
       >
-        {content}
+        {body}
       </ReactMarkdown>
     </div>
   );

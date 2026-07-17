@@ -15,13 +15,12 @@ import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import { CodeBlock } from "./CodeBlock";
 import { MarkdownViewer } from "./MarkdownViewer";
-import { InlineDiff, diffStats } from "./InlineDiff";
+import { diffStats, langFromPath } from "./diff-core";
 import {
   ArtifactThumb,
   KindIcon,
   viewArtifact,
 } from "@/components/ArtifactsPanel";
-import { tr } from "zod/v4/locales";
 
 // Sandbox tool output carries one line per produced file:
 //   [artifact] <mediaType> <name> :: <absolute path>
@@ -189,51 +188,6 @@ function StatusIcon({ status }: { status: ToolCall["status"] }): JSX.Element {
   }
 }
 
-/** Map file extension to syntax-highlighter language id. */
-function langFromPath(path: string): string {
-  const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  const map: Record<string, string> = {
-    ts: "typescript",
-    tsx: "tsx",
-    js: "javascript",
-    jsx: "jsx",
-    py: "python",
-    rb: "ruby",
-    go: "go",
-    rs: "rust",
-    java: "java",
-    kt: "kotlin",
-    scala: "scala",
-    c: "c",
-    cpp: "cpp",
-    h: "c",
-    hpp: "cpp",
-    cs: "csharp",
-    php: "php",
-    swift: "swift",
-    css: "css",
-    scss: "scss",
-    less: "less",
-    html: "html",
-    xml: "xml",
-    svg: "svg",
-    json: "json",
-    yaml: "yaml",
-    yml: "yaml",
-    toml: "toml",
-    sql: "sql",
-    sh: "bash",
-    bash: "bash",
-    zsh: "bash",
-    ps1: "powershell",
-    md: "markdown",
-    txt: "text",
-    log: "text",
-    dockerfile: "docker",
-    makefile: "makefile",
-  };
-  return map[ext] || map[path.toLowerCase()] || "text";
-}
 function ToolDetail({
   toolCall,
   inGroup,
@@ -247,15 +201,16 @@ function ToolDetail({
 
   if ((name === "Edit" || name === "MultiEdit") && str("old_string") != null) {
     return (
-      <InlineDiff
-        oldText={str("old_string") ?? ""}
-        newText={str("new_string") ?? ""}
+      <CodeBlock
+        code={str("new_string") ?? ""}
+        oldCode={str("old_string") ?? ""}
+        language={langFromPath(str("file_path") ?? "")}
       />
     );
   }
 
   if (name === "Write" && str("content") != null) {
-    return <InlineDiff oldText="" newText={str("content") ?? ""} />;
+    return <CodeBlock code={str("content") ?? ""} oldCode="" language={langFromPath(str("file_path") ?? "")} />;
   }
 
   if (name === "RunPython" || name === "SandboxWrite") {
@@ -415,10 +370,10 @@ function ToolRow({
         {!fp && !preview && <span className="flex-1" />}
         {stats && (stats.added > 0 || stats.removed > 0) && (
           <span className="shrink-0 font-mono text-[11px]">
-            <span className="text-emerald-600 dark:text-emerald-500">
+            <span className="text-diff-add-text">
               +{stats.added}
             </span>{" "}
-            <span className="text-red-600 dark:text-red-500">
+            <span className="text-diff-remove-text">
               -{stats.removed}
             </span>
           </span>
@@ -557,10 +512,10 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }): JSX.Element {
         )}
         {stats && (stats.added > 0 || stats.removed > 0) && (
           <span className="shrink-0 font-mono text-[11px]">
-            <span className="text-emerald-600 dark:text-emerald-500">
+            <span className="text-diff-add-text">
               +{stats.added}
             </span>{" "}
-            <span className="text-red-600 dark:text-red-500">
+            <span className="text-diff-remove-text">
               -{stats.removed}
             </span>
           </span>

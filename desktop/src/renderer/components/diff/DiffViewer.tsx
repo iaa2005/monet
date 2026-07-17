@@ -1,10 +1,13 @@
 /**
- * Diff Viewer — unified diff with syntax highlighting.
+ * Diff Viewer — the Changes review panel. Each file renders through the shared
+ * DiffView (line numbers, +/- markers, folded "N unmodified lines" context,
+ * syntax highlighting) with an Accept / Reject header on top.
  */
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { DiffView } from '@/components/chat/DiffView'
+import { diffStats, langFromPath } from '@/components/chat/diff-core'
 
 export interface DiffFile {
   path: string
@@ -20,93 +23,27 @@ interface DiffViewerProps {
   onRejectAll: () => void
 }
 
-interface DiffLine {
-  type: 'unchanged' | 'added' | 'removed'
-  content: string
-  oldLine?: number
-  newLine?: number
-}
-
-function computeDiff(oldText: string, newText: string): DiffLine[] {
-  const oldLines = oldText.split('\n')
-  const newLines = newText.split('\n')
-  const result: DiffLine[] = []
-
-  // Simple line-by-line diff (LCS would be better but this works for MVP)
-  let oi = 0, ni = 0
-
-  while (oi < oldLines.length || ni < newLines.length) {
-    if (oi < oldLines.length && ni < newLines.length && oldLines[oi] === newLines[ni]) {
-      result.push({ type: 'unchanged', content: oldLines[oi], oldLine: oi + 1, newLine: ni + 1 })
-      oi++; ni++
-    } else {
-      // Try to find alignment
-      let found = false
-      // Look ahead for matching line
-      for (let look = 1; look < 20 && oi + look < oldLines.length; look++) {
-        if (oldLines[oi + look] === newLines[ni]) {
-          // Lines were removed
-          for (let r = 0; r < look; r++) {
-            result.push({ type: 'removed', content: oldLines[oi + r], oldLine: oi + r + 1 })
-          }
-          oi += look
-          found = true
-          break
-        }
-      }
-      if (!found) {
-        for (let look = 1; look < 20 && ni + look < newLines.length; look++) {
-          if (oldLines[oi] === newLines[ni + look]) {
-            // Lines were added
-            for (let a = 0; a < look; a++) {
-              result.push({ type: 'added', content: newLines[ni + a], newLine: ni + a + 1 })
-            }
-            ni += look
-            found = true
-            break
-          }
-        }
-      }
-      if (!found) {
-        // Replace: one line changed
-        if (oi < oldLines.length) {
-          result.push({ type: 'removed', content: oldLines[oi], oldLine: oi + 1 })
-          oi++
-        }
-        if (ni < newLines.length) {
-          result.push({ type: 'added', content: newLines[ni], newLine: ni + 1 })
-          ni++
-        }
-      }
-    }
-  }
-
-  return result
-}
+const PREVIEW_FILE_COUNT = 50
 
 function FileDiff({ file, onAccept, onReject }: {
   file: DiffFile
   onAccept: () => void
   onReject: () => void
 }): JSX.Element {
-  const diff = computeDiff(file.oldContent, file.newContent)
-  const stats = {
-    added: diff.filter(l => l.type === 'added').length,
-    removed: diff.filter(l => l.type === 'removed').length,
-  }
+  const stats = diffStats(file.oldContent, file.newContent)
 
   return (
-    <div className="mb-4 rounded-lg border">
-      <div className="flex items-center justify-between border-b bg-muted/50 px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{file.path}</span>
-          <span className="text-xs text-muted-foreground">
-            <span className="text-green-500">+{stats.added}</span>
+    <div className="glass-panel mb-4 overflow-hidden rounded-lg border border-border bg-card">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/50 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate font-mono text-sm font-medium">{file.path}</span>
+          <span className="shrink-0 font-mono text-xs">
+            <span className="text-diff-add-text">+{stats.added}</span>
             {' '}
-            <span className="text-red-500">-{stats.removed}</span>
+            <span className="text-diff-remove-text">-{stats.removed}</span>
           </span>
         </div>
-        <div className="flex gap-1">
+        <div className="flex shrink-0 gap-1">
           <Button size="sm" variant="outline" onClick={onAccept}>
             Accept
           </Button>
@@ -116,34 +53,19 @@ function FileDiff({ file, onAccept, onReject }: {
         </div>
       </div>
 
-      <div className="overflow-auto max-h-96 font-mono text-xs">
-        {diff.map((line, i) => (
-          <div
-            key={i}
-            className={cn(
-              'flex px-2 py-0.5',
-              line.type === 'added' && 'bg-green-500/10 text-green-600',
-              line.type === 'removed' && 'bg-red-500/10 text-red-600',
-            )}
-          >
-            <span className="w-10 shrink-0 select-none text-right text-muted-foreground mr-3">
-              {line.oldLine || ' '}
-            </span>
-            <span className="w-10 shrink-0 select-none text-right text-muted-foreground mr-3">
-              {line.newLine || ' '}
-            </span>
-            <span className="mr-1 select-none">
-              {line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '}
-            </span>
-            <span className="whitespace-pre">{line.content || ' '}</span>
-          </div>
-        ))}
-      </div>
+      <DiffView
+        oldText={file.oldContent}
+        newText={file.newContent}
+        language={langFromPath(file.path)}
+        maxHeight={480}
+      />
     </div>
   )
 }
 
 export function DiffViewer({ files, onAccept, onReject, onAcceptAll, onRejectAll }: DiffViewerProps): JSX.Element {
+  const [showAll, setShowAll] = useState(false)
+
   if (files.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -151,6 +73,9 @@ export function DiffViewer({ files, onAccept, onReject, onAcceptAll, onRejectAll
       </div>
     )
   }
+
+  const tooMany = files.length > PREVIEW_FILE_COUNT
+  const visible = tooMany && !showAll ? files.slice(0, PREVIEW_FILE_COUNT) : files
 
   return (
     <div className="flex h-full flex-col p-4">
@@ -165,7 +90,20 @@ export function DiffViewer({ files, onAccept, onReject, onAcceptAll, onRejectAll
       </div>
 
       <div className="flex-1 overflow-auto">
-        {files.map((file, i) => (
+        {tooMany && !showAll && (
+          <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+            Showing first {PREVIEW_FILE_COUNT} of {files.length} files.
+            {' '}
+            <button
+              type="button"
+              onClick={() => setShowAll(true)}
+              className="font-medium text-link hover:underline"
+            >
+              Show all {files.length} files
+            </button>
+          </div>
+        )}
+        {visible.map((file, i) => (
           <FileDiff
             key={i}
             file={file}

@@ -540,7 +540,7 @@ export function FileViewer({
             language={langFor(displayName)}
             style={dark ? oneDark : oneLight}
             showLineNumbers
-            wrapLongLines={false}
+            wrapLongLines={true}
             customStyle={{
               margin: 0,
               padding: "1rem",

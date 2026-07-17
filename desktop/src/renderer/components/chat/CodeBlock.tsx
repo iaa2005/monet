@@ -2,6 +2,10 @@
  * Code block — syntax-highlighted fenced code with a header bar (language +
  * copy), matching the official Claude Code rendering. Used by MarkdownViewer
  * for fenced blocks and by ToolCallBubble for tool output.
+ *
+ * When `oldCode` is set (or the content is itself a unified `@@` patch) the
+ * block renders a diff via the shared DiffView, inside the exact same
+ * glass-panel wrapper — so Read / Search / Edit / Write all look consistent.
  */
 
 import { useEffect, useState } from "react";
@@ -12,6 +16,8 @@ import {
 } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DiffView } from "./DiffView";
+import { isUnifiedDiff, parseUnifiedDiff } from "./diff-core";
 
 /** Reactively tracks the `dark` class on <html> so highlighting follows theme. */
 export function useIsDark(): boolean {
@@ -67,6 +73,10 @@ function CopyButton({ text }: { text: string }): JSX.Element {
 export interface CodeBlockProps {
   code: string;
   language?: string;
+  /** When set, render a diff of oldCode → code inside the same chrome. */
+  oldCode?: string;
+  /** Starting line number offset (for diffs). */
+  startLine?: number;
   /** Hide the header bar (used where the container already provides chrome). */
   bare?: boolean;
   showLineNumbers?: boolean;
@@ -74,15 +84,40 @@ export interface CodeBlockProps {
   maxHeight?: number | string;
 }
 
-// Big tool outputs (e.g. ReadFile on a large file) froze the UI: Prism
-// tokenizes the ENTIRE string and produces a huge DOM. Show a preview and
-// expand on demand; past a hard cap, skip highlighting altogether.
+// ─── Markdown helpers ──────────────────────────────────────────────────────
+
+function normalizeMarkdown(code: string): string {
+  return code
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trimStart();
+      if (!trimmed.startsWith("|") || !trimmed.includes("|", 1))
+        return line;
+      const indent = line.length - trimmed.length;
+      const normalized = trimmed
+        .split("|")
+        .map((cell) => cell.trim())
+        .join(" | ");
+      return " ".repeat(indent) + normalized;
+    })
+    .join("\n");
+}
+
+// ─── Main component ────────────────────────────────────────────────────────
+
+const PANEL =
+  "glass-panel my-3 overflow-hidden rounded-lg border border-border bg-card";
+const HEADER =
+  "flex h-8 items-center justify-between border-b border-border bg-muted/50 pr-1 pl-3";
+
 const PREVIEW_LINES = 300;
 const HIGHLIGHT_CHAR_LIMIT = 60_000;
 
 export function CodeBlock({
   code,
   language = "",
+  oldCode,
+  startLine = 1,
   bare = false,
   showLineNumbers = false,
   className,
@@ -93,24 +128,52 @@ export function CodeBlock({
   const lang = language.toLowerCase();
   const displayLang = PLAIN.has(lang) ? "" : lang;
 
-  const lines = code.split("\n");
-  // Small hysteresis so we never truncate for a measly few lines.
+  const src = lang === "markdown" || lang === "md" ? normalizeMarkdown(code) : code;
+
+  // ── Diff mode (oldCode passed explicitly, or auto-detected unified diff) ─
+  if (oldCode != null || isUnifiedDiff(src)) {
+    return (
+      <div className={cn(PANEL, className)}>
+        {!bare && (
+          <div className={HEADER}>
+            <span className="font-mono text-[11px] text-muted-foreground">
+              {displayLang || "Diff"}
+            </span>
+            <CopyButton text={code} />
+          </div>
+        )}
+        {oldCode != null ? (
+          <DiffView
+            oldText={oldCode}
+            newText={code}
+            language={displayLang}
+            startLine={startLine}
+            maxHeight={maxHeight}
+          />
+        ) : (
+          <DiffView
+            rows={parseUnifiedDiff(src)}
+            language={displayLang}
+            maxHeight={maxHeight}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ── Normal code mode ─────────────────────────────────────────────────────
+  const lines = src.split("\n");
   const truncatable = lines.length > PREVIEW_LINES + 60;
   const shown =
     truncatable && !expanded
       ? lines.slice(0, PREVIEW_LINES).join("\n")
-      : code;
+      : src;
   const plain = shown.length > HIGHLIGHT_CHAR_LIMIT;
 
   return (
-    <div
-      className={cn(
-              "glass-panel my-3 overflow-hidden rounded-lg border border-border bg-card",
-        className,
-      )}
-    >
+    <div className={cn(PANEL, className)}>
       {!bare && (
-        <div className="flex h-8 items-center justify-between border-b border-border bg-muted/50 pr-1 pl-3">
+        <div className={HEADER}>
           <span className="font-mono text-[11px] text-muted-foreground">
             {displayLang}
           </span>
@@ -120,7 +183,7 @@ export function CodeBlock({
       <div className="overflow-auto" style={maxHeight ? { maxHeight } : undefined}>
         {plain ? (
           <pre
-            className="m-0 whitespace-pre p-3"
+            className="m-0 whitespace-pre-wrap break-words p-3"
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: "12.5px",
@@ -134,7 +197,7 @@ export function CodeBlock({
             language={displayLang || "text"}
             style={dark ? oneDark : oneLight}
             showLineNumbers={showLineNumbers}
-            wrapLongLines={false}
+            wrapLongLines={true}
             customStyle={{
               margin: 0,
               padding: "0.75rem",

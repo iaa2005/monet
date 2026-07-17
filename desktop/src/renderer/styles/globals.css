@@ -54,6 +54,14 @@
     --destructive: hsl(0 56.2% 45.4%);
     --destructive-foreground: hsl(0 0% 100%);
 
+    /* Diff colors — one place to change them app-wide */
+    --diff-add-bg: hsl(152 76% 52% / 0.1);
+    --diff-add-text: hsl(152 76% 24%);
+    --diff-add-border: hsl(152 55% 42%);
+    --diff-remove-bg: hsl(0 72% 51% / 0.1);
+    --diff-remove-text: hsl(0 72% 33%);
+    --diff-remove-border: hsl(0 70% 52%);
+
     --border: hsl(48 15% 88%);
     --input: hsl(48 15% 88%);
     --ring: hsl(var(--brand));
@@ -101,6 +109,13 @@
     --destructive: hsl(0 67% 59.6%);
     --destructive-foreground: hsl(0 0% 100%);
 
+    --diff-add-bg: hsl(152 76% 52% / 0.1);
+    --diff-add-text: hsl(152 76% 80%);
+    --diff-add-border: hsl(152 50% 50%);
+    --diff-remove-bg: hsl(0 72% 51% / 0.1);
+    --diff-remove-text: hsl(0 72% 80%);
+    --diff-remove-border: hsl(0 65% 58%);
+
     --border: hsl(0 0% 100% / 0.1);
     --input: hsl(0 0% 100% / 0.14);
     --ring: hsl(var(--brand));
@@ -132,6 +147,12 @@
     --color-accent-foreground: var(--accent-foreground);
     --color-destructive: var(--destructive);
     --color-destructive-foreground: var(--destructive-foreground);
+    --color-diff-add-bg: var(--diff-add-bg);
+    --color-diff-add-text: var(--diff-add-text);
+    --color-diff-add-border: var(--diff-add-border);
+    --color-diff-remove-bg: var(--diff-remove-bg);
+    --color-diff-remove-text: var(--diff-remove-text);
+    --color-diff-remove-border: var(--diff-remove-border);
     --color-border: var(--border);
     --color-input: var(--input);
     --color-ring: var(--ring);
@@ -342,4 +363,112 @@
 .monet-glass .glass-panel .xterm-viewport,
 .monet-glass .glass-panel .xterm-screen {
     background-color: transparent !important;
+}
+
+/* ---- Syntax highlighting inside diff rows (DiffView) ----
+   Token palette tuned to match the oneLight / oneDark themes the plain
+   CodeBlock renders with, so highlighted diffs and code blocks look alike. */
+.diff-hl {
+    color: var(--foreground);
+}
+.diff-hl .token.comment,
+.diff-hl .token.prolog,
+.diff-hl .token.cdata {
+    color: #a0a1a7;
+    font-style: italic;
+}
+.diff-hl .token.doctype,
+.diff-hl .token.punctuation,
+.diff-hl .token.entity {
+    color: #383a42;
+}
+.diff-hl .token.attr-name,
+.diff-hl .token.class-name,
+.diff-hl .token.boolean,
+.diff-hl .token.constant,
+.diff-hl .token.number,
+.diff-hl .token.atrule {
+    color: #b76b01;
+}
+.diff-hl .token.keyword {
+    color: #a626a4;
+}
+.diff-hl .token.property,
+.diff-hl .token.tag,
+.diff-hl .token.symbol,
+.diff-hl .token.deleted,
+.diff-hl .token.important {
+    color: #e45649;
+}
+.diff-hl .token.selector,
+.diff-hl .token.string,
+.diff-hl .token.char,
+.diff-hl .token.builtin,
+.diff-hl .token.inserted,
+.diff-hl .token.regex,
+.diff-hl .token.attr-value {
+    color: #50a14f;
+}
+.diff-hl .token.variable,
+.diff-hl .token.function {
+    color: #4078f2;
+}
+.diff-hl .token.operator,
+.diff-hl .token.url {
+    color: #0184bc;
+}
+.diff-hl .token.bold {
+    font-weight: 600;
+}
+.diff-hl .token.italic {
+    font-style: italic;
+}
+
+.dark .diff-hl {
+    color: var(--foreground);
+}
+.dark .diff-hl .token.comment,
+.dark .diff-hl .token.prolog,
+.dark .diff-hl .token.cdata {
+    color: #5c6370;
+}
+.dark .diff-hl .token.doctype,
+.dark .diff-hl .token.punctuation,
+.dark .diff-hl .token.entity {
+    color: #abb2bf;
+}
+.dark .diff-hl .token.attr-name,
+.dark .diff-hl .token.class-name,
+.dark .diff-hl .token.boolean,
+.dark .diff-hl .token.constant,
+.dark .diff-hl .token.number,
+.dark .diff-hl .token.atrule {
+    color: #d19a66;
+}
+.dark .diff-hl .token.keyword {
+    color: #c678dd;
+}
+.dark .diff-hl .token.property,
+.dark .diff-hl .token.tag,
+.dark .diff-hl .token.symbol,
+.dark .diff-hl .token.deleted,
+.dark .diff-hl .token.important {
+    color: #e06c75;
+}
+.dark .diff-hl .token.selector,
+.dark .diff-hl .token.string,
+.dark .diff-hl .token.char,
+.dark .diff-hl .token.builtin,
+.dark .diff-hl .token.inserted,
+.dark .diff-hl .token.regex,
+.dark .diff-hl .token.attr-value {
+    color: #98c379;
+}
+.dark .diff-hl .token.variable,
+.dark .diff-hl .token.function {
+    color: #61afef;
+}
+.dark .diff-hl .token.operator,
+.dark .diff-hl .token.url {
+    color: #56b6c2;
 }
