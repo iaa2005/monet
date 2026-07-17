@@ -16,7 +16,8 @@
 import { fetchRetry } from "../../net-fetch.js";
 import { googleAccessToken } from "../oauth/google.js";
 import { patchSecret } from "../store.js";
-import type { ProtocolResult, ResolvedAccount } from "../types.js";
+import type { ProtocolResult } from "../types.js";
+import type { FileOps, ResolvedAccount } from "../services/types.js";
 
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
@@ -237,3 +238,12 @@ export async function driveMkdir(
   });
   return { ok: true, text: `Created folder ${opts.path}.` };
 }
+
+/** The FileOps bundle a Drive-backed service plugs into `capabilities.files`. */
+export const driveOps: FileOps = {
+  list: (a, o) => driveList(a, o),
+  read: (a, o) => driveRead(a, o),
+  write: (a, o) => driveWrite(a, o),
+  delete: (a, o) => driveDelete(a, o),
+  mkdir: (a, o) => driveMkdir(a, o),
+};

@@ -1,11 +1,13 @@
 /**
- * Connector accounts + secrets.
+ * Connector accounts + secrets. Deliberately service-agnostic: this file knows
+ * nothing about what a service IS — it persists (serviceId, username) rows and
+ * encrypted opaque secrets, and that's all. Service knowledge lives in
+ * services/; resolution glue lives in index.ts.
  *
- * Secrets here are app passwords — a Gmail app password is full mailbox access,
- * so they are encrypted at rest with Electron safeStorage (DPAPI/Keychain/
- * libsecret), the same way LLM provider keys already are. They are kept in a
- * SEPARATE file from the account list so the account list can be read, logged
- * and shown freely without ever touching secret material.
+ * Secrets are app passwords and tokens — full-access credentials — so they are
+ * encrypted at rest with Electron safeStorage (DPAPI/Keychain/libsecret), the
+ * same way LLM provider keys are, and kept in a SEPARATE file from the account
+ * list so the list can be read and shown freely.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
@@ -13,12 +15,7 @@ import { join } from "path";
 import { randomUUID } from "node:crypto";
 import { safeStorage } from "electron";
 import { getDataSubdir } from "../data-dir.js";
-import { getPreset } from "./presets.js";
-import type {
-  ConnectorAccount,
-  ConnectorSecret,
-  ResolvedAccount,
-} from "./types.js";
+import type { ConnectorAccount, ConnectorSecret } from "./types.js";
 
 function accountsPath(): string {
   return join(getDataSubdir("connectors"), "accounts.json");
@@ -82,15 +79,16 @@ function writeSecrets(map: SecretFile): void {
 }
 
 /**
- * Trim every string in a secret.
+ * Trim every string in a secret — ON WRITE ONLY.
  *
- * Credentials are pasted, and a paste brings company: app passwords get copied
- * out of a web page with a trailing space or newline riding along. The server
- * then rejects a password the user can see is correct, which is unfalsifiable
- * from their side — they re-copy it and get the same 401.
+ * Credentials are pasted, and a paste brings company: an app password copied
+ * out of a web page can drag a trailing newline along, and the server then
+ * rejects a password the user can plainly see is correct.
  *
- * ON WRITE ONLY. Cleaning what arrives is fair; rewriting what's already stored
- * is not — see getSecret.
+ * Cleaning what ARRIVES is fair. Rewriting what's already stored is not: a
+ * read-side trim once "repaired" credentials the user never re-entered and a
+ * working connector broke — a guess applied to data we cannot inspect. Never
+ * again; getSecret returns stored bytes untouched.
  */
 function trimSecret(secret: ConnectorSecret): ConnectorSecret {
   const out: Record<string, unknown> = { ...secret };
@@ -103,11 +101,6 @@ export function getSecret(accountId: string): ConnectorSecret {
   const blob = readSecrets()[accountId];
   if (!blob) return {};
   try {
-    // NOT trimmed. Trimming reads rewrites credentials the user never
-    // re-entered, and doing that broke a connector that had been working —
-    // Yandex Contacts authenticated fine until reads started "repairing" what
-    // was stored. Whatever the mechanism, silently rewriting data you cannot
-    // see is a guess, not a repair. Cleaning happens on write only.
     return JSON.parse(decrypt(blob)) as ConnectorSecret;
   } catch {
     return {};
@@ -120,22 +113,8 @@ export function setSecret(accountId: string, secret: ConnectorSecret): void {
   writeSecrets(map);
 }
 
-/**
- * A shape hint for a credential, safe to show: length only, never content.
- *
- * "The password is right and the server still says 401" is unfalsifiable from
- * the user's side — they re-copy the same string and get the same answer. A
- * length they can compare against a connector that DOES work turns that into a
- * fact: same length means look elsewhere, different means a different string
- * got pasted than they think.
- */
-export function passwordShape(accountId: string): string {
-  const p = getSecret(accountId).password;
-  if (!p) return "no password stored";
-  return `stored password: ${p.length} chars`;
-}
-
-/** Merge into the stored secret — used to persist a Telegram session after login. */
+/** Merge into the stored secret — persists a Telegram session or a refreshed
+ * OAuth token without touching the rest. */
 export function patchSecret(
   accountId: string,
   patch: Partial<ConnectorSecret>,
@@ -146,35 +125,30 @@ export function patchSecret(
 // ─── CRUD ───────────────────────────────────────────────────────────────────
 
 /**
- * Add a connector, or re-connect one.
+ * Add an account, or re-connect one.
  *
- * Two mailboxes are a real thing — work and personal Gmail — so a second
- * account under the same preset is allowed when the login differs. What is NOT
- * allowed is a silent twin: an MCP connector is keyed by its preset (one Notion
- * server, one token), so a duplicate would quietly shadow the first, leaving two
- * rows in the UI where only one is live and Test checking the wrong token.
- *
- * So the same preset with the same login — or any second MCP account — REPLACES
- * the existing one. That's also the common case: re-pasting a password that
- * expired.
+ * Two mailboxes are a real thing — work and personal — so a second account
+ * under one service is allowed when the login differs. What is NOT allowed is
+ * a silent twin: for `singleton` services (one server, one token — MCP) a
+ * duplicate would quietly shadow the first, so it replaces instead. Same-login
+ * and login-less (broken by construction) accounts always replace — the common
+ * case is re-pasting an expired credential.
  */
-export function addAccount(input: {
-  presetId: string;
-  label?: string;
-  username: string;
-  secret: ConnectorSecret;
-}): ConnectorAccount {
-  const preset = getPreset(input.presetId);
-  if (!preset) throw new Error(`Unknown connector: ${input.presetId}`);
-
+export function addAccount(
+  input: {
+    presetId: string;
+    label?: string;
+    username: string;
+    secret: ConnectorSecret;
+  },
+  opts?: { singleton?: boolean; defaultLabel?: string },
+): ConnectorAccount {
   const username = input.username.trim();
   const existing = listAccounts().find(
     (a) =>
       a.presetId === input.presetId &&
-      (!!preset.mcp ||
+      (opts?.singleton ||
         a.username.toLowerCase() === username.toLowerCase() ||
-        // An account with no login is broken by construction — it can't be
-        // addressed — so reconnecting replaces it instead of sitting next to it.
         a.username === ""),
   );
   if (existing) {
@@ -190,7 +164,7 @@ export function addAccount(input: {
   const account: ConnectorAccount = {
     id: randomUUID(),
     presetId: input.presetId,
-    label: input.label?.trim() || preset.name,
+    label: input.label?.trim() || opts?.defaultLabel || input.presetId,
     username,
     enabled: true,
     createdAt: new Date().toISOString(),
@@ -221,22 +195,4 @@ export function deleteAccount(id: string): boolean {
   delete secrets[id]; // never leave orphaned credentials behind
   writeSecrets(secrets);
   return true;
-}
-
-/** Account + preset + decrypted secret, for the protocol adapters. */
-export function resolveAccount(id: string): ResolvedAccount | null {
-  const account = getAccount(id);
-  if (!account) return null;
-  const preset = getPreset(account.presetId);
-  if (!preset) return null;
-  return { account, preset, secret: getSecret(id) };
-}
-
-/** Enabled accounts that speak a given protocol — drives tool parameters. */
-export function accountsForProtocol(protocol: string): ConnectorAccount[] {
-  return listAccounts().filter((a) => {
-    if (!a.enabled) return false;
-    const p = getPreset(a.presetId);
-    return !!p?.protocols.includes(protocol as never);
-  });
 }

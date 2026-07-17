@@ -30,7 +30,7 @@ import {
 } from "@vendor/utils/cron.js";
 import { createRoutine, type RoutineInput } from "../routines/store.js";
 import { listAccounts } from "../connectors/store.js";
-import { getPreset } from "../connectors/presets.js";
+import { getService } from "../connectors/services/registry.js";
 import { loadConfig } from "../mcp/manager.js";
 import { tunablePrompt } from "../prompts/index.js";
 
@@ -48,7 +48,7 @@ function knownConnectors(): string[] {
 }
 
 function label(id: string): string {
-  return getPreset(id)?.name ?? id;
+  return getService(id)?.name ?? id;
 }
 
 /** The machine's zone, named and with its offset, e.g. `Europe/Moscow (UTC+3)`. */

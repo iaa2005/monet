@@ -1,13 +1,15 @@
 /**
- * Built-in connectors — accounts that speak a standard protocol (IMAP/SMTP,
- * WebDAV, CalDAV/CardDAV, MTProto) with an app password.
+ * Connectors — rendered ENTIRELY from the service registry's UI projection.
  *
- * These deliberately avoid OAuth: the services here either don't ship a usable
- * MCP server, or hide it behind an OAuth client you'd have to register in a
- * cloud console. An app password is two clicks on a page we link to.
+ * This file names no service. Cards, grouping, icons, the connect form, setup
+ * walkthroughs and every message come over IPC from each service's folder
+ * (src/main/connectors/services/<id>/). Adding a service there makes it appear
+ * here with zero renderer changes; the only branches below are per AUTH KIND
+ * (password / token / google-oauth / telegram / unavailable), of which there
+ * are exactly five.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ExternalLink,
   Loader2,
@@ -19,12 +21,9 @@ import {
 import { Modal } from "@/components/ui/modal";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { ConnectorIcon, hasConnectorIcon } from "./connector-icons";
 import type { ElectronAPI } from "@/types/electron";
-import type {
-  ConnectorAccount,
-  ConnectorPreset,
-} from "../../../main/connectors/types";
+import type { ConnectorAccount } from "../../../main/connectors/types";
+import type { UiConnectorService } from "../../../main/connectors/services/types";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -44,26 +43,59 @@ function OpenLink({ url, label }: { url: string; label: string }): JSX.Element {
   );
 }
 
+/** Inline the service's own SVG. Safe: icons ship inside this app's service
+ * folders and are normalized (namespaced ids) before they land there. */
+function ServiceIcon({
+  svg,
+  className,
+  dim,
+}: {
+  svg?: string;
+  className?: string;
+  dim?: boolean;
+}): JSX.Element {
+  if (!svg)
+    return <Plug className={cn("shrink-0 text-muted-foreground", className)} />;
+  return (
+    <span
+      role="img"
+      aria-hidden="true"
+      className={cn(
+        "inline-block shrink-0 [&>svg]:size-full",
+        dim && "opacity-40 grayscale",
+        className,
+      )}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
+
 export function ProtocolConnectors(): JSX.Element {
-  const [presets, setPresets] = useState<ConnectorPreset[]>([]);
+  const [services, setServices] = useState<UiConnectorService[]>([]);
   const [accounts, setAccounts] = useState<ConnectorAccount[]>([]);
-  const [entry, setEntry] = useState<ConnectorPreset | null>(null);
+  const [entry, setEntry] = useState<UiConnectorService | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, string>>({});
 
   const load = (): void => {
-    void api()?.connectors.presets().then(setPresets).catch(() => {});
+    void api()?.connectors.presets().then(setServices).catch(() => {});
     void api()?.connectors.list().then(setAccounts).catch(() => {});
   };
   useEffect(load, []);
 
+  const byId = useMemo(
+    () => new Map(services.map((s) => [s.id, s])),
+    [services],
+  );
+  const companies = useMemo(
+    () => [...new Set(services.map((s) => s.company))],
+    [services],
+  );
+
   const test = async (id: string): Promise<void> => {
     setTesting(id);
     const r = await api()?.connectors.test(id);
-    setResults((p) => ({
-      ...p,
-      [id]: r?.ok ? "ok" : (r?.error ?? "failed"),
-    }));
+    setResults((p) => ({ ...p, [id]: r?.ok ? "ok" : (r?.error ?? "failed") }));
     setTesting(null);
   };
 
@@ -72,16 +104,13 @@ export function ProtocolConnectors(): JSX.Element {
     load();
   };
 
-  // Off = the tools vanish from the model's toolset and the MCP server is shut
-  // down, without throwing the credential away. The safety valve for "connected,
-  // but not right now" — deleting and re-pasting a token is not that.
+  // Off = tools vanish from the model's set and any MCP server shuts down,
+  // without throwing the credential away.
   const setEnabled = async (id: string, enabled: boolean): Promise<void> => {
     setAccounts((p) => p.map((a) => (a.id === id ? { ...a, enabled } : a)));
     await api()?.connectors.update(id, { enabled });
     load();
   };
-
-  const groups = Array.from(new Set(presets.map((p) => p.group)));
 
   return (
     <div className="space-y-4">
@@ -89,30 +118,24 @@ export function ProtocolConnectors(): JSX.Element {
         <h3 className="text-base font-semibold">Connectors</h3>
         <p className="mt-0.5 text-sm text-muted-foreground">
           Your mail, files, calendar, Telegram and dev tools. Each connects with
-          a token or app password — no OAuth client to register — and every
-          secret is encrypted with your OS keychain, never written as plain
-          text. For a server that isn&apos;t listed here, use MCP Servers.
+          a token or app password — no OAuth client to register except where a
+          provider demands it — and every secret is encrypted with your OS
+          keychain, never written as plain text. For a server that isn&apos;t
+          listed here, use MCP Servers.
         </p>
       </section>
 
       {accounts.length > 0 && (
         <div className="space-y-1.5">
           {accounts.map((a) => {
-            const preset = presets.find((p) => p.id === a.presetId);
+            const svc = byId.get(a.presetId);
             const res = results[a.id];
             return (
               <div
                 key={a.id}
                 className="flex items-center gap-3 rounded-xl border border-border p-2.5"
               >
-                {hasConnectorIcon(a.presetId) ? (
-                  <ConnectorIcon
-                    presetId={a.presetId}
-                    className={cn("size-5", !a.enabled && "opacity-40 grayscale")}
-                  />
-                ) : (
-                  <Plug className="size-4 shrink-0 text-muted-foreground" />
-                )}
+                <ServiceIcon svg={svc?.iconSvg} className="size-5" dim={!a.enabled} />
                 <div className="min-w-0 flex-1">
                   <div
                     className={cn(
@@ -120,12 +143,11 @@ export function ProtocolConnectors(): JSX.Element {
                       !a.enabled && "text-muted-foreground",
                     )}
                   >
-                    {a.label}
+                    {svc?.name ?? a.label}
                     {!a.enabled && " — off"}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {/* MCP connectors have no login — just a token. */}
-                    {[a.username, preset?.protocols.join(", ")]
+                    {[a.username, svc?.capabilities.join(", ")]
                       .filter(Boolean)
                       .join(" · ")}
                   </div>
@@ -171,33 +193,32 @@ export function ProtocolConnectors(): JSX.Element {
         </div>
       )}
 
-      {groups.map((g) => (
+      {companies.map((g) => (
         <div key={g}>
-          <div className="mb-1.5 text-xs font-medium text-muted-foreground">{g}</div>
+          <div className="mb-1.5 text-xs font-medium text-muted-foreground">
+            {g}
+          </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {presets
-              .filter((p) => p.group === g)
-              .map((p) => (
+            {services
+              .filter((s) => s.company === g)
+              .map((s) => (
                 <button
-                  key={p.id}
+                  key={s.id}
                   type="button"
-                  onClick={() => setEntry(p)}
+                  onClick={() => setEntry(s)}
                   className="flex items-start gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                 >
-                  {hasConnectorIcon(p.id) ? (
-                    <ConnectorIcon
-                      presetId={p.id}
-                      className={cn("mt-0.5 size-6", p.unavailable && "opacity-40")}
-                    />
-                  ) : (
-                    <Plug className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
-                  )}
+                  <ServiceIcon
+                    svg={s.iconSvg}
+                    className="mt-0.5 size-6"
+                    dim={s.auth.kind === "unavailable"}
+                  />
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium">{p.name}</div>
+                    <div className="text-sm font-medium">{s.name}</div>
                     <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {p.unavailable
-                        ? (p.unavailableLabel ?? "Read how to connect this")
-                        : p.protocols.join(", ")}
+                      {s.auth.kind === "unavailable"
+                        ? "Not connectable yet — read why"
+                        : s.description}
                     </div>
                   </div>
                 </button>
@@ -208,7 +229,7 @@ export function ProtocolConnectors(): JSX.Element {
 
       {entry && (
         <ConnectForm
-          preset={entry}
+          service={entry}
           onClose={() => setEntry(null)}
           onDone={() => {
             setEntry(null);
@@ -221,100 +242,88 @@ export function ProtocolConnectors(): JSX.Element {
 }
 
 function ConnectForm({
-  preset,
+  service,
   onClose,
   onDone,
 }: {
-  preset: ConnectorPreset;
+  service: UiConnectorService;
   onClose: () => void;
   onDone: () => void;
 }): JSX.Element {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [apiId, setApiId] = useState("");
-  const [apiHash, setApiHash] = useState("");
+  // Generic field values, keyed by AuthField.key ("username" + secret keys).
+  const [values, setValues] = useState<Record<string, string>>({});
+  // Telegram's two-step state.
+  const [stage, setStage] = useState<"form" | "code">("form");
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [twoFa, setTwoFa] = useState("");
   const [needs2fa, setNeeds2fa] = useState(false);
-  const [stage, setStage] = useState<"form" | "code">("form");
-  const [accountId, setAccountId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isTelegram = !!preset.telegram;
-  // MCP servers authenticate with the token alone — there's no login to ask for.
-  const isMcp = !!preset.mcp;
-  // OAuth asks for the user's own client, then hands off to the browser; the
-  // login comes back from Google, so there's no field for it either.
-  const isOauth = !!preset.oauth;
+  const set = (k: string, v: string): void =>
+    setValues((p) => ({ ...p, [k]: v }));
 
-  // No app-password path (Google Drive): say why, and point at the way in.
-  if (preset.unavailable) {
-    return (
-      <Modal open onClose={onClose} title={preset.name}>
-        <div className="space-y-3">
-          {hasConnectorIcon(preset.id) && (
-            <ConnectorIcon presetId={preset.id} className="size-9" />
-          )}
-          <p className="text-[13px] text-muted-foreground">{preset.unavailable}</p>
-          <div className="flex justify-end gap-2 border-t border-border pt-3">
-            {preset.credUrl && (
-              <OpenLink url={preset.credUrl} label={preset.credLabel ?? "Learn more"} />
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </Modal>
-    );
-  }
+  const field =
+    "mt-1 w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/30";
 
   const submit = async (): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
-      if (isOauth) {
-        // One call: main runs the consent flow and stores the account, so the
-        // tokens never touch the renderer.
-        const r = await api()?.connectors.googleSignIn({
-          presetId: preset.id,
-          clientId: apiId,
-          clientSecret: apiHash,
-        });
-        if (!r?.ok) throw new Error(r?.error ?? "Sign-in failed.");
-        onDone();
-        return;
-      }
-      if (isTelegram) {
-        // Create the account first: its id keys both the pending login and the
-        // session we write back after the code is confirmed.
-        const acct = await api()?.connectors.add({
-          presetId: preset.id,
-          username,
-          secret: { apiId, apiHash },
-        });
-        if (!acct) throw new Error("Could not create the account.");
-        setAccountId(acct.id);
-        const r = await api()?.connectors.telegramSendCode({
-          accountId: acct.id,
-          apiId,
-          apiHash,
-          phone: username,
-        });
-        if (!r?.ok) throw new Error(r?.error ?? "Telegram refused the request.");
-        setStage("code");
-      } else {
-        await api()?.connectors.add({
-          presetId: preset.id,
-          username,
-          secret: { password },
-        });
-        onDone();
+      switch (service.auth.kind) {
+        case "password": {
+          const secret: Record<string, string> = {};
+          for (const f of service.auth.fields)
+            if (f.key !== "username") secret[f.key] = values[f.key] ?? "";
+          await api()?.connectors.add({
+            presetId: service.id,
+            username: values.username ?? "",
+            secret,
+          });
+          onDone();
+          return;
+        }
+        case "token": {
+          await api()?.connectors.add({
+            presetId: service.id,
+            username: "",
+            secret: { [service.auth.field.key]: values[service.auth.field.key] ?? "" },
+          });
+          onDone();
+          return;
+        }
+        case "google-oauth": {
+          const r = await api()?.connectors.googleSignIn({
+            presetId: service.id,
+            clientId: values.clientId ?? "",
+            clientSecret: values.clientSecret ?? "",
+          });
+          if (!r?.ok) throw new Error(r?.error ?? "Sign-in failed.");
+          onDone();
+          return;
+        }
+        case "telegram": {
+          // Create the account first: its id keys both the pending login and
+          // the session written back after the code is confirmed.
+          const acct = await api()?.connectors.add({
+            presetId: service.id,
+            username: values.phone ?? "",
+            secret: { apiId: values.apiId ?? "", apiHash: values.apiHash ?? "" },
+          });
+          if (!acct) throw new Error("Could not create the account.");
+          setAccountId(acct.id);
+          const r = await api()?.connectors.telegramSendCode({
+            accountId: acct.id,
+            apiId: values.apiId ?? "",
+            apiHash: values.apiHash ?? "",
+            phone: values.phone ?? "",
+          });
+          if (!r?.ok)
+            throw new Error(r?.error ?? "Telegram refused the request.");
+          setStage("code");
+          return;
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to connect.");
@@ -347,186 +356,245 @@ function ConnectForm({
     }
   };
 
-  const field =
-    "mt-1 w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/30";
+  const kind = service.auth.kind;
 
   return (
-    <Modal open onClose={onClose} title={`Connect ${preset.name}`}>
+    <Modal open onClose={onClose} title={`Connect ${service.name}`}>
       <div className="space-y-3">
-        {hasConnectorIcon(preset.id) && (
-          <ConnectorIcon presetId={preset.id} className="size-9" />
-        )}
-        {preset.note && (
-          <p className="rounded-md border border-border bg-black/[0.02] p-2 text-[13px] text-muted-foreground dark:bg-white/[0.03]">
-            {preset.note}
-          </p>
-        )}
+        <ServiceIcon svg={service.iconSvg} className="size-9" />
 
-        {/* Numbered walkthrough. Console setup is six steps and each omission
-            fails blaming something else, so it's laid out rather than prosed. */}
-        {stage === "form" && preset.setupSteps && preset.setupSteps.length > 0 && (
-          <ol className="space-y-2 rounded-md border border-border p-3">
-            {preset.setupSteps.map((s, i) => (
-              <li key={i} className="flex gap-2.5 text-[13px]">
-                <span className="mt-px flex size-4 shrink-0 items-center justify-center rounded-full bg-black/[0.06] text-[10px] font-medium text-muted-foreground dark:bg-white/[0.1]">
-                  {i + 1}
-                </span>
-                <span className="min-w-0 flex-1 text-muted-foreground">
-                  {s.text}
-                  {s.url && (
-                    <span className="ml-1 inline-block align-text-bottom">
-                      <OpenLink url={s.url} label={s.urlLabel ?? "Open"} />
-                    </span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
-
-        {stage === "form" ? (
+        {kind === "unavailable" ? (
           <>
-            {!isMcp && !isOauth && (
-              <div>
-                <label className="text-xs text-muted-foreground">
-                  {isTelegram ? "Phone number" : "Login"}
-                </label>
-                <input
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder={preset.usernameLabel}
-                  className={field}
+            <p className="text-[13px] text-muted-foreground">
+              {service.auth.kind === "unavailable" ? service.auth.reason : ""}
+            </p>
+            <div className="flex justify-end gap-2 border-t border-border pt-3">
+              {service.credUrl && (
+                <OpenLink
+                  url={service.credUrl}
+                  label={service.credLabel ?? "Learn more"}
                 />
-              </div>
-            )}
-
-            {isOauth ? (
-              <>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    {preset.credLabel}
-                  </span>
-                  {preset.credUrl && (
-                    <OpenLink url={preset.credUrl} label="Google Cloud" />
-                  )}
-                </div>
-                <input
-                  value={apiId}
-                  onChange={(e) => setApiId(e.target.value)}
-                  placeholder="Client ID (…apps.googleusercontent.com)"
-                  className={cn(field, "font-mono text-xs")}
-                />
-                <input
-                  type="password"
-                  value={apiHash}
-                  onChange={(e) => setApiHash(e.target.value)}
-                  placeholder="Client secret"
-                  className={cn(field, "font-mono text-xs")}
-                />
-              </>
-            ) : isTelegram ? (
-              <>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    {preset.credLabel}
-                  </span>
-                  {preset.credUrl && (
-                    <OpenLink url={preset.credUrl} label="Get api_id" />
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    value={apiId}
-                    onChange={(e) => setApiId(e.target.value)}
-                    placeholder="api_id"
-                    className={cn(field, "w-32 font-mono text-xs")}
-                  />
-                  <input
-                    value={apiHash}
-                    onChange={(e) => setApiHash(e.target.value)}
-                    placeholder="api_hash"
-                    className={cn(field, "flex-1 font-mono text-xs")}
-                  />
-                </div>
-              </>
-            ) : (
-              <div>
-                <div className="flex items-center justify-between gap-2">
-                  <label className="text-xs text-muted-foreground">
-                    {preset.credLabel ?? "App password"}
-                  </label>
-                  {preset.credUrl && (
-                    <OpenLink url={preset.credUrl} label="Create app password" />
-                  )}
-                </div>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Encrypted with your OS keychain"
-                  className={field}
-                />
-              </div>
-            )}
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+              >
+                Close
+              </button>
+            </div>
           </>
         ) : (
           <>
-            <p className="text-[13px] text-muted-foreground">
-              Telegram sent a code to {username}. Enter it to finish signing in.
-            </p>
-            <div>
-              <label className="text-xs text-muted-foreground">Code</label>
-              <input
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="12345"
-                className={cn(field, "font-mono")}
-              />
-            </div>
-            {needs2fa && (
-              <div>
-                <label className="text-xs text-muted-foreground">
-                  Telegram 2FA password
-                </label>
-                <input
-                  type="password"
-                  value={twoFa}
-                  onChange={(e) => setTwoFa(e.target.value)}
-                  className={field}
-                />
-              </div>
+            {service.note && (
+              <p className="rounded-md border border-border bg-black/[0.02] p-2 text-[13px] text-muted-foreground dark:bg-white/[0.03]">
+                {service.note}
+              </p>
             )}
+
+            {stage === "form" && service.setupSteps && service.setupSteps.length > 0 && (
+              <ol className="space-y-2 rounded-md border border-border p-3">
+                {service.setupSteps.map((s, i) => (
+                  <li key={i} className="flex gap-2.5 text-[13px]">
+                    <span className="mt-px flex size-4 shrink-0 items-center justify-center rounded-full bg-black/[0.06] text-[10px] font-medium text-muted-foreground dark:bg-white/[0.1]">
+                      {i + 1}
+                    </span>
+                    <span className="min-w-0 flex-1 text-muted-foreground">
+                      {s.text}
+                      {s.url && (
+                        <span className="ml-1 inline-block align-text-bottom">
+                          <OpenLink url={s.url} label={s.urlLabel ?? "Open"} />
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+
+            {stage === "form" ? (
+              <>
+                {kind === "password" &&
+                  service.auth.kind === "password" &&
+                  service.auth.fields.map((f) => (
+                    <div key={f.key}>
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-xs text-muted-foreground">
+                          {f.label}
+                        </label>
+                        {f.secret && service.credUrl && (
+                          <OpenLink
+                            url={service.credUrl}
+                            label={service.credLabel ?? "Get credential"}
+                          />
+                        )}
+                      </div>
+                      <input
+                        type={f.secret ? "password" : "text"}
+                        value={values[f.key] ?? ""}
+                        onChange={(e) => set(f.key, e.target.value)}
+                        placeholder={
+                          f.placeholder ??
+                          (f.secret
+                            ? "Encrypted with your OS keychain"
+                            : undefined)
+                        }
+                        className={cn(field, f.mono && "font-mono text-xs")}
+                      />
+                    </div>
+                  ))}
+
+                {kind === "token" && service.auth.kind === "token" && (
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs text-muted-foreground">
+                        {service.auth.field.label}
+                      </label>
+                      {service.credUrl && (
+                        <OpenLink
+                          url={service.credUrl}
+                          label={service.credLabel ?? "Get token"}
+                        />
+                      )}
+                    </div>
+                    <input
+                      type="password"
+                      value={values[service.auth.field.key] ?? ""}
+                      onChange={(e) =>
+                        service.auth.kind === "token" &&
+                        set(service.auth.field.key, e.target.value)
+                      }
+                      placeholder="Paste your token — stored encrypted, sent only to the server"
+                      className={cn(field, "font-mono text-xs")}
+                    />
+                  </div>
+                )}
+
+                {kind === "google-oauth" && (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {service.credLabel ?? "OAuth client (Desktop app)"}
+                      </span>
+                      {service.credUrl && (
+                        <OpenLink url={service.credUrl} label="Google Cloud" />
+                      )}
+                    </div>
+                    <input
+                      value={values.clientId ?? ""}
+                      onChange={(e) => set("clientId", e.target.value)}
+                      placeholder="Client ID (…apps.googleusercontent.com)"
+                      className={cn(field, "font-mono text-xs")}
+                    />
+                    <input
+                      type="password"
+                      value={values.clientSecret ?? ""}
+                      onChange={(e) => set("clientSecret", e.target.value)}
+                      placeholder="Client secret"
+                      className={cn(field, "font-mono text-xs")}
+                    />
+                  </>
+                )}
+
+                {kind === "telegram" && (
+                  <>
+                    <div>
+                      <label className="text-xs text-muted-foreground">
+                        Phone number
+                      </label>
+                      <input
+                        value={values.phone ?? ""}
+                        onChange={(e) => set("phone", e.target.value)}
+                        placeholder="+79991234567"
+                        className={field}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {service.credLabel ?? "api_id + api_hash"}
+                      </span>
+                      {service.credUrl && (
+                        <OpenLink url={service.credUrl} label="Get api_id" />
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        value={values.apiId ?? ""}
+                        onChange={(e) => set("apiId", e.target.value)}
+                        placeholder="api_id"
+                        className={cn(field, "w-32 font-mono text-xs")}
+                      />
+                      <input
+                        value={values.apiHash ?? ""}
+                        onChange={(e) => set("apiHash", e.target.value)}
+                        placeholder="api_hash"
+                        className={cn(field, "flex-1 font-mono text-xs")}
+                      />
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-[13px] text-muted-foreground">
+                  Telegram sent a code to {values.phone}. Enter it to finish
+                  signing in.
+                </p>
+                <div>
+                  <label className="text-xs text-muted-foreground">Code</label>
+                  <input
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="12345"
+                    className={cn(field, "font-mono")}
+                  />
+                </div>
+                {needs2fa && (
+                  <div>
+                    <label className="text-xs text-muted-foreground">
+                      Telegram 2FA password
+                    </label>
+                    <input
+                      type="password"
+                      value={twoFa}
+                      onChange={(e) => setTwoFa(e.target.value)}
+                      className={field}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+
+            {error && <p className="text-[13px] text-destructive">{error}</p>}
+
+            <div className="flex justify-end gap-2 border-t border-border pt-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void (stage === "form" ? submit() : signIn())}
+                className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
+              >
+                {busy && <Loader2 className="size-3.5 animate-spin" />}
+                {stage === "form"
+                  ? kind === "google-oauth"
+                    ? busy
+                      ? "Waiting for the browser…"
+                      : "Sign in with Google"
+                    : kind === "telegram"
+                      ? "Send code"
+                      : "Connect"
+                  : "Sign in"}
+              </button>
+            </div>
           </>
         )}
-
-        {error && <p className="text-[13px] text-destructive">{error}</p>}
-
-        <div className="flex justify-end gap-2 border-t border-border pt-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void (stage === "form" ? submit() : signIn())}
-            className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
-          >
-            {busy && <Loader2 className="size-3.5 animate-spin" />}
-            {stage === "form"
-              ? isOauth
-                ? busy
-                  ? "Waiting for the browser…"
-                  : "Sign in with Google"
-                : isTelegram
-                  ? "Send code"
-                  : "Connect"
-              : "Sign in"}
-          </button>
-        </div>
       </div>
     </Modal>
   );

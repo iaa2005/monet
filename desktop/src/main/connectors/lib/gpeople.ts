@@ -12,7 +12,8 @@
 import { fetchRetry } from "../../net-fetch.js";
 import { googleAccessToken } from "../oauth/google.js";
 import { patchSecret } from "../store.js";
-import type { ProtocolResult, ResolvedAccount } from "../types.js";
+import type { ResolvedAccount } from "../services/types.js";
+import type { ProtocolResult } from "../types.js";
 
 const API = "https://people.googleapis.com/v1/people/me/connections";
 const FIELDS = "names,emailAddresses,phoneNumbers,organizations";
@@ -45,9 +46,12 @@ export async function peopleList(
     };
     // Google names a disabled API outright, so pass it through — that message
     // is what got Drive working in one click.
-    throw new Error(
-      `Google Contacts: ${body.error?.message ?? `${res.status} ${res.statusText}`}`,
-    );
+    const said = body.error?.message ?? `${res.status} ${res.statusText}`;
+    // A token granted before this service switched scopes fails exactly here.
+    const hint = /insufficient authentication scopes/i.test(said)
+      ? " — the saved sign-in predates the required permission. Open the connector and Sign in with Google again."
+      : "";
+    throw new Error(`GoogleContacts: ${said}${hint}`);
   }
   const { connections } = (await res.json()) as { connections?: Person[] };
   if (!connections?.length) return { ok: true, text: "(no contacts)" };

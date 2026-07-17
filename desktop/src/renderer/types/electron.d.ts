@@ -4,10 +4,8 @@
 
 import type { LLMEvent, LLMRequest } from "../main/llm/adapter.js";
 import type { LLMProvider, LLMProviderInput } from "../main/provider/types.js";
-import type {
-  ConnectorAccount,
-  ConnectorPreset,
-} from "../main/connectors/types.js";
+import type { ConnectorAccount } from "../main/connectors/types.js";
+import type { UiConnectorService } from "../main/connectors/services/types.js";
 import type { ChatMessage } from "./chat";
 import type {
   Routine,
@@ -16,6 +14,7 @@ import type {
 } from "../main/routines/store.js";
 
 export type { Routine, RoutineInput, RoutineRun };
+export type { UiConnectorService };
 import type {
   PermissionRequest,
   PermissionDecision,
@@ -475,7 +474,7 @@ export interface ElectronAPI {
     }) => Promise<{ enabled: boolean; deniedApps: string[] }>;
   };
   connectors: {
-    presets: () => Promise<ConnectorPreset[]>;
+    presets: () => Promise<UiConnectorService[]>;
     list: () => Promise<ConnectorAccount[]>;
     options: () => Promise<
       { id: string; label: string; kind: "connector" | "mcp" }[]

@@ -23,7 +23,7 @@ import {
 } from "./prompts-vendor.js";
 import { CONNECTOR_TOOL_NAMES } from "./connector-tools.js";
 import { connectorServerNames } from "../mcp/manager.js";
-import { getPreset } from "../connectors/presets.js";
+import { getService } from "../connectors/services/registry.js";
 import {
   executeVendorTool,
   getVendorApiTools,
@@ -520,7 +520,7 @@ export async function computeContextBreakdown(
 
     const connectorServers = connectorServerNames();
     const connectorLabel = (id: string): string =>
-      getPreset(id)?.name ?? id;
+      getService(id)?.name ?? id;
     for (const t of apiTools) {
       const size = Math.ceil(JSON.stringify(t).length / 4);
       if (t.name.startsWith("mcp__")) {

@@ -43,9 +43,9 @@ import {
   CONNECTOR_TOOLS,
   CONNECTOR_TOOL_NAMES,
   connectorToolNames,
+  connectorToolHasAccounts,
 } from "./connector-tools.js";
 import { CreateRoutineTool } from "./routine-tool.js";
-import { accountsForProtocol } from "../connectors/store.js";
 import {
   SandboxListTool,
   SandboxReadTool,
@@ -377,19 +377,7 @@ export function isSpaceToolAllowed(
   // remote service the user signed in to, so it doesn't widen that boundary.
   // Each is advertised only once an account for its protocol exists — an empty
   // Mail tool is pure schema tax and invites the model to call it and fail.
-  if (name === "Mail") return accountsForProtocol("imap").length > 0;
-  if (name === "CloudFiles")
-    return (
-      accountsForProtocol("webdav").length > 0 ||
-      accountsForProtocol("gdrive").length > 0
-    );
-  if (name === "Calendar")
-    return (
-      accountsForProtocol("caldav").length > 0 ||
-      accountsForProtocol("carddav").length > 0 ||
-      accountsForProtocol("gpeople").length > 0
-    );
-  if (name === "Telegram") return accountsForProtocol("telegram").length > 0;
+  if (CONNECTOR_TOOL_NAMES.has(name)) return connectorToolHasAccounts(name);
   // Routines exist for both spaces, so the tool does too. It's still gated by
   // the permission prompt, and it refuses outright inside an unattended run.
   if (name === "CreateRoutine") return true;

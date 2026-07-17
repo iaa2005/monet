@@ -6,10 +6,8 @@ import type {
   PermissionDecision,
 } from "../main/ipc/permissions.js";
 import type { AskUserRequest, AskUserAnswer } from "../main/ipc/ask-user.js";
-import type {
-  ConnectorAccount,
-  ConnectorPreset,
-} from "../main/connectors/types.js";
+import type { ConnectorAccount } from "../main/connectors/types.js";
+import type { UiConnectorService } from "../main/connectors/services/types.js";
 
 const electronAPI = {
   platform: process.platform,
@@ -480,7 +478,7 @@ const electronAPI = {
   },
 
   connectors: {
-    presets: (): Promise<ConnectorPreset[]> =>
+    presets: (): Promise<UiConnectorService[]> =>
       ipcRenderer.invoke("connectors:presets"),
     list: (): Promise<ConnectorAccount[]> => ipcRenderer.invoke("connectors:list"),
     options: (): Promise<

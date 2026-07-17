@@ -342,53 +342,54 @@ async function main() {
   }, { permissionMode: 'default' })
   check('CreateRoutine requires cron for a schedule', noCron.isError)
 
-  // Presets must never carry a guessed endpoint again: every non-MCP protocol
-  // preset needs a real host, and everything needs a way to get credentials.
-  const { PRESETS } = await import('../src/main/connectors/presets.js')
-  const bad = PRESETS.filter(p => {
-    if (p.unavailable) return false
-    if (p.mcp) return !p.mcp.command || !p.mcp.envKey || !p.credUrl
-    // telegram and gdrive have no endpoint FIELD by nature — their addresses are
-    // fixed in the adapter (MTProto, the Drive API), so declaring the protocol
-    // is the endpoint. Everything else must name a host, or it's a guess again.
-    const fixedEndpoint =
-      !!p.telegram ||
-      p.protocols.includes('gdrive' as never) ||
-      p.protocols.includes('gpeople' as never)
-    const hasEndpoint =
-      !!p.imap || !!p.webdav || !!p.caldav || !!p.carddav || fixedEndpoint
-    return !hasEndpoint || !p.credUrl
-  })
+  // Every service must be honest about itself. These checks exist because a
+  // guessed catalog once shipped fake endpoints, a missing Test branch showed
+  // "works" for a never-contacted connector, and names drifted from the spec.
+  const { SERVICES } = await import('../src/main/connectors/services/registry.js')
+  const NAME_FOR: Record<string, string> = {
+    gmail: 'GoogleGmail',
+    'google-calendar': 'GoogleCalendar',
+    'google-contacts': 'GoogleContacts',
+    'google-drive': 'GoogleDrive',
+    'yandex-mail': 'YandexMail',
+    'yandex-disk': 'YandexDisk',
+    'yandex-calendar': 'YandexCalendar',
+    'yandex-contacts': 'YandexContacts',
+    telegram: 'Telegram',
+    github: 'GitHub',
+    notion: 'Notion',
+    slack: 'Slack',
+    linear: 'Linear',
+    sentry: 'Sentry',
+  }
+  const badName = SERVICES.filter(sv => NAME_FOR[sv.id] && sv.name !== NAME_FOR[sv.id])
   check(
-    'every connectable preset has an endpoint + a credential link',
-    bad.length === 0,
-    bad.map(p => p.id).join(',') || undefined,
+    'service names are company-prefixed as specified',
+    badName.length === 0,
+    badName.map(sv => `${sv.id}→${sv.name}`).join(',') || undefined,
   )
-
-  // Every connectable protocol needs a Test branch. CardDAV had none and fell
-  // through to `ok: true`, so Contacts reported "works" without a single packet
-  // — and that false green sent a real debugging session after the wrong cause.
-  const TESTED = ['mcp', 'imap', 'webdav', 'gdrive', 'caldav', 'carddav', 'gpeople', 'telegram']
-  const untestable = PRESETS.filter(
-    p =>
-      !p.unavailable &&
-      !p.mcp &&
-      !p.protocols.some(x => TESTED.includes(x)),
+  const noTest = SERVICES.filter(sv => typeof sv.test !== 'function')
+  check('every service carries a test', noTest.length === 0, noTest.map(sv => sv.id).join(',') || undefined)
+  const noCred = SERVICES.filter(sv => sv.auth.kind !== 'unavailable' && !sv.credUrl)
+  check(
+    'every connectable service links where to get its credential',
+    noCred.length === 0,
+    noCred.map(sv => sv.id).join(',') || undefined,
+  )
+  const noCaps = SERVICES.filter(
+    sv => sv.auth.kind !== 'unavailable' && Object.keys(sv.capabilities).length === 0,
   )
   check(
-    'every connectable preset has a Test branch',
-    untestable.length === 0,
-    untestable.map(p => p.id).join(',') || undefined,
+    'every connectable service declares a capability',
+    noCaps.length === 0,
+    noCaps.map(sv => sv.id).join(',') || undefined,
   )
-
-  // An OAuth preset with no scopes signs in and can touch nothing; one that
-  // also kept a password field would just re-run the Google Calendar mistake.
-  const badOauth = PRESETS.filter(p => p.oauth && !p.oauth.scopes?.length)
-  check(
-    'every OAuth preset declares scopes',
-    badOauth.length === 0,
-    badOauth.map(p => p.id).join(',') || undefined,
+  const badOauth = SERVICES.filter(
+    sv => sv.auth.kind === 'google-oauth' && sv.auth.scopes.length === 0,
   )
+  check('every OAuth service declares scopes', badOauth.length === 0)
+  const badIcon = SERVICES.filter(sv => sv.iconSvg && !sv.iconSvg.includes('<svg'))
+  check('every icon is inline SVG', badIcon.length === 0)
 
   rmSync(dir, { recursive: true, force: true })
   console.log(failures ? `\n${failures} FAILURES` : '\nALL SMOKE CHECKS PASSED')

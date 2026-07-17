@@ -1,16 +1,14 @@
 /**
  * Connector tools — Mail / CloudFiles / Calendar / Telegram.
  *
- * One tool per PROTOCOL family, with an `action` discriminator, so connecting a
- * second mailbox adds an account rather than a tool: the model's schema budget
- * stays flat no matter how many services are wired up. Which accounts exist is
- * injected into each tool's description at build time, so the model knows what
- * it can address without a discovery call.
+ * One tool per CAPABILITY family, with an `action` discriminator, so a new
+ * service adds an account rather than a tool and the model's schema budget
+ * stays flat. Every call dispatches to the account's service implementation
+ * (`acct.service.capabilities.*`) — this file knows no service by name; adding
+ * one to the registry is enough to route here.
  *
- * All four are marked NOT read-only: they can send mail, post to Telegram,
- * write files and create events, so every call goes through the permission
- * prompt. That is deliberate — an agent emailing someone unprompted is exactly
- * the kind of action a user must approve.
+ * All four are NOT read-only: they can send mail, post to Telegram, write
+ * files and create events, so every call goes through the permission prompt.
  */
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
@@ -19,44 +17,11 @@ import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import {
   accountHint,
-  accountsForProtocol,
-  getPreset,
+  accountsWithCapability,
+  getService,
   pickAccount,
 } from "../connectors/index.js";
-import {
-  mailFolders,
-  mailRead,
-  mailSearch,
-  mailSend,
-} from "../connectors/protocols/mail.js";
-import {
-  filesDelete,
-  filesList,
-  filesMkdir,
-  filesRead,
-  filesWrite,
-} from "../connectors/protocols/files.js";
-import {
-  driveDelete,
-  driveList,
-  driveMkdir,
-  driveRead,
-  driveWrite,
-} from "../connectors/protocols/gdrive.js";
-import {
-  calendarCreate,
-  calendarEvents,
-  calendarList,
-  contactsList,
-} from "../connectors/protocols/dav.js";
-import { peopleList } from "../connectors/protocols/gpeople.js";
-import {
-  telegramChats,
-  telegramHistory,
-  telegramSend,
-  telegramSendFile,
-  telegramTopics,
-} from "../connectors/protocols/telegram.js";
+import type { ServiceCapabilities } from "../connectors/services/types.js";
 import type { ProtocolResult } from "../connectors/types.js";
 import { tunablePrompt } from "../prompts/index.js";
 
@@ -89,24 +54,33 @@ function resultBlock(content: Output, toolUseID: string): ToolResultBlockParam {
   };
 }
 
-// ─── Mail (IMAP + SMTP) ─────────────────────────────────────────────────────
+/** Prompt hints contributed by CONNECTED services of the given caps — a
+ * service's own guidance travels with it instead of living in tool text. */
+function hintsFor(...caps: (keyof ServiceCapabilities)[]): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const cap of caps)
+    for (const a of accountsWithCapability(cap)) {
+      const s = getService(a.presetId);
+      if (s?.promptHint && !seen.has(s.id)) {
+        seen.add(s.id);
+        out.push(s.promptHint);
+      }
+    }
+  return out.join(" ");
+}
+
+// ─── Mail ───────────────────────────────────────────────────────────────────
 
 const mailSchema = lazySchema(() =>
   z.strictObject({
-    action: z
-      .enum(["folders", "search", "read", "send"])
-      .describe("What to do."),
+    action: z.enum(["folders", "search", "read", "send"]).describe("What to do."),
     account: z
       .string()
       .optional()
       .describe("Which mailbox; optional when only one is connected."),
     folder: z.string().optional().describe("Mailbox folder. Default INBOX."),
-    query: z
-      .string()
-      .optional()
-      .describe(
-        "search: Gmail query syntax on Gmail (from:x has:attachment), plain text elsewhere.",
-      ),
+    query: z.string().optional().describe("search: query text."),
     uid: z.number().optional().describe("read: the message uid from search."),
     to: z.string().optional().describe("send: recipient address."),
     cc: z.string().optional(),
@@ -119,7 +93,7 @@ type MailInput = ReturnType<typeof mailSchema>;
 
 export const MailTool = buildTool({
   name: "Mail",
-  searchHint: "read, search and send email over IMAP/SMTP",
+  searchHint: "read, search and send email in the user's connected mailboxes",
   maxResultSizeChars: 60_000,
   get inputSchema(): MailInput {
     return mailSchema();
@@ -138,30 +112,31 @@ export const MailTool = buildTool({
       tunablePrompt(
         "tool-mail",
         [
-          "Read, search and send email through the user's connected mailboxes",
-          "(IMAP/SMTP). Use search first to get a uid, then read that uid.",
-          "On Gmail, query takes real Gmail search syntax. Never send mail the",
-          "user did not ask for; quote what you will send before sending.",
+          "Read, search and send email through the user's connected mailboxes.",
+          "Use search first to get a uid, then read that uid. Never send mail",
+          "the user did not ask for; quote what you will send before sending.",
         ].join(" "),
       ),
-      `Connected mailboxes: ${accountHint("imap") || "(none)"}.`,
-    ].join("\n");
+      hintsFor("mail"),
+      `Connected mailboxes: ${accountHint("mail") || "(none)"}.`,
+    ]
+      .filter(Boolean)
+      .join("\n");
   },
   async description() {
     return "Read, search and send email in the user's connected mailboxes.";
   },
   async call(input: z.infer<MailInput>, _context: ToolUseContext) {
     try {
-      const acct = pickAccount(
-        input.action === "send" ? "smtp" : "imap",
-        input.account,
-      );
+      const acct = pickAccount("mail", input.account);
+      const ops = acct.service.capabilities.mail;
+      if (!ops) return fail(new Error("This connector has no mail capability."));
       switch (input.action) {
         case "folders":
-          return toOutput(await mailFolders(acct));
+          return toOutput(await ops.folders(acct));
         case "search":
           return toOutput(
-            await mailSearch(acct, {
+            await ops.search(acct, {
               query: input.query,
               folder: input.folder,
               limit: input.limit,
@@ -170,12 +145,14 @@ export const MailTool = buildTool({
         case "read":
           if (input.uid == null)
             return fail(new Error("read needs a uid (get one from search)."));
-          return toOutput(await mailRead(acct, { uid: input.uid, folder: input.folder }));
+          return toOutput(
+            await ops.read(acct, { uid: input.uid, folder: input.folder }),
+          );
         case "send":
           if (!input.to || !input.subject || !input.body)
             return fail(new Error("send needs to, subject and body."));
           return toOutput(
-            await mailSend(acct, {
+            await ops.send(acct, {
               to: input.to,
               cc: input.cc,
               subject: input.subject,
@@ -193,7 +170,7 @@ export const MailTool = buildTool({
   },
 });
 
-// ─── CloudFiles (WebDAV) ────────────────────────────────────────────────────
+// ─── CloudFiles ─────────────────────────────────────────────────────────────
 
 const filesSchema = lazySchema(() =>
   z.strictObject({
@@ -210,7 +187,7 @@ type FilesInput = ReturnType<typeof filesSchema>;
 
 export const CloudFilesTool = buildTool({
   name: "CloudFiles",
-  searchHint: "list, read and write files on the user's cloud drive (WebDAV)",
+  searchHint: "list, read and write files on the user's cloud drives",
   maxResultSizeChars: 60_000,
   get inputSchema(): FilesInput {
     return filesSchema();
@@ -229,47 +206,25 @@ export const CloudFilesTool = buildTool({
       tunablePrompt(
         "tool-cloudfiles",
         [
-          "Browse and edit files on the user's cloud drives — Yandex Disk and",
-          "Nextcloud over WebDAV, Google Drive over its API. Address everything",
-          "by path either way. This is the user's real drive, not the sandbox,",
-          "so confirm before overwriting or deleting. On Drive, delete moves to",
-          "its trash; Google Docs/Sheets are exported as text/CSV on read.",
+          "Browse and edit files on the user's cloud drives, addressed by path",
+          "whatever the backend. This is the user's real drive, not the sandbox",
+          "— confirm before overwriting or deleting.",
         ].join(" "),
       ),
-      `Connected drives: ${[accountHint("webdav"), accountHint("gdrive")].filter(Boolean).join(", ") || "(none)"}.`,
-    ].join("\n");
+      hintsFor("files"),
+      `Connected drives: ${accountHint("files") || "(none)"}.`,
+    ]
+      .filter(Boolean)
+      .join("\n");
   },
   async description() {
-    return "List, read and write files on the user's connected cloud drive.";
+    return "List, read and write files on the user's connected cloud drives.";
   },
   async call(input: z.infer<FilesInput>, _context: ToolUseContext) {
     try {
-      // One tool, two protocols: a Drive account speaks REST, everything else
-      // WebDAV. The model addresses both the same way — by path.
-      const drive = accountsForProtocol("gdrive").some(
-        (a) =>
-          !input.account ||
-          a.id === input.account ||
-          a.label.toLowerCase() === input.account.toLowerCase() ||
-          a.presetId === input.account ||
-          a.username.toLowerCase() === input.account.toLowerCase(),
-      );
-      const acct = pickAccount(drive ? "gdrive" : "webdav", input.account);
-      const ops = drive
-        ? {
-            list: driveList,
-            read: driveRead,
-            write: driveWrite,
-            del: driveDelete,
-            mkdir: driveMkdir,
-          }
-        : {
-            list: filesList,
-            read: filesRead,
-            write: filesWrite,
-            del: filesDelete,
-            mkdir: filesMkdir,
-          };
+      const acct = pickAccount("files", input.account);
+      const ops = acct.service.capabilities.files;
+      if (!ops) return fail(new Error("This connector has no files capability."));
       switch (input.action) {
         case "list":
           return toOutput(await ops.list(acct, { path: input.path }));
@@ -282,7 +237,7 @@ export const CloudFilesTool = buildTool({
             await ops.write(acct, { path: input.path, content: input.content }),
           );
         case "delete":
-          return toOutput(await ops.del(acct, { path: input.path }));
+          return toOutput(await ops.delete(acct, { path: input.path }));
         case "mkdir":
           return toOutput(await ops.mkdir(acct, { path: input.path }));
       }
@@ -296,7 +251,7 @@ export const CloudFilesTool = buildTool({
   },
 });
 
-// ─── Calendar (CalDAV + CardDAV) ────────────────────────────────────────────
+// ─── Calendar (events + contacts) ───────────────────────────────────────────
 
 const calSchema = lazySchema(() =>
   z.strictObject({
@@ -322,7 +277,7 @@ type CalInput = ReturnType<typeof calSchema>;
 
 export const CalendarTool = buildTool({
   name: "Calendar",
-  searchHint: "read and create calendar events, look up contacts (CalDAV/CardDAV)",
+  searchHint: "read and create calendar events, look up contacts",
   maxResultSizeChars: 60_000,
   get inputSchema(): CalInput {
     return calSchema();
@@ -341,14 +296,17 @@ export const CalendarTool = buildTool({
       tunablePrompt(
         "tool-calendar",
         [
-          "Read and create events in the user's calendars (CalDAV) and look up",
-          "contacts (CardDAV). Times are ISO 8601; prefer explicit UTC. Confirm",
-          "before creating anything on a shared calendar.",
+          "Read and create events in the user's calendars, and look up their",
+          "contacts. Times are ISO 8601; prefer explicit UTC. Confirm before",
+          "creating anything on a shared calendar.",
         ].join(" "),
       ),
-      `Connected calendars: ${accountHint("caldav") || "(none)"}.`,
-      `Connected contact books: ${[accountHint("carddav"), accountHint("gpeople")].filter(Boolean).join(", ") || "(none)"}.`,
-    ].join("\n");
+      hintsFor("calendar", "contacts"),
+      `Connected calendars: ${accountHint("calendar") || "(none)"}.`,
+      `Connected contact books: ${accountHint("contacts") || "(none)"}.`,
+    ]
+      .filter(Boolean)
+      .join("\n");
   },
   async description() {
     return "Read/create calendar events and look up contacts.";
@@ -356,27 +314,24 @@ export const CalendarTool = buildTool({
   async call(input: z.infer<CalInput>, _context: ToolUseContext) {
     try {
       if (input.action === "contacts") {
-        // Google speaks People API here, everyone else CardDAV — same action.
-        const people = accountsForProtocol("gpeople");
-        if (people.length > 0 && (!input.account || people.some((a) => a.presetId === input.account || a.id === input.account)))
-          return toOutput(
-            await peopleList(pickAccount("gpeople", input.account), {
-              query: input.query,
-              limit: input.limit,
-            }),
-          );
-        const acct = pickAccount("carddav", input.account);
+        const acct = pickAccount("contacts", input.account);
+        const ops = acct.service.capabilities.contacts;
+        if (!ops)
+          return fail(new Error("This connector has no contacts capability."));
         return toOutput(
-          await contactsList(acct, { query: input.query, limit: input.limit }),
+          await ops.list(acct, { query: input.query, limit: input.limit }),
         );
       }
-      const acct = pickAccount("caldav", input.account);
+      const acct = pickAccount("calendar", input.account);
+      const ops = acct.service.capabilities.calendar;
+      if (!ops)
+        return fail(new Error("This connector has no calendar capability."));
       switch (input.action) {
         case "calendars":
-          return toOutput(await calendarList(acct));
+          return toOutput(await ops.calendars(acct));
         case "events":
           return toOutput(
-            await calendarEvents(acct, {
+            await ops.events(acct, {
               calendarUrl: input.calendarUrl,
               days: input.days,
             }),
@@ -385,7 +340,7 @@ export const CalendarTool = buildTool({
           if (!input.title || !input.start)
             return fail(new Error("create needs title and start."));
           return toOutput(
-            await calendarCreate(acct, {
+            await ops.create(acct, {
               title: input.title,
               start: input.start,
               end: input.end,
@@ -404,7 +359,7 @@ export const CalendarTool = buildTool({
   },
 });
 
-// ─── Telegram (MTProto) ─────────────────────────────────────────────────────
+// ─── Telegram (chat capability) ─────────────────────────────────────────────
 
 const tgSchema = lazySchema(() =>
   z.strictObject({
@@ -463,37 +418,38 @@ export const TelegramTool = buildTool({
       tunablePrompt(
         "tool-telegram",
         [
-          "Read, search and send Telegram messages as the user (MTProto — this",
-          "is their personal account, not a bot), in DMs, groups and channels.",
-          "Messages you send appear as the user, so never send one they did not",
-          "ask for; show the text first. Use chats to find a chat id, then",
-          "history or send. A chat listed as `forum` needs a topic id from",
-          "topics — send without one and it goes to General. send_file takes a",
-          "path or an https URL and picks photo/video/document by extension;",
-          "pass asDocument to force a plain file.",
+          "Read, search and send messages in the user's chats. Use chats to",
+          "find a chat id, then history or send. send_file takes a path or an",
+          "https URL and picks photo/video/document by extension; pass",
+          "asDocument to force a plain file.",
         ].join(" "),
       ),
-      `Connected accounts: ${accountHint("telegram") || "(none)"}.`,
-    ].join("\n");
+      hintsFor("chat"),
+      `Connected accounts: ${accountHint("chat") || "(none)"}.`,
+    ]
+      .filter(Boolean)
+      .join("\n");
   },
   async description() {
     return "Read, search and send Telegram messages from the user's account.";
   },
   async call(input: z.infer<TgInput>, context: ToolUseContext) {
     try {
-      const acct = pickAccount("telegram", input.account);
+      const acct = pickAccount("chat", input.account);
+      const ops = acct.service.capabilities.chat;
+      if (!ops) return fail(new Error("This connector has no chat capability."));
       switch (input.action) {
         case "chats":
-          return toOutput(await telegramChats(acct, { limit: input.limit }));
+          return toOutput(await ops.chats(acct, { limit: input.limit }));
         case "topics":
           if (!input.chat) return fail(new Error("topics needs a chat."));
           return toOutput(
-            await telegramTopics(acct, { chat: input.chat, limit: input.limit }),
+            await ops.topics(acct, { chat: input.chat, limit: input.limit }),
           );
         case "history":
           if (!input.chat) return fail(new Error("history needs a chat."));
           return toOutput(
-            await telegramHistory(acct, {
+            await ops.history(acct, {
               chat: input.chat,
               limit: input.limit,
               query: input.query,
@@ -504,7 +460,7 @@ export const TelegramTool = buildTool({
           if (!input.chat || !input.message)
             return fail(new Error("send needs chat and message."));
           return toOutput(
-            await telegramSend(acct, {
+            await ops.send(acct, {
               chat: input.chat,
               message: input.message,
               topic: input.topic,
@@ -514,7 +470,7 @@ export const TelegramTool = buildTool({
           if (!input.chat || !input.file)
             return fail(new Error("send_file needs chat and file."));
           return toOutput(
-            await telegramSendFile(acct, {
+            await ops.sendFile(acct, {
               chat: input.chat,
               file: input.file,
               caption: input.caption,
@@ -543,35 +499,44 @@ export const CONNECTOR_TOOLS = [
   TelegramTool,
 ];
 
-/** Tools that exist only because a connector is configured. Used to bill them
- * to "Connectors" in the context breakdown and to scope them for a routine. */
-export const CONNECTOR_TOOL_NAMES = new Set(["Mail", "CloudFiles", "Calendar", "Telegram"]);
+/** Tools that exist only because a connector is configured — billed to
+ * "Connectors" in the context breakdown, scoped per routine. */
+export const CONNECTOR_TOOL_NAMES = new Set([
+  "Mail",
+  "CloudFiles",
+  "Calendar",
+  "Telegram",
+]);
 
-/** Which tool serves which protocol. `mcp` is absent on purpose — those
- * connectors are served by their own MCP server, not by a tool of ours. */
-const PROTOCOL_TOOL: Record<string, string> = {
-  imap: "Mail",
-  smtp: "Mail",
-  webdav: "CloudFiles",
-  gdrive: "CloudFiles",
-  caldav: "Calendar",
-  carddav: "Calendar",
-  gpeople: "Calendar",
-  telegram: "Telegram",
+/** Which shared tool serves which capability. `mcp` is absent on purpose —
+ * MCP-backed services are served by their own server, scoped by server name. */
+const CAPABILITY_TOOL: Record<string, string> = {
+  mail: "Mail",
+  files: "CloudFiles",
+  calendar: "Calendar",
+  contacts: "Calendar",
+  chat: "Telegram",
 };
 
-/**
- * The connector tools a set of preset ids implies — how a routine that declares
- * ["gmail", "notion"] gets Mail but not Telegram. (Notion is an MCP server, so
- * it's filtered on the MCP side instead.)
- */
-export function connectorToolNames(presetIds: string[]): Set<string> {
+/** The connector tools a set of service ids implies — how a routine that
+ * declares ["gmail", "notion"] gets Mail but not Telegram. */
+export function connectorToolNames(serviceIds: string[]): Set<string> {
   const out = new Set<string>();
-  for (const id of presetIds) {
-    for (const p of getPreset(id)?.protocols ?? []) {
-      const tool = PROTOCOL_TOOL[p];
+  for (const id of serviceIds) {
+    const caps = getService(id)?.capabilities ?? {};
+    for (const cap of Object.keys(caps)) {
+      const tool = CAPABILITY_TOOL[cap];
       if (tool) out.add(tool);
     }
   }
   return out;
+}
+
+/** Whether a connector tool has any enabled account behind it — gates its
+ * advertisement, so an empty Mail tool isn't schema tax. */
+export function connectorToolHasAccounts(toolName: string): boolean {
+  for (const [cap, tool] of Object.entries(CAPABILITY_TOOL))
+    if (tool === toolName && accountsWithCapability(cap as never).length > 0)
+      return true;
+  return false;
 }

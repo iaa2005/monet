@@ -16,7 +16,8 @@ import { existsSync } from "fs";
 import { resolve, sep } from "path";
 import { patchSecret } from "../store.js";
 import { sandboxWorkDir } from "../../sandbox/podman-engine.js";
-import type { ProtocolResult, ResolvedAccount } from "../types.js";
+import type { ProtocolResult } from "../types.js";
+import type { ChatOps, ResolvedAccount } from "../services/types.js";
 
 interface Pending {
   client: TelegramClient;
@@ -291,3 +292,12 @@ export async function telegramSendFile(
     };
   });
 }
+
+/** The ChatOps bundle the Telegram service plugs into `capabilities.chat`. */
+export const telegramOps: ChatOps = {
+  chats: (a, o) => telegramChats(a, o),
+  topics: (a, o) => telegramTopics(a, o),
+  history: (a, o) => telegramHistory(a, o),
+  send: (a, o) => telegramSend(a, o),
+  sendFile: (a, o) => telegramSendFile(a, o),
+};

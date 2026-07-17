@@ -1,23 +1,52 @@
 /**
- * Connectors — public entry point for the tool layer.
+ * Connectors — the glue between the service registry and the account store,
+ * and the public entry point for the tool layer.
  *
  * Tools name an account loosely ("gmail", a label, or nothing at all when only
- * one is connected); this resolves that to a concrete account + preset +
- * decrypted secret, and fails with a message that lists the real options rather
- * than a bare "not found".
+ * one candidate exists); this resolves that to account + secret + service, and
+ * fails with a message listing the real options rather than a bare "not found".
  */
 
-import { accountsForProtocol, resolveAccount } from "./store.js";
-import type { ProtocolId, ResolvedAccount } from "./types.js";
+import { getService, SERVICES, servicesWithCapability } from "./services/registry.js";
+import { getSecret, listAccounts } from "./store.js";
+import type {
+  ConnectorService,
+  ResolvedAccount,
+  ServiceCapabilities,
+} from "./services/types.js";
+import type { ConnectorAccount } from "./types.js";
 
-export { PRESETS, getPreset } from "./presets.js";
+export { SERVICES, getService, servicesWithCapability };
 export * from "./store.js";
 export type * from "./types.js";
+export type { ConnectorService, ResolvedAccount } from "./services/types.js";
 
-/** Accounts speaking `protocol`, as a model-facing hint string. */
-export function accountHint(protocol: ProtocolId): string {
-  const rows = accountsForProtocol(protocol);
-  return rows.map((a) => `${a.label} (${a.username})`).join(", ");
+/** Account + decrypted secret + its service definition. */
+export function resolveAccount(id: string): ResolvedAccount | null {
+  const account = listAccounts().find((a) => a.id === id);
+  if (!account) return null;
+  const service = getService(account.presetId);
+  if (!service) return null;
+  return { account, secret: getSecret(id), service };
+}
+
+/** Enabled accounts whose service implements `cap`. */
+export function accountsWithCapability(
+  cap: keyof ServiceCapabilities,
+): ConnectorAccount[] {
+  return listAccounts().filter(
+    (a) => a.enabled && getService(a.presetId)?.capabilities[cap] != null,
+  );
+}
+
+/** Connected accounts for `cap`, as a model-facing hint string. */
+export function accountHint(cap: keyof ServiceCapabilities): string {
+  return accountsWithCapability(cap)
+    .map((a) => {
+      const label = getService(a.presetId)?.name ?? a.label;
+      return a.username ? `${label} (${a.username})` : label;
+    })
+    .join(", ");
 }
 
 /**
@@ -26,13 +55,13 @@ export function accountHint(protocol: ProtocolId): string {
  * making the model guess an id it has never seen only invites errors.
  */
 export function pickAccount(
-  protocol: ProtocolId,
+  cap: keyof ServiceCapabilities,
   ref?: string,
 ): ResolvedAccount {
-  const rows = accountsForProtocol(protocol);
+  const rows = accountsWithCapability(cap);
   if (rows.length === 0)
     throw new Error(
-      `No ${protocol} account is connected. Add one in Settings → Connectors.`,
+      `No ${cap} connector is connected. Add one in Settings → Connectors.`,
     );
 
   const wanted = ref?.trim().toLowerCase();
@@ -45,15 +74,21 @@ export function pickAccount(
           a.id === ref ||
           a.label.toLowerCase() === wanted ||
           a.username.toLowerCase() === wanted ||
-          a.presetId === wanted,
+          a.presetId === wanted ||
+          getService(a.presetId)?.name.toLowerCase() === wanted,
       );
 
   if (!match) {
-    const list = rows.map((a) => `${a.label} (${a.username})`).join(", ");
+    const list = rows
+      .map((a) => {
+        const label = getService(a.presetId)?.name ?? a.label;
+        return a.username ? `${label} (${a.username})` : label;
+      })
+      .join(", ");
     throw new Error(
       wanted
-        ? `No ${protocol} account matches “${ref}”. Connected: ${list}.`
-        : `Several ${protocol} accounts are connected — name one. Connected: ${list}.`,
+        ? `No ${cap} connector matches “${ref}”. Connected: ${list}.`
+        : `Several ${cap} connectors are connected — name one. Connected: ${list}.`,
     );
   }
 

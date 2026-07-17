@@ -1,45 +1,39 @@
 /**
- * Connectors IPC — presets, accounts, and the Telegram login handshake.
+ * Connectors IPC — the registry's UI projection, account CRUD, per-service
+ * tests, and the two special sign-in flows (Google OAuth, Telegram phone).
  *
  * Secrets travel renderer→main only (to be encrypted and stored); nothing here
- * ever sends one back out, so a compromised renderer can't read them back.
+ * ever sends one back out. The renderer receives UiConnectorService objects and
+ * renders the whole connect form from them — this file names no service.
  */
 
 import { ipcMain } from "electron";
 import {
-  PRESETS,
   addAccount,
   deleteAccount,
+  getService,
   listAccounts,
-  pickAccount,
+  resolveAccount,
+  SERVICES,
   updateAccount,
 } from "../connectors/index.js";
+import { toUiService } from "../connectors/services/types.js";
+import type { UiConnectorService } from "../connectors/services/types.js";
 import { resetVendorTools } from "../agent/vendor-tools.js";
-import {
-  telegramSendCode,
-  telegramSignIn,
-} from "../connectors/protocols/telegram.js";
-import { mailFolders } from "../connectors/protocols/mail.js";
-import { filesList } from "../connectors/protocols/files.js";
-import { calendarList, contactsList } from "../connectors/protocols/dav.js";
-import { getPreset } from "../connectors/presets.js";
-import {
-  ensureConnected,
-  getConnectorServerStatus,
-  loadConfig,
-} from "../mcp/manager.js";
+import { ensureConnected, loadConfig } from "../mcp/manager.js";
 import type { ConnectorAccount, ConnectorSecret } from "../connectors/types.js";
 
 export function registerConnectorsIPC(): void {
-  ipcMain.handle("connectors:presets", () => PRESETS);
+  ipcMain.handle(
+    "connectors:presets",
+    (): UiConnectorService[] => SERVICES.map(toUiService),
+  );
   ipcMain.handle("connectors:list", (): ConnectorAccount[] => listAccounts());
 
   /**
    * Everything a routine can be scoped to, in one list: connector accounts plus
-   * any hand-written MCP server. Routines used to read mcp.list() directly,
-   * which silently went empty once connectors stopped living in that file.
-   * The id is what a routine stores — a preset id for a connector, the server
-   * name for a raw MCP server; both are what the tool scoping matches on.
+   * any hand-written MCP server. The id is what a routine stores — a service id
+   * for a connector, the server name for a raw MCP server.
    */
   ipcMain.handle(
     "connectors:options",
@@ -49,7 +43,11 @@ export function registerConnectorsIPC(): void {
       for (const a of listAccounts()) {
         if (!a.enabled || seen.has(a.presetId)) continue;
         seen.add(a.presetId);
-        out.push({ id: a.presetId, label: a.label, kind: "connector" });
+        out.push({
+          id: a.presetId,
+          label: getService(a.presetId)?.name ?? a.label,
+          kind: "connector",
+        });
       }
       for (const name of Object.keys(loadConfig().mcpServers)) {
         if (seen.has(name)) continue;
@@ -71,11 +69,18 @@ export function registerConnectorsIPC(): void {
         secret: ConnectorSecret;
       },
     ): ConnectorAccount => {
-      const account = addAccount(input);
+      const service = getService(input.presetId);
+      if (!service) throw new Error(`Unknown connector: ${input.presetId}`);
+      const account = addAccount(input, {
+        // One server, one token: a second MCP account would silently shadow the
+        // first, so reconnecting replaces instead.
+        singleton: !!service.capabilities.mcp,
+        defaultLabel: service.name,
+      });
       resetVendorTools(); // tool advertisement depends on which accounts exist
-      // MCP-backed connector: bring its server up now, so the token is proven
-      // (or the error surfaced) while the user is still looking at the form.
-      if (getPreset(input.presetId)?.mcp) void ensureConnected().catch(() => {});
+      // MCP-backed service: bring its server up now, so the token is proven (or
+      // the error surfaced) while the user is still looking at the form.
+      if (service.capabilities.mcp) void ensureConnected().catch(() => {});
       return account;
     },
   );
@@ -103,72 +108,17 @@ export function registerConnectorsIPC(): void {
     return { ok };
   });
 
-  // Prove the credentials work, using each protocol's cheapest real call —
-  // better to fail here, in a form the user is looking at, than inside a tool
-  // call three turns later.
+  // The cheapest real call proving the stored credential works. Every service
+  // carries its own `test` — the field is type-required, because a missing Test
+  // branch once reported "works" for a connector that had never been contacted.
   ipcMain.handle(
     "connectors:test",
     async (_e, id: string): Promise<{ ok: boolean; error?: string }> => {
       try {
-        const rows = listAccounts();
-        const account = rows.find((a) => a.id === id);
-        if (!account) return { ok: false, error: "No such account." };
-        const preset = getPreset(account.presetId);
-        if (!preset) return { ok: false, error: "Unknown connector." };
-
-        if (preset.mcp) {
-          // Spawning the server IS the test: it fails loudly on a bad token.
-          await ensureConnected();
-          const s = getConnectorServerStatus(account.presetId);
-          if (!s) return { ok: false, error: "Server did not start." };
-          return s.status === "connected"
-            ? { ok: true }
-            : { ok: false, error: s.error ?? `Server is ${s.status}.` };
-        }
-        if (preset.protocols.includes("imap")) {
-          const r = await mailFolders(pickAccount("imap", id));
-          return { ok: r.ok, error: r.error };
-        }
-        if (preset.protocols.includes("webdav")) {
-          const r = await filesList(pickAccount("webdav", id), { path: "/" });
-          return { ok: r.ok, error: r.error };
-        }
-        if (preset.protocols.includes("gdrive")) {
-          const { driveList } = await import("../connectors/protocols/gdrive.js");
-          const r = await driveList(pickAccount("gdrive", id), { path: "/" });
-          return { ok: r.ok, error: r.error };
-        }
-        if (preset.protocols.includes("caldav")) {
-          const r = await calendarList(pickAccount("caldav", id));
-          return { ok: r.ok, error: r.error };
-        }
-        if (preset.protocols.includes("carddav")) {
-          const r = await contactsList(pickAccount("carddav", id), { limit: 1 });
-          return { ok: r.ok, error: r.error };
-        }
-        if (preset.protocols.includes("gpeople")) {
-          const { peopleList } = await import("../connectors/protocols/gpeople.js");
-          const r = await peopleList(pickAccount("gpeople", id), { limit: 1 });
-          return { ok: r.ok, error: r.error };
-        }
-        if (preset.protocols.includes("telegram")) {
-          // Listing one chat proves the stored session still authenticates —
-          // which is the thing that silently expires.
-          const { telegramChats } = await import(
-            "../connectors/protocols/telegram.js"
-          );
-          const r = await telegramChats(pickAccount("telegram", id), { limit: 1 });
-          return { ok: r.ok, error: r.error };
-        }
-        // NEVER default to ok. This used to `return { ok: true }`, so CardDAV —
-        // which had no branch — reported "works" without touching the network.
-        // A green tick that proves nothing is worse than no tick: it sent a real
-        // debugging session chasing app-password types on the strength of a
-        // connector that had never been contacted.
-        return {
-          ok: false,
-          error: `No test exists for ${preset.protocols.join(", ") || "this connector"} — this is a gap in the app, not a problem with your account.`,
-        };
+        const resolved = resolveAccount(id);
+        if (!resolved) return { ok: false, error: "No such account." };
+        const r = await resolved.service.test(resolved);
+        return { ok: r.ok, error: r.error };
       } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
@@ -176,9 +126,9 @@ export function registerConnectorsIPC(): void {
   );
 
   // ─── Google sign-in ──────────────────────────────────────────────────────
-  // Runs the consent flow, then stores the account. Deliberately one call: the
-  // tokens never reach the renderer, and a half-made account can't be left
-  // behind if the user closes the browser tab.
+  // One call: main runs the consent flow and stores the account, so tokens
+  // never reach the renderer and a closed browser tab can't leave a half-made
+  // account behind.
   ipcMain.handle(
     "connectors:googleSignIn",
     async (
@@ -186,16 +136,17 @@ export function registerConnectorsIPC(): void {
       opts: { presetId: string; clientId: string; clientSecret: string },
     ): Promise<{ ok: boolean; error?: string }> => {
       try {
-        const preset = getPreset(opts.presetId);
-        if (!preset?.oauth) return { ok: false, error: "Not an OAuth connector." };
+        const service = getService(opts.presetId);
+        if (service?.auth.kind !== "google-oauth")
+          return { ok: false, error: "Not a Google OAuth connector." };
         const { googleSignIn } = await import("../connectors/oauth/google.js");
         const tokens = await googleSignIn({
           clientId: opts.clientId.trim(),
           clientSecret: opts.clientSecret.trim(),
-          scopes: preset.oauth.scopes,
+          scopes: service.auth.scopes,
         });
-        // Ask Google who just signed in, rather than making the user type it:
-        // the address IS the CalDAV principal, so a typo here is a dead account.
+        // Ask Google who signed in rather than making the user type it: for
+        // CalDAV the address IS the principal, so a typo is a dead account.
         let email = "";
         try {
           const { fetchRetry } = await import("../net-fetch.js");
@@ -207,24 +158,24 @@ export function registerConnectorsIPC(): void {
         } catch {
           /* handled below */
         }
-        // Refuse rather than store a login-less account: for CalDAV the address
-        // IS the principal, so an empty one signs in fine and then fails with a
-        // baffling "cannot find homeUrl" days later.
         if (!email)
           return {
             ok: false,
             error:
               "Signed in, but Google didn't return your address — the connector can't be addressed without it. Sign in again and make sure the consent screen isn't blocking the email permission.",
           };
-        addAccount({
-          presetId: opts.presetId,
-          username: email,
-          secret: {
-            clientId: opts.clientId.trim(),
-            clientSecret: opts.clientSecret.trim(),
-            ...tokens,
+        addAccount(
+          {
+            presetId: opts.presetId,
+            username: email,
+            secret: {
+              clientId: opts.clientId.trim(),
+              clientSecret: opts.clientSecret.trim(),
+              ...tokens,
+            },
           },
-        });
+          { defaultLabel: service.name },
+        );
         resetVendorTools();
         return { ok: true };
       } catch (e) {
@@ -236,10 +187,15 @@ export function registerConnectorsIPC(): void {
   // ─── Telegram login (two steps: code → sign-in) ──────────────────────────
   ipcMain.handle(
     "connectors:telegramSendCode",
-    (
+    async (
       _e,
       opts: { accountId: string; apiId: string; apiHash: string; phone: string },
-    ) => telegramSendCode(opts),
+    ) => {
+      const { telegramSendCode } = await import(
+        "../connectors/lib/telegram.js"
+      );
+      return telegramSendCode(opts);
+    },
   );
 
   ipcMain.handle(
@@ -248,6 +204,7 @@ export function registerConnectorsIPC(): void {
       _e,
       opts: { accountId: string; code: string; password?: string },
     ) => {
+      const { telegramSignIn } = await import("../connectors/lib/telegram.js");
       const r = await telegramSignIn(opts);
       if (r.ok) resetVendorTools();
       return r;

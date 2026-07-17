@@ -16,7 +16,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { getDataDir } from "../data-dir.js";
-import { getPreset } from "../connectors/presets.js";
+import { getService } from "../connectors/services/registry.js";
 import { getSecret, listAccounts } from "../connectors/store.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
@@ -73,14 +73,14 @@ function connectorServers(): Record<string, McpServerConfig> {
   try {
     for (const account of listAccounts()) {
       if (!account.enabled) continue;
-      const preset = getPreset(account.presetId);
-      if (!preset?.mcp) continue;
+      const mcp = getService(account.presetId)?.capabilities.mcp;
+      if (!mcp) continue;
       const token = getSecret(account.id).password;
       if (!token) continue;
       out[account.presetId] = {
-        command: preset.mcp.command,
-        args: preset.mcp.args,
-        env: { [preset.mcp.envKey]: token },
+        command: mcp.command,
+        args: mcp.args,
+        env: { [mcp.envKey]: token },
       };
     }
   } catch {
