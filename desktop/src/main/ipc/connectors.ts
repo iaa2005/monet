@@ -21,7 +21,7 @@ import {
 } from "../connectors/protocols/telegram.js";
 import { mailFolders } from "../connectors/protocols/mail.js";
 import { filesList } from "../connectors/protocols/files.js";
-import { calendarList } from "../connectors/protocols/dav.js";
+import { calendarList, contactsList } from "../connectors/protocols/dav.js";
 import { getPreset } from "../connectors/presets.js";
 import {
   ensureConnected,
@@ -142,7 +142,19 @@ export function registerConnectorsIPC(): void {
           const r = await calendarList(pickAccount("caldav", id));
           return { ok: r.ok, error: r.error };
         }
-        return { ok: true };
+        if (preset.protocols.includes("carddav")) {
+          const r = await contactsList(pickAccount("carddav", id), { limit: 1 });
+          return { ok: r.ok, error: r.error };
+        }
+        // NEVER default to ok. This used to `return { ok: true }`, so CardDAV —
+        // which had no branch — reported "works" without touching the network.
+        // A green tick that proves nothing is worse than no tick: it sent a real
+        // debugging session chasing app-password types on the strength of a
+        // connector that had never been contacted.
+        return {
+          ok: false,
+          error: `No test exists for ${preset.protocols.join(", ") || "this connector"} — this is a gap in the app, not a problem with your account.`,
+        };
       } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }

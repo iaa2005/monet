@@ -357,6 +357,23 @@ async function main() {
     bad.map(p => p.id).join(',') || undefined,
   )
 
+  // Every connectable protocol needs a Test branch. CardDAV had none and fell
+  // through to `ok: true`, so Contacts reported "works" without a single packet
+  // — and that false green sent a real debugging session after the wrong cause.
+  const TESTED = ['mcp', 'imap', 'webdav', 'gdrive', 'caldav', 'carddav']
+  const untestable = PRESETS.filter(
+    p =>
+      !p.unavailable &&
+      !p.mcp &&
+      !p.telegram &&
+      !p.protocols.some(x => TESTED.includes(x)),
+  )
+  check(
+    'every connectable preset has a Test branch',
+    untestable.length === 0,
+    untestable.map(p => p.id).join(',') || undefined,
+  )
+
   // An OAuth preset with no scopes signs in and can touch nothing; one that
   // also kept a password field would just re-run the Google Calendar mistake.
   const badOauth = PRESETS.filter(p => p.oauth && !p.oauth.scopes?.length)
