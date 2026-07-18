@@ -505,6 +505,7 @@ export interface ElectronAPI {
         description: string;
         version: string;
         capabilities: string[];
+        iconSvg?: string;
       }[];
       error?: string;
     }>;

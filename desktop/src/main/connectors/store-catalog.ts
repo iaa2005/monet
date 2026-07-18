@@ -41,6 +41,8 @@ export interface CatalogEntry {
   version: string;
   /** Capability names, for the card ("mail", "caldav", "mcp"…). */
   capabilities: string[];
+  /** Inline SVG icon, fetched from the repo alongside the catalog. */
+  iconSvg?: string;
 }
 
 /** What the renderer needs to render a pre-install confirmation. */
@@ -70,7 +72,7 @@ async function fetchText(url: string): Promise<string> {
 export async function fetchCatalog(): Promise<CatalogEntry[]> {
   const raw = JSON.parse(await fetchText(`${REPO_RAW}/index.json`)) as unknown;
   if (!Array.isArray(raw)) throw new Error("index.json is not an array");
-  return raw
+  const entries = raw
     .filter(
       (e): e is CatalogEntry =>
         !!e &&
@@ -84,7 +86,20 @@ export async function fetchCatalog(): Promise<CatalogEntry[]> {
       description: e.description ?? "",
       version: e.version ?? "0",
       capabilities: Array.isArray(e.capabilities) ? e.capabilities : [],
+      iconSvg: undefined as string | undefined,
     }));
+  // Fetch icons in parallel — each is a tiny SVG; failures are non-fatal.
+  await Promise.all(
+    entries.map(async (e) => {
+      try {
+        const svg = await fetchText(`${REPO_RAW}/connectors/${e.id}/icon.svg`);
+        if (svg.includes("<svg")) e.iconSvg = svg;
+      } catch {
+        /* icon is optional */
+      }
+    }),
+  );
+  return entries;
 }
 
 async function fetchManifest(

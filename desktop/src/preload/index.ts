@@ -515,6 +515,7 @@ const electronAPI = {
         description: string;
         version: string;
         capabilities: string[];
+        iconSvg?: string;
       }[];
       error?: string;
     }> => ipcRenderer.invoke("connectors:storeCatalog"),
