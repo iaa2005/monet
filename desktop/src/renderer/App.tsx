@@ -75,6 +75,7 @@ import {
 } from "@/components/ui/resizable";
 import { useChatStore } from "@/stores/chatStore";
 import { cn } from "@/lib/utils";
+import { RoutinesList } from "@/components/RoutinesList";
 import type { ChatMessage } from "@/types/chat";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -177,71 +178,6 @@ function NavRow({
       <Icon className="size-4 shrink-0" />
       <span className="truncate">{label}</span>
     </button>
-  );
-}
-
-/** Collapsible sidebar section listing chats produced by routine runs, shown
- * above Recents. Hidden until a routine has produced at least one chat. */
-function RoutineChatsSection({
-  onOpen,
-  currentSessionId,
-}: {
-  onOpen: (id: string) => void;
-  currentSessionId?: string;
-}): JSX.Element | null {
-  const [chats, setChats] = useState<
-    { id: string; title: string; at: string }[]
-  >([]);
-  const [open, setOpen] = useState(true);
-  useEffect(() => {
-    const load = (): void => {
-      void api()
-        ?.routines.chats()
-        .then((c) => setChats(c ?? []))
-        .catch(() => {});
-    };
-    load();
-    return api()?.routines.onRan(() => load());
-  }, []);
-  if (chats.length === 0) return null;
-  return (
-    <div className="shrink-0 px-2">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-1.5 px-2 pb-1 pt-3 text-[11px] font-medium tracking-wide text-muted-foreground hover:text-foreground"
-      >
-        {open ? (
-          <ChevronDown className="size-3" />
-        ) : (
-          <ChevronRight className="size-3" />
-        )}
-        <Zap className="size-3" />
-        Routines
-        <span className="ml-auto tabular-nums text-muted-foreground/70">
-          {chats.length}
-        </span>
-      </button>
-      {open && (
-        <div className="max-h-48 space-y-0.5 overflow-y-auto">
-          {chats.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => onOpen(c.id)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors",
-                currentSessionId === c.id
-                  ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                  : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
-              )}
-            >
-              <span className="truncate">{c.title || "Routine run"}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -1156,9 +1092,16 @@ export default function App(): JSX.Element {
                     />
                   </div>
 
-                  <RoutineChatsSection
+                  <RoutinesList
                     onOpen={openChatById}
                     currentSessionId={currentSessionId}
+                    onDelete={handleDeleteSession}
+                    onRename={(id, title) => {
+                      setRenameTargetId(id);
+                      setRenameValue(title);
+                      setRenameOpen(true);
+                    }}
+                    onFork={forkSession}
                   />
 
                   <div className="flex min-h-0 flex-1 flex-col px-2">
