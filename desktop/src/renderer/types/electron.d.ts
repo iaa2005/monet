@@ -497,6 +497,33 @@ export interface ElectronAPI {
       actionId: string,
       level: "allow" | "ask" | "deny" | null,
     ) => Promise<ConnectorAccount | null>;
+    storeCatalog: () => Promise<{
+      entries: {
+        id: string;
+        name: string;
+        company: string;
+        description: string;
+        version: string;
+        capabilities: string[];
+      }[];
+      error?: string;
+    }>;
+    storePreview: (id: string) => Promise<{
+      ok: boolean;
+      preview?: {
+        id: string;
+        name: string;
+        version: string;
+        authKind: string;
+        capabilities: string[];
+        endpoints: string[];
+        note?: string;
+      };
+      error?: string;
+    }>;
+    storeInstall: (id: string) => Promise<{ ok: boolean; error?: string }>;
+    storeRemove: (id: string) => Promise<{ ok: boolean }>;
+    storeInstalled: () => Promise<string[]>;
     googleSignIn: (opts: {
       presetId: string;
       clientId: string;

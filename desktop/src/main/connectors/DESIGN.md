@@ -316,6 +316,30 @@ separately; the registry/README update travels with Phase 1.
    scheduler, per-chat connector picker, Custom MCP, (optional) an audit log
    of allowed/denied write actions per session.
 
+## 8b. The store (shipped alongside phase 4)
+
+Connectors installable **without an app update**, from
+[iaa2005/monet-connectors](https://github.com/iaa2005/monet-connectors):
+
+- A store connector is a **manifest — data, never code** (services/manifest.ts,
+  schema 1). Capabilities map onto the SAME protocol factories builtins use:
+  `mail` (IMAP/SMTP, TLS required), `webdav`/`caldav`/`carddav` (https only),
+  `mcp` (command allowlisted to `npx`/`uvx`). Auth kinds: password/token only —
+  OAuth and MTProto need code, so they stay builtin.
+- Install flow: catalog (`index.json` via raw.githubusercontent) → preview
+  (fetch + validate the manifest, show EVERY endpoint/command to the user) →
+  confirm → save under `<dataDir>/connectors/store/<id>/` →
+  `refreshInstalledServices()` joins it into the live registry
+  (`allServices()`/`getService` search builtin + installed; builtin wins id
+  clashes and manifests may not claim builtin ids).
+- Threat model: a malicious manifest is a **phishing form** (your app password
+  goes to the hosts it names) — hence TLS/https-only, no credential-bearing
+  URLs, the pre-install endpoint disclosure, and human review in the repo as
+  the real gate. MCP entries are code execution by nature; the command
+  allowlist plus repo review contain that.
+- The repo carries the contributor contract (README), `schema.json`, and two
+  live-verified examples (Mail.ru, Fastmail).
+
 ## 9. Non-goals (for now)
 
 - Remote OAuth 2.1 MCP connectors (needs app OAuth flow).

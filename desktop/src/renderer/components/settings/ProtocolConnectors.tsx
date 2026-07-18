@@ -401,6 +401,8 @@ export function ProtocolConnectors(): JSX.Element {
         </div>
       ))}
 
+      <StoreSection onChanged={load} />
+
       {entry && (
         <ConnectForm
           service={entry}
@@ -410,6 +412,233 @@ export function ProtocolConnectors(): JSX.Element {
             load();
           }}
         />
+      )}
+    </div>
+  );
+}
+
+// ─── Store: manifests from github.com/iaa2005/monet-connectors ──────────────
+
+interface StoreEntry {
+  id: string;
+  name: string;
+  company: string;
+  description: string;
+  version: string;
+  capabilities: string[];
+}
+
+/** The community catalog. Installing downloads a MANIFEST (data, not code),
+ * shows every endpoint it talks to, and only then saves it — after which the
+ * connector behaves exactly like a builtin one. */
+function StoreSection({ onChanged }: { onChanged: () => void }): JSX.Element {
+  const [entries, setEntries] = useState<StoreEntry[] | null>(null);
+  const [installed, setInstalled] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{
+    entry: StoreEntry;
+    endpoints: string[];
+    authKind: string;
+    note?: string;
+  } | null>(null);
+
+  const refresh = async (): Promise<void> => {
+    setError(null);
+    const [cat, inst] = await Promise.all([
+      api()?.connectors.storeCatalog(),
+      api()?.connectors.storeInstalled(),
+    ]);
+    setEntries(cat?.entries ?? []);
+    if (cat?.error) setError(cat.error);
+    setInstalled(new Set(inst ?? []));
+  };
+  useEffect(() => {
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const startInstall = async (entry: StoreEntry): Promise<void> => {
+    setBusy(entry.id);
+    setError(null);
+    try {
+      const r = await api()?.connectors.storePreview(entry.id);
+      if (!r?.ok || !r.preview) throw new Error(r?.error ?? "Preview failed.");
+      setConfirm({
+        entry,
+        endpoints: r.preview.endpoints,
+        authKind: r.preview.authKind,
+        note: r.preview.note,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doInstall = async (): Promise<void> => {
+    if (!confirm) return;
+    setBusy(confirm.entry.id);
+    try {
+      const r = await api()?.connectors.storeInstall(confirm.entry.id);
+      if (!r?.ok) throw new Error(r?.error ?? "Install failed.");
+      setConfirm(null);
+      await refresh();
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const remove = async (id: string): Promise<void> => {
+    await api()?.connectors.storeRemove(id);
+    await refresh();
+    onChanged();
+  };
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between">
+        <div className="text-xs font-medium text-muted-foreground">Store</div>
+        <button
+          type="button"
+          onClick={() => void refresh()}
+          className="text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          Refresh
+        </button>
+      </div>
+      <p className="mb-2 text-xs text-muted-foreground">
+        Community connectors from{" "}
+        <button
+          type="button"
+          onClick={() =>
+            void api()?.shell.openExternal(
+              "https://github.com/iaa2005/monet-connectors",
+            )
+          }
+          className="text-link hover:underline"
+        >
+          iaa2005/monet-connectors
+        </button>
+        . A connector here is a manifest (endpoints + a form), never code; you
+        see exactly what it talks to before installing.
+      </p>
+      {error && (
+        <p className="mb-2 flex items-start gap-1 text-xs text-destructive">
+          <AlertCircle className="mt-0.5 size-3 shrink-0" />
+          <span className="break-words">{error}</span>
+        </p>
+      )}
+      {entries === null ? (
+        <p className="text-xs text-muted-foreground">Loading catalog…</p>
+      ) : entries.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          The catalog is empty (or unreachable).
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {entries.map((s) => {
+            const isInstalled = installed.has(s.id);
+            return (
+              <div
+                key={s.id}
+                className="flex items-start gap-3 rounded-xl border border-border p-3"
+              >
+                <Plug className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">
+                    {s.name}
+                    <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
+                      v{s.version}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {s.description}
+                  </div>
+                  <div className="mt-0.5 font-mono text-[10px] text-muted-foreground/70">
+                    {s.capabilities.join(" · ")}
+                  </div>
+                </div>
+                {isInstalled ? (
+                  <button
+                    type="button"
+                    onClick={() => void remove(s.id)}
+                    className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-destructive"
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy === s.id}
+                    onClick={() => void startInstall(s)}
+                    className="shrink-0 rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background disabled:opacity-50"
+                  >
+                    {busy === s.id ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      "Install"
+                    )}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {confirm && (
+        <Modal
+          open
+          onClose={() => setConfirm(null)}
+          title={`Install ${confirm.entry.name}?`}
+        >
+          <div className="space-y-3">
+            <p className="text-[13px] text-muted-foreground">
+              This connector will talk ONLY to the endpoints below. Your
+              credential goes to these servers — check they belong to the
+              service you expect.
+            </p>
+            <ul className="space-y-1 rounded-md border border-border p-2.5 font-mono text-xs">
+              {confirm.endpoints.map((e) => (
+                <li key={e} className="break-all">
+                  {e}
+                </li>
+              ))}
+            </ul>
+            {confirm.note && (
+              <p className="text-xs text-muted-foreground">{confirm.note}</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Auth: {confirm.authKind}. Permissions default to the standard
+              matrix (reads allow, writes ask) and are editable after install.
+            </p>
+            <div className="flex justify-end gap-2 border-t border-border pt-3">
+              <button
+                type="button"
+                onClick={() => setConfirm(null)}
+                className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy === confirm.entry.id}
+                onClick={() => void doInstall()}
+                className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-50"
+              >
+                {busy === confirm.entry.id && (
+                  <Loader2 className="size-3.5 animate-spin" />
+                )}
+                Install
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

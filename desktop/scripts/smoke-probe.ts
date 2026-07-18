@@ -513,6 +513,76 @@ async function main() {
     )
   }
 
+  // ── Store manifests (data → service, hostile input refused) ─────────────
+  {
+    const { manifestToService, MANIFEST_SCHEMA } = await import(
+      '../src/main/connectors/services/manifest.js'
+    )
+    const { BUILTIN_IDS } = await import(
+      '../src/main/connectors/services/registry.js'
+    )
+    const good = {
+      schema: MANIFEST_SCHEMA,
+      id: 'mailru',
+      name: 'MailruMail',
+      company: 'Mail.ru',
+      description: 'Mail over IMAP/SMTP with an app password.',
+      version: '1.0.0',
+      auth: {
+        kind: 'password',
+        fields: [
+          { key: 'username', label: 'Login' },
+          { key: 'password', label: 'App password', secret: true },
+        ],
+      },
+      capabilities: {
+        mail: {
+          imap: { host: 'imap.mail.ru', port: 993, secure: true },
+          smtp: { host: 'smtp.mail.ru', port: 465, secure: true },
+        },
+      },
+    }
+    const svc = manifestToService(good as never, { builtinIds: BUILTIN_IDS })
+    check(
+      'manifest → service (mail, derived test)',
+      !!svc.capabilities.mail && typeof svc.test === 'function' && svc.id === 'mailru',
+    )
+    const rejects = (patch: object, name: string): void => {
+      let threw = false
+      try {
+        manifestToService({ ...good, ...patch } as never, { builtinIds: BUILTIN_IDS })
+      } catch {
+        threw = true
+      }
+      check(name, threw)
+    }
+    rejects({ id: 'gmail' }, 'manifest refuses builtin id collision')
+    rejects(
+      { capabilities: { webdav: { url: 'http://insecure.example' } } },
+      'manifest refuses non-https endpoints',
+    )
+    rejects(
+      { capabilities: { mcp: { command: 'bash', args: [], envKey: 'X' } } },
+      'manifest refuses non-allowlisted mcp commands',
+    )
+    rejects(
+      {
+        capabilities: {
+          mail: {
+            imap: { host: 'imap.mail.ru', port: 993, secure: false },
+            smtp: { host: 'smtp.mail.ru', port: 465, secure: true },
+          },
+        },
+      },
+      'manifest refuses plaintext mail hosts',
+    )
+    rejects(
+      { auth: { kind: 'google-oauth', scopes: [] } },
+      'manifest refuses code-requiring auth kinds',
+    )
+    rejects({ capabilities: {} }, 'manifest refuses zero capabilities')
+  }
+
   // ── FileBridge (Home sandbox confinement) ────────────────────────────────
   {
     const { makeFileBridge } = await import(

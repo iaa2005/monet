@@ -20,14 +20,28 @@ import {
 } from "../connectors/index.js";
 import { toUiService } from "../connectors/services/types.js";
 import type { UiConnectorService } from "../connectors/services/types.js";
+import { allServices } from "../connectors/services/registry.js";
+import {
+  fetchCatalog,
+  installStoreConnector,
+  installedStoreIds,
+  previewStoreConnector,
+  refreshInstalledServices,
+  removeStoreConnector,
+  type CatalogEntry,
+  type ManifestPreview,
+} from "../connectors/store-catalog.js";
 import { resetVendorTools } from "../agent/vendor-tools.js";
 import { ensureConnected, loadConfig } from "../mcp/manager.js";
 import type { ConnectorAccount, ConnectorSecret } from "../connectors/types.js";
 
 export function registerConnectorsIPC(): void {
+  // Join store-installed manifests into the registry before anything asks.
+  refreshInstalledServices();
+
   ipcMain.handle(
     "connectors:presets",
-    (): UiConnectorService[] => SERVICES.map(toUiService),
+    (): UiConnectorService[] => allServices().map(toUiService),
   );
   ipcMain.handle("connectors:list", (): ConnectorAccount[] => listAccounts());
 
@@ -136,6 +150,62 @@ export function registerConnectorsIPC(): void {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
     },
+  );
+
+  // ─── Store (manifests from iaa2005/monet-connectors) ─────────────────────
+  ipcMain.handle(
+    "connectors:storeCatalog",
+    async (): Promise<{ entries: CatalogEntry[]; error?: string }> => {
+      try {
+        return { entries: await fetchCatalog() };
+      } catch (e) {
+        return {
+          entries: [],
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+    },
+  );
+
+  // Fetch + validate the manifest and report exactly what it talks to — the
+  // renderer shows this BEFORE the user confirms an install.
+  ipcMain.handle(
+    "connectors:storePreview",
+    async (
+      _e,
+      id: string,
+    ): Promise<{ ok: boolean; preview?: ManifestPreview; error?: string }> => {
+      try {
+        return { ok: true, preview: await previewStoreConnector(id) };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "connectors:storeInstall",
+    async (_e, id: string): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        await installStoreConnector(id);
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "connectors:storeRemove",
+    (_e, id: string): { ok: boolean } => {
+      const ok = removeStoreConnector(id);
+      resetVendorTools();
+      return { ok };
+    },
+  );
+
+  ipcMain.handle("connectors:storeInstalled", (): string[] =>
+    installedStoreIds(),
   );
 
   // ─── Google sign-in ──────────────────────────────────────────────────────

@@ -31,15 +31,34 @@ export const SERVICES: ConnectorService[] = [
   Sentry,
 ];
 
-const byId = new Map(SERVICES.map((s) => [s.id, s]));
+export const BUILTIN_IDS = new Set(SERVICES.map((s) => s.id));
+
+// ─── Store-installed services ───────────────────────────────────────────────
+// Manifest connectors (see manifest.ts) join the same registry at runtime.
+// They are DATA validated into ConnectorServices; store-catalog.ts loads them
+// from disk and calls setInstalledServices on install/remove/startup.
+
+let installed: ConnectorService[] = [];
+
+export function setInstalledServices(list: ConnectorService[]): void {
+  // Builtin always wins an id clash (manifestToService refuses them anyway).
+  installed = list.filter((s) => !BUILTIN_IDS.has(s.id));
+}
+
+/** Builtin + store-installed, the list every consumer should use. */
+export function allServices(): ConnectorService[] {
+  return installed.length ? [...SERVICES, ...installed] : SERVICES;
+}
 
 export function getService(id: string): ConnectorService | undefined {
-  return byId.get(id);
+  return (
+    SERVICES.find((s) => s.id === id) ?? installed.find((s) => s.id === id)
+  );
 }
 
 /** Services implementing a capability ("mail", "files", "mcp", …). */
 export function servicesWithCapability(
   cap: keyof ServiceCapabilities,
 ): ConnectorService[] {
-  return SERVICES.filter((s) => s.capabilities[cap] != null);
+  return allServices().filter((s) => s.capabilities[cap] != null);
 }

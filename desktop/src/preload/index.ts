@@ -507,6 +507,38 @@ const electronAPI = {
       level: "allow" | "ask" | "deny" | null,
     ): Promise<ConnectorAccount | null> =>
       ipcRenderer.invoke("connectors:setPermission", accountId, actionId, level),
+    storeCatalog: (): Promise<{
+      entries: {
+        id: string;
+        name: string;
+        company: string;
+        description: string;
+        version: string;
+        capabilities: string[];
+      }[];
+      error?: string;
+    }> => ipcRenderer.invoke("connectors:storeCatalog"),
+    storePreview: (
+      id: string,
+    ): Promise<{
+      ok: boolean;
+      preview?: {
+        id: string;
+        name: string;
+        version: string;
+        authKind: string;
+        capabilities: string[];
+        endpoints: string[];
+        note?: string;
+      };
+      error?: string;
+    }> => ipcRenderer.invoke("connectors:storePreview", id),
+    storeInstall: (id: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("connectors:storeInstall", id),
+    storeRemove: (id: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("connectors:storeRemove", id),
+    storeInstalled: (): Promise<string[]> =>
+      ipcRenderer.invoke("connectors:storeInstalled"),
     googleSignIn: (opts: {
       presetId: string;
       clientId: string;
