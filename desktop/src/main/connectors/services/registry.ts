@@ -14,10 +14,6 @@ import { googleServices } from "./google/index.js";
 import { yandexServices } from "./yandex/index.js";
 import { telegramServices } from "./telegram/index.js";
 import { GitHub } from "./github/index.js";
-import { Notion } from "./notion/index.js";
-import { Slack } from "./slack/index.js";
-import { Linear } from "./linear/index.js";
-import { Sentry } from "./sentry/index.js";
 import type { ConnectorService, ServiceCapabilities } from "./types.js";
 
 export const SERVICES: ConnectorService[] = [
@@ -25,10 +21,6 @@ export const SERVICES: ConnectorService[] = [
   ...yandexServices,
   ...telegramServices,
   GitHub,
-  Notion,
-  Slack,
-  Linear,
-  Sentry,
 ];
 
 export const BUILTIN_IDS = new Set(SERVICES.map((s) => s.id));
