@@ -9,12 +9,14 @@
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
+import { structuredPatch } from "diff";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import {
   listSandboxFiles,
   readSandboxFile,
   writeSandboxFile,
+  editSandboxFile,
 } from "../sandbox/files.js";
 import { artifactReference } from "../ipc/artifacts.js";
 import { tunablePrompt } from "../prompts/index.js";
@@ -232,6 +234,109 @@ export const SandboxWriteTool = buildTool({
         },
       };
     }
+  },
+  mapToolResultToToolResultBlockParam: mapResult,
+  renderToolUseMessage() {
+    return null;
+  },
+});
+
+// ─── SandboxEdit ──────────────────────────────────────────────────────────
+
+const editSchema = lazySchema(() =>
+  z.strictObject({
+    name: z
+      .string()
+      .describe("The file path as shown by SandboxList (subfolders allowed)."),
+    old_string: z.string().describe("The exact text to replace."),
+    new_string: z.string().describe("The replacement text."),
+    replace_all: z
+      .boolean()
+      .default(false)
+      .describe("Replace all occurrences of old_string (default: first only)."),
+  }),
+);
+type EditSchema = ReturnType<typeof editSchema>;
+
+export const SandboxEditTool = buildTool({
+  name: "SandboxEdit",
+  searchHint: "find-and-replace edit a file in this chat's sandbox",
+  maxResultSizeChars: 8_000,
+  get inputSchema(): EditSchema {
+    return editSchema();
+  },
+  userFacingName() {
+    return "SandboxEdit";
+  },
+  isReadOnly() {
+    return false;
+  },
+  isConcurrencySafe() {
+    return false;
+  },
+  async prompt() {
+    return tunablePrompt(
+      "tool-sandbox-edit",
+      [
+        "Edit a TEXT file in this chat's sandbox by finding and replacing a",
+        "string. Use a relative path as shown by SandboxList. Provide enough",
+        "context in old_string to uniquely identify the location — set",
+        "replace_all=true to replace every occurrence. The file must already",
+        "exist (use SandboxWrite to create files). Read the file first with",
+        "SandboxRead so you know the exact text to replace.",
+      ].join("\n"),
+    );
+  },
+  async description() {
+    return "Find-and-replace edit a text file in this chat's sandbox.";
+  },
+  async call(
+    { name, old_string, new_string, replace_all }: z.infer<EditSchema>,
+    context: ToolUseContext,
+  ) {
+    if (!validName(name)) {
+      return {
+        data: {
+          text: `Invalid path "${name}" — use a sandbox-relative path (subfolders ok; no "..", no absolute paths, no backslashes).`,
+          isError: true,
+        },
+      };
+    }
+    // Read the file BEFORE editing so we can show a diff.
+    const before = readSandboxFile(sid(context), name);
+    if (!before.ok) {
+      return { data: { text: before.error ?? "Read failed", isError: true } };
+    }
+    const r = editSandboxFile(
+      sid(context),
+      name,
+      old_string,
+      new_string,
+      replace_all,
+    );
+    if (!r.ok) {
+      return { data: { text: r.error ?? "Edit failed", isError: true } };
+    }
+    // Produce a unified diff for the chat UI.
+    const patch = structuredPatch(name, name, before.content ?? "", r.content ?? "");
+    const diffLines: string[] = [`--- ${name}`, `+++ ${name}`];
+    for (const hunk of patch.hunks) {
+      diffLines.push(
+        `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
+      );
+      for (const line of hunk.lines) {
+        diffLines.push(line);
+      }
+    }
+    const codeblock = "```diff";
+    return {
+      data: {
+        text:
+          `Edited ${name} (${fmtSize(Buffer.byteLength(r.content ?? "", "utf-8"))}).\n\n` +
+          `${codeblock}\n${diffLines.join("\n")}\n\`\`\``,
+        isError: false,
+      },
+    };
   },
   mapToolResultToToolResultBlockParam: mapResult,
   renderToolUseMessage() {

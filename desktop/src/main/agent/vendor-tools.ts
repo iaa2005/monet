@@ -50,6 +50,7 @@ import {
   SandboxListTool,
   SandboxReadTool,
   SandboxWriteTool,
+  SandboxEditTool,
 } from "./sandbox-file-tools.js";
 import { ensurePosixShell } from "./shell-env.js";
 import {
@@ -73,6 +74,7 @@ const HOME_TOOL_NAMES = new Set([
   "SandboxList",
   "SandboxRead",
   "SandboxWrite",
+  "SandboxEdit",
   "TodoWrite",
   "Skill",
   "AskUserQuestion",
@@ -88,6 +90,7 @@ const SANDBOX_ONLY_NAMES = new Set([
   "SandboxList",
   "SandboxRead",
   "SandboxWrite",
+  "SandboxEdit",
 ]);
 
 /** Browser Use tools — Code-only, and only when the user enabled Browser Use. */
@@ -311,6 +314,7 @@ export function getVendorTools(): Tools {
     SandboxListTool,
     SandboxReadTool,
     SandboxWriteTool,
+    SandboxEditTool,
     BrowserNavigateTool,
     BrowserReadPageTool,
     BrowserClickTool,

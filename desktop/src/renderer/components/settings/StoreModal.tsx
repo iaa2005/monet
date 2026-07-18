@@ -174,7 +174,7 @@ function StoreModal({
   return (
     <Modal open onClose={onClose} bare className="h-[85vh] max-w-3xl">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
         <div className="flex items-center gap-2">
           <Store className="size-4 text-muted-foreground" />
           <h2 className="text-sm font-semibold">Connector Store</h2>

@@ -114,6 +114,46 @@ export function readSandboxFile(
   return { ok: true, content: buf.toString("utf-8") };
 }
 
+export function editSandboxFile(
+  sessionId: string,
+  name: string,
+  oldString: string,
+  newString: string,
+  replaceAll = false,
+): { ok: boolean; content?: string; error?: string } {
+  const abs = resolveInWorkDir(sessionId, name);
+  if (!abs)
+    return {
+      ok: false,
+      error: `Invalid path "${name}" — use a sandbox-relative path (no "..", no absolute paths).`,
+    };
+  let buf: Buffer;
+  try {
+    buf = readFileSync(abs);
+  } catch {
+    return { ok: false, error: `No file named "${name}" in this chat's sandbox. Use SandboxList to see what exists.` };
+  }
+  if (buf.includes(0))
+    return { ok: false, error: "Binary file — edit with RunPython instead." };
+  const file = buf.toString("utf-8");
+  if (oldString === newString)
+    return { ok: false, error: "old_string and new_string are identical — nothing to change." };
+  if (!file.includes(oldString))
+    return { ok: false, error: `String to replace not found in "${name}".` };
+  const matches = file.split(oldString).length - 1;
+  if (matches > 1 && !replaceAll)
+    return {
+      ok: false,
+      error: `Found ${matches} matches of old_string in "${name}". Set replace_all=true to replace all, or provide more context to uniquely identify the instance.`,
+    };
+  const updated = replaceAll
+    ? file.split(oldString).join(newString)
+    : file.replace(oldString, newString);
+  writeFileSync(abs, Buffer.from(updated, "utf-8"));
+  mirrorToPyodideSession(sessionId, toPosix(name), Buffer.from(updated, "utf-8"));
+  return { ok: true, content: updated };
+}
+
 export function writeSandboxFile(
   sessionId: string,
   name: string,
