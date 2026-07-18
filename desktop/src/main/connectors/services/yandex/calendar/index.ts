@@ -4,9 +4,9 @@
  */
 
 import icon from "./icon.svg?raw";
-import { makeCaldavOps } from "../../lib/dav.js";
-import { yandexAuthHint, yandexSetupSteps } from "../yandex-setup.js";
-import type { ConnectorService } from "../types.js";
+import { makeCaldavOps } from "../../../lib/protocols/dav.js";
+import { yandexAuthHint, yandexSetupSteps } from "../setup.js";
+import type { ConnectorService } from "../../types.js";
 
 const ops = makeCaldavOps({
   url: "https://caldav.yandex.ru",

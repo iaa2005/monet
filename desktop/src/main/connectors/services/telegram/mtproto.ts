@@ -14,10 +14,10 @@ import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import { existsSync } from "fs";
 import { resolve, sep } from "path";
-import { patchSecret } from "../store.js";
-import { sandboxWorkDir } from "../../sandbox/podman-engine.js";
-import type { ProtocolResult } from "../types.js";
-import type { ChatOps, ResolvedAccount } from "../services/types.js";
+import { patchSecret } from "../../store.js";
+import { sandboxWorkDir } from "../../../sandbox/podman-engine.js";
+import type { ProtocolResult } from "../../types.js";
+import type { ChatOps, ResolvedAccount } from "../types.js";
 
 interface Pending {
   client: TelegramClient;

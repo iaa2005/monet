@@ -139,7 +139,7 @@ export function registerConnectorsIPC(): void {
         const service = getService(opts.presetId);
         if (service?.auth.kind !== "google-oauth")
           return { ok: false, error: "Not a Google OAuth connector." };
-        const { googleSignIn } = await import("../connectors/oauth/google.js");
+        const { googleSignIn } = await import("../connectors/services/google/auth.js");
         const tokens = await googleSignIn({
           clientId: opts.clientId.trim(),
           clientSecret: opts.clientSecret.trim(),
@@ -192,7 +192,7 @@ export function registerConnectorsIPC(): void {
       opts: { accountId: string; apiId: string; apiHash: string; phone: string },
     ) => {
       const { telegramSendCode } = await import(
-        "../connectors/lib/telegram.js"
+        "../connectors/services/telegram/mtproto.js"
       );
       return telegramSendCode(opts);
     },
@@ -204,7 +204,7 @@ export function registerConnectorsIPC(): void {
       _e,
       opts: { accountId: string; code: string; password?: string },
     ) => {
-      const { telegramSignIn } = await import("../connectors/lib/telegram.js");
+      const { telegramSignIn } = await import("../connectors/services/telegram/mtproto.js");
       const r = await telegramSignIn(opts);
       if (r.ok) resetVendorTools();
       return r;

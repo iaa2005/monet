@@ -4,9 +4,9 @@
  */
 
 import icon from "./icon.svg?raw";
-import { makeWebdavOps } from "../../lib/files.js";
-import { yandexAuthHint, yandexSetupSteps } from "../yandex-setup.js";
-import type { ConnectorService } from "../types.js";
+import { makeWebdavOps } from "../../../lib/protocols/webdav.js";
+import { yandexAuthHint, yandexSetupSteps } from "../setup.js";
+import type { ConnectorService } from "../../types.js";
 
 const ops = makeWebdavOps({
   url: "https://webdav.yandex.ru",

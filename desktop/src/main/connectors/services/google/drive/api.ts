@@ -13,11 +13,11 @@
  * the price of a sane tool surface.
  */
 
-import { fetchRetry } from "../../net-fetch.js";
-import { googleAccessToken } from "../oauth/google.js";
-import { patchSecret } from "../store.js";
-import type { ProtocolResult } from "../types.js";
-import type { FileOps, ResolvedAccount } from "../services/types.js";
+import { fetchRetry } from "../../../../net-fetch.js";
+import { googleAccessToken } from "../auth.js";
+import { patchSecret } from "../../../store.js";
+import type { ProtocolResult } from "../../../types.js";
+import type { FileOps, ResolvedAccount } from "../../types.js";
 
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";

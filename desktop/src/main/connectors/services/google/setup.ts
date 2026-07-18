@@ -8,7 +8,7 @@
  * then silently dies in about a week.
  */
 
-import type { SetupStep } from "./types.js";
+import type { SetupStep } from "../types.js";
 
 export function googleSetupSteps(api: {
   name: string;

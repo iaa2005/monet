@@ -1,27 +1,39 @@
 /**
  * Shared CalDAV/CardDAV library (tsdav). Calendar and contact services call
  * makeCaldavOps()/makeCarddavOps() with their endpoint, optional principal
- * template, auth mode and their own 401 wording.
+ * template, auth and their own 401 wording.
  *
  * Two ways to authenticate, same code: Basic with an app password (Yandex), or
- * Google OAuth (Google refuses a password here — its `basic realm` challenge is
- * a leftover; believing it once cost three rounds of debugging).
+ * an OAuth credentials provider the SERVICE supplies (Google refuses a password
+ * here — its `basic realm` challenge is a leftover; believing it once cost
+ * three rounds of debugging). The provider is a callback, not an import: lib/
+ * is company-agnostic by rule, so Google's token plumbing stays in
+ * services/google/auth.ts and arrives here as `cfg.oauth`.
  *
  * Events are raw iCalendar, parsed line-wise: a full iCal library is heavier
  * than the few fields the agent needs.
  */
 
 import { createDAVClient } from "tsdav";
-import { fetchRetry } from "../../net-fetch.js";
-import { GOOGLE_TOKEN_URL, googleAccessToken } from "../oauth/google.js";
-import { patchSecret } from "../store.js";
+import { fetchRetry } from "../../../net-fetch.js";
 import type {
   CalendarOps,
   ContactOps,
   ResolvedAccount,
-} from "../services/types.js";
+} from "../../services/types.js";
 
 type Kind = "caldav" | "carddav";
+
+/** What an OAuth provider hands tsdav (shape of tsdav's Oauth credentials). */
+export interface DavOauthCredentials {
+  clientId?: string;
+  clientSecret?: string;
+  refreshToken?: string;
+  accessToken: string;
+  /** Epoch ms. */
+  expiration?: number;
+  tokenUrl: string;
+}
 
 export interface DavConfig {
   url: string;
@@ -29,42 +41,29 @@ export interface DavConfig {
    * answer discovery (Google serves no current-user-principal at its root, so
    * tsdav dead-ends on "cannot find principalUrl" without this). */
   principalTemplate?: string;
-  /** Authenticate with the account's Google OAuth tokens instead of Basic. */
-  googleOauth?: boolean;
+  /** Authenticate with OAuth instead of Basic. The provider owns refreshing
+   * and persisting tokens (refresh up front, not via tsdav: tsdav's refresh
+   * returns {} on failure and then sends the request unauthenticated — an
+   * expired grant would surface as a bogus "wrong app password"). */
+  oauth?: (acct: ResolvedAccount) => Promise<DavOauthCredentials>;
   /** Appended to auth-ish failures — the service's own wording. */
   authHint?: string;
 }
 
 async function makeClient(cfg: DavConfig, kind: Kind, acct: ResolvedAccount) {
   const username = acct.account.username;
-  const oauth = !!(cfg.googleOauth && acct.secret.refreshToken);
+  const oauth = !!(cfg.oauth && acct.secret.refreshToken);
 
   if (!oauth && !acct.secret.password)
     throw new Error(
-      cfg.googleOauth
+      cfg.oauth
         ? `${acct.account.label} isn't signed in. Connect it again in Settings → Connectors.`
         : `No app password stored for ${acct.account.label}. Reconnect it in Settings → Connectors.`,
     );
 
-  // Refresh up front rather than leaving it to tsdav, whose refresh returns {}
-  // on failure and then sends the request unauthenticated — an expired grant
-  // would surface as a bogus "wrong app password".
-  let credentials;
-  if (oauth) {
-    const tokens = await googleAccessToken(acct.secret);
-    if (tokens.accessToken !== acct.secret.accessToken)
-      patchSecret(acct.account.id, tokens);
-    credentials = {
-      clientId: acct.secret.clientId,
-      clientSecret: acct.secret.clientSecret,
-      refreshToken: tokens.refreshToken,
-      accessToken: tokens.accessToken,
-      expiration: tokens.expiry,
-      tokenUrl: GOOGLE_TOKEN_URL,
-    };
-  } else {
-    credentials = { username, password: acct.secret.password };
-  }
+  const credentials = oauth
+    ? await cfg.oauth!(acct)
+    : { username, password: acct.secret.password };
 
   const dav = await createDAVClient({
     serverUrl: cfg.url,
@@ -94,7 +93,7 @@ async function makeClient(cfg: DavConfig, kind: Kind, acct: ResolvedAccount) {
     if (oauth && principalUrl && /principalUrl|homeUrl/i.test(msg)) {
       const said = await davSays(
         principalUrl,
-        credentials.accessToken as string,
+        (credentials as DavOauthCredentials).accessToken,
       );
       if (said) throw new Error(`${acct.service.name} said: ${said}`);
     }

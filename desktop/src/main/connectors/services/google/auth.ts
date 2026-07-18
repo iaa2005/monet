@@ -11,14 +11,18 @@
  * out of an installed binary — which is why the loopback redirect below, not
  * the secret, is what actually ties the response to this machine.
  *
- * We only run the consent leg and keep the refresh token; tsdav does the rest
- * (it refreshes an expired access token by itself given clientId/secret/refresh).
+ * We run the consent leg, keep the refresh token, and refresh access tokens
+ * ourselves (googleAccessToken) — the DAV protocol lib takes these as a
+ * provider callback (googleDavCredentials) so lib/ never imports Google code.
  */
 
 import { createServer } from "node:http";
 import { randomBytes, createHash } from "node:crypto";
 import { shell } from "electron";
-import { fetchRetry } from "../../net-fetch.js";
+import { fetchRetry } from "../../../net-fetch.js";
+import { patchSecret } from "../../store.js";
+import type { DavOauthCredentials } from "../../lib/protocols/dav.js";
+import type { ResolvedAccount } from "../types.js";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -229,5 +233,27 @@ export async function googleAccessToken(secret: {
     accessToken: json.access_token,
     refreshToken,
     expiry: Date.now() + (json.expires_in ?? 3600) * 1000,
+  };
+}
+
+/**
+ * OAuth credentials provider for the DAV protocol lib (DavConfig.oauth).
+ * Refreshes up front and persists the rotated token, then hands tsdav a
+ * ready-to-use credential set. This callback is how Google-ness reaches the
+ * company-agnostic lib/protocols/dav.ts.
+ */
+export async function googleDavCredentials(
+  acct: ResolvedAccount,
+): Promise<DavOauthCredentials> {
+  const tokens = await googleAccessToken(acct.secret);
+  if (tokens.accessToken !== acct.secret.accessToken)
+    patchSecret(acct.account.id, tokens);
+  return {
+    clientId: acct.secret.clientId,
+    clientSecret: acct.secret.clientSecret,
+    refreshToken: tokens.refreshToken,
+    accessToken: tokens.accessToken,
+    expiration: tokens.expiry,
+    tokenUrl: GOOGLE_TOKEN_URL,
   };
 }

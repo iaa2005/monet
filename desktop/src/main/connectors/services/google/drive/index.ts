@@ -9,9 +9,9 @@
  */
 
 import icon from "./icon.svg?raw";
-import { driveOps } from "../../lib/gdrive.js";
-import { googleSetupSteps } from "../google-setup.js";
-import type { ConnectorService } from "../types.js";
+import { driveOps } from "./api.js";
+import { googleSetupSteps } from "../setup.js";
+import type { ConnectorService } from "../../types.js";
 
 export const GoogleDrive: ConnectorService = {
   id: "google-drive",

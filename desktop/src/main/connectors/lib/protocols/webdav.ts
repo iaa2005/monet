@@ -6,7 +6,7 @@
  * startup for users with no files connector.
  */
 
-import type { FileOps, ResolvedAccount } from "../services/types.js";
+import type { FileOps, ResolvedAccount } from "../../services/types.js";
 
 const MAX_TEXT = 20_000;
 

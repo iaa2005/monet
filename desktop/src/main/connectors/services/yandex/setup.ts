@@ -9,7 +9,7 @@
  *     activate with a delay, and recreating one restarts the clock.
  */
 
-import type { SetupStep } from "./types.js";
+import type { SetupStep } from "../types.js";
 
 export function yandexAuthHint(type: string): string {
   return `check the login is typed EXACTLY (a one-letter typo gives this same 401), the app password is the ${type} type, and that it's older than 2–3 hours — new ones activate with a delay, so don't recreate it.`;

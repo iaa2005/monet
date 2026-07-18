@@ -9,11 +9,11 @@
  * removes the guess.
  */
 
-import { fetchRetry } from "../../net-fetch.js";
-import { googleAccessToken } from "../oauth/google.js";
-import { patchSecret } from "../store.js";
-import type { ResolvedAccount } from "../services/types.js";
-import type { ProtocolResult } from "../types.js";
+import { fetchRetry } from "../../../../net-fetch.js";
+import { googleAccessToken } from "../auth.js";
+import { patchSecret } from "../../../store.js";
+import type { ResolvedAccount } from "../../types.js";
+import type { ProtocolResult } from "../../../types.js";
 
 const API = "https://people.googleapis.com/v1/people/me/connections";
 const FIELDS = "names,emailAddresses,phoneNumbers,organizations";

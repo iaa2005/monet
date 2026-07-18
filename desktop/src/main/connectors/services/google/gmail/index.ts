@@ -8,8 +8,8 @@
  */
 
 import icon from "./icon.svg?raw";
-import { makeMailOps } from "../../lib/mail.js";
-import type { ConnectorService } from "../types.js";
+import { makeMailOps } from "../../../lib/protocols/mail.js";
+import type { ConnectorService } from "../../types.js";
 
 const ops = makeMailOps({
   imap: { host: "imap.gmail.com", port: 993, secure: true },

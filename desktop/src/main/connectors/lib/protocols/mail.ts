@@ -9,8 +9,8 @@
 
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
-import type { ProtocolResult } from "../types.js";
-import type { MailOps, ResolvedAccount } from "../services/types.js";
+import type { ProtocolResult } from "../../types.js";
+import type { MailOps, ResolvedAccount } from "../../services/types.js";
 
 const MAX_BODY = 8_000;
 

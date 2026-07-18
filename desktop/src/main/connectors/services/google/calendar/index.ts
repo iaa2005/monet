@@ -9,15 +9,16 @@
  */
 
 import icon from "./icon.svg?raw";
-import { makeCaldavOps } from "../../lib/dav.js";
-import { googleSetupSteps } from "../google-setup.js";
-import type { ConnectorService } from "../types.js";
+import { makeCaldavOps } from "../../../lib/protocols/dav.js";
+import { googleDavCredentials } from "../auth.js";
+import { googleSetupSteps } from "../setup.js";
+import type { ConnectorService } from "../../types.js";
 
 const ops = makeCaldavOps({
   url: "https://apidata.googleusercontent.com/caldav/v2/",
   principalTemplate:
     "https://apidata.googleusercontent.com/caldav/v2/{username}/user",
-  googleOauth: true,
+  oauth: googleDavCredentials,
   authHint:
     "The sign-in worked, so check the Google Calendar API is enabled for your OAuth client in Google Cloud, and that the consent screen granted the scope.",
 });

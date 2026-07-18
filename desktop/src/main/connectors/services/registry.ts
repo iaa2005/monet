@@ -1,22 +1,18 @@
 /**
- * The service registry — the ONLY place a service touches shared code.
+ * The service registry — the ONLY place services touch shared code.
  *
- * Adding a service: create its folder (see README.md), then add TWO lines here
- * — the import and the array entry. Removing one: delete the two lines and the
- * folder. Nothing else in the codebase names individual services.
+ * Companies with several products keep their own registry (google/index.ts,
+ * yandex/index.ts, …) and appear here as one spread; single-service companies
+ * are listed directly. Adding a service touches its company index (or this
+ * file, for a standalone); adding a company adds one spread line here.
+ * Removing either is deleting the folder plus its single line.
  *
  * Order here is display order in Settings → Connectors.
  */
 
-import { GoogleGmail } from "./gmail/index.js";
-import { GoogleCalendar } from "./google-calendar/index.js";
-import { GoogleContacts } from "./google-contacts/index.js";
-import { GoogleDrive } from "./google-drive/index.js";
-import { YandexMail } from "./yandex-mail/index.js";
-import { YandexDisk } from "./yandex-disk/index.js";
-import { YandexCalendar } from "./yandex-calendar/index.js";
-import { YandexContacts } from "./yandex-contacts/index.js";
-import { Telegram } from "./telegram/index.js";
+import { googleServices } from "./google/index.js";
+import { yandexServices } from "./yandex/index.js";
+import { telegramServices } from "./telegram/index.js";
 import { GitHub } from "./github/index.js";
 import { Notion } from "./notion/index.js";
 import { Slack } from "./slack/index.js";
@@ -25,15 +21,9 @@ import { Sentry } from "./sentry/index.js";
 import type { ConnectorService, ServiceCapabilities } from "./types.js";
 
 export const SERVICES: ConnectorService[] = [
-  GoogleGmail,
-  GoogleCalendar,
-  GoogleContacts,
-  GoogleDrive,
-  YandexMail,
-  YandexDisk,
-  YandexCalendar,
-  YandexContacts,
-  Telegram,
+  ...googleServices,
+  ...yandexServices,
+  ...telegramServices,
   GitHub,
   Notion,
   Slack,

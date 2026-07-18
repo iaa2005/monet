@@ -9,9 +9,9 @@
  */
 
 import icon from "./icon.svg?raw";
-import { peopleList } from "../../lib/gpeople.js";
-import { googleSetupSteps } from "../google-setup.js";
-import type { ConnectorService } from "../types.js";
+import { peopleList } from "./api.js";
+import { googleSetupSteps } from "../setup.js";
+import type { ConnectorService } from "../../types.js";
 
 export const GoogleContacts: ConnectorService = {
   id: "google-contacts",
