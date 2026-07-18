@@ -501,6 +501,12 @@ const electronAPI = {
       ipcRenderer.invoke("connectors:delete", id),
     test: (id: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("connectors:test", id),
+    setPermission: (
+      accountId: string,
+      actionId: string,
+      level: "allow" | "ask" | "deny" | null,
+    ): Promise<ConnectorAccount | null> =>
+      ipcRenderer.invoke("connectors:setPermission", accountId, actionId, level),
     googleSignIn: (opts: {
       presetId: string;
       clientId: string;

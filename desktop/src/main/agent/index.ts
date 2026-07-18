@@ -220,6 +220,9 @@ export interface AgentRunOptions {
    * — not merely a permission — must key off this instead.
    */
   unattended?: boolean;
+  /** Connector action ids the routine's creator granted for unattended use
+   * (e.g. ["chat.send"]). Only consulted when unattended. */
+  connectorGrants?: string[];
 }
 
 /**
@@ -977,6 +980,7 @@ async function runAgentScoped(
         signal,
         space,
         unattended,
+        connectorGrants: options.connectorGrants,
         onProgress: (text) => {
           onEvent({
             type: "tool_result",

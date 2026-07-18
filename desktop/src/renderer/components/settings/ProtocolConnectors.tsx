@@ -17,6 +17,9 @@ import {
   Trash2,
   Plug,
   AlertCircle,
+  ShieldCheck,
+  Hand,
+  Ban,
 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Switch } from "@/components/ui/switch";
@@ -70,12 +73,141 @@ function ServiceIcon({
   );
 }
 
+type PermLevel = "allow" | "ask" | "deny";
+
+const ACCESS_GROUPS: { access: string; title: string }[] = [
+  { access: "read", title: "Read" },
+  { access: "write", title: "Write / send" },
+  { access: "destructive", title: "Destructive" },
+];
+
+const LEVELS: { level: PermLevel; icon: typeof Check; title: string }[] = [
+  { level: "allow", icon: ShieldCheck, title: "Allow without asking" },
+  { level: "ask", icon: Hand, title: "Ask every time" },
+  { level: "deny", icon: Ban, title: "Never allow" },
+];
+
+/** Per-account permission matrix: every action the service exposes, grouped by
+ * access class, with a three-state allow/ask/deny toggle. Rendered entirely
+ * from the service's declared actions — no service is named here. */
+function PermissionMatrix({
+  account,
+  service,
+  onChanged,
+}: {
+  account: ConnectorAccount;
+  service: UiConnectorService;
+  onChanged: (updated: ConnectorAccount) => void;
+}): JSX.Element {
+  const overrides = account.permissions ?? {};
+
+  const set = async (actionId: string, level: PermLevel | null): Promise<void> => {
+    const updated = await api()?.connectors.setPermission(
+      account.id,
+      actionId,
+      level,
+    );
+    if (updated) onChanged(updated);
+  };
+
+  const hasOverrides = Object.keys(overrides).length > 0;
+
+  return (
+    <div className="mt-2 space-y-2 rounded-lg border border-border/70 bg-black/[0.02] p-2.5 dark:bg-white/[0.03]">
+      {ACCESS_GROUPS.map((g) => {
+        const rows = service.actions.filter((a) => a.access === g.access);
+        if (rows.length === 0) return null;
+        return (
+          <div key={g.access}>
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {g.title}
+              </span>
+              <span className="flex gap-1">
+                {LEVELS.map(({ level, title }) => (
+                  <button
+                    key={level}
+                    type="button"
+                    title={`${title} — whole group`}
+                    onClick={() => {
+                      for (const a of rows) void set(a.id, level);
+                    }}
+                    className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground/70 transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.08]"
+                  >
+                    all: {level}
+                  </button>
+                ))}
+              </span>
+            </div>
+            <div className="space-y-0.5">
+              {rows.map((a) => {
+                const effective: PermLevel =
+                  (overrides[a.id] as PermLevel | undefined) ?? a.defaultLevel;
+                const overridden = overrides[a.id] != null;
+                return (
+                  <div key={a.id} className="flex items-center gap-2 py-0.5">
+                    <span className="min-w-0 flex-1 truncate text-[13px]">
+                      {a.label}
+                      {overridden && (
+                        <button
+                          type="button"
+                          title={`Reset to default (${a.defaultLevel})`}
+                          onClick={() => void set(a.id, null)}
+                          className="ml-1.5 text-[10px] text-link hover:underline"
+                        >
+                          reset
+                        </button>
+                      )}
+                    </span>
+                    <span className="font-mono text-[10px] text-muted-foreground/60">
+                      {a.id}
+                    </span>
+                    <span className="flex overflow-hidden rounded-md border border-border">
+                      {LEVELS.map(({ level, icon: Icon, title }) => (
+                        <button
+                          key={level}
+                          type="button"
+                          title={title}
+                          onClick={() => void set(a.id, level)}
+                          className={cn(
+                            "flex h-6 w-8 items-center justify-center transition-colors",
+                            effective === level
+                              ? level === "deny"
+                                ? "bg-destructive/15 text-destructive"
+                                : level === "ask"
+                                  ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                                  : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                              : "text-muted-foreground/50 hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06]",
+                          )}
+                        >
+                          <Icon className="size-3.5" />
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      <p className="text-[11px] leading-snug text-muted-foreground/80">
+        Defaults: reads run silently, writes ask, deletes ask. “Deny” can’t be
+        overridden by any mode. Unattended routines get “ask” actions only if
+        the routine was granted them.
+        {hasOverrides && " Overridden rows show a reset link."}
+      </p>
+    </div>
+  );
+}
+
 export function ProtocolConnectors(): JSX.Element {
   const [services, setServices] = useState<UiConnectorService[]>([]);
   const [accounts, setAccounts] = useState<ConnectorAccount[]>([]);
   const [entry, setEntry] = useState<UiConnectorService | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, string>>({});
+  const [permsFor, setPermsFor] = useState<string | null>(null);
 
   const load = (): void => {
     void api()?.connectors.presets().then(setServices).catch(() => {});
@@ -144,63 +276,93 @@ export function ProtocolConnectors(): JSX.Element {
           {accounts.map((a) => {
             const svc = byId.get(a.presetId);
             const res = results[a.id];
+            const permsOpen = permsFor === a.id;
             return (
               <div
                 key={a.id}
-                className="flex items-center gap-3 rounded-xl border border-border p-2.5"
+                className="rounded-xl border border-border p-2.5"
               >
-                <ServiceIcon svg={svc?.iconSvg} className="size-5" dim={!a.enabled} />
-                <div className="min-w-0 flex-1">
-                  <div
+                <div className="flex items-center gap-3">
+                  <ServiceIcon svg={svc?.iconSvg} className="size-5" dim={!a.enabled} />
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className={cn(
+                        "truncate text-sm font-medium",
+                        !a.enabled && "text-muted-foreground",
+                      )}
+                    >
+                      {svc?.displayName ?? a.label}
+                      {!a.enabled && " — off"}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {[a.username, svc?.capabilities.join(", ")]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </div>
+                    {res && res !== "ok" && (
+                      <div className="mt-1 flex items-start gap-1 text-xs text-destructive">
+                        <AlertCircle className="mt-0.5 size-3 shrink-0" />
+                        <span className="break-words">{res}</span>
+                      </div>
+                    )}
+                  </div>
+                  {res === "ok" && (
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Check className="size-3.5" /> works
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void test(a.id)}
+                    disabled={testing === a.id || !a.enabled}
+                    className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40"
+                  >
+                    {testing === a.id ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      "Test"
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    title="Tool permissions"
+                    onClick={() => setPermsFor(permsOpen ? null : a.id)}
                     className={cn(
-                      "truncate text-sm font-medium",
-                      !a.enabled && "text-muted-foreground",
+                      "rounded-md p-1 transition-colors",
+                      permsOpen
+                        ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                        : "text-muted-foreground hover:text-foreground",
+                      a.permissions &&
+                        Object.keys(a.permissions).length > 0 &&
+                        "text-foreground",
                     )}
                   >
-                    {svc?.displayName ?? a.label}
-                    {!a.enabled && " — off"}
-                  </div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {[a.username, svc?.capabilities.join(", ")]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </div>
-                  {res && res !== "ok" && (
-                    <div className="mt-1 flex items-start gap-1 text-xs text-destructive">
-                      <AlertCircle className="mt-0.5 size-3 shrink-0" />
-                      <span className="break-words">{res}</span>
-                    </div>
-                  )}
+                    <ShieldCheck className="size-4" />
+                  </button>
+                  <Switch
+                    checked={a.enabled}
+                    onChange={(v) => void setEnabled(a.id, v)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void remove(a.id)}
+                    aria-label={`Remove ${a.label}`}
+                    className="rounded-md p-1 text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
                 </div>
-                {res === "ok" && (
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Check className="size-3.5" /> works
-                  </span>
+                {permsOpen && svc && (
+                  <PermissionMatrix
+                    account={a}
+                    service={svc}
+                    onChanged={(updated) =>
+                      setAccounts((p) =>
+                        p.map((x) => (x.id === updated.id ? updated : x)),
+                      )
+                    }
+                  />
                 )}
-                <button
-                  type="button"
-                  onClick={() => void test(a.id)}
-                  disabled={testing === a.id || !a.enabled}
-                  className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40"
-                >
-                  {testing === a.id ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    "Test"
-                  )}
-                </button>
-                <Switch
-                  checked={a.enabled}
-                  onChange={(v) => void setEnabled(a.id, v)}
-                />
-                <button
-                  type="button"
-                  onClick={() => void remove(a.id)}
-                  aria-label={`Remove ${a.label}`}
-                  className="rounded-md p-1 text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
               </div>
             );
           })}

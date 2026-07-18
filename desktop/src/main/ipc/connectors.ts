@@ -15,6 +15,7 @@ import {
   listAccounts,
   resolveAccount,
   SERVICES,
+  setAccountPermission,
   updateAccount,
 } from "../connectors/index.js";
 import { toUiService } from "../connectors/services/types.js";
@@ -98,6 +99,18 @@ export function registerConnectorsIPC(): void {
       void ensureConnected().catch(() => {});
       return row;
     },
+  );
+
+  // Per-action permission override (null clears back to the default). Pure
+  // store write — the engine reads the account row on every call.
+  ipcMain.handle(
+    "connectors:setPermission",
+    (
+      _e,
+      accountId: string,
+      actionId: string,
+      level: "allow" | "ask" | "deny" | null,
+    ): ConnectorAccount | null => setAccountPermission(accountId, actionId, level),
   );
 
   ipcMain.handle("connectors:delete", (_e, id: string): { ok: boolean } => {

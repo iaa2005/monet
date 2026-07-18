@@ -492,6 +492,11 @@ export interface ElectronAPI {
     ) => Promise<ConnectorAccount | null>;
     delete: (id: string) => Promise<{ ok: boolean }>;
     test: (id: string) => Promise<{ ok: boolean; error?: string }>;
+    setPermission: (
+      accountId: string,
+      actionId: string,
+      level: "allow" | "ask" | "deny" | null,
+    ) => Promise<ConnectorAccount | null>;
     googleSignIn: (opts: {
       presetId: string;
       clientId: string;

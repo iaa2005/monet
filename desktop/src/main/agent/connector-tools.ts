@@ -7,8 +7,11 @@
  * (`acct.service.capabilities.*`) — this file knows no service by name; adding
  * one to the registry is enough to route here.
  *
- * All four are NOT read-only: they can send mail, post to Telegram, write
- * files and create events, so every call goes through the permission prompt.
+ * Permissions are per ACTION, not per tool: each call resolves its action id
+ * ("mail.send") and runs the connector permission engine before dispatching —
+ * account override → service default → class default (read=allow, write=ask,
+ * destructive=ask). isReadOnly(input) is action-aware, so plan/auto modes see
+ * reads as reads instead of blanket-blocking the whole tool.
  */
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
@@ -21,7 +24,15 @@ import {
   getService,
   pickAccount,
 } from "../connectors/index.js";
-import type { ServiceCapabilities } from "../connectors/services/types.js";
+import {
+  findAction,
+  type ResolvedAccount,
+  type ServiceCapabilities,
+} from "../connectors/services/types.js";
+import {
+  gateConnectorAction,
+  runContextOf,
+} from "../connectors/lib/permissions.js";
 import type { ProtocolResult } from "../connectors/types.js";
 import { tunablePrompt } from "../prompts/index.js";
 
@@ -52,6 +63,25 @@ function resultBlock(content: Output, toolUseID: string): ToolResultBlockParam {
     content: content.text,
     is_error: content.isError || undefined,
   };
+}
+
+/** Whether `<cap>.<action>` is a read — drives isReadOnly(input) so plan/auto
+ * treat connector reads as reads. Unknown actions count as writes. */
+function actionIsRead(cap: string, action?: string): boolean {
+  return action
+    ? findAction(`${cap}.${action}`)?.access === "read"
+    : false;
+}
+
+/** Run the permission engine for one resolved call; null = proceed. */
+async function gate(
+  acct: ResolvedAccount,
+  actionId: string,
+  human: { summary: string; detail?: string },
+  context: ToolUseContext,
+): Promise<{ data: Output } | null> {
+  const r = await gateConnectorAction(acct, actionId, human, runContextOf(context));
+  return r.ok ? null : { data: { text: r.message, isError: true } };
 }
 
 /** Prompt hints contributed by CONNECTED services of the given caps — a
@@ -101,8 +131,8 @@ export const MailTool = buildTool({
   userFacingName() {
     return "Mail";
   },
-  isReadOnly() {
-    return false; // can send
+  isReadOnly(input?: { action?: string }) {
+    return actionIsRead("mail", input?.action);
   },
   isConcurrencySafe() {
     return false;
@@ -126,11 +156,23 @@ export const MailTool = buildTool({
   async description() {
     return "Read, search and send email in the user's connected mailboxes.";
   },
-  async call(input: z.infer<MailInput>, _context: ToolUseContext) {
+  async call(input: z.infer<MailInput>, context: ToolUseContext) {
     try {
       const acct = pickAccount("mail", input.account);
       const ops = acct.service.capabilities.mail;
       if (!ops) return fail(new Error("This connector has no mail capability."));
+      const denied = await gate(
+        acct,
+        `mail.${input.action}`,
+        input.action === "send"
+          ? {
+              summary: `Send email via ${acct.service.name}`,
+              detail: `to ${input.to} — “${input.subject}”`,
+            }
+          : { summary: `${acct.service.name}: ${input.action}` },
+        context,
+      );
+      if (denied) return denied;
       switch (input.action) {
         case "folders":
           return toOutput(await ops.folders(acct));
@@ -195,8 +237,8 @@ export const CloudFilesTool = buildTool({
   userFacingName() {
     return "Cloud Files";
   },
-  isReadOnly() {
-    return false; // can write/delete
+  isReadOnly(input?: { action?: string }) {
+    return actionIsRead("files", input?.action);
   },
   isConcurrencySafe() {
     return false;
@@ -220,11 +262,21 @@ export const CloudFilesTool = buildTool({
   async description() {
     return "List, read and write files on the user's connected cloud drives.";
   },
-  async call(input: z.infer<FilesInput>, _context: ToolUseContext) {
+  async call(input: z.infer<FilesInput>, context: ToolUseContext) {
     try {
       const acct = pickAccount("files", input.account);
       const ops = acct.service.capabilities.files;
       if (!ops) return fail(new Error("This connector has no files capability."));
+      const denied = await gate(
+        acct,
+        `files.${input.action}`,
+        {
+          summary: `${acct.service.name}: ${input.action} ${input.path}`,
+          detail: input.path,
+        },
+        context,
+      );
+      if (denied) return denied;
       switch (input.action) {
         case "list":
           return toOutput(await ops.list(acct, { path: input.path }));
@@ -285,8 +337,9 @@ export const CalendarTool = buildTool({
   userFacingName() {
     return "Calendar";
   },
-  isReadOnly() {
-    return false; // can create events
+  isReadOnly(input?: { action?: string }) {
+    // The one tool serving two capabilities: contacts.list is the read.
+    return input?.action === "contacts" || actionIsRead("calendar", input?.action);
   },
   isConcurrencySafe() {
     return false;
@@ -311,13 +364,20 @@ export const CalendarTool = buildTool({
   async description() {
     return "Read/create calendar events and look up contacts.";
   },
-  async call(input: z.infer<CalInput>, _context: ToolUseContext) {
+  async call(input: z.infer<CalInput>, context: ToolUseContext) {
     try {
       if (input.action === "contacts") {
         const acct = pickAccount("contacts", input.account);
         const ops = acct.service.capabilities.contacts;
         if (!ops)
           return fail(new Error("This connector has no contacts capability."));
+        const denied = await gate(
+          acct,
+          "contacts.list",
+          { summary: `${acct.service.name}: look up contacts` },
+          context,
+        );
+        if (denied) return denied;
         return toOutput(
           await ops.list(acct, { query: input.query, limit: input.limit }),
         );
@@ -326,6 +386,18 @@ export const CalendarTool = buildTool({
       const ops = acct.service.capabilities.calendar;
       if (!ops)
         return fail(new Error("This connector has no calendar capability."));
+      const denied = await gate(
+        acct,
+        `calendar.${input.action}`,
+        input.action === "create"
+          ? {
+              summary: `Create event via ${acct.service.name}`,
+              detail: `“${input.title}” at ${input.start}`,
+            }
+          : { summary: `${acct.service.name}: ${input.action}` },
+        context,
+      );
+      if (denied) return denied;
       switch (input.action) {
         case "calendars":
           return toOutput(await ops.calendars(acct));
@@ -407,8 +479,8 @@ export const TelegramTool = buildTool({
   userFacingName() {
     return "Telegram";
   },
-  isReadOnly() {
-    return false; // can send
+  isReadOnly(input?: { action?: string }) {
+    return actionIsRead("chat", input?.action);
   },
   isConcurrencySafe() {
     return false;
@@ -438,6 +510,23 @@ export const TelegramTool = buildTool({
       const acct = pickAccount("chat", input.account);
       const ops = acct.service.capabilities.chat;
       if (!ops) return fail(new Error("This connector has no chat capability."));
+      const denied = await gate(
+        acct,
+        `chat.${input.action}`,
+        input.action === "send"
+          ? {
+              summary: `Send Telegram message via ${acct.service.name}`,
+              detail: `to ${input.chat}: “${(input.message ?? "").slice(0, 120)}”`,
+            }
+          : input.action === "send_file"
+            ? {
+                summary: `Send file via ${acct.service.name}`,
+                detail: `${input.file} → ${input.chat}`,
+              }
+            : { summary: `${acct.service.name}: ${input.action}` },
+        context,
+      );
+      if (denied) return denied;
       switch (input.action) {
         case "chats":
           return toOutput(await ops.chats(acct, { limit: input.limit }));

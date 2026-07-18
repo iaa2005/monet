@@ -7,6 +7,9 @@
  * a (serviceId, username) pair plus an opaque encrypted secret.
  */
 
+/** What a connector action is allowed to do without/with/never asking. */
+export type PermissionLevel = "allow" | "ask" | "deny";
+
 /** An account the user connected. Secrets live encrypted, never here. */
 export interface ConnectorAccount {
   id: string;
@@ -19,6 +22,9 @@ export interface ConnectorAccount {
   username: string;
   enabled: boolean;
   createdAt: string;
+  /** Per-action permission overrides (actionId → level), set in Settings →
+   * Connectors → Permissions. Absent = the action's declared default. */
+  permissions?: Record<string, PermissionLevel>;
 }
 
 /** Decrypted secret material for an account (shape depends on the service). */

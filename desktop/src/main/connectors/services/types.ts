@@ -15,6 +15,7 @@
 import type {
   ConnectorAccount,
   ConnectorSecret,
+  PermissionLevel,
   ProtocolResult,
 } from "../types.js";
 
@@ -57,6 +58,96 @@ export interface SetupStep {
   text: string;
   url?: string;
   urlLabel?: string;
+}
+
+// ─── Actions: the permission surface ────────────────────────────────────────
+//
+// Every dispatchable operation is a declared ACTION with an access class; the
+// permission engine (lib/permissions.ts) gates each call on the resolved level:
+// account override → service default → class default. Read = allow, write =
+// ask, destructive = ask (and never grantable to unattended runs). Downloads
+// INTO the chat's file area are reads; uploads OUT of it are writes (egress).
+
+export type ActionAccess = "read" | "write" | "destructive";
+
+export interface ActionSpec {
+  /** "<capability>.<op>" — e.g. "mail.send". What overrides are keyed by. */
+  id: string;
+  access: ActionAccess;
+  /** Settings row label: "Send email". */
+  label: string;
+}
+
+export const CLASS_DEFAULT: Record<ActionAccess, PermissionLevel> = {
+  read: "allow",
+  write: "ask",
+  destructive: "ask",
+};
+
+/** Every action each capability family exposes. The tool layer's `action`
+ * enums and this table MUST agree — smoke asserts it, same philosophy as the
+ * type-required `test`. */
+export const CAPABILITY_ACTIONS: Record<
+  keyof ServiceCapabilities,
+  ActionSpec[]
+> = {
+  mail: [
+    { id: "mail.folders", access: "read", label: "List folders" },
+    { id: "mail.search", access: "read", label: "Search messages" },
+    { id: "mail.read", access: "read", label: "Read a message" },
+    { id: "mail.send", access: "write", label: "Send email" },
+  ],
+  files: [
+    { id: "files.list", access: "read", label: "List files" },
+    { id: "files.read", access: "read", label: "Read a file" },
+    { id: "files.write", access: "write", label: "Write a file" },
+    { id: "files.mkdir", access: "write", label: "Create a folder" },
+    { id: "files.delete", access: "destructive", label: "Delete a file" },
+  ],
+  calendar: [
+    { id: "calendar.calendars", access: "read", label: "List calendars" },
+    { id: "calendar.events", access: "read", label: "Read events" },
+    { id: "calendar.create", access: "write", label: "Create an event" },
+  ],
+  contacts: [{ id: "contacts.list", access: "read", label: "Look up contacts" }],
+  chat: [
+    { id: "chat.chats", access: "read", label: "List chats" },
+    { id: "chat.topics", access: "read", label: "List forum topics" },
+    { id: "chat.history", access: "read", label: "Read chat history" },
+    { id: "chat.send", access: "write", label: "Send a message" },
+    { id: "chat.send_file", access: "write", label: "Send a file" },
+  ],
+  // MCP tools are dynamic (the server's own list), so they gate coarsely as
+  // one action; per-tool overrides can come once servers report annotations.
+  mcp: [
+    { id: "mcp.use", access: "write", label: "Use the service's MCP tools" },
+  ],
+};
+
+const ACTION_BY_ID = new Map(
+  Object.values(CAPABILITY_ACTIONS).flat().map((a) => [a.id, a]),
+);
+
+export function findAction(id: string): ActionSpec | undefined {
+  return ACTION_BY_ID.get(id);
+}
+
+/** All actions a service exposes (its capabilities' actions, in order). */
+export function actionsForService(s: ConnectorService): ActionSpec[] {
+  return (Object.keys(s.capabilities) as (keyof ServiceCapabilities)[]).flatMap(
+    (cap) => CAPABILITY_ACTIONS[cap] ?? [],
+  );
+}
+
+/** The declared default level for one action of one service. */
+export function actionDefaultLevel(
+  s: ConnectorService,
+  actionId: string,
+): PermissionLevel {
+  return (
+    s.actionDefaults?.[actionId] ??
+    CLASS_DEFAULT[findAction(actionId)?.access ?? "write"]
+  );
 }
 
 // ─── Capabilities: what the shared agent tools dispatch to ─────────────────
@@ -179,6 +270,9 @@ export interface ConnectorService {
   note?: string;
   setupSteps?: SetupStep[];
   capabilities: ServiceCapabilities;
+  /** Per-action default levels overriding the class defaults (rarely needed —
+   * e.g. a service whose "write" is unusually risky can default it to deny). */
+  actionDefaults?: Record<string, PermissionLevel>;
   /**
    * REQUIRED: the cheapest real call that proves the stored credential works.
    * This exists because a Test branch was once forgotten and the UI showed
@@ -219,6 +313,9 @@ export interface UiConnectorService {
   setupSteps?: SetupStep[];
   /** Capability names, for display ("mail", "files", …). */
   capabilities: string[];
+  /** The permission surface: every action with its class and effective default
+   * level, for the Settings matrix. */
+  actions: (ActionSpec & { defaultLevel: PermissionLevel })[];
 }
 
 /** "GoogleGmail" + company "Google" → "Google Gmail"; "GitHub" stays "GitHub". */
@@ -247,5 +344,9 @@ export function toUiService(s: ConnectorService): UiConnectorService {
     note: s.note,
     setupSteps: s.setupSteps,
     capabilities: Object.keys(s.capabilities),
+    actions: actionsForService(s).map((a) => ({
+      ...a,
+      defaultLevel: actionDefaultLevel(s, a.id),
+    })),
   };
 }

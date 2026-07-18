@@ -174,6 +174,26 @@ export function addAccount(
   return account;
 }
 
+/** Set (or clear, with null) one action's permission override. */
+export function setAccountPermission(
+  accountId: string,
+  actionId: string,
+  level: "allow" | "ask" | "deny" | null,
+): ConnectorAccount | null {
+  const rows = listAccounts();
+  const i = rows.findIndex((a) => a.id === accountId);
+  if (i < 0) return null;
+  const permissions = { ...(rows[i].permissions ?? {}) };
+  if (level === null) delete permissions[actionId];
+  else permissions[actionId] = level;
+  rows[i] = {
+    ...rows[i],
+    permissions: Object.keys(permissions).length ? permissions : undefined,
+  };
+  writeAccounts(rows);
+  return rows[i];
+}
+
 export function updateAccount(
   id: string,
   patch: Partial<Pick<ConnectorAccount, "label" | "username" | "enabled">>,

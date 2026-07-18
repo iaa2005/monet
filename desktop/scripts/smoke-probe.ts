@@ -410,6 +410,107 @@ async function main() {
   const badIcon = SERVICES.filter(sv => sv.iconSvg && !sv.iconSvg.includes('<svg'))
   check('every icon is inline SVG', badIcon.length === 0)
 
+  // ── Connector action permissions ─────────────────────────────────────────
+  {
+    const types = await import('../src/main/connectors/services/types.js')
+    const { CAPABILITY_ACTIONS, actionsForService, findAction } = types
+    // Every capability a service declares must map to a non-empty action list —
+    // an op without an action would dodge the permission engine entirely.
+    const uncovered = SERVICES.filter(sv =>
+      Object.keys(sv.capabilities).some(
+        cap => !(CAPABILITY_ACTIONS as Record<string, unknown[]>)[cap]?.length,
+      ),
+    )
+    check(
+      'every capability has declared actions',
+      uncovered.length === 0,
+      uncovered.map(sv => sv.id).join(',') || undefined,
+    )
+    // The tool layer's action enums must agree with the declared action ids.
+    for (const [cap, actions] of [
+      ['mail', ['folders', 'search', 'read', 'send']],
+      ['files', ['list', 'read', 'write', 'delete', 'mkdir']],
+      ['calendar', ['calendars', 'events', 'create']],
+      ['contacts', ['list']],
+      ['chat', ['chats', 'topics', 'history', 'send', 'send_file']],
+    ] as const) {
+      const missing = actions.filter(a => !findAction(`${cap}.${a}`))
+      check(
+        `tool actions declared for ${cap}`,
+        missing.length === 0,
+        missing.join(',') || undefined,
+      )
+    }
+
+    const { resolveActionLevel, gateConnectorAction } = await import(
+      '../src/main/connectors/lib/permissions.js'
+    )
+    const fakeAcct = (permissions?: Record<string, 'allow' | 'ask' | 'deny'>) =>
+      ({
+        account: { id: 'a1', permissions },
+        secret: {},
+        service: SERVICES.find(sv => sv.id === 'gmail'),
+      }) as never
+    check(
+      'permission defaults: read allows, write asks',
+      resolveActionLevel(fakeAcct(), 'mail.search') === 'allow' &&
+        resolveActionLevel(fakeAcct(), 'mail.send') === 'ask',
+    )
+    check(
+      'permission override beats the default',
+      resolveActionLevel(fakeAcct({ 'mail.send': 'deny' }), 'mail.send') === 'deny' &&
+        resolveActionLevel(fakeAcct({ 'mail.search': 'deny' }), 'mail.search') === 'deny',
+    )
+    const denied = await gateConnectorAction(
+      fakeAcct({ 'mail.send': 'deny' }),
+      'mail.send',
+      { summary: 'send' },
+      { permissionMode: 'bypassPermissions' },
+    )
+    check('explicit deny survives bypassPermissions', !denied.ok)
+    const unattendedAsk = await gateConnectorAction(
+      fakeAcct(),
+      'mail.send',
+      { summary: 'send' },
+      { unattended: true },
+    )
+    check('unattended denies ask-level actions', !unattendedAsk.ok)
+    const granted = await gateConnectorAction(
+      fakeAcct(),
+      'mail.send',
+      { summary: 'send' },
+      { unattended: true, connectorGrants: ['mail.send'] },
+    )
+    check('a routine grant allows the granted action', granted.ok)
+    const destructive = await gateConnectorAction(
+      fakeAcct(),
+      'files.delete',
+      { summary: 'del' },
+      { unattended: true, connectorGrants: ['files.delete'] },
+    )
+    check('destructive is never grantable unattended', !destructive.ok)
+    const bypassed = await gateConnectorAction(
+      fakeAcct(),
+      'mail.send',
+      { summary: 'send' },
+      { permissionMode: 'bypassPermissions' },
+    )
+    check('bypassPermissions skips the ask', bypassed.ok)
+    const autoDestructive = await gateConnectorAction(
+      fakeAcct(),
+      'files.delete',
+      { summary: 'del' },
+      { permissionMode: 'auto' },
+    )
+    check('auto mode still asks for destructive (no prompt channel → deny)', !autoDestructive.ok)
+    // UI projection carries the matrix.
+    const uiActs = SERVICES.map(sv => actionsForService(sv))
+    check(
+      'every connectable service exposes actions to the UI',
+      SERVICES.every((sv, i) => Object.keys(sv.capabilities).length === 0 || uiActs[i].length > 0),
+    )
+  }
+
   rmSync(dir, { recursive: true, force: true })
   console.log(failures ? `\n${failures} FAILURES` : '\nALL SMOKE CHECKS PASSED')
   process.exit(failures ? 1 : 0)

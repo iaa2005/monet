@@ -267,6 +267,10 @@ export function clearSessionGrants(sessionId: string): void {
   for (const key of sessionAllowAlways) {
     if (key.startsWith(`${sessionId}:`)) sessionAllowAlways.delete(key);
   }
+  // Connector actions keep their own per-session grants — same lifetime.
+  void import("../connectors/lib/permissions.js")
+    .then((m) => m.clearConnectorSessionGrants(sessionId))
+    .catch(() => {});
 }
 
 // ─── Toolset ────────────────────────────────────────────────────────────
@@ -550,6 +554,8 @@ export async function executeVendorTool(opts: {
   /** Nobody is watching (a routine firing) — distinct from bypassPermissions,
    * which a user enables while sitting right there. */
   unattended?: boolean;
+  /** Connector action ids the routine's creator granted for unattended use. */
+  connectorGrants?: string[];
 }): Promise<VendorToolResult> {
   const {
     sessionId,
@@ -565,6 +571,7 @@ export async function executeVendorTool(opts: {
     space,
     askUser,
     unattended,
+    connectorGrants,
   } = opts;
   initVendorRuntime();
 
@@ -599,10 +606,31 @@ export async function executeVendorTool(opts: {
   }
 
   // MCP tools (mcp__<server>__<tool>) are served by the connection manager,
-  // not the vendor tool pipeline. Auto/bypass modes run them without asking;
-  // otherwise route an approval through the UI like any other tool.
+  // not the vendor tool pipeline. Connector-supplied servers gate through the
+  // connector permission engine ("mcp.use" — overridable per account in
+  // Settings); hand-written servers keep the plain mode-aware ask.
   if (isMcpToolName(name)) {
-    if (
+    const server = name.split("__")[1] ?? "";
+    const { listAccounts, resolveAccount } = await import(
+      "../connectors/index.js"
+    );
+    const row = listAccounts().find((a) => a.enabled && a.presetId === server);
+    const acct = row ? resolveAccount(row.id) : null;
+    if (acct) {
+      const { gateConnectorAction } = await import(
+        "../connectors/lib/permissions.js"
+      );
+      const r = await gateConnectorAction(
+        acct,
+        "mcp.use",
+        {
+          summary: `${acct.service.name}: run ${name.split("__")[2] ?? "tool"}`,
+          detail: JSON.stringify(input).slice(0, 300),
+        },
+        { sessionId, permissionMode, requestPermission, unattended, connectorGrants },
+      );
+      if (!r.ok) return { content: r.message, isError: true };
+    } else if (
       permissionMode !== "bypassPermissions" &&
       permissionMode !== "auto" &&
       requestPermission
@@ -662,6 +690,12 @@ export async function executeVendorTool(opts: {
   // user is sitting right there — keying off the mode refused them their own
   // routine.
   (context as { unattended?: boolean }).unattended = unattended === true;
+  // The connector permission engine (per-action allow/ask/deny) reads these
+  // off the context inside the connector tools' call().
+  (context as { permissionMode?: string }).permissionMode = permissionMode;
+  (context as { requestPermission?: RequestPermission }).requestPermission =
+    requestPermission;
+  (context as { connectorGrants?: string[] }).connectorGrants = connectorGrants;
   // AskUserQuestion round-trips a question to the renderer via this callback.
   (context as { askUser?: AskUserFn }).askUser = askUser;
   if (onProgress)
