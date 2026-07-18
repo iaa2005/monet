@@ -27,6 +27,8 @@ import {
 // when the tag already exists, so a new tag forces the updated image.
 const IMAGE_TAG = "monet-sandbox:v2";
 const BUILD_TIMEOUT_MS = 15 * 60_000;
+// RunCommand (tectonic, npm, etc.) gets a longer leash than RunPython.
+const RUN_COMMAND_TIMEOUT_MS = 5 * 60_000;
 
 const CONTAINERFILE = `
 FROM docker.io/library/python:3.12-slim
@@ -350,8 +352,7 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
       const looksBroken =
         msg.includes("no such file") ||
         msg.includes("syntax is incorrect") ||
-        msg.includes("*.json") ||
-        msg.includes("did not find");
+        msg.includes("*.json");
       if (looksBroken) {
         log += "[sandbox] resetting broken Podman machine\n";
         await run(["machine", "rm", "-f"], { timeoutMs: 60_000 });
@@ -450,7 +451,7 @@ export async function runPodmanCommand(
   const result = await run([
     "run", "--rm", "-v", `${dir}:/work`, "-v", "monet-pip-cache:/root/.cache/pip",
     "-w", "/work", IMAGE_TAG, "sh", "-lc", command,
-  ]);
+  ], { timeoutMs: RUN_COMMAND_TIMEOUT_MS });
   // Surface any files the command wrote into /work, same as RunPython — so
   // e.g. `python3 -c "...save('out.png')"` shows up as an artifact.
   const after = snapshotFiles(dir);
