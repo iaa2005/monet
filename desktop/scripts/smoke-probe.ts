@@ -511,6 +511,57 @@ async function main() {
     )
   }
 
+  // ── FileBridge (Home sandbox confinement) ────────────────────────────────
+  {
+    const { makeFileBridge } = await import(
+      '../src/main/connectors/lib/file-bridge.js'
+    )
+    const bridge = makeFileBridge('smoke-bridge', 'home')
+    try {
+      const saved = await bridge.write('report.txt', Buffer.from('hello'))
+      check('bridge write lands inside its root', saved.path.startsWith(bridge.root))
+      check(
+        'bridge write emits an artifact line',
+        saved.artifactLine.startsWith('[artifact] text/plain report.txt :: '),
+      )
+      const again = await bridge.write('report.txt', Buffer.from('two'))
+      check(
+        'bridge write is collision-safe',
+        again.path !== saved.path && again.path.includes('report (2)'),
+      )
+      check(
+        'bridge resolves its own file for reading',
+        bridge.resolveRead('report.txt') === saved.path,
+      )
+      let escaped = false
+      try {
+        bridge.resolveRead('../../outside.txt')
+        escaped = true
+      } catch {
+        /* expected */
+      }
+      check('bridge refuses ../ traversal out of the sandbox', !escaped)
+      let absEscaped = false
+      try {
+        bridge.resolveRead(join(tmpdir(), 'anything.txt'))
+        absEscaped = true
+      } catch {
+        /* expected */
+      }
+      check('bridge refuses absolute paths outside the sandbox', !absEscaped)
+      let oversize = false
+      try {
+        await bridge.write('big.bin', Buffer.alloc(64), { maxBytes: 16 })
+        oversize = true
+      } catch {
+        /* expected */
+      }
+      check('bridge enforces the size cap', !oversize)
+    } finally {
+      rmSync(bridge.root, { recursive: true, force: true })
+    }
+  }
+
   rmSync(dir, { recursive: true, force: true })
   console.log(failures ? `\n${failures} FAILURES` : '\nALL SMOKE CHECKS PASSED')
   process.exit(failures ? 1 : 0)

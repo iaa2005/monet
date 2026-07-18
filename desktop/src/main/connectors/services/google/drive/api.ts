@@ -13,11 +13,17 @@
  * the price of a sane tool surface.
  */
 
+import { extname } from "path";
 import { fetchRetry } from "../../../../net-fetch.js";
 import { googleAccessToken } from "../auth.js";
 import { patchSecret } from "../../../store.js";
+import { mimeOf } from "../../../lib/file-bridge.js";
 import type { ProtocolResult } from "../../../types.js";
-import type { FileOps, ResolvedAccount } from "../../types.js";
+import type {
+  ConnectorContext,
+  FileOps,
+  ResolvedAccount,
+} from "../../types.js";
 
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
@@ -239,6 +245,101 @@ export async function driveMkdir(
   return { ok: true, text: `Created folder ${opts.path}.` };
 }
 
+export async function driveDownload(
+  acct: ResolvedAccount,
+  opts: { path: string; saveAs?: string },
+  ctx: ConnectorContext,
+): Promise<ProtocolResult> {
+  const bearer = await token(acct);
+  const file = await resolveOrThrow(bearer, opts.path);
+  if (file.mimeType === FOLDER)
+    return { ok: false, text: "", error: `${opts.path} is a folder.` };
+
+  const exportAs = EXPORT_AS[file.mimeType];
+  const url = exportAs
+    ? `${API}/files/${file.id}/export?mimeType=${encodeURIComponent(exportAs)}`
+    : `${API}/files/${file.id}?alt=media`;
+  const res = await fetchRetry(url, {
+    headers: { authorization: `Bearer ${bearer}` },
+  });
+  if (!res.ok)
+    return {
+      ok: false,
+      text: "",
+      error: `Drive: couldn't download ${opts.path} (${res.status}).`,
+    };
+  const data = Buffer.from(await res.arrayBuffer());
+  let name = opts.saveAs || file.name;
+  // A Google-native doc exports without an extension of its own — add one.
+  if (exportAs && !extname(name))
+    name += exportAs === "text/csv" ? ".csv" : ".txt";
+  const saved = await ctx.files.write(name, data);
+  return {
+    ok: true,
+    text: `Downloaded ${opts.path} (${Math.round(data.length / 1024)}KB${exportAs ? `, exported as ${exportAs}` : ""})\n${saved.artifactLine}`,
+  };
+}
+
+export async function driveUpload(
+  acct: ResolvedAccount,
+  opts: { file: string; path: string },
+  ctx: ConnectorContext,
+): Promise<ProtocolResult> {
+  const abs = ctx.files.resolveRead(opts.file);
+  const { readFile } = await import("fs/promises");
+  const data = await readFile(abs);
+  const localName = abs.split(/[/\\]/).pop() ?? "file";
+  const bearer = await token(acct);
+
+  // Naming a folder (or "/") means "into it, keep the local name".
+  let destPath = opts.path.trim() || "/";
+  const destNode = await resolve(bearer, destPath);
+  if (destNode?.mimeType === FOLDER)
+    destPath = `${destPath.replace(/\/+$/, "")}/${localName}`;
+
+  const mime = mimeOf(localName);
+  const existing = await resolve(bearer, destPath);
+  if (existing && existing.mimeType !== FOLDER) {
+    await api(bearer, `${UPLOAD}/files/${existing.id}?uploadType=media`, {
+      method: "PATCH",
+      headers: { "content-type": mime },
+      body: data,
+    });
+    return {
+      ok: true,
+      text: `Updated ${destPath} (${Math.round(data.length / 1024)}KB).`,
+    };
+  }
+
+  const parts = segments(destPath);
+  const name = parts.pop() ?? localName;
+  const parent = parts.length
+    ? await resolveOrThrow(bearer, parts.join("/"))
+    : null;
+  const boundary = `monet-${Date.now()}`;
+  const meta = JSON.stringify({
+    name,
+    ...(parent ? { parents: [parent.id] } : {}),
+  });
+  const body = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`,
+      "utf8",
+    ),
+    data,
+    Buffer.from(`\r\n--${boundary}--`, "utf8"),
+  ]);
+  await api(bearer, `${UPLOAD}/files?uploadType=multipart`, {
+    method: "POST",
+    headers: { "content-type": `multipart/related; boundary=${boundary}` },
+    body,
+  });
+  return {
+    ok: true,
+    text: `Uploaded ${localName} → ${destPath} (${Math.round(data.length / 1024)}KB).`,
+  };
+}
+
 /** The FileOps bundle a Drive-backed service plugs into `capabilities.files`. */
 export const driveOps: FileOps = {
   list: (a, o) => driveList(a, o),
@@ -246,4 +347,6 @@ export const driveOps: FileOps = {
   write: (a, o) => driveWrite(a, o),
   delete: (a, o) => driveDelete(a, o),
   mkdir: (a, o) => driveMkdir(a, o),
+  download: (a, o, ctx) => driveDownload(a, o, ctx),
+  upload: (a, o, ctx) => driveUpload(a, o, ctx),
 };

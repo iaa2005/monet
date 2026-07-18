@@ -9,10 +9,48 @@
 
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
+import { basename } from "path";
 import type { ProtocolResult } from "../../types.js";
-import type { MailOps, ResolvedAccount } from "../../services/types.js";
+import type {
+  ConnectorContext,
+  MailOps,
+  ResolvedAccount,
+} from "../../services/types.js";
 
 const MAX_BODY = 8_000;
+
+/** One attachment as the body structure describes it. */
+interface AttachmentPart {
+  part: string;
+  filename: string;
+  size?: number;
+}
+
+/** Walk a bodyStructure tree collecting the attachment leaves. */
+function collectAttachments(node: unknown, out: AttachmentPart[] = []): AttachmentPart[] {
+  const n = node as {
+    part?: string;
+    type?: string;
+    disposition?: string;
+    dispositionParameters?: { filename?: string };
+    parameters?: { name?: string };
+    size?: number;
+    childNodes?: unknown[];
+  };
+  if (n.childNodes?.length) {
+    for (const child of n.childNodes) collectAttachments(child, out);
+    return out;
+  }
+  const filename = n.dispositionParameters?.filename ?? n.parameters?.name;
+  const attached = n.disposition?.toLowerCase() === "attachment" || !!filename;
+  if (attached && n.part && !n.type?.startsWith("multipart/"))
+    out.push({
+      part: n.part,
+      filename: filename || `part-${n.part}`,
+      size: n.size,
+    });
+  return out;
+}
 
 export interface MailConfig {
   imap: { host: string; port: number; secure: boolean };
@@ -152,7 +190,7 @@ export function makeMailOps(cfg: MailConfig): MailOps {
         try {
           const msg = await c.fetchOne(
             String(opts.uid),
-            { uid: true, envelope: true, source: true },
+            { uid: true, envelope: true, source: true, bodyStructure: true },
             { uid: true },
           );
           if (!msg || !msg.source)
@@ -186,9 +224,20 @@ export function makeMailOps(cfg: MailConfig): MailOps {
             `Subject: ${e?.subject ?? ""}`,
           ].join("\n");
           const trimmed = body.trim().slice(0, MAX_BODY);
+          const atts = msg.bodyStructure
+            ? collectAttachments(msg.bodyStructure)
+            : [];
+          const attLine = atts.length
+            ? `\n\nAttachments (download_attachment takes index or name):\n${atts
+                .map(
+                  (a, i) =>
+                    `[${i + 1}] ${a.filename}${a.size ? ` (${Math.round(a.size / 1024)}KB)` : ""}`,
+                )
+                .join("\n")}`
+            : "";
           return {
             ok: true,
-            text: `${head}\n\n${trimmed}${body.length > MAX_BODY ? "\n…[truncated]" : ""}`,
+            text: `${head}\n\n${trimmed}${body.length > MAX_BODY ? "\n…[truncated]" : ""}${attLine}`,
           };
         } finally {
           lock.release();
@@ -196,8 +245,14 @@ export function makeMailOps(cfg: MailConfig): MailOps {
       });
     },
 
-    async send(acct, opts): Promise<ProtocolResult> {
+    async send(acct, opts, ctx): Promise<ProtocolResult> {
       const creds = requireCreds(acct);
+      // Resolve attachments through the FileBridge BEFORE opening SMTP: a
+      // path outside the chat's file area must fail the call, not the socket.
+      const files = (opts.attachments ?? []).map((p) => {
+        const abs = ctx.files.resolveRead(p);
+        return { filename: basename(abs), path: abs };
+      });
       const transport = nodemailer.createTransport({
         host: cfg.smtp.host,
         port: cfg.smtp.port,
@@ -210,8 +265,68 @@ export function makeMailOps(cfg: MailConfig): MailOps {
         cc: opts.cc,
         subject: opts.subject,
         text: opts.body,
+        ...(files.length ? { attachments: files } : {}),
       });
-      return { ok: true, text: `Sent to ${opts.to} (id ${info.messageId}).` };
+      return {
+        ok: true,
+        text: `Sent to ${opts.to}${files.length ? ` with ${files.length} attachment(s)` : ""} (id ${info.messageId}).`,
+      };
+    },
+
+    async downloadAttachment(
+      acct,
+      opts,
+      ctx: ConnectorContext,
+    ): Promise<ProtocolResult> {
+      return withImap(acct, async (c) => {
+        const folder = opts.folder || "INBOX";
+        const lock = await c.getMailboxLock(folder);
+        try {
+          const msg = await c.fetchOne(
+            String(opts.uid),
+            { uid: true, bodyStructure: true },
+            { uid: true },
+          );
+          if (!msg || !msg.bodyStructure)
+            return {
+              ok: false,
+              text: "",
+              error: `No message with uid ${opts.uid} in ${folder}.`,
+            };
+          const atts = collectAttachments(msg.bodyStructure);
+          if (!atts.length)
+            return { ok: false, text: "", error: "This message has no attachments." };
+
+          const wanted = opts.name?.trim().toLowerCase();
+          const pick = wanted
+            ? (atts.find((a) => a.filename.toLowerCase() === wanted) ??
+              atts.find((a) => a.filename.toLowerCase().includes(wanted)))
+            : atts[(opts.index ?? 1) - 1];
+          if (!pick)
+            return {
+              ok: false,
+              text: "",
+              error: `No attachment ${opts.name ? `“${opts.name}”` : `#${opts.index}`}. Available: ${atts
+                .map((a, i) => `[${i + 1}] ${a.filename}`)
+                .join(", ")}`,
+            };
+
+          const dl = await c.download(String(opts.uid), pick.part, { uid: true });
+          if (!dl?.content)
+            return {
+              ok: false,
+              text: "",
+              error: "The server returned no content for that attachment.",
+            };
+          const saved = await ctx.files.write(pick.filename, dl.content);
+          return {
+            ok: true,
+            text: `Saved ${pick.filename}${pick.size ? ` (${Math.round(pick.size / 1024)}KB)` : ""}\n${saved.artifactLine}`,
+          };
+        } finally {
+          lock.release();
+        }
+      });
     },
   };
 }

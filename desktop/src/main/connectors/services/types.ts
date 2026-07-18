@@ -27,6 +27,15 @@ export interface ResolvedAccount {
   service: ConnectorService;
 }
 
+/** Per-call context every capability op receives as its third argument. The
+ * FileBridge is THE way an op touches the chat's files (Home: the sandbox;
+ * Code: the run's own cwd) — never raw fs paths. */
+export interface ConnectorContext {
+  files: import("../lib/file-bridge.js").FileBridge;
+  sessionId: string;
+  space?: string;
+}
+
 // ─── Auth: the connect form is RENDERED from this ───────────────────────────
 
 export interface AuthField {
@@ -95,12 +104,20 @@ export const CAPABILITY_ACTIONS: Record<
     { id: "mail.folders", access: "read", label: "List folders" },
     { id: "mail.search", access: "read", label: "Search messages" },
     { id: "mail.read", access: "read", label: "Read a message" },
-    { id: "mail.send", access: "write", label: "Send email" },
+    // Download = remote → chat file area = read (inbound, no egress).
+    {
+      id: "mail.download_attachment",
+      access: "read",
+      label: "Download an attachment",
+    },
+    { id: "mail.send", access: "write", label: "Send email (+attachments)" },
   ],
   files: [
     { id: "files.list", access: "read", label: "List files" },
     { id: "files.read", access: "read", label: "Read a file" },
+    { id: "files.download", access: "read", label: "Download to the chat" },
     { id: "files.write", access: "write", label: "Write a file" },
+    { id: "files.upload", access: "write", label: "Upload from the chat" },
     { id: "files.mkdir", access: "write", label: "Create a folder" },
     { id: "files.delete", access: "destructive", label: "Delete a file" },
   ],
@@ -114,6 +131,7 @@ export const CAPABILITY_ACTIONS: Record<
     { id: "chat.chats", access: "read", label: "List chats" },
     { id: "chat.topics", access: "read", label: "List forum topics" },
     { id: "chat.history", access: "read", label: "Read chat history" },
+    { id: "chat.download_media", access: "read", label: "Download media" },
     { id: "chat.send", access: "write", label: "Send a message" },
     { id: "chat.send_file", access: "write", label: "Send a file" },
   ],
@@ -167,7 +185,21 @@ export interface MailOps {
   ): Promise<ProtocolResult>;
   send(
     acct: ResolvedAccount,
-    opts: { to: string; subject: string; body: string; cc?: string },
+    opts: {
+      to: string;
+      subject: string;
+      body: string;
+      cc?: string;
+      /** Chat-file-area paths, resolved through ctx.files. */
+      attachments?: string[];
+    },
+    ctx: ConnectorContext,
+  ): Promise<ProtocolResult>;
+  /** Save one attachment of a message into the chat's file area. */
+  downloadAttachment(
+    acct: ResolvedAccount,
+    opts: { uid: number; folder?: string; name?: string; index?: number },
+    ctx: ConnectorContext,
   ): Promise<ProtocolResult>;
 }
 
@@ -180,6 +212,18 @@ export interface FileOps {
   ): Promise<ProtocolResult>;
   delete(acct: ResolvedAccount, opts: { path: string }): Promise<ProtocolResult>;
   mkdir(acct: ResolvedAccount, opts: { path: string }): Promise<ProtocolResult>;
+  /** Remote file → the chat's file area (binary-safe). */
+  download(
+    acct: ResolvedAccount,
+    opts: { path: string; saveAs?: string },
+    ctx: ConnectorContext,
+  ): Promise<ProtocolResult>;
+  /** Chat file-area file → remote path (binary-safe). */
+  upload(
+    acct: ResolvedAccount,
+    opts: { file: string; path: string },
+    ctx: ConnectorContext,
+  ): Promise<ProtocolResult>;
 }
 
 export interface CalendarOps {
@@ -225,13 +269,19 @@ export interface ChatOps {
     acct: ResolvedAccount,
     opts: {
       chat: string;
+      /** A chat-file-area path (resolved through ctx.files) or an https URL. */
       file: string;
       caption?: string;
       topic?: number;
       asDocument?: boolean;
-      space?: string;
-      sessionId?: string;
     },
+    ctx: ConnectorContext,
+  ): Promise<ProtocolResult>;
+  /** Save a message's media into the chat's file area. */
+  downloadMedia(
+    acct: ResolvedAccount,
+    opts: { chat: string; id: number },
+    ctx: ConnectorContext,
   ): Promise<ProtocolResult>;
 }
 

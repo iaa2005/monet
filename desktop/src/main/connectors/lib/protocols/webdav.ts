@@ -6,6 +6,7 @@
  * startup for users with no files connector.
  */
 
+import { basename } from "path";
 import type { FileOps, ResolvedAccount } from "../../services/types.js";
 
 const MAX_TEXT = 20_000;
@@ -16,13 +17,14 @@ export interface WebdavConfig {
   authHint?: string;
 }
 
-type DavClient = {
-  getDirectoryContents: (path: string) => Promise<unknown>;
-  getFileContents: (path: string, opts: { format: "text" }) => Promise<string>;
-  putFileContents: (path: string, data: string) => Promise<boolean>;
-  deleteFile: (path: string) => Promise<void>;
-  createDirectory: (path: string) => Promise<void>;
-};
+interface DavClient {
+  getDirectoryContents(path: string): Promise<unknown>;
+  getFileContents(path: string, opts: { format: "text" }): Promise<string>;
+  getFileContents(path: string, opts: { format: "binary" }): Promise<ArrayBuffer>;
+  putFileContents(path: string, data: string | Buffer): Promise<boolean>;
+  deleteFile(path: string): Promise<void>;
+  createDirectory(path: string): Promise<void>;
+}
 
 interface DavStat {
   basename: string;
@@ -122,6 +124,39 @@ export function makeWebdavOps(cfg: WebdavConfig): FileOps {
       const c = await client(acct);
       await guard(acct, c.createDirectory(opts.path));
       return { ok: true, text: `Created ${opts.path}.` };
+    },
+
+    async download(acct, opts, ctx) {
+      const c = await client(acct);
+      const raw = await guard(
+        acct,
+        c.getFileContents(opts.path, { format: "binary" }),
+      );
+      const data = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+      const saved = await ctx.files.write(
+        opts.saveAs || basename(opts.path),
+        data,
+      );
+      return {
+        ok: true,
+        text: `Downloaded ${opts.path} (${Math.round(data.length / 1024)}KB)\n${saved.artifactLine}`,
+      };
+    },
+
+    async upload(acct, opts, ctx) {
+      const abs = ctx.files.resolveRead(opts.file);
+      const { readFile } = await import("fs/promises");
+      const data = await readFile(abs);
+      const c = await client(acct);
+      // A trailing slash (or naming a folder) means "into it, keep the name".
+      const remote = opts.path.endsWith("/")
+        ? `${opts.path}${basename(abs)}`
+        : opts.path;
+      await guard(acct, c.putFileContents(remote, data));
+      return {
+        ok: true,
+        text: `Uploaded ${basename(abs)} → ${remote} (${Math.round(data.length / 1024)}KB).`,
+      };
     },
   };
 }

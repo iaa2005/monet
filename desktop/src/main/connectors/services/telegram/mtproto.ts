@@ -12,12 +12,9 @@
 
 import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
-import { existsSync } from "fs";
-import { resolve, sep } from "path";
 import { patchSecret } from "../../store.js";
-import { sandboxWorkDir } from "../../../sandbox/podman-engine.js";
 import type { ProtocolResult } from "../../types.js";
-import type { ChatOps, ResolvedAccount } from "../types.js";
+import type { ChatOps, ConnectorContext, ResolvedAccount } from "../types.js";
 
 interface Pending {
   client: TelegramClient;
@@ -200,7 +197,8 @@ export async function telegramHistory(
       ...(opts.topic ? { replyTo: opts.topic } : {}),
     });
     const rows = msgs
-      .filter((m) => m.message)
+      // Media-only messages stay: their id is what download_media needs.
+      .filter((m) => m.message || m.media)
       .map((m) => {
         const who =
           (m.sender as { username?: string; firstName?: string } | undefined)
@@ -209,10 +207,16 @@ export async function telegramHistory(
           m.senderId?.toString() ??
           "?";
         const at = m.date ? new Date(m.date * 1000).toISOString().slice(0, 16).replace("T", " ") : "";
-        return `${at}  ${who}: ${m.message}`;
+        const media = m.media ? ` [media: ${mediaFilename(m) ?? "photo/video"}]` : "";
+        return `#${m.id}  ${at}  ${who}: ${m.message ?? ""}${media}`.trimEnd();
       })
       .reverse();
-    return { ok: true, text: rows.join("\n") || "(no messages)" };
+    return {
+      ok: true,
+      text: rows.length
+        ? `${rows.join("\n")}\n(#N is the message id — download_media takes it)`
+        : "(no messages)",
+    };
   });
 }
 
@@ -233,37 +237,6 @@ export async function telegramSend(
   });
 }
 
-/**
- * Resolve what to upload.
- *
- * A URL is handed to Telegram to fetch itself. A path is where this gets
- * sharp: in Home it MUST stay inside the chat's sandbox. The Telegram tool now
- * works in Home, and sendFile happily takes any local path — without this, a
- * model could read C:\Users\…\secrets and post it out, straight through the
- * isolation Home exists to provide. Code has no such fence: the agent already
- * reads and writes the workspace there, so a file it could Read it can send.
- */
-function resolveUpload(
-  file: string,
-  space: string | undefined,
-  sessionId: string | undefined,
-): string {
-  if (/^https?:\/\//i.test(file)) return file;
-  if (space !== "home") return file;
-
-  const root = resolve(sandboxWorkDir(sessionId || "default"));
-  const full = resolve(root, file);
-  // `${root}${sep}` on purpose: startsWith(root) alone would also accept a
-  // sibling directory whose name merely begins with the sandbox's.
-  if (full !== root && !full.startsWith(root + sep))
-    throw new Error(
-      `In Home you can only send files from this chat's sandbox. “${file}” is outside it — put it in the sandbox first, or pass a URL.`,
-    );
-  if (!existsSync(full))
-    throw new Error(`No such file in the sandbox: ${file}`);
-  return full;
-}
-
 export async function telegramSendFile(
   acct: ResolvedAccount,
   opts: {
@@ -272,11 +245,16 @@ export async function telegramSendFile(
     caption?: string;
     topic?: number;
     asDocument?: boolean;
-    space?: string;
-    sessionId?: string;
   },
+  ctx: ConnectorContext,
 ): Promise<ProtocolResult> {
-  const file = resolveUpload(opts.file, opts.space, opts.sessionId);
+  // A URL is handed to Telegram to fetch itself; a path goes through the
+  // FileBridge, which fences Home to the chat's sandbox (a model could
+  // otherwise read C:\Users\…\secrets and post it out, straight through the
+  // isolation Home exists to provide).
+  const file = /^https?:\/\//i.test(opts.file)
+    ? opts.file
+    : ctx.files.resolveRead(opts.file);
   return withClient(acct, async (c) => {
     await c.sendFile(opts.chat, {
       file,
@@ -293,11 +271,58 @@ export async function telegramSendFile(
   });
 }
 
+/** Best filename for a message's media: the document's own name, else an
+ * extension guess for photos. */
+function mediaFilename(m: unknown): string | null {
+  const doc = (
+    m as { document?: { attributes?: { className?: string; fileName?: string }[] } }
+  ).document;
+  const named = doc?.attributes?.find(
+    (a) => a.className === "DocumentAttributeFilename",
+  );
+  if (named?.fileName) return named.fileName;
+  if ((m as { photo?: unknown }).photo) return null; // photo: name at save time
+  return null;
+}
+
+export async function telegramDownloadMedia(
+  acct: ResolvedAccount,
+  opts: { chat: string; id: number },
+  ctx: ConnectorContext,
+): Promise<ProtocolResult> {
+  return withClient(acct, async (c) => {
+    const msgs = await c.getMessages(opts.chat, { ids: [opts.id] });
+    const m = msgs?.[0];
+    if (!m)
+      return {
+        ok: false,
+        text: "",
+        error: `No message #${opts.id} in ${opts.chat}.`,
+      };
+    if (!m.media)
+      return { ok: false, text: "", error: `Message #${opts.id} has no media.` };
+    const data = await c.downloadMedia(m, {});
+    if (!Buffer.isBuffer(data) || data.length === 0)
+      return { ok: false, text: "", error: "Telegram returned no bytes for that media." };
+    const name =
+      mediaFilename(m) ??
+      ((m as { photo?: unknown }).photo
+        ? `telegram-${opts.id}.jpg`
+        : `telegram-${opts.id}.bin`);
+    const saved = await ctx.files.write(name, data);
+    return {
+      ok: true,
+      text: `Saved media from #${opts.id} (${Math.round(data.length / 1024)}KB)\n${saved.artifactLine}`,
+    };
+  });
+}
+
 /** The ChatOps bundle the Telegram service plugs into `capabilities.chat`. */
 export const telegramOps: ChatOps = {
   chats: (a, o) => telegramChats(a, o),
   topics: (a, o) => telegramTopics(a, o),
   history: (a, o) => telegramHistory(a, o),
   send: (a, o) => telegramSend(a, o),
-  sendFile: (a, o) => telegramSendFile(a, o),
+  sendFile: (a, o, ctx) => telegramSendFile(a, o, ctx),
+  downloadMedia: (a, o, ctx) => telegramDownloadMedia(a, o, ctx),
 };

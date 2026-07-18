@@ -26,6 +26,7 @@ import {
 } from "../connectors/index.js";
 import {
   findAction,
+  type ConnectorContext,
   type ResolvedAccount,
   type ServiceCapabilities,
 } from "../connectors/services/types.js";
@@ -33,6 +34,7 @@ import {
   gateConnectorAction,
   runContextOf,
 } from "../connectors/lib/permissions.js";
+import { makeFileBridge } from "../connectors/lib/file-bridge.js";
 import type { ProtocolResult } from "../connectors/types.js";
 import { tunablePrompt } from "../prompts/index.js";
 
@@ -84,6 +86,17 @@ async function gate(
   return r.ok ? null : { data: { text: r.message, isError: true } };
 }
 
+/** Per-call ConnectorContext: the FileBridge fenced to THIS chat's file area
+ * (Home: its sandbox; Code: the run's own cwd). */
+function connectorCtx(context: ToolUseContext): ConnectorContext {
+  const c = context as { sessionId?: string; space?: string };
+  return {
+    files: makeFileBridge(c.sessionId ?? "default", c.space),
+    sessionId: c.sessionId ?? "default",
+    space: c.space,
+  };
+}
+
 /** Prompt hints contributed by CONNECTED services of the given caps — a
  * service's own guidance travels with it instead of living in tool text. */
 function hintsFor(...caps: (keyof ServiceCapabilities)[]): string {
@@ -104,18 +117,37 @@ function hintsFor(...caps: (keyof ServiceCapabilities)[]): string {
 
 const mailSchema = lazySchema(() =>
   z.strictObject({
-    action: z.enum(["folders", "search", "read", "send"]).describe("What to do."),
+    action: z
+      .enum(["folders", "search", "read", "send", "download_attachment"])
+      .describe("What to do."),
     account: z
       .string()
       .optional()
       .describe("Which mailbox; optional when only one is connected."),
     folder: z.string().optional().describe("Mailbox folder. Default INBOX."),
     query: z.string().optional().describe("search: query text."),
-    uid: z.number().optional().describe("read: the message uid from search."),
+    uid: z
+      .number()
+      .optional()
+      .describe("read/download_attachment: the message uid from search."),
     to: z.string().optional().describe("send: recipient address."),
     cc: z.string().optional(),
     subject: z.string().optional(),
     body: z.string().optional().describe("send: plain-text body."),
+    attachments: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "send: files from this chat's file area to attach (sandbox names in Home, workspace paths in Code).",
+      ),
+    name: z
+      .string()
+      .optional()
+      .describe("download_attachment: pick by filename (read lists them)."),
+    index: z
+      .number()
+      .optional()
+      .describe("download_attachment: pick by [n] from read. Default 1."),
     limit: z.number().optional().describe("search: max messages. Default 20."),
   }),
 );
@@ -143,8 +175,10 @@ export const MailTool = buildTool({
         "tool-mail",
         [
           "Read, search and send email through the user's connected mailboxes.",
-          "Use search first to get a uid, then read that uid. Never send mail",
-          "the user did not ask for; quote what you will send before sending.",
+          "Use search first to get a uid, then read that uid — read lists",
+          "attachments, download_attachment saves one into this chat's file",
+          "area, and send takes `attachments` from it. Never send mail the",
+          "user did not ask for; quote what you will send before sending.",
         ].join(" "),
       ),
       hintsFor("mail"),
@@ -194,12 +228,34 @@ export const MailTool = buildTool({
           if (!input.to || !input.subject || !input.body)
             return fail(new Error("send needs to, subject and body."));
           return toOutput(
-            await ops.send(acct, {
-              to: input.to,
-              cc: input.cc,
-              subject: input.subject,
-              body: input.body,
-            }),
+            await ops.send(
+              acct,
+              {
+                to: input.to,
+                cc: input.cc,
+                subject: input.subject,
+                body: input.body,
+                attachments: input.attachments,
+              },
+              connectorCtx(context),
+            ),
+          );
+        case "download_attachment":
+          if (input.uid == null)
+            return fail(
+              new Error("download_attachment needs a uid (get one from search)."),
+            );
+          return toOutput(
+            await ops.downloadAttachment(
+              acct,
+              {
+                uid: input.uid,
+                folder: input.folder,
+                name: input.name,
+                index: input.index,
+              },
+              connectorCtx(context),
+            ),
           );
       }
     } catch (e) {
@@ -216,13 +272,35 @@ export const MailTool = buildTool({
 
 const filesSchema = lazySchema(() =>
   z.strictObject({
-    action: z.enum(["list", "read", "write", "delete", "mkdir"]),
+    action: z.enum([
+      "list",
+      "read",
+      "write",
+      "delete",
+      "mkdir",
+      "download",
+      "upload",
+    ]),
     account: z
       .string()
       .optional()
       .describe("Which drive; optional when only one is connected."),
-    path: z.string().describe("Remote path, e.g. /Documents/notes.md"),
-    content: z.string().optional().describe("write: file contents."),
+    path: z
+      .string()
+      .describe(
+        "Remote path, e.g. /Documents/notes.md. For upload: the destination (a folder path keeps the local name).",
+      ),
+    content: z.string().optional().describe("write: text file contents."),
+    file: z
+      .string()
+      .optional()
+      .describe(
+        "upload: the local file from this chat's file area (sandbox name in Home, workspace path in Code).",
+      ),
+    saveAs: z
+      .string()
+      .optional()
+      .describe("download: save under this name instead of the remote one."),
   }),
 );
 type FilesInput = ReturnType<typeof filesSchema>;
@@ -250,7 +328,9 @@ export const CloudFilesTool = buildTool({
         [
           "Browse and edit files on the user's cloud drives, addressed by path",
           "whatever the backend. This is the user's real drive, not the sandbox",
-          "— confirm before overwriting or deleting.",
+          "— confirm before overwriting or deleting. download saves a remote",
+          "file into this chat's file area (binary-safe); upload pushes a file",
+          "from it to the drive. read/write are text-only.",
         ].join(" "),
       ),
       hintsFor("files"),
@@ -292,6 +372,24 @@ export const CloudFilesTool = buildTool({
           return toOutput(await ops.delete(acct, { path: input.path }));
         case "mkdir":
           return toOutput(await ops.mkdir(acct, { path: input.path }));
+        case "download":
+          return toOutput(
+            await ops.download(
+              acct,
+              { path: input.path, saveAs: input.saveAs },
+              connectorCtx(context),
+            ),
+          );
+        case "upload":
+          if (!input.file)
+            return fail(new Error("upload needs file (the local file to send)."));
+          return toOutput(
+            await ops.upload(
+              acct,
+              { file: input.file, path: input.path },
+              connectorCtx(context),
+            ),
+          );
       }
     } catch (e) {
       return fail(e);
@@ -435,7 +533,18 @@ export const CalendarTool = buildTool({
 
 const tgSchema = lazySchema(() =>
   z.strictObject({
-    action: z.enum(["chats", "topics", "history", "send", "send_file"]),
+    action: z.enum([
+      "chats",
+      "topics",
+      "history",
+      "send",
+      "send_file",
+      "download_media",
+    ]),
+    id: z
+      .number()
+      .optional()
+      .describe("download_media: the message id (#N shown by history)."),
     account: z.string().optional(),
     chat: z
       .string()
@@ -491,9 +600,11 @@ export const TelegramTool = buildTool({
         "tool-telegram",
         [
           "Read, search and send messages in the user's chats. Use chats to",
-          "find a chat id, then history or send. send_file takes a path or an",
-          "https URL and picks photo/video/document by extension; pass",
-          "asDocument to force a plain file.",
+          "find a chat id, then history or send. send_file takes a file from",
+          "this chat's file area or an https URL and picks photo/video/document",
+          "by extension; pass asDocument to force a plain file. history shows",
+          "#id per message — download_media saves that message's media into",
+          "the chat's file area.",
         ].join(" "),
       ),
       hintsFor("chat"),
@@ -559,16 +670,29 @@ export const TelegramTool = buildTool({
           if (!input.chat || !input.file)
             return fail(new Error("send_file needs chat and file."));
           return toOutput(
-            await ops.sendFile(acct, {
-              chat: input.chat,
-              file: input.file,
-              caption: input.caption,
-              topic: input.topic,
-              asDocument: input.asDocument,
-              // Space + session decide whether a path is fenced to the sandbox.
-              space: (context as { space?: string }).space,
-              sessionId: (context as { sessionId?: string }).sessionId,
-            }),
+            await ops.sendFile(
+              acct,
+              {
+                chat: input.chat,
+                file: input.file,
+                caption: input.caption,
+                topic: input.topic,
+                asDocument: input.asDocument,
+              },
+              connectorCtx(context),
+            ),
+          );
+        case "download_media":
+          if (!input.chat || input.id == null)
+            return fail(
+              new Error("download_media needs chat and id (#N from history)."),
+            );
+          return toOutput(
+            await ops.downloadMedia(
+              acct,
+              { chat: input.chat, id: input.id },
+              connectorCtx(context),
+            ),
           );
       }
     } catch (e) {
