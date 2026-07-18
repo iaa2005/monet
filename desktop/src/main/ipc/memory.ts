@@ -1,6 +1,6 @@
 /**
  * Memory IPC — Settings → Memory page: toggles, file table, editor, and the
- * "tell Claude to remember…" note box.
+ * "tell Code Monet to remember…" note box.
  */
 
 import { ipcMain } from "electron";

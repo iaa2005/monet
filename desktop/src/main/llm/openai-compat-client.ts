@@ -175,7 +175,7 @@ export class OpenAICompatClient implements LLMAdapter {
     if (this.isOpenRouter) {
       // Attribution headers OpenRouter asks apps to send.
       h["HTTP-Referer"] = "https://github.com/iaa2005/monet";
-      h["X-Title"] = "Monet (Claude Code Desktop)";
+      h["X-Title"] = "Code Monet";
     }
     return h;
   }

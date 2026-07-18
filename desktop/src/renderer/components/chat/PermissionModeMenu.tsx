@@ -1,5 +1,5 @@
 /**
- * Permission mode selector — the 5 Claude Code permission levels, with
+ * Permission mode selector — the 5 standard permission levels, with
  * confirmation dialogs for Auto and Bypass. Mirrors the official composer
  * control. The chosen id is a vendor PermissionMode and flows straight through
  * chat:send → the tool permission gate.
@@ -71,7 +71,7 @@ export const PERMISSION_MODES: ModeDef[] = [
   {
     id: "auto",
     label: "Auto mode",
-    hint: "Claude decides what's safe to run",
+    hint: "Code Monet decides what's safe to run",
     icon: Sparkles,
     tone: "text-emerald-600 dark:text-emerald-500",
     confirm: "auto",
@@ -92,14 +92,14 @@ export const HOME_MODES: ModeDef[] = [
   {
     id: "default",
     label: "Manually approve",
-    hint: "Claude pauses so you can approve each action.",
+    hint: "Code Monet pauses so you can approve each action.",
     icon: Hand,
     tone: "text-muted-foreground",
   },
   {
     id: "bypassPermissions",
     label: "Skip all approvals",
-    hint: "Claude never pauses, even for unsafe actions.",
+    hint: "Code Monet never pauses, even for unsafe actions.",
     icon: AlertTriangle,
     tone: "text-destructive",
     confirm: "bypass",
@@ -190,7 +190,7 @@ export function PermissionModeMenu({
         className="max-w-md"
       >
         <p className="text-sm text-foreground">
-          Claude will decide which actions are safe to run without asking.
+          Code Monet will decide which actions are safe to run without asking.
           Longer tasks run uninterrupted, with extra safeguards against prompt
           injection.
         </p>
@@ -228,7 +228,7 @@ export function PermissionModeMenu({
         className="max-w-md"
       >
         <p className="text-sm text-foreground">
-          Claude will run every action — including file changes and shell
+          Code Monet will run every action — including file changes and shell
           commands — without asking for approval.
         </p>
         <p className="mt-3 text-xs text-muted-foreground">

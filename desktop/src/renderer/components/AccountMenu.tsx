@@ -71,7 +71,7 @@ export function AccountMenu({
             </div>
           )}
           <div className="min-w-0 flex-1 leading-tight">
-            <div className="truncate text-[12px] font-medium">{name}</div>
+            <div className="truncate text-[14px] font-medium">{name}</div>
           </div>
           <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
         </button>
@@ -109,7 +109,7 @@ export function AccountMenu({
         </DropdownMenuItem>
         <DropdownMenuItem>
           <Gift />
-          Gift Claude
+          Gift Code Monet
         </DropdownMenuItem>
         <DropdownMenuItem>
           <ScrollText />

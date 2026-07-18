@@ -86,7 +86,15 @@ async function buildSystemPrompt(
       getVendorToolsForSpace(space, sessionId),
       model,
     );
-    const prompt = sections.filter(Boolean).join("\n\n");
+    const prompt = sections
+      .filter(Boolean)
+      .join("\n\n")
+      // Rebrand the vendor's self-identity line to this app's product name
+      // (post-process, so the vendored prompt file stays pristine).
+      .replace(
+        "You are Claude Code, Anthropic's official CLI for Claude.",
+        "You are Code Monet, a desktop AI coding agent.",
+      );
     if (prompt.trim().length > 0) return withUserMemory(prompt);
     throw new Error("vendor system prompt came back empty");
   } catch (err) {

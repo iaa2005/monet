@@ -1,7 +1,7 @@
 /**
  * Adapted system prompts from vendor constants/prompts.ts (54 KB).
  *
- * Contains the key Claude Code personality sections adapted for Electron.
+ * Contains the key personality sections adapted from the upstream prompt for Electron.
  * Dynamic info (workspace, git, OS) computed at call time.
  */
 
@@ -49,7 +49,7 @@ function getGitInfo(): string {
 
 // ─── Static prompt sections (from vendor) ───────────────────────────────
 
-const INTRO = `You are Claude Code, Anthropic's official CLI for Claude. You help users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
+const INTRO = `You are Code Monet, a desktop AI coding agent. You help users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
 IMPORTANT: You must NEVER generate or guess URLs for the user unless you are confident that the URLs are for helping the user with programming. You may use URLs provided by the user in their messages or local files.`
 
@@ -139,5 +139,5 @@ export async function getSystemPrompt(): Promise<string> {
 
 /** Get short prompt for sub-agents (used by AgentTool) */
 export function getSubAgentPrompt(): string {
-  return `You are an agent for Claude Code. Given the user's message, use the tools available to complete the task. Complete the task fully — don't gold-plate, but don't leave it half-done. When you complete the task, respond with a concise report covering what was done and any key findings.`
+  return `You are an agent for Code Monet. Given the user's message, use the tools available to complete the task. Complete the task fully — don't gold-plate, but don't leave it half-done. When you complete the task, respond with a concise report covering what was done and any key findings.`
 }

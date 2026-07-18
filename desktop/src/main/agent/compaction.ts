@@ -2,11 +2,11 @@
  * Context compaction for the desktop agent loop.
  *
  * Long chats / long agentic runs accumulate tokens until they'd overflow the
- * model's context window. Claude Code solves this by summarizing the earlier
+ * model's context window. The upstream CLI solves this by summarizing the earlier
  * conversation and replacing it with a compact summary. The vendor query
  * engine (which we don't use) drives this via services/compact; here we do the
  * same thing against OUR message[] format and LLM adapter, reusing the vendor
- * compaction prompt + summary formatter so the behavior matches Claude Code.
+ * compaction prompt + summary formatter so the behavior matches the upstream CLI.
  */
 
 import { getCompactPrompt, formatCompactSummary } from '@vendor/services/compact/prompt.js'

@@ -134,7 +134,7 @@ export function Terminal({ runner, intro }: TerminalProps = {}): JSX.Element {
     termRef.current = term;
 
     const introLines = introRef.current ?? [
-      "Claude Code Desktop — Terminal",
+      "Code Monet — Terminal",
       "Type commands, Enter to run, Ctrl+C to cancel.",
     ];
     for (const line of introLines) term.writeln(line);

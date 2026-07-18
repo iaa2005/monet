@@ -136,7 +136,7 @@ export async function maybeExtractMemory(
   }
 }
 
-/** "Tell Claude to remember…" from the Memory settings page. */
+/** "Tell Code Monet to remember…" from the Memory settings page. */
 export async function addMemoryNote(
   note: string,
 ): Promise<{ ok: boolean; applied: string[] }> {

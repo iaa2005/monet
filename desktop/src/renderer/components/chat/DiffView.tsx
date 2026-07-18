@@ -1,5 +1,5 @@
 /**
- * DiffView — the one presentational diff, matching the official Claude Code
+ * DiffView — the one presentational diff, matching the official desktop
  * review look: line-number gutter, +/- markers, a coloured left accent bar,
  * syntax highlighting inside every row, and long unchanged runs collapsed
  * behind clickable "N unmodified lines" dividers.

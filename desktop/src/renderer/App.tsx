@@ -331,7 +331,7 @@ export default function App(): JSX.Element {
     api()
       ?.workspace.get()
       .then((ws) => {
-        document.title = `Claude Code — ${ws.split(/[/\\]/).pop() || ws}`;
+        document.title = `Code Monet — ${ws.split(/[/\\]/).pop() || ws}`;
       })
       .catch(() => {});
   }, []);
@@ -819,7 +819,7 @@ export default function App(): JSX.Element {
               onContextMenu={(e) => { e.preventDefault(); setRotateMenuOpen((o) => !o); }}
               className="font-[Copernicus] text-[15px] font-semibold tracking-tight text-foreground cursor-pointer hover:opacity-80 transition-opacity"
             >
-              Monet
+              Code Monet
             </button>
             {bg && title && (
               <span className="ml-4 text-[11px] text-muted-foreground truncate max-w-[200px]">
@@ -1185,7 +1185,7 @@ export default function App(): JSX.Element {
                     </div>
                   </div>
 
-                  <div className="p-1">
+                  <div className="p-2">
                     <AccountMenu
                       onOpenSettings={() => setSettingsOpen(true)}
                       onOpenAbout={() => setAboutOpen(true)}

@@ -385,7 +385,7 @@ function KeepAwakeSection(): JSX.Element {
     <section>
       <h3 className="text-base font-semibold">Power</h3>
       <p className="mt-0.5 text-sm text-muted-foreground">
-        How this device behaves while Claude Code is running.
+        How this device behaves while Code Monet is running.
       </p>
       <div className="mt-4 flex items-start justify-between gap-4 rounded-xl border border-border p-3">
         <div className="min-w-0">
@@ -422,7 +422,7 @@ function GeneralSection({
       <section>
         <h3 className="text-base font-semibold">Appearance</h3>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Choose how Claude Code looks on this device.
+          Choose how Code Monet looks on this device.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3">
           {(["light", "dark"] as const).map((t) => (
@@ -487,7 +487,7 @@ function AboutSection(): JSX.Element {
           </svg>
         </div>
         <div>
-          <div className="text-sm font-semibold">Claude Code Desktop</div>
+          <div className="text-sm font-semibold">Code Monet</div>
           <div className="text-xs text-muted-foreground">Version 0.1.0</div>
         </div>
       </div>

@@ -8,7 +8,7 @@
  * assistant text is returned as the child's report to the parent.
  *
  * Children run in bypassPermissions mode — they have no UI to prompt, matching
- * Claude Code sub-agent behavior.
+ * the upstream CLI's sub-agent behavior.
  */
 
 import { getProviderManager } from "../provider/manager.js";

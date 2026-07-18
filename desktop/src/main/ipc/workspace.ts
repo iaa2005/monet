@@ -71,7 +71,7 @@ export function registerWorkspaceIPC(): void {
     // Update window title
     const win = BrowserWindow.getFocusedWindow();
     if (win) {
-      win.setTitle(`Claude Code Desktop — ${basename(path)}`);
+      win.setTitle(`Code Monet — ${basename(path)}`);
     }
 
     return { ok: true, path, claudeMd: claudeMdContent };

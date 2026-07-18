@@ -16,9 +16,9 @@ const FORMATS: {
 }[] = [
   {
     id: "monet",
-    title: "Monet bundle (.monet.json)",
+    title: "Code Monet bundle (.monet.json)",
     blurb:
-      "Full chat: every message with tool inputs/outputs, plus produced files. Re-importable into Monet to continue the chat.",
+      "Full chat: every message with tool inputs/outputs, plus produced files. Re-importable into Code Monet to continue the chat.",
   },
   {
     id: "markdown",

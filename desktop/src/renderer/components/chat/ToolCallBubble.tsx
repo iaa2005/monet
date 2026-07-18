@@ -109,7 +109,7 @@ function baseName(p: string): string {
   return p.split(/[/\\]/).pop() || p;
 }
 
-/** Human-friendly tool names — match official Claude Code style. */
+/** Human-friendly tool names — match the official desktop style. */
 const HUMAN_NAMES: Record<string, string> = {
   Bash: "Ran command",
   PowerShell: "Ran PowerShell",

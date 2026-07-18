@@ -378,7 +378,7 @@ export function ProfileSection(): JSX.Element {
           />
         </Row>
 
-        <Row label="What should Claude call you?">
+        <Row label="What should Code Monet call you?">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -406,9 +406,9 @@ export function ProfileSection(): JSX.Element {
         </Row>
 
         <div className="py-3.5">
-          <div className="text-sm">Instructions for Claude</div>
+          <div className="text-sm">Instructions for Code Monet</div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Claude will keep these in mind across chats (injected into every
+            Code Monet will keep these in mind across chats (injected into every
             chat's system prompt).
           </p>
           <textarea

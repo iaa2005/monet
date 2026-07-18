@@ -1,6 +1,6 @@
 /**
  * Code block — syntax-highlighted fenced code with a header bar (language +
- * copy), matching the official Claude Code rendering. Used by MarkdownViewer
+ * copy), matching the official desktop rendering. Used by MarkdownViewer
  * for fenced blocks and by ToolCallBubble for tool output.
  *
  * When `oldCode` is set (or the content is itself a unified `@@` patch) the

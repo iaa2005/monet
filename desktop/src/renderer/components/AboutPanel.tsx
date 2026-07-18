@@ -51,11 +51,11 @@ export function AboutPanel(): JSX.Element {
   const Info = () => (
     <div>
       <h1 className="font-[Copernicus] text-5xl font-semibold tracking-tight text-foreground">
-        Monet
+        Code Monet
       </h1>
       <div className="mt-3">
         <p className="max-w-sm text-sm leading-relaxed text-foreground">
-          Monet is a desktop AI agent based on Claude Code. It combines the
+          Code Monet is a desktop AI agent based on Claude Code. It combines the
           power of large language models with a native desktop experience,
           supporting multiple providers, tool execution, and a rich chat
           interface for software engineering tasks.
@@ -66,7 +66,7 @@ export function AboutPanel(): JSX.Element {
           rel="noreferrer"
           className="mt-4 inline-flex w-fit items-center gap-1.5 text-sm font-medium text-link hover:underline"
         >
-          Monet on GitHub
+          Code Monet on GitHub
           <ExternalLink className="size-3.5" />
         </a>
       </div>
@@ -96,10 +96,10 @@ export function AboutPanel(): JSX.Element {
         <div className="flex flex-1 items-end gap-6 p-6">
           <div className="flex min-h-0 flex-1 flex-col justify-between self-stretch">
             <h1 className="font-[Copernicus] text-5xl font-semibold tracking-tight text-foreground">
-              Monet
+              Code Monet
             </h1>
             <p className="mt-2 max-w-sm text-sm leading-relaxed text-foreground">
-              Monet is a desktop AI agent based on Claude Code. It combines the
+              Code Monet is a desktop AI agent based on Claude Code. It combines the
               power of large language models with a native desktop experience,
               supporting multiple providers, tool execution, and a rich chat
               interface for software engineering tasks.
@@ -110,7 +110,7 @@ export function AboutPanel(): JSX.Element {
               rel="noreferrer"
               className="mt-3 inline-flex w-fit items-center gap-1.5 text-sm font-medium text-link hover:underline"
             >
-              Monet on GitHub
+              Code Monet on GitHub
               <ExternalLink className="size-3.5" />
             </a>
           </div>

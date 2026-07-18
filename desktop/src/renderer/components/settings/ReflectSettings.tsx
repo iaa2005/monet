@@ -223,7 +223,7 @@ export function ReflectSettings(): JSX.Element {
           <div className="mt-7">
             <div className="flex items-center justify-between">
               <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Your time with Claude
+                Your time with Code Monet
               </div>
               <div className="flex gap-0.5 rounded-lg bg-black/[0.04] p-0.5 dark:bg-white/[0.05]">
                 {(["time", "msgs"] as const).map((m) => (

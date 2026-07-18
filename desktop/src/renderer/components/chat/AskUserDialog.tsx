@@ -94,7 +94,7 @@ export function AskUserDialog({
             title={collapsed ? "Expand" : "Collapse"}
           >
             <span className="truncate text-sm font-medium">
-              Claude needs your input
+              Code Monet needs your input
             </span>
             <span className="shrink-0 text-xs text-muted-foreground">
               {allAnswered

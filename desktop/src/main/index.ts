@@ -27,7 +27,7 @@ function createWindow(): void {
     minWidth: 800,
     minHeight: 600,
     show: false,
-    title: "Claude Code Desktop",
+    title: "Code Monet",
     // Hide the native title bar but keep the resizable window frame so we can
     // draw a custom header + window controls (looks native, not Electron).
     titleBarStyle: "hidden",
@@ -82,7 +82,7 @@ function openSecondaryWindow(): void {
     minWidth: 800,
     minHeight: 600,
     show: false,
-    title: "Claude Code Desktop",
+    title: "Code Monet",
     titleBarStyle: "hidden",
     backgroundColor: "#f7f6f1",
     webPreferences: {

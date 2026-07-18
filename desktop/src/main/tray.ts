@@ -6,7 +6,7 @@ let isQuitting = false;
 export function createTray(mainWindow: BrowserWindow): void {
   const icon = nativeImage.createEmpty();
   tray = new Tray(icon.resize({ width: 16, height: 16 }));
-  tray.setToolTip("Claude Code Desktop");
+  tray.setToolTip("Code Monet");
 
   const contextMenu = Menu.buildFromTemplate([
     {
