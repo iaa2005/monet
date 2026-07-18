@@ -43,6 +43,12 @@ export interface ConnectorSecret {
   refreshToken?: string;
   accessToken?: string;
   expiry?: number;
+  /** Remote MCP OAuth 2.1: the SDK's auth() orchestrates discovery + DCR + PKCE;
+   * these fields persist its state across sessions, encrypted like Google's. */
+  mcpOauthTokens?: string; // JSON-serialized OAuthTokens
+  mcpClientId?: string;
+  mcpClientSecret?: string;
+  mcpCodeVerifier?: string;
 }
 
 /** Uniform result shape every capability method returns to the tool layer. */

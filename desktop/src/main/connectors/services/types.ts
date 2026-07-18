@@ -60,7 +60,10 @@ export type AuthSpec =
   /** Telegram MTProto: api_id/api_hash + phone → SMS code (+2FA). */
   | { kind: "telegram" }
   /** Cannot be connected; the card explains what to do instead. */
-  | { kind: "unavailable"; reason: string };
+  | { kind: "unavailable"; reason: string }
+  /** Remote MCP server with OAuth 2.1 (RFC 9728 + DCR). No form fields —
+   * sign-in opens the browser; tokens are stored encrypted. */
+  | { kind: "oauth-mcp" };
 
 /** One numbered step of the setup walkthrough, shown above the form. */
 export interface SetupStep {
@@ -292,7 +295,9 @@ export interface ServiceCapabilities {
   contacts?: ContactOps;
   chat?: ChatOps;
   /** A local MCP stdio server; the token is injected into env at spawn. */
-  mcp?: { command: string; args: string[]; envKey: string };
+  mcp?:
+    | { command: string; args: string[]; envKey: string }
+    | { url: string; transport?: "http" | "sse" };
 }
 
 // ─── The service itself ─────────────────────────────────────────────────────
@@ -356,7 +361,8 @@ export interface UiConnectorService {
     | { kind: "token"; field: AuthField }
     | { kind: "google-oauth" }
     | { kind: "telegram" }
-    | { kind: "unavailable"; reason: string };
+    | { kind: "unavailable"; reason: string }
+    | { kind: "oauth-mcp" };
   credUrl?: string;
   credLabel?: string;
   note?: string;

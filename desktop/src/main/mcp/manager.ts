@@ -18,6 +18,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { getDataDir } from "../data-dir.js";
 import { getService } from "../connectors/services/registry.js";
 import { getSecret, listAccounts } from "../connectors/store.js";
+import { ConnectorOAuthProvider } from "../connectors/lib/mcp-oauth-provider.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,9 @@ export interface McpServerConfig {
   timeout?: number;
   /** default true */
   enabled?: boolean;
+  /** Internal: the connector account id backing a remote-OAuth server.
+   * Set by connectorServers(); used to build an authProvider. Not persisted. */
+  _accountId?: string;
 }
 
 export type McpConfig = { mcpServers: Record<string, McpServerConfig> };
@@ -61,12 +65,17 @@ export function saveConfig(config: McpConfig): void {
 }
 
 /**
- * Servers contributed by connector accounts (Notion, GitHub, Slack…).
+ * Servers contributed by connector accounts (Notion, GitHub, Slack…, and
+ * remote OAuth MCP like Dropbox).
  *
  * Built fresh on every read with the token decrypted straight from safeStorage,
  * so the secret exists only in memory and in the spawned child's env — it is
  * never part of loadConfig/saveConfig and so can never land in
  * mcp-servers.json. That's the whole point of routing these through connectors.
+ *
+ * Local MCP servers (command/args/envKey) get the token in env; remote MCP
+ * servers (url/transport) get an authProvider that reads/writes OAuth tokens
+ * from the encrypted secret store.
  */
 function connectorServers(): Record<string, McpServerConfig> {
   const out: Record<string, McpServerConfig> = {};
@@ -75,13 +84,23 @@ function connectorServers(): Record<string, McpServerConfig> {
       if (!account.enabled) continue;
       const mcp = getService(account.presetId)?.capabilities.mcp;
       if (!mcp) continue;
-      const token = getSecret(account.id).password;
-      if (!token) continue;
-      out[account.presetId] = {
-        command: mcp.command,
-        args: mcp.args,
-        env: { [mcp.envKey]: token },
-      };
+      if ("command" in mcp) {
+        // Local stdio server — token in env.
+        const token = getSecret(account.id).password;
+        if (!token) continue;
+        out[account.presetId] = {
+          command: mcp.command,
+          args: mcp.args,
+          env: { [mcp.envKey]: token },
+        };
+      } else {
+        // Remote OAuth MCP — authProvider reads tokens from the secret store.
+        out[account.presetId] = {
+          url: mcp.url,
+          type: mcp.transport ?? "http",
+          _accountId: account.id,
+        };
+      }
     }
   } catch {
     /* connectors unavailable — fall back to file servers only */
@@ -159,14 +178,24 @@ async function connectServer(name: string, config: McpServerConfig): Promise<voi
       });
     } else if (config.url) {
       const url = new URL(config.url);
-      // Forward user-configured headers with every request (e.g. auth tokens).
-      const requestInit = config.headers
-        ? { headers: config.headers }
-        : undefined;
-      transport =
-        config.type === "sse"
-          ? new SSEClientTransport(url, { requestInit })
-          : new StreamableHTTPClientTransport(url, { requestInit });
+      if (config._accountId) {
+        // Remote OAuth MCP: the SDK handles auth (discovery, DCR, PKCE, token
+        // refresh) via the authProvider. Tokens live in the encrypted secret.
+        const authProvider = new ConnectorOAuthProvider(config._accountId);
+        transport =
+          config.type === "sse"
+            ? new SSEClientTransport(url, { authProvider })
+            : new StreamableHTTPClientTransport(url, { authProvider });
+      } else {
+        // Hand-written remote server: forward headers (e.g. auth tokens).
+        const requestInit = config.headers
+          ? { headers: config.headers }
+          : undefined;
+        transport =
+          config.type === "sse"
+            ? new SSEClientTransport(url, { requestInit })
+            : new StreamableHTTPClientTransport(url, { requestInit });
+      }
     } else {
       throw new Error("Server config must have a command or a url");
     }

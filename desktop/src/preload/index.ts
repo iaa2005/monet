@@ -558,6 +558,10 @@ const electronAPI = {
       password?: string;
     }): Promise<{ ok: boolean; error?: string; needsPassword?: boolean }> =>
       ipcRenderer.invoke("connectors:telegramSignIn", opts),
+    mcpOAuthSignIn: (opts: {
+      presetId: string;
+    }): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("connectors:mcpOAuthSignIn", opts),
   },
 
   sandbox: {

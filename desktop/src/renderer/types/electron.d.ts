@@ -540,6 +540,9 @@ export interface ElectronAPI {
       code: string;
       password?: string;
     }) => Promise<{ ok: boolean; error?: string; needsPassword?: boolean }>;
+    mcpOAuthSignIn: (opts: {
+      presetId: string;
+    }) => Promise<{ ok: boolean; error?: string }>;
   };
   sandbox: {
     getConfig: () => Promise<{ engine: string }>;

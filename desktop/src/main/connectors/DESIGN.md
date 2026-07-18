@@ -290,12 +290,15 @@ capabilities to the agent, where the transport is a detail:
 - protocol-backed (IMAP/DAV/WebDAV/REST): our Mail/CloudFiles/Calendar/… tools;
 - MCP-backed (`capabilities.mcp`): Notion/Linear/Sentry — local stdio servers
   with the token injected into env; their tools surface individually.
+- Remote MCP-backed (`capabilities.mcp` with `url`): OAuth 2.1 servers like
+  Dropbox (`mcp.dropbox.com/mcp`). The MCP SDK's `auth()` handles discovery
+  (RFC 9728), dynamic client registration (RFC 7591), PKCE, and token refresh;
+  tokens persist in the encrypted secret store. Manifest auth kind: `oauth-mcp`.
 
 Planned: **Custom MCP** (Phase 4) — a user-defined service (command, args, env)
 registered from Settings; it becomes a connector like any other. Its actions
 are dynamic (the server's tool list): default **ask** for every tool, honoring
-MCP `readOnlyHint` annotations as `read`/allow. Remote OAuth-2.1 MCP servers
-remain out until app-side OAuth lands (see memory: pasted tokens get 401).
+MCP `readOnlyHint` annotations as `read`/allow.
 
 ## 8. Phases
 
@@ -324,8 +327,9 @@ Connectors installable **without an app update**, from
 - A store connector is a **manifest — data, never code** (services/manifest.ts,
   schema 1). Capabilities map onto the SAME protocol factories builtins use:
   `mail` (IMAP/SMTP, TLS required), `webdav`/`caldav`/`carddav` (https only),
-  `mcp` (command allowlisted to `npx`/`uvx`). Auth kinds: password/token only —
-  OAuth and MTProto need code, so they stay builtin.
+  `mcp` (local: command allowlisted to `npx`/`uvx`; remote: `url` + OAuth 2.1
+  via the MCP SDK). Auth kinds: `password`, `token`, `oauth-mcp` (remote MCP
+  only — the SDK runs discovery + DCR + PKCE; no keys to paste).
 - Install flow: catalog (`index.json` via raw.githubusercontent) → preview
   (fetch + validate the manifest, show EVERY endpoint/command to the user) →
   confirm → save under `<dataDir>/connectors/store/<id>/` →
@@ -342,7 +346,6 @@ Connectors installable **without an app update**, from
 
 ## 9. Non-goals (for now)
 
-- Remote OAuth 2.1 MCP connectors (needs app OAuth flow).
 - Per-domain network allowlists (endpoints are service-declared and fixed).
 - Sharing/central management of routines (cloud feature; ours are per-user).
 - Per-service React UI — permanently a non-goal; data-driven or it doesn't ship.

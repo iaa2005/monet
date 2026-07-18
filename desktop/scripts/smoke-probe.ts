@@ -581,6 +581,49 @@ async function main() {
       'manifest refuses code-requiring auth kinds',
     )
     rejects({ capabilities: {} }, 'manifest refuses zero capabilities')
+
+    // Remote MCP (OAuth 2.1) — valid manifest builds a service with url.
+    const remoteGood = {
+      schema: MANIFEST_SCHEMA,
+      id: 'dropbox-test',
+      name: 'DropboxTest',
+      company: 'Dropbox',
+      description: 'Remote MCP via OAuth.',
+      version: '1.0.0',
+      auth: { kind: 'oauth-mcp' as const },
+      capabilities: {
+        mcp: { url: 'https://mcp.dropbox.com/mcp', transport: 'http' as const },
+      },
+    }
+    const rsvc = manifestToService(remoteGood as never, {
+      builtinIds: BUILTIN_IDS,
+    })
+    check(
+      'manifest → service (remote mcp, oauth-mcp auth)',
+      rsvc.auth.kind === 'oauth-mcp' &&
+        'url' in (rsvc.capabilities.mcp ?? {}) &&
+        typeof rsvc.test === 'function',
+    )
+    const rejectsRemote = (patch: object, name: string): void => {
+      let threw = false
+      try {
+        manifestToService(
+          { ...remoteGood, ...patch } as never,
+          { builtinIds: BUILTIN_IDS },
+        )
+      } catch {
+        threw = true
+      }
+      check(name, threw)
+    }
+    rejectsRemote(
+      { capabilities: { mcp: { url: 'http://insecure.example/mcp' } } },
+      'manifest refuses non-https remote mcp url',
+    )
+    rejectsRemote(
+      { capabilities: { mcp: { url: 'https://x.example', transport: 'ws' as never } } },
+      'manifest refuses unsupported mcp transport',
+    )
   }
 
   // ── FileBridge (Home sandbox confinement) ────────────────────────────────

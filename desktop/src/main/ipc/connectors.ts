@@ -267,6 +267,51 @@ export function registerConnectorsIPC(): void {
     },
   );
 
+  // ─── Remote MCP OAuth sign-in ──────────────────────────────────────────
+  // One call: main runs the full OAuth 2.1 flow (discovery + DCR + PKCE +
+  // browser consent + token exchange), stores the account, and connects the
+  // MCP server. Tokens never reach the renderer.
+  ipcMain.handle(
+    "connectors:mcpOAuthSignIn",
+    async (
+      _e,
+      opts: { presetId: string },
+    ): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const service = getService(opts.presetId);
+        if (!service)
+          return { ok: false, error: `Unknown connector: ${opts.presetId}` };
+        if (!service.capabilities.mcp || !("url" in service.capabilities.mcp))
+          return { ok: false, error: "Not a remote MCP OAuth connector." };
+        const url = service.capabilities.mcp.url;
+
+        // Create the account first (empty username — filled after we get
+        // tokens and can call WhoAmI or similar). Singleton: one server, one
+        // token, replacing is the right thing.
+        const account = addAccount(
+          {
+            presetId: opts.presetId,
+            username: "",
+            secret: {},
+          },
+          { singleton: true, defaultLabel: service.name },
+        );
+
+        const { signInRemoteMcp } = await import(
+          "../connectors/lib/mcp-oauth-provider.js"
+        );
+        await signInRemoteMcp(account.id, url);
+
+        // Bring the server up now so the token is proven.
+        void ensureConnected().catch(() => {});
+        resetVendorTools();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
   // ─── Telegram login (two steps: code → sign-in) ──────────────────────────
   ipcMain.handle(
     "connectors:telegramSendCode",

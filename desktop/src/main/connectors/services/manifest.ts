@@ -3,16 +3,18 @@
  *
  * A store connector is DATA, never code: a manifest names endpoints and an
  * auth form, and the capabilities are built from the same protocol factories
- * the builtin services use (IMAP/SMTP, WebDAV, CalDAV/CardDAV, local MCP).
- * That is the whole security model — installing one cannot execute arbitrary
- * JS. The residual risks are (a) a manifest pointing a login form at an
- * attacker's server, mitigated by https-only endpoints that the install UI
- * shows the user before confirming, and (b) MCP servers, which DO run code —
- * so `command` is allowlisted to package runners and the exact command line
- * is shown at install time.
+ * the builtin services use (IMAP/SMTP, WebDAV, CalDAV/CardDAV, local MCP,
+ * remote MCP with OAuth 2.1). That is the whole security model — installing
+ * one cannot execute arbitrary JS. The residual risks are (a) a manifest
+ * pointing a login form at an attacker's server, mitigated by https-only
+ * endpoints that the install UI shows the user before confirming, and (b)
+ * local MCP servers, which DO run code — so `command` is allowlisted to
+ * package runners and the exact command line is shown at install time.
  *
- * OAuth (Google) and MTProto (Telegram) auth kinds need real code, so they
- * are deliberately not expressible in a manifest.
+ * Remote MCP (OAuth 2.1) connectors use the MCP SDK's auth() flow: discovery
+ * (RFC 9728), dynamic client registration (RFC 7591), PKCE, and token
+ * exchange — all protocol-driven, no hardcoded endpoints. The auth kind is
+ * `oauth-mcp`; the user signs in via the browser, tokens are encrypted.
  */
 
 import { makeMailOps } from "../lib/protocols/mail.js";
@@ -40,12 +42,13 @@ export interface ConnectorManifest {
   version: string;
   auth:
     | { kind: "password"; fields: AuthField[] }
-    | { kind: "token"; field: AuthField };
-  credUrl?: string;
-  credLabel?: string;
-  note?: string;
-  setupSteps?: SetupStep[];
-  promptHint?: string;
+    | { kind: "token"; field: AuthField }
+    | { kind: "oauth-mcp" },
+  credUrl?: string,
+  credLabel?: string,
+  note?: string,
+  setupSteps?: SetupStep[],
+  promptHint?: string,
   capabilities: {
     mail?: {
       imap: { host: string; port: number; secure: boolean };
@@ -55,7 +58,9 @@ export interface ConnectorManifest {
     webdav?: { url: string; authHint?: string };
     caldav?: { url: string; principalTemplate?: string; authHint?: string };
     carddav?: { url: string; principalTemplate?: string; authHint?: string };
-    mcp?: { command: string; args: string[]; envKey: string };
+    mcp?:
+      | { command: string; args: string[]; envKey: string }
+      | { url: string; transport?: "http" | "sse" };
   };
 }
 
@@ -70,7 +75,13 @@ export function manifestEndpoints(m: ConnectorManifest): string[] {
   if (c.webdav) out.push(c.webdav.url);
   if (c.caldav) out.push(c.caldav.url);
   if (c.carddav) out.push(c.carddav.url);
-  if (c.mcp) out.push(`run: ${c.mcp.command} ${c.mcp.args.join(" ")}`);
+  if (c.mcp) {
+    if ("command" in c.mcp) {
+      out.push(`run: ${c.mcp.command} ${c.mcp.args.join(" ")}`);
+    } else {
+      out.push(c.mcp.url);
+    }
+  }
   return out;
 }
 
@@ -122,8 +133,8 @@ export function manifestToService(
     for (const f of m.auth.fields) checkField(f, "auth");
   } else if (m.auth.kind === "token") {
     checkField(m.auth.field, "auth");
-  } else {
-    bad(`auth kind "${(m.auth as { kind: string }).kind}" (manifests speak password/token only)`);
+  } else if (m.auth.kind !== "oauth-mcp") {
+    bad(`auth kind "${(m.auth as { kind: string }).kind}" (manifests speak password/token/oauth-mcp only)`);
   }
 
   const c = m.capabilities ?? {};
@@ -179,14 +190,25 @@ export function manifestToService(
       service.test = (acct) => ops.list(acct, { limit: 1 });
   }
   if (c.mcp) {
-    if (!MCP_COMMAND_ALLOWLIST.has(c.mcp.command))
-      bad(
-        `mcp.command "${c.mcp.command}" — allowed: ${[...MCP_COMMAND_ALLOWLIST].join(", ")}`,
-      );
-    if (!Array.isArray(c.mcp.args) || c.mcp.args.some((a) => typeof a !== "string"))
-      bad("mcp.args must be strings");
-    if (!c.mcp.envKey) bad("mcp.envKey is required");
-    service.capabilities.mcp = c.mcp;
+    if ("command" in c.mcp) {
+      // Local MCP (stdio): npx/uvx with a token injected into env.
+      if (!MCP_COMMAND_ALLOWLIST.has(c.mcp.command))
+        bad(
+          `mcp.command "${c.mcp.command}" — allowed: ${[...MCP_COMMAND_ALLOWLIST].join(", ")}`,
+        );
+      if (!Array.isArray(c.mcp.args) || c.mcp.args.some((a) => typeof a !== "string"))
+        bad("mcp.args must be strings");
+      if (!c.mcp.envKey) bad("mcp.envKey is required");
+      service.capabilities.mcp = c.mcp;
+    } else {
+      // Remote MCP (OAuth 2.1): https URL, transport http or sse.
+      if (!c.mcp.url) bad("mcp.url is required for remote MCP");
+      checkHttps(c.mcp.url, "mcp.url");
+      const transport = c.mcp.transport ?? "http";
+      if (transport !== "http" && transport !== "sse")
+        bad(`mcp.transport "${transport}" (allowed: http, sse)`);
+      service.capabilities.mcp = { url: c.mcp.url, transport };
+    }
     if (Object.keys(service.capabilities).length === 1)
       service.test = makeMcpTest(m.id);
   }

@@ -6,7 +6,7 @@
  * (src/main/connectors/services/<id>/). Adding a service there makes it appear
  * here with zero renderer changes; the only branches below are per AUTH KIND
  * (password / token / google-oauth / telegram / unavailable), of which there
- * are exactly five.
+ * are exactly six.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -727,6 +727,14 @@ function ConnectForm({
           setStage("code");
           return;
         }
+        case "oauth-mcp": {
+          const r = await api()?.connectors.mcpOAuthSignIn({
+            presetId: service.id,
+          });
+          if (!r?.ok) throw new Error(r?.error ?? "Sign-in failed.");
+          onDone();
+          return;
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to connect.");
@@ -936,6 +944,15 @@ function ConnectForm({
                     </div>
                   </>
                 )}
+
+                {kind === "oauth-mcp" && (
+                  <p className="text-[13px] text-muted-foreground">
+                    Click the button to sign in via your browser. The server
+                    uses OAuth 2.1 with Dynamic Client Registration — no app
+                    keys to paste. Your access token is encrypted and refreshed
+                    automatically.
+                  </p>
+                )}
               </>
             ) : (
               <>
@@ -992,7 +1009,11 @@ function ConnectForm({
                       : "Sign in with Google"
                     : kind === "telegram"
                       ? "Send code"
-                      : "Connect"
+                      : kind === "oauth-mcp"
+                        ? busy
+                          ? "Waiting for the browser…"
+                          : "Sign in"
+                        : "Connect"
                   : "Sign in"}
               </button>
             </div>
