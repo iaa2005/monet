@@ -227,13 +227,12 @@ export function registerChatIPC(): void {
     const abort = new AbortController();
     aborts.set(sessionId, abort);
 
-    // Each chat has its OWN folder; pass it so runAgent pins the run to it (the
-    // renderer's restore-on-open is async and can lose the race). Home has no
-    // filesystem workspace.
-    const cwd =
-      payload.space !== "home"
-        ? getSessionStore().getWorkspace(sessionId) ?? undefined
-        : undefined;
+    // Run in the folder the user is actually looking at — the current workspace,
+    // which is exactly what the picker and the git bar show (both read the same
+    // global). runAgent captures it at start and pins the whole run to it. The
+    // per-chat folder is applied to that global when you open/switch a chat, so
+    // we must NOT re-derive cwd from the session row here: a stale saved folder
+    // would silently override what the picker plainly shows.
 
     const mode =
       payload.mode && VALID_MODES.has(payload.mode)
@@ -270,7 +269,6 @@ export function registerChatIPC(): void {
           askUser: (questions) => askUserFromRenderer(win, questions),
           space: payload.space,
           effort: payload.effort,
-          cwd,
         },
       );
     } catch (err) {

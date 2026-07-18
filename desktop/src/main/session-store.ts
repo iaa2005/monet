@@ -260,15 +260,6 @@ export class SessionStore {
     };
   }
 
-  /** The chat's saved working directory, if any. Lightweight — skips the
-   * message load `get()` does, since the send path calls it every turn. */
-  getWorkspace(id: string): string | null {
-    const r = getDb()
-      .prepare("SELECT workspace FROM sessions WHERE id = ?")
-      .get(id) as { workspace?: string | null } | undefined;
-    return r?.workspace ?? null;
-  }
-
   /** Remember a chat's working directory. */
   setWorkspace(id: string, workspace: string): void {
     getDb()
