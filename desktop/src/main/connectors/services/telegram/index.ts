@@ -7,6 +7,7 @@
  */
 
 import { Telegram } from "./account/index.js";
+import { TelegramBot } from "./bot/index.js";
 import type { ConnectorService } from "../types.js";
 
-export const telegramServices: ConnectorService[] = [Telegram];
+export const telegramServices: ConnectorService[] = [Telegram, TelegramBot];

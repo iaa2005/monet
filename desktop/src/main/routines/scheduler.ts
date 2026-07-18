@@ -122,6 +122,9 @@ export async function executeRoutine(
         // This is the one place with no user behind it — tools that need a
         // person (CreateRoutine) refuse on this, not on the permission mode.
         unattended: true,
+        // Ask-level connector actions run unattended ONLY if granted at
+        // creation; destructive is never grantable (the engine enforces both).
+        connectorGrants: routine.grants,
         maxTurns: 30,
         // Scope to declared connectors; ensure the output connector is included.
         connectors:

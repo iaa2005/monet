@@ -45,6 +45,10 @@ export interface Routine {
   space: "home" | "code";
   /** Connector ids whose tools the routine may use (empty = default toolset). */
   connectors: string[];
+  /** Connector action ids granted for UNATTENDED use ("chat.send"). Without a
+   * grant, ask-level actions are denied when nobody is watching; destructive
+   * actions are never grantable at all (the engine enforces both). */
+  grants?: string[];
   trigger: RoutineTrigger;
   condition?: RoutineCondition;
   output: { kind: OutputKind; connector?: string };
@@ -99,6 +103,12 @@ function db(): ReturnType<typeof getSessionDb> {
       );
       CREATE INDEX IF NOT EXISTS idx_runs_routine ON routine_runs(routine_id);
     `);
+    // Unattended action grants (phase-4 column; older DBs lack it).
+    try {
+      d.exec(`ALTER TABLE routines ADD COLUMN grants TEXT`);
+    } catch {
+      /* column already exists */
+    }
     // Backfill chats that predate sessions.routine_id, from the run history —
     // done here because routine_runs is guaranteed to exist by this point.
     // Chats whose routine was already deleted are unrecoverable: their runs went
@@ -126,6 +136,7 @@ interface Row {
   prompt: string;
   space: string;
   connectors: string;
+  grants: string | null;
   trigger: string;
   condition: string | null;
   output: string;
@@ -144,6 +155,7 @@ function rowToRoutine(r: Row): Routine {
     prompt: r.prompt,
     space: (r.space as Routine["space"]) || "code",
     connectors: JSON.parse(r.connectors || "[]") as string[],
+    grants: r.grants ? (JSON.parse(r.grants) as string[]) : undefined,
     trigger: JSON.parse(r.trigger) as RoutineTrigger,
     condition: r.condition ? (JSON.parse(r.condition) as RoutineCondition) : undefined,
     output: JSON.parse(r.output) as Routine["output"],
@@ -181,8 +193,8 @@ export function createRoutine(input: RoutineInput): Routine {
   const r: Routine = { ...input, id: randomUUID(), createdAt: now, updatedAt: now };
   db()
     .prepare(
-      `INSERT INTO routines (id, name, prompt, space, connectors, trigger, condition, output, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO routines (id, name, prompt, space, connectors, grants, trigger, condition, output, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       r.id,
@@ -190,6 +202,7 @@ export function createRoutine(input: RoutineInput): Routine {
       r.prompt,
       r.space,
       JSON.stringify(r.connectors),
+      r.grants?.length ? JSON.stringify(r.grants) : null,
       JSON.stringify(r.trigger),
       r.condition ? JSON.stringify(r.condition) : null,
       JSON.stringify(r.output),
@@ -206,13 +219,14 @@ export function updateRoutine(id: string, patch: Partial<Routine>): Routine | nu
   const next: Routine = { ...cur, ...patch, id, updatedAt: new Date().toISOString() };
   db()
     .prepare(
-      `UPDATE routines SET name=?, prompt=?, space=?, connectors=?, trigger=?, condition=?, output=?, enabled=?, updated_at=?, last_run=?, next_run=?, last_status=? WHERE id=?`,
+      `UPDATE routines SET name=?, prompt=?, space=?, connectors=?, grants=?, trigger=?, condition=?, output=?, enabled=?, updated_at=?, last_run=?, next_run=?, last_status=? WHERE id=?`,
     )
     .run(
       next.name,
       next.prompt,
       next.space,
       JSON.stringify(next.connectors),
+      next.grants?.length ? JSON.stringify(next.grants) : null,
       JSON.stringify(next.trigger),
       next.condition ? JSON.stringify(next.condition) : null,
       JSON.stringify(next.output),

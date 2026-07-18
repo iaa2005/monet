@@ -106,6 +106,12 @@ const inputSchema = lazySchema(() =>
       .describe(
         "Connector ids the routine may use. Empty = the default toolset. Scope it to what the task needs.",
       ),
+    grants: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Connector action ids granted for unattended use (e.g. chat.send, mail.send). Without a grant, ask-level actions are DENIED when the routine fires. Destructive actions can never be granted. Confirm each grant with the user.",
+      ),
     condition: z
       .string()
       .optional()
@@ -150,9 +156,10 @@ export const CreateRoutineTool = buildTool({
           "instruction — a routine starts with an empty conversation, so it",
           "cannot refer to “this chat” or anything discussed here. Scope",
           "`connectors` to what the task actually needs. Routines run",
-          "unattended with tools pre-approved, so confirm the schedule and the",
-          "task with the user before creating one, and never create one they",
-          "didn't ask for.",
+          "unattended: read actions work, but ask-level actions (send a",
+          "message, send mail, upload) are DENIED unless listed in `grants` —",
+          "confirm each grant, the schedule and the task with the user before",
+          "creating one, and never create one they didn't ask for.",
         ].join(" "),
       ),
       // Spelled out because the model otherwise guesses, and guesses wrong: it
@@ -237,6 +244,30 @@ export const CreateRoutineTool = buildTool({
         },
       };
 
+    // Grants: must name real actions, and never destructive ones — an
+    // unattended run with a standing right to delete is not a thing we mint.
+    if (input.grants?.length) {
+      const { findAction } = await import("../connectors/services/types.js");
+      const bogus = input.grants.filter((g) => !findAction(g));
+      if (bogus.length > 0)
+        return {
+          data: {
+            text: `Unknown action id(s): ${bogus.join(", ")}. Grants use "<capability>.<op>" ids like chat.send or mail.send.`,
+            isError: true,
+          },
+        };
+      const destructive = input.grants.filter(
+        (g) => findAction(g)?.access === "destructive",
+      );
+      if (destructive.length > 0)
+        return {
+          data: {
+            text: `Destructive actions can't be granted to unattended runs: ${destructive.join(", ")}.`,
+            isError: true,
+          },
+        };
+    }
+
     const space =
       input.space ?? ((context as { space?: string }).space === "home" ? "home" : "code");
 
@@ -245,6 +276,7 @@ export const CreateRoutineTool = buildTool({
       prompt: input.prompt,
       space,
       connectors: input.connectors ?? [],
+      grants: input.grants,
       trigger: {
         kind,
         ...(kind === "schedule" ? { cron: input.cron } : {}),
@@ -286,6 +318,9 @@ export const CreateRoutineTool = buildTool({
         input.connectors?.length
           ? `Connectors: ${input.connectors.map(label).join(", ")}.`
           : "Connectors: default toolset.",
+        input.grants?.length
+          ? `Granted unattended: ${input.grants.join(", ")}.`
+          : "No write actions granted — ask-level actions will be denied when it fires.",
         input.condition ? `Only when: ${input.condition}` : "",
         `Manage it in Routines.`,
       ].filter(Boolean);

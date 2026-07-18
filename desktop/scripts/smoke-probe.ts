@@ -356,6 +356,7 @@ async function main() {
     'yandex-calendar': 'YandexCalendar',
     'yandex-contacts': 'YandexContacts',
     telegram: 'Telegram',
+    'telegram-bot': 'TelegramBot',
     github: 'GitHub',
     notion: 'Notion',
     slack: 'Slack',
@@ -378,6 +379,7 @@ async function main() {
     'yandex-contacts': 'Yandex Contacts',
     github: 'GitHub',
     telegram: 'Telegram',
+    'telegram-bot': 'Telegram Bot',
   }
   const badDisplay = SERVICES.filter(
     sv => DISPLAY_FOR[sv.id] && displayNameOf(sv) !== DISPLAY_FOR[sv.id],
