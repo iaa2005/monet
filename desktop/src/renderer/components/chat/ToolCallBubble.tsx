@@ -181,10 +181,10 @@ function StatusIcon({ status }: { status: ToolCall["status"] }): JSX.Element {
       return <Loader2 className="size-3.5 animate-spin text-foreground" />;
     case "done":
       return (
-        <Check className="size-3.5 text-emerald-600 dark:text-emerald-500" />
+        <Check className="size-3.5 text-green-text" />
       );
     case "error":
-      return <X className="size-3.5 text-destructive" />;
+      return <X className="size-3.5 text-red-text" />;
   }
 }
 
@@ -370,10 +370,10 @@ function ToolRow({
         {!fp && !preview && <span className="flex-1" />}
         {stats && (stats.added > 0 || stats.removed > 0) && (
           <span className="shrink-0 font-mono text-[11px]">
-            <span className="text-diff-add-text">
+            <span className="text-green-text">
               +{stats.added}
             </span>{" "}
-            <span className="text-diff-remove-text">
+            <span className="text-red-text">
               -{stats.removed}
             </span>
           </span>
@@ -512,10 +512,10 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }): JSX.Element {
         )}
         {stats && (stats.added > 0 || stats.removed > 0) && (
           <span className="shrink-0 font-mono text-[11px]">
-            <span className="text-diff-add-text">
+            <span className="text-green-text">
               +{stats.added}
             </span>{" "}
-            <span className="text-diff-remove-text">
+            <span className="text-red-text">
               -{stats.removed}
             </span>
           </span>
@@ -642,7 +642,7 @@ function SubAgentBubble({ toolCall }: { toolCall: ToolCall }): JSX.Element {
         {running ? (
           <Loader2 className="size-3.5 animate-spin text-foreground" />
         ) : (
-          <Check className="size-3.5 text-emerald-600 dark:text-emerald-500" />
+          <Check className="size-3.5 text-green-text" />
         )}
         {inOverlay ? (
           <button

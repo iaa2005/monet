@@ -613,7 +613,7 @@ function CreditsWidget({ apiKey }: { apiKey: string }): JSX.Element {
   return (
     <div className="mt-1.5 flex items-center gap-2 pl-3.5 text-[11px]">
       {info.isFreeTier && (
-        <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+        <span className="rounded-full bg-green-bg px-1.5 py-0.5 text-[10px] font-medium text-green-text">
           free tier
         </span>
       )}
@@ -725,7 +725,7 @@ export function ProviderSettings({
                 <span
                   className={cn(
                     "size-1.5 shrink-0 rounded-full",
-                    p.isActive ? "bg-emerald-500" : "bg-muted-foreground/30",
+                    p.isActive ? "bg-green-text" : "bg-muted-foreground/30",
                   )}
                 />
                 <span className="text-sm font-medium">{p.name}</span>

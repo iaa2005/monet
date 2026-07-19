@@ -118,16 +118,16 @@ export function DiffView({
       key={key}
       className={cn(
         "flex min-w-0",
-        row.kind === "added" && "bg-diff-add-bg",
-        row.kind === "removed" && "bg-diff-remove-bg",
+        row.kind === "added" && "bg-green-bg",
+        row.kind === "removed" && "bg-red-bg",
       )}
     >
       <span
         aria-hidden
         className={cn(
           "w-[3px] shrink-0 self-stretch",
-          row.kind === "added" && "bg-diff-add-border",
-          row.kind === "removed" && "bg-diff-remove-border",
+          row.kind === "added" && "bg-green-border",
+          row.kind === "removed" && "bg-red-border",
         )}
       />
       <span className="w-10 shrink-0 select-none px-1.5 text-right tabular-nums text-muted-foreground/50">
@@ -137,8 +137,8 @@ export function DiffView({
         aria-hidden
         className={cn(
           "w-3 shrink-0 select-none text-center",
-          row.kind === "added" && "text-diff-add-text",
-          row.kind === "removed" && "text-diff-remove-text",
+          row.kind === "added" && "text-green-text",
+          row.kind === "removed" && "text-red-text",
           row.kind === "normal" && "text-transparent",
         )}
       >

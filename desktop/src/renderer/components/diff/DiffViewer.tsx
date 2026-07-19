@@ -38,9 +38,9 @@ function FileDiff({ file, onAccept, onReject }: {
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate font-mono text-sm font-medium">{file.path}</span>
           <span className="shrink-0 font-mono text-xs">
-            <span className="text-diff-add-text">+{stats.added}</span>
+            <span className="text-green-text">+{stats.added}</span>
             {' '}
-            <span className="text-diff-remove-text">-{stats.removed}</span>
+            <span className="text-red-text">-{stats.removed}</span>
           </span>
         </div>
         <div className="flex shrink-0 gap-1">

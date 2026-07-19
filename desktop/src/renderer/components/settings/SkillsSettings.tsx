@@ -651,7 +651,7 @@ function SkillStoreSection({
                 )}
               </div>
               {s.installed ? (
-                <span className="shrink-0 text-xs text-emerald-600 dark:text-emerald-500">
+                <span className="shrink-0 text-xs text-green-text">
                   Installed
                 </span>
               ) : (

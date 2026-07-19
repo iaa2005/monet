@@ -55,9 +55,9 @@ export function KindIcon({
   if (kind === "video")
     return <Video className={`${className} shrink-0 text-orange-500`} />;
   if (kind === "file")
-    return <Paperclip className={`${className} shrink-0 text-rose-500`} />;
+    return <Paperclip className={`${className} shrink-0 text-red-text`} />;
   if (kind === "image")
-    return <ImageIcon className={`${className} shrink-0 text-emerald-500`} />;
+    return <ImageIcon className={`${className} shrink-0 text-green-text`} />;
   return <FileText className={`${className} shrink-0 text-muted-foreground`} />;
 }
 

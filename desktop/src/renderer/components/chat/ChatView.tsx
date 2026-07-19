@@ -194,8 +194,8 @@ function RewindControl({ messageId }: { messageId: string }): JSX.Element {
         {hasChanges && (
           <span className="ml-0.5 tabular-nums text-[10px] text-muted-foreground/80">
             {stat!.files}f{" "}
-            <span className="text-emerald-500">+{stat!.insertions}</span>
-            <span className="text-rose-500"> -{stat!.deletions}</span>
+            <span className="text-green-text">+{stat!.insertions}</span>
+            <span className="text-red-text"> -{stat!.deletions}</span>
           </span>
         )}
       </button>

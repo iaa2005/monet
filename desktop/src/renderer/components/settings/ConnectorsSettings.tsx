@@ -13,9 +13,9 @@ function api(): ElectronAPI | undefined {
 }
 
 const STATUS_STYLE: Record<McpServerStatus["status"], string> = {
-  connected: "bg-emerald-500",
+  connected: "bg-green-text",
   connecting: "bg-amber-500",
-  error: "bg-destructive",
+  error: "bg-red-text",
   disabled: "bg-muted-foreground/40",
 };
 

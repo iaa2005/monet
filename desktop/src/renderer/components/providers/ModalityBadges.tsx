@@ -24,9 +24,9 @@ export const MODALITY_META: {
   Icon: LucideIcon;
 }[] = [
   { id: "text", label: "Text", color: "text-sky-500", Icon: Type },
-  { id: "image", label: "Images", color: "text-emerald-500", Icon: ImageIcon },
+  { id: "image", label: "Images", color: "text-green-text", Icon: ImageIcon },
   { id: "audio", label: "Audio", color: "text-violet-500", Icon: AudioLines },
-  { id: "file", label: "Files", color: "text-rose-500", Icon: Paperclip },
+  { id: "file", label: "Files", color: "text-red-text", Icon: Paperclip },
   { id: "video", label: "Video", color: "text-orange-500", Icon: Video },
 ];
 

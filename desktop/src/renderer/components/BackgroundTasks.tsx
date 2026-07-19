@@ -56,11 +56,6 @@ export function BackgroundTasks({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  // Nothing left to show → collapse.
-  useEffect(() => {
-    if (open && count === 0) setOpen(false);
-  }, [open, count]);
-
   return (
     <div ref={rootRef} className="app-no-drag relative">
       <button
@@ -75,13 +70,13 @@ export function BackgroundTasks({
         className={cn(
           "relative flex size-7 items-center justify-center rounded-md transition-colors",
           count
-            ? "text-emerald-500 hover:bg-emerald-500/10"
+            ? "text-green-text hover:bg-green-bg"
             : "text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]",
         )}
       >
         <Activity className="size-4" />
         {count > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex min-w-[14px] items-center justify-center rounded-full bg-emerald-500 px-[3px] text-[9px] font-semibold leading-[14px] text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex min-w-[14px] items-center justify-center rounded-full bg-green-text px-[3px] text-[9px] font-semibold leading-[14px] text-white">
             {count}
           </span>
         )}
@@ -104,7 +99,7 @@ export function BackgroundTasks({
                   key={id}
                   className="group/task flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                 >
-                  <Loader2 className="size-3.5 shrink-0 animate-spin text-emerald-500" />
+                  <Loader2 className="size-3.5 shrink-0 animate-spin text-green-text" />
                   <button
                     type="button"
                     onClick={() => {

@@ -545,7 +545,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/[0.1]">
               <div
                 ref={barRef}
-                className="h-full w-0 rounded-full bg-emerald-500 transition-[width] duration-75"
+                className="h-full w-0 rounded-full bg-green-text transition-[width] duration-75"
               />
             </div>
           </div>

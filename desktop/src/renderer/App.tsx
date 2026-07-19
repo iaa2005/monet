@@ -219,6 +219,7 @@ export default function App(): JSX.Element {
   const [renameTargetId, setRenameTargetId] = useState<string | undefined>();
   const [rotateMenuOpen, setRotateMenuOpen] = useState(false);
   const [incognitoCloseOpen, setIncognitoCloseOpen] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [transcriptMode, setTranscriptMode] =
     useState<TranscriptMode>("normal");
   const [terminalOpen, setTerminalOpen] = useState(false);
@@ -1006,7 +1007,7 @@ export default function App(): JSX.Element {
                   onClick={() => {
                     setMenuOpen(false);
                     const id = useChatStore.getState().currentSessionId;
-                    if (id) void handleDeleteSession(id);
+                    if (id) setDeleteConfirmId(id);
                   }}
                 >
                   <Trash2 className="size-4" />
@@ -1483,36 +1484,67 @@ export default function App(): JSX.Element {
         </div>
       </Modal>
 
-      <Modal open={renameOpen} onClose={() => setRenameOpen(false)}>
-        <div className="p-5">
-          <h3 className="text-base font-semibold">Rename chat</h3>
-          <input
-            autoFocus
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void handleRename();
-              if (e.key === "Escape") setRenameOpen(false);
+      <Modal
+        open={deleteConfirmId !== null}
+        onClose={() => setDeleteConfirmId(null)}
+        title="Delete chat"
+      >
+        <p className="text-sm text-muted-foreground">
+          Are you sure you want to delete this chat? This action cannot be undone.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setDeleteConfirmId(null)}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const id = deleteConfirmId;
+              setDeleteConfirmId(null);
+              if (id) void handleDeleteSession(id);
             }}
-            placeholder="Chat name"
-            className="mt-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-foreground/20"
-          />
-          <div className="mt-4 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setRenameOpen(false)}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleRename()}
-              className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-            >
-              Save
-            </button>
-          </div>
+            className="rounded-lg bg-red-text px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          >
+            Delete
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={renameOpen}
+        onClose={() => setRenameOpen(false)}
+        title="Rename chat"
+      >
+        <input
+          autoFocus
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void handleRename();
+            if (e.key === "Escape") setRenameOpen(false);
+          }}
+          placeholder="Chat name"
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-foreground/20"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setRenameOpen(false)}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleRename()}
+            className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            Save
+          </button>
         </div>
       </Modal>
 

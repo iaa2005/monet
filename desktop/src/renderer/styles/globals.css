@@ -54,13 +54,13 @@
     --destructive: hsl(0 56.2% 45.4%);
     --destructive-foreground: hsl(0 0% 100%);
 
-    /* Diff colors — one place to change them app-wide */
-    --diff-add-bg: hsl(152 76% 52% / 0.1);
-    --diff-add-text: hsl(152 76% 24%);
-    --diff-add-border: hsl(152 55% 42%);
-    --diff-remove-bg: hsl(0 72% 51% / 0.1);
-    --diff-remove-text: hsl(0 72% 33%);
-    --diff-remove-border: hsl(0 70% 52%);
+    /* Status colors — one place to change them app-wide */
+    --green-bg: hsl(140 84% 51% / 0.12);
+    --green-text: hsl(140 84% 51%);
+    --green-border: hsl(140 84% 51% / 0.4);
+    --red-bg: hsl(341 88% 51% / 0.12);
+    --red-text: hsl(341 88% 51%);
+    --red-border: hsl(341 88% 51% / 0.4);
 
     --border: hsl(48 15% 88%);
     --input: hsl(48 15% 88%);
@@ -109,12 +109,12 @@
     --destructive: hsl(0 67% 59.6%);
     --destructive-foreground: hsl(0 0% 100%);
 
-    --diff-add-bg: hsl(152 76% 52% / 0.1);
-    --diff-add-text: hsl(152 76% 80%);
-    --diff-add-border: hsl(152 50% 50%);
-    --diff-remove-bg: hsl(0 72% 51% / 0.1);
-    --diff-remove-text: hsl(0 72% 80%);
-    --diff-remove-border: hsl(0 65% 58%);
+    --green-bg: hsl(140 84% 51% / 0.12);
+    --green-text: hsl(140 84% 51%);
+    --green-border: hsl(140 84% 51% / 0.4);
+    --red-bg: hsl(341 88% 51% / 0.12);
+    --red-text: hsl(341 88% 51%);
+    --red-border: hsl(341 88% 51% / 0.4);
 
     --border: hsl(0 0% 100% / 0.1);
     --input: hsl(0 0% 100% / 0.14);
@@ -147,12 +147,12 @@
     --color-accent-foreground: var(--accent-foreground);
     --color-destructive: var(--destructive);
     --color-destructive-foreground: var(--destructive-foreground);
-    --color-diff-add-bg: var(--diff-add-bg);
-    --color-diff-add-text: var(--diff-add-text);
-    --color-diff-add-border: var(--diff-add-border);
-    --color-diff-remove-bg: var(--diff-remove-bg);
-    --color-diff-remove-text: var(--diff-remove-text);
-    --color-diff-remove-border: var(--diff-remove-border);
+    --color-green-bg: var(--green-bg);
+    --color-green-text: var(--green-text);
+    --color-green-border: var(--green-border);
+    --color-red-bg: var(--red-bg);
+    --color-red-text: var(--red-text);
+    --color-red-border: var(--red-border);
     --color-border: var(--border);
     --color-input: var(--input);
     --color-ring: var(--ring);

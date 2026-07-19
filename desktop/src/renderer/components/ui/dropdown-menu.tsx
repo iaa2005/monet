@@ -58,7 +58,7 @@ function DropdownMenuItem({
       className={cn(
         "relative flex cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1 text-[13px] outline-none transition-colors select-none",
         "focus:bg-accent focus:text-accent-foreground",
-        "data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10",
+        "data-[variant=destructive]:text-red-text data-[variant=destructive]:focus:bg-red-bg data-[variant=destructive]:[&_svg]:text-red-text",
         "data-[inset]:pl-8 [&_svg]:size-3.5 [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
         className,
       )}

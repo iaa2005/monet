@@ -346,7 +346,7 @@ function SandboxSection(): JSX.Element {
       )}
 
       {engine === "docker" && podmanReady === true && (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2.5 text-[13px] text-emerald-800 dark:text-emerald-200">
+        <div className="rounded-xl border border-green-border bg-green-bg px-3 py-2.5 text-[13px] text-green-text">
           Podman is ready. Run Python is available in Home sessions.
         </div>
       )}

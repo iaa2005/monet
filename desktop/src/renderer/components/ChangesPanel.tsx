@@ -120,8 +120,8 @@ export function ChangesPanel(): JSX.Element {
                 {f.path}
               </span>
               <span className="shrink-0 text-[11px]">
-                <span className="text-emerald-500">+{f.added}</span>{" "}
-                <span className="text-destructive">−{f.removed}</span>
+                <span className="text-green-text">+{f.added}</span>{" "}
+                <span className="text-red-text">−{f.removed}</span>
               </span>
             </div>
             <CodeBlock code={f.body} language="diff" bare maxHeight={420} />
@@ -135,7 +135,7 @@ export function ChangesPanel(): JSX.Element {
             {untracked.map((p) => (
               <div
                 key={p}
-                className="truncate py-0.5 font-mono text-xs text-emerald-500"
+                className="truncate py-0.5 font-mono text-xs text-green-text"
               >
                 + {p}
               </div>

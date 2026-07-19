@@ -203,7 +203,7 @@ export function GitCard(): JSX.Element | null {
 
         {note && (
           <span className="mr-1 flex items-center gap-1 truncate text-[11px] text-muted-foreground">
-            <Check className="size-3 text-emerald-500" />
+            <Check className="size-3 text-green-text" />
             {note}
           </span>
         )}
@@ -216,8 +216,8 @@ export function GitCard(): JSX.Element | null {
             onClick={() => useChatStore.getState().requestOpenChanges()}
             className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 font-mono text-[11px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
           >
-            <span className="text-emerald-500">+{info.added ?? 0}</span>
-            <span className="text-destructive">−{info.removed ?? 0}</span>
+            <span className="text-green-text">+{info.added ?? 0}</span>
+            <span className="text-red-text">−{info.removed ?? 0}</span>
             {(info.untracked ?? 0) > 0 && (
               <span className="text-muted-foreground">
                 ·{info.untracked} new

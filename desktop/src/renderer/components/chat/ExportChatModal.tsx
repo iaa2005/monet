@@ -70,7 +70,7 @@ export function ExportChatModal({
       {saved ? (
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-sm">
-            <Check className="size-4 text-emerald-500" />
+            <Check className="size-4 text-green-text" />
             Saved
           </div>
           <p className="truncate font-mono text-xs text-muted-foreground" title={saved}>

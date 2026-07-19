@@ -119,7 +119,7 @@ export function AdvancedSettings(): JSX.Element {
             onClick={() => void reload()}
             className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
           >
-            {reloaded ? <Check className="size-4 text-emerald-500" /> : <RotateCcw className="size-4" />}
+            {reloaded ? <Check className="size-4 text-green-text" /> : <RotateCcw className="size-4" />}
             {reloaded ? "Reloaded" : "Reload prompts"}
           </button>
         </div>

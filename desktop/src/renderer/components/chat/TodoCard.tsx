@@ -37,7 +37,7 @@ function latestTodos(messages: ChatMessage[]): TodoItem[] | null {
 
 function StatusIcon({ status }: { status: string }): JSX.Element {
   if (status === "completed")
-    return <Check className="size-3.5 shrink-0 text-emerald-500" />;
+    return <Check className="size-3.5 shrink-0 text-green-text" />;
   if (status === "in_progress")
     return (
       <Loader2 className="size-3.5 shrink-0 animate-spin text-link" />
@@ -83,7 +83,7 @@ export function TodoCard({
           {/* Mini progress bar */}
           <span className="ml-auto h-1 w-16 shrink-0 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/[0.1]">
             <span
-              className="block h-full rounded-full bg-emerald-500 transition-[width]"
+              className="block h-full rounded-full bg-green-text transition-[width]"
               style={{ width: `${Math.round((done / todos.length) * 100)}%` }}
             />
           </span>

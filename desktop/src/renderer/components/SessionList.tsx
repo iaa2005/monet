@@ -272,7 +272,7 @@ export function SessionList({
                     className={cn(
                       "size-1.5 shrink-0 rounded-full",
                       runningIds.has(s.id)
-                        ? "animate-pulse bg-emerald-500"
+                        ? "animate-pulse bg-green-text"
                         : active
                           ? "bg-link"
                           : "bg-transparent",
@@ -393,7 +393,7 @@ export function SessionList({
                           prev.filter((x) => x.id !== s.id),
                         );
                       }}
-                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-destructive transition-colors hover:bg-destructive/10"
+                      className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-red-text transition-colors hover:bg-red-bg"
                     >
                       <Trash2 className="size-4" />
                       Delete

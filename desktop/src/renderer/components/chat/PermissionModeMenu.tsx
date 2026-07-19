@@ -73,7 +73,7 @@ export const PERMISSION_MODES: ModeDef[] = [
     label: "Auto mode",
     hint: "Code Monet decides what's safe to run",
     icon: Sparkles,
-    tone: "text-emerald-600 dark:text-emerald-500",
+    tone: "text-green-text",
     confirm: "auto",
   },
   {
@@ -81,7 +81,7 @@ export const PERMISSION_MODES: ModeDef[] = [
     label: "Bypass permissions",
     hint: "Run everything without asking",
     icon: ShieldAlert,
-    tone: "text-destructive",
+    tone: "text-red-text",
     confirm: "bypass",
   },
 ];
@@ -101,7 +101,7 @@ export const HOME_MODES: ModeDef[] = [
     label: "Skip all approvals",
     hint: "Code Monet never pauses, even for unsafe actions.",
     icon: AlertTriangle,
-    tone: "text-destructive",
+    tone: "text-red-text",
     confirm: "bypass",
   },
 ];
@@ -183,7 +183,7 @@ export function PermissionModeMenu({
         onClose={() => setConfirm(null)}
         title={
           <span className="flex items-center gap-2">
-            <Sparkles className="size-4 text-emerald-600 dark:text-emerald-500" />
+            <Sparkles className="size-4 text-green-text" />
             Enable auto mode?
           </span>
         }
@@ -221,7 +221,7 @@ export function PermissionModeMenu({
         onClose={() => setConfirm(null)}
         title={
           <span className="flex items-center gap-2">
-            <AlertTriangle className="size-4 text-destructive" />
+            <AlertTriangle className="size-4 text-red-text" />
             Bypass all permissions?
           </span>
         }

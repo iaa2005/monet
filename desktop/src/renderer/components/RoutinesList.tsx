@@ -279,7 +279,7 @@ export function RoutinesList({
             <button
               type="button"
               onClick={() => openMenuId && handleDelete(openMenuId)}
-              className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-destructive transition-colors hover:bg-destructive/10"
+              className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-red-text transition-colors hover:bg-red-bg"
             >
               <Trash2 className="size-4" />
               Delete

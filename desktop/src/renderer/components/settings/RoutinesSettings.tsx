@@ -272,8 +272,8 @@ export function RoutinesSettings({
                     <span
                       className={cn(
                         "ml-1 rounded px-1 py-0.5 text-[10px]",
-                        r.lastStatus === "ok" && "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
-                        r.lastStatus === "error" && "bg-rose-500/15 text-rose-600 dark:text-rose-300",
+                        r.lastStatus === "ok" && "bg-green-bg text-green-text",
+                        r.lastStatus === "error" && "bg-red-bg text-red-text",
                         r.lastStatus === "skipped" && "bg-muted text-muted-foreground",
                       )}
                     >
