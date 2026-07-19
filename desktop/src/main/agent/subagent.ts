@@ -17,7 +17,7 @@ import type { LLMContentBlock, LLMMessage } from "../llm/adapter.js";
 import type { AgentDefinition } from "./agent-defs.js";
 import { getSubAgentPrompt } from "./prompts-vendor.js";
 import { executeVendorTool, getVendorApiTools } from "./vendor-tools.js";
-import { getCwd } from "@vendor/utils/cwd.js";
+import { runWithCwdOverride } from "@vendor/utils/cwd.js";
 
 const SUBAGENT_MAX_TURNS = 20;
 
@@ -42,7 +42,7 @@ export type SubAgentUpdate =
     }
   | { kind: "done" };
 
-export async function runSubAgent(opts: {
+type SubAgentOptions = {
   prompt: string;
   model: string;
   /** The resolved agent type: system prompt, tool filter, model/effort. */
@@ -50,8 +50,16 @@ export async function runSubAgent(opts: {
   signal?: AbortSignal;
   /** Live progress channel — text deltas and child tool calls. */
   emit?: (update: SubAgentUpdate) => void;
-}): Promise<string> {
-  const { prompt, def, signal, emit } = opts;
+  /** The parent's resolved workspace, passed explicitly to the child run. */
+  cwd: string;
+};
+
+export function runSubAgent(opts: SubAgentOptions): Promise<string> {
+  return runWithCwdOverride(opts.cwd, () => runSubAgentWithCwd(opts));
+}
+
+async function runSubAgentWithCwd(opts: SubAgentOptions): Promise<string> {
+  const { prompt, def, signal, emit, cwd } = opts;
 
   const provider = getProviderManager().getActive();
   if (!provider) return "Sub-agent error: no active provider configured.";
@@ -77,10 +85,8 @@ export async function runSubAgent(opts: {
     const deny = new Set(def.disallowedTools);
     tools = tools.filter((t) => !deny.has(t.name));
   }
-  // getCwd() (not the workspace global) so a child inherits the SAME per-run
-  // directory as its parent — the run executes inside the parent's cwd override.
   const system = (def?.systemPrompt || getSubAgentPrompt())
-    + `\n\n# Environment\n- Working directory: ${getCwd()}`
+    + `\n\n# Environment\n- Working directory: ${cwd}`
 
   const messages: LLMMessage[] = [{ role: "user", content: prompt }];
   const sessionId = `sub:${Math.random().toString(36).slice(2)}`;

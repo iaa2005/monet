@@ -26,6 +26,7 @@ import type { EffortLevel } from "../provider/types.js";
 import { requestPermissionFromRenderer } from "./permissions.js";
 import { askUserFromRenderer } from "./ask-user.js";
 import { tunablePrompt } from "../prompts/index.js";
+import { getWorkspacePath } from "./workspace.js";
 import type { LLMContentBlock } from "../llm/adapter.js";
 
 interface ChatAttachment {
@@ -268,6 +269,7 @@ export function registerChatIPC(): void {
           requestPermission: (ask) => requestPermissionFromRenderer(win, ask),
           askUser: (questions) => askUserFromRenderer(win, questions),
           space: payload.space,
+          cwd: getWorkspacePath(),
           effort: payload.effort,
         },
       );

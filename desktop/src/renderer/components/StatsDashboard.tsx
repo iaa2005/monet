@@ -87,7 +87,7 @@ function cellStyle(
   future: boolean,
   pixelColor: string | null,
 ): React.CSSProperties {
-  const color = pixelColor ?? "var(--sky-500)";
+  const color = pixelColor ?? "#0ea5e9";
   if (SHOW_PAINTING) return { backgroundColor: color, opacity: 1 };
   if (future) return { background: "transparent" };
   const q = count <= 0 ? 0 : count / Math.max(1, max);

@@ -10,6 +10,7 @@
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
+import { getCwd } from "@vendor/utils/cwd.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import {
   describeAgentsForPrompt,
@@ -22,11 +23,10 @@ import {
 } from "./bg-agents.js";
 import { runSubAgent, type SubAgentUpdate } from "./subagent.js";
 
-// The workspace is the process cwd (workspace:set chdir's into it). Read it
-// here rather than importing the workspace IPC module, which would drag the
-// whole IPC/artifacts/computer graph into every tool bundle.
+// Read the effective cwd from the vendor context so packaged builds and
+// concurrent runs use the selected workspace rather than the install folder.
 function workspaceDir(): string {
-  return process.cwd();
+  return getCwd();
 }
 
 const inputSchema = lazySchema(() =>
@@ -101,10 +101,11 @@ export const AgentTaskTool = buildTool({
     context: ToolUseContext,
   ) {
     const model = context.options.mainLoopModel;
+    const cwd = workspaceDir();
     const emit = (context as Record<string, unknown>)._subAgentEmit as
       | ((update: SubAgentUpdate) => void)
       | undefined;
-    const def = resolveAgentDefinition(subagent_type, workspaceDir());
+    const def = resolveAgentDefinition(subagent_type, cwd);
 
     // Background: run detached under its own controller (a new user send
     // aborts the turn's signal, but background work must survive that), report
@@ -116,7 +117,14 @@ export const AgentTaskTool = buildTool({
       const controller = new AbortController();
       registerBgAgent(sessionId, controller);
       emit?.({ kind: "start", agentType: def.type, description, background: true });
-      void runSubAgent({ prompt, model, def, signal: controller.signal, emit })
+      void runSubAgent({
+        prompt,
+        model,
+        def,
+        signal: controller.signal,
+        emit,
+        cwd,
+      })
         .then((report) => {
           // Queue BEFORE notifying the UI so an idle auto-continue that fires
           // on the "done" event always finds the result in the pending queue.
@@ -146,7 +154,7 @@ export const AgentTaskTool = buildTool({
     const signal = context.abortController.signal;
     emit?.({ kind: "start", agentType: def.type, description });
     try {
-      const report = await runSubAgent({ prompt, model, def, signal, emit });
+      const report = await runSubAgent({ prompt, model, def, signal, emit, cwd });
       return { data: { report } };
     } finally {
       emit?.({ kind: "done" });
