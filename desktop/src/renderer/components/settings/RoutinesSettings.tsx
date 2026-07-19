@@ -166,7 +166,7 @@ export function RoutinesSettings({
       </div>
 
       {/* What do you want automated? */}
-      <div className="glass-panel rounded-xl border border-border p-3">
+      <div className="glass-panel rounded-xl border border-border p-3 bg-card">
         <textarea
           value={desc}
           onChange={(e) => setDesc(e.target.value)}
@@ -208,7 +208,7 @@ export function RoutinesSettings({
           {routines.map((r) => (
             <div
               key={r.id}
-              className="glass-panel flex items-center gap-3 rounded-xl border border-border p-3"
+              className="glass-panel flex items-center gap-3 rounded-xl border border-border p-3 bg-card"
             >
               <Switch
                 checked={r.enabled}
@@ -324,7 +324,7 @@ export function RoutinesSettings({
               key={t.name}
               type="button"
               onClick={() => fromTemplate(t)}
-              className="glass-panel glass-hover rounded-xl border border-border p-3 text-left transition-colors min-h-30 flex flex-col justify-between"
+              className="glass-panel glass-hover rounded-xl border border-border p-3 text-left transition-colors min-h-30 flex flex-col justify-between bg-card"
             >
               <div>
                 <div className="flex items-center gap-2 text-sm font-medium">
