@@ -9,11 +9,14 @@
 
 import { useEffect, useState } from "react";
 import {
+  ChevronDown,
   Eye,
   EyeOff,
   Pencil,
   Plus,
   Power,
+  RefreshCw,
+  Search,
   Trash2,
   X,
 } from "lucide-react";
@@ -28,6 +31,8 @@ import {
   type ProviderModel,
 } from "@/stores/providerStore";
 import { ModalityBadges, ModalityToggles } from "./ModalityBadges";
+import { OpenRouterBrowser } from "./OpenRouterBrowser";
+import type { ORKeyInfo } from "@/types/electron";
 
 const KIND_LABELS: Record<ProviderKind, string> = {
   anthropic: "Anthropic",
@@ -121,6 +126,10 @@ function ProviderModal({
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showBrowser, setShowBrowser] = useState(false);
+  // OpenRouter rows keep routing behind a per-model "Advanced" disclosure —
+  // the default experience is "added it, done", no extra inputs.
+  const [advancedModels, setAdvancedModels] = useState<Set<string>>(new Set());
 
   const patchModel = (id: string, patch: Partial<ProviderModel>): void =>
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)));
@@ -306,71 +315,172 @@ function ProviderModal({
                     </button>
                   </div>
 
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="text-[11px] text-muted-foreground">
-                      Accepts
-                    </span>
-                    <ModalityToggles
-                      value={m.modalities}
-                      onChange={(next) =>
-                        patchModel(m.id, { modalities: next })
-                      }
-                    />
-                  </div>
+                  {kind !== "openrouter" && (
+                    <>
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-[11px] text-muted-foreground">
+                          Accepts
+                        </span>
+                        <ModalityToggles
+                          value={m.modalities}
+                          onChange={(next) =>
+                            patchModel(m.id, { modalities: next })
+                          }
+                        />
+                      </div>
 
-                  <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px] text-muted-foreground">
-                    <Switch
-                      className="h-5 w-9 [&>span]:size-4"
-                      checked={m.supportsEffort ?? false}
-                      onChange={(v) => patchModel(m.id, { supportsEffort: v })}
-                    />
-                    Supports reasoning effort — shows the composer's Faster↔Smarter
-                    control
-                  </label>
+                      <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px] text-muted-foreground">
+                        <Switch
+                          className="h-5 w-9 [&>span]:size-4"
+                          checked={m.supportsEffort ?? false}
+                          onChange={(v) =>
+                            patchModel(m.id, { supportsEffort: v })
+                          }
+                        />
+                        Supports reasoning effort — shows the composer's
+                        Faster↔Smarter control
+                      </label>
 
-                  <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
-                    <NumField
-                      label="Context Length"
-                      value={m.contextLength}
-                      onChange={(v) => patchModel(m.id, { contextLength: v })}
-                      placeholder="200000"
-                    />
-                    <NumField
-                      label="Max Input Tokens"
-                      value={m.maxInputTokens}
-                      onChange={(v) => patchModel(m.id, { maxInputTokens: v })}
-                      placeholder="optional"
-                    />
-                    <NumField
-                      label="Max Output Tokens"
-                      value={m.maxOutputTokens}
-                      onChange={(v) => patchModel(m.id, { maxOutputTokens: v })}
-                      placeholder="16000"
-                    />
-                    <NumField
-                      label="Temperature"
-                      value={m.temperature}
-                      onChange={(v) => patchModel(m.id, { temperature: v })}
-                      placeholder="default"
-                      step={0.1}
-                    />
-                  </div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+                        <NumField
+                          label="Context Length"
+                          value={m.contextLength}
+                          onChange={(v) => patchModel(m.id, { contextLength: v })}
+                          placeholder="200000"
+                        />
+                        <NumField
+                          label="Max Input Tokens"
+                          value={m.maxInputTokens}
+                          onChange={(v) => patchModel(m.id, { maxInputTokens: v })}
+                          placeholder="optional"
+                        />
+                        <NumField
+                          label="Max Output Tokens"
+                          value={m.maxOutputTokens}
+                          onChange={(v) =>
+                            patchModel(m.id, { maxOutputTokens: v })
+                          }
+                          placeholder="16000"
+                        />
+                        <NumField
+                          label="Temperature"
+                          value={m.temperature}
+                          onChange={(v) => patchModel(m.id, { temperature: v })}
+                          placeholder="default"
+                          step={0.1}
+                        />
+                      </div>
 
-                  <div className="mt-2">
-                    <label className="text-[11px] text-muted-foreground">
-                      Base URL override (inherits the provider URL)
-                    </label>
-                    <input
-                      value={m.baseURL ?? ""}
-                      onChange={(e) =>
-                        patchModel(m.id, {
-                          baseURL: e.target.value || undefined,
-                        })
-                      }
-                      className={cn(inputXs, "font-mono")}
-                      placeholder={baseURL || "https://…"}
-                    />
-                  </div>
+                      <div className="mt-2">
+                        <label className="text-[11px] text-muted-foreground">
+                          Base URL override (inherits the provider URL)
+                        </label>
+                        <input
+                          value={m.baseURL ?? ""}
+                          onChange={(e) =>
+                            patchModel(m.id, {
+                              baseURL: e.target.value || undefined,
+                            })
+                          }
+                          className={cn(inputXs, "font-mono")}
+                          placeholder={baseURL || "https://…"}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {kind === "openrouter" && (
+                    <>
+                      {/* Everything below came from the OpenRouter catalog —
+                          read-only by design: "added it, done". */}
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                        <ModalityBadges modalities={m.modalities} />
+                        {m.supportsEffort && (
+                          <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">
+                            reasoning
+                          </span>
+                        )}
+                        {m.contextLength ? (
+                          <span>{fmtK(m.contextLength)} ctx</span>
+                        ) : null}
+                        {m.maxOutputTokens ? (
+                          <span>{fmtK(m.maxOutputTokens)} out</span>
+                        ) : null}
+                        {m.pricing && (
+                          <span>
+                            ${m.pricing.promptPer1M} in / $
+                            {m.pricing.completionPer1M} out per 1M
+                          </span>
+                        )}
+                        <span className="text-muted-foreground/60">
+                          auto from OpenRouter
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAdvancedModels((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(m.id)) next.delete(m.id);
+                            else next.add(m.id);
+                            return next;
+                          })
+                        }
+                        className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        <ChevronDown
+                          className={cn(
+                            "size-3 transition-transform",
+                            !advancedModels.has(m.id) && "-rotate-90",
+                          )}
+                        />
+                        Advanced routing
+                      </button>
+
+                      {advancedModels.has(m.id) && (
+                        <div className="mt-1.5 space-y-1.5 rounded-lg border border-border/60 p-2">
+                          <div>
+                            <label className="text-[11px] text-muted-foreground">
+                              Prefer specific providers (comma-separated)
+                            </label>
+                            <input
+                              value={(m.routing?.providers ?? []).join(", ")}
+                              onChange={(e) =>
+                                patchModel(m.id, {
+                                  routing: {
+                                    providers: e.target.value
+                                      .split(",")
+                                      .map((s) => s.trim())
+                                      .filter(Boolean),
+                                    allowFallbacks:
+                                      m.routing?.allowFallbacks ?? true,
+                                  },
+                                })
+                              }
+                              className={cn(inputXs, "font-mono")}
+                              placeholder="e.g. Anthropic, Google (empty = auto)"
+                            />
+                          </div>
+                          <label className="flex cursor-pointer items-center gap-2 text-[11px] text-muted-foreground">
+                            <Switch
+                              className="h-5 w-9 [&>span]:size-4"
+                              checked={m.routing?.allowFallbacks ?? true}
+                              onChange={(v) =>
+                                patchModel(m.id, {
+                                  routing: {
+                                    providers: m.routing?.providers ?? [],
+                                    allowFallbacks: v,
+                                  },
+                                })
+                              }
+                            />
+                            Allow fallback to other providers
+                          </label>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               );
             })}
@@ -385,6 +495,21 @@ function ProviderModal({
               <Plus className="size-4" />
               Add model
             </button>
+            {kind === "openrouter" && (apiKey || (isEdit && provider?.apiKey)) && (
+              <button
+                type="button"
+                onClick={() => setShowBrowser(true)}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.04]"
+              >
+                <Search className="size-4" />
+                Browse OpenRouter models
+              </button>
+            )}
+            {kind === "openrouter" && !apiKey && !(isEdit && provider?.apiKey) && (
+              <p className="text-center text-[11px] text-muted-foreground">
+                Enter an API key to enable model browsing
+              </p>
+            )}
           </div>
         </div>
 
@@ -406,6 +531,114 @@ function ProviderModal({
           </button>
         </div>
       </div>
+
+      {showBrowser && kind === "openrouter" && (
+        <OpenRouterBrowser
+          apiKey={apiKey || provider?.apiKey || ""}
+          existingNames={new Set(models.map((m) => m.name))}
+          onAdd={(m) => {
+            setModels((prev) => [...prev, m]);
+          }}
+          onClose={() => setShowBrowser(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Credits Widget ───────────────────────────────────────────────────────
+
+function CreditsWidget({ apiKey }: { apiKey: string }): JSX.Element {
+  const [info, setInfo] = useState<ORKeyInfo | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const fetchInfo = async (): Promise<void> => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await window.electronAPI.providers.orKeyInfo(apiKey);
+      if (res.ok && res.info) setInfo(res.info as ORKeyInfo);
+      else setError(res.error || "Failed");
+    } catch (err) {
+      setError(String(err));
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchInfo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiKey]);
+
+  if (loading) {
+    return (
+      <div className="mt-1.5 pl-3.5 text-[11px] text-muted-foreground">
+        Loading credits…
+      </div>
+    );
+  }
+  if (error || !info) {
+    return (
+      <div className="mt-1.5 flex items-center gap-2 pl-3.5">
+        <span className="text-[11px] text-muted-foreground">
+          Credits unavailable
+        </span>
+        <button
+          type="button"
+          onClick={fetchInfo}
+          className={ghostBtn}
+          title="Retry"
+        >
+          <RefreshCw className="size-3" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 flex items-center gap-2 pl-3.5 text-[11px]">
+      {info.isFreeTier && (
+        <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+          free tier
+        </span>
+      )}
+      {info.balance != null ? (
+        <span className="font-medium text-foreground">
+          ${info.balance.toFixed(2)} balance
+        </span>
+      ) : (
+        <span className="text-muted-foreground">balance unknown</span>
+      )}
+      {info.totalUsage != null && (
+        <span className="text-muted-foreground/70">
+          · ${info.totalUsage.toFixed(2)} spent
+        </span>
+      )}
+      {info.keyUsage != null && info.keyUsage > 0 && (
+        <span
+          className="text-muted-foreground/70"
+          title="Spent through this API key"
+        >
+          · ${info.keyUsage.toFixed(2)} this key
+        </span>
+      )}
+      {info.keyLimit != null && (
+        <span
+          className="text-muted-foreground/70"
+          title="This key's spending cap"
+        >
+          · cap ${info.keyLimit.toFixed(2)}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={fetchInfo}
+        className={ghostBtn}
+        title="Refresh balance"
+      >
+        <RefreshCw className="size-3" />
+      </button>
     </div>
   );
 }
@@ -527,6 +760,10 @@ export function ProviderSettings({
                 {p.baseURL}
               </div>
 
+              {p.kind === "openrouter" && p.apiKey && (
+                <CreditsWidget apiKey={p.apiKey} />
+              )}
+
               {p.models && p.models.length > 0 && (
                 <div className="mt-2 space-y-0.5">
                   {p.models.map((m) => {
@@ -549,6 +786,13 @@ export function ProviderSettings({
                         )}
                         <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
                           {fmtK(m.contextLength)} ctx
+                          {m.pricing && (
+                            <span className="text-muted-foreground/70">
+                              {" · $"}
+                              {m.pricing.promptPer1M}/
+                              {m.pricing.completionPer1M}
+                            </span>
+                          )}
                         </span>
                       </button>
                     );

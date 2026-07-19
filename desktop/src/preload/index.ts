@@ -163,6 +163,10 @@ const electronAPI = {
       ipcRenderer.invoke("providers:setActive", id),
     setActiveModel: (providerId: string, modelId: string): Promise<boolean> =>
       ipcRenderer.invoke("providers:setActiveModel", providerId, modelId),
+    orModels: (apiKey: string): Promise<{ ok: boolean; models?: unknown[]; error?: string }> =>
+      ipcRenderer.invoke("providers:orModels", apiKey),
+    orKeyInfo: (apiKey: string): Promise<{ ok: boolean; info?: unknown; error?: string }> =>
+      ipcRenderer.invoke("providers:orKeyInfo", apiKey),
   },
 
   permissions: {

@@ -57,6 +57,10 @@ export interface ProviderModel {
   supportsEffort?: boolean
   /** Hidden models don't show in the composer's model picker. */
   hidden?: boolean
+  /** OpenRouter: per-1M-token pricing for display. */
+  pricing?: { promptPer1M: number; completionPer1M: number }
+  /** OpenRouter: prefer these providers, allow fallbacks. */
+  routing?: { providers?: string[]; allowFallbacks?: boolean }
 }
 
 export interface LLMProvider {
@@ -86,6 +90,8 @@ export interface LLMProvider {
   modalities?: Modality[]
   /** Whether the active model exposes a reasoning-effort knob (resolved). */
   supportsEffort?: boolean
+  /** OpenRouter: provider routing preferences for the active model (resolved). */
+  routing?: { providers?: string[]; allowFallbacks?: boolean }
 
   createdAt: string
   updatedAt: string
@@ -108,6 +114,7 @@ export function resolveProvider(p: LLMProvider): LLMProvider {
     inputLimit: m.maxInputTokens,
     modalities: m.modalities ?? ['text'],
     supportsEffort: m.supportsEffort ?? inferEffortSupport(p.kind, m.name),
+    routing: m.routing,
   }
 }
 

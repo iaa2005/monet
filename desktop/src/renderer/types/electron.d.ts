@@ -29,6 +29,47 @@ import type {
 export type { PermissionRequest, PermissionDecision };
 export type { AskUserRequest, AskUserAnswer, AskUserQuestionSpec, AskUserOption };
 
+/** OpenRouter model catalog entry (from GET /api/v1/models). */
+export interface ORModel {
+  id: string;
+  name: string;
+  description?: string;
+  context_length: number;
+  pricing: {
+    prompt: string;
+    completion: string;
+    image?: string;
+    request?: string;
+  };
+  architecture: {
+    input_modalities?: string[];
+    output_modalities?: string[];
+    tokenizer?: string;
+  };
+  supported_parameters: string[];
+  top_provider?: {
+    context_length?: number;
+    /** Absent/null for many models — leave max output unset then. */
+    max_completion_tokens?: number | null;
+  };
+}
+
+/** OpenRouter key/credits info (from GET /api/v1/key). */
+/** Combined /key + /credits balance (see main/llm/openrouter-api.ts).
+ * All optional: the two endpoints fail independently. */
+export interface ORKeyInfo {
+  label?: string;
+  isFreeTier?: boolean;
+  /** $ spent through THIS key. */
+  keyUsage?: number;
+  keyLimit?: number | null;
+  keyLimitRemaining?: number | null;
+  /** Account-wide credits purchased / lifetime usage / remaining. */
+  totalCredits?: number;
+  totalUsage?: number;
+  balance?: number;
+}
+
 export interface SandboxFileEntry {
   name: string;
   size: number;
@@ -246,6 +287,16 @@ export interface ElectronAPI {
     remove: (id: string) => Promise<boolean>;
     setActive: (id: string) => Promise<boolean>;
     setActiveModel: (providerId: string, modelId: string) => Promise<boolean>;
+    orModels: (apiKey: string) => Promise<{
+      ok: boolean;
+      models?: ORModel[];
+      error?: string;
+    }>;
+    orKeyInfo: (apiKey: string) => Promise<{
+      ok: boolean;
+      info?: ORKeyInfo;
+      error?: string;
+    }>;
   };
   permissions: {
     onRequest: (callback: (request: PermissionRequest) => void) => () => void;

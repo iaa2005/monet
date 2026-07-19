@@ -214,6 +214,17 @@ export class OpenAICompatClient implements LLMAdapter {
     } else if (request.temperature != null) {
       body.temperature = request.temperature;
     }
+    // OpenRouter: provider routing preferences. Everything lives inside the
+    // `provider` object — `order` (slugs to try first) and `allow_fallbacks`
+    // (there is no top-level fallbacks parameter). Only sent when configured.
+    if (this.isOpenRouter && request.routing) {
+      const provider: Record<string, unknown> = {};
+      if (request.routing.providers?.length)
+        provider.order = request.routing.providers;
+      if (request.routing.allowFallbacks !== undefined)
+        provider.allow_fallbacks = request.routing.allowFallbacks;
+      if (Object.keys(provider).length) body.provider = provider;
+    }
     if (stream) body.stream_options = { include_usage: true };
     return body;
   }

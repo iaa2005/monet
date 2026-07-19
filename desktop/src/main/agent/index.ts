@@ -865,6 +865,7 @@ async function runAgentScoped(
           max_tokens: provider.maxTokens || 16000,
           temperature: provider.temperature,
           effort: provider.supportsEffort ? effort : undefined,
+          routing: provider.routing,
         },
         (event) => {
           if (event.type === "text_delta") assistantText += event.text;

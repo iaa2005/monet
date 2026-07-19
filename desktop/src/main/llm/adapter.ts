@@ -74,6 +74,8 @@ export interface LLMRequest {
   /** Reasoning effort to request (maps to thinking budget / reasoning_effort).
    * Absent = provider default (no reasoning param sent). */
   effort?: EffortLevel;
+  /** OpenRouter: provider routing preferences. */
+  routing?: { providers?: string[]; allowFallbacks?: boolean };
 }
 
 /** Ensure max_tokens is a positive finite number. No hard cap — models like

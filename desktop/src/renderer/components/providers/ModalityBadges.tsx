@@ -30,20 +30,33 @@ export const MODALITY_META: {
   { id: "video", label: "Video", color: "text-orange-500", Icon: Video },
 ];
 
-/** Read-only row of colored icons for the modalities a model accepts. */
+/** Read-only row of colored icons for the modalities a model accepts.
+ *  When `fixedSlots` is true, renders ALL modality icons in a fixed order,
+ *  dimming the ones not present — so icons of the same type line up in a table. */
 export function ModalityBadges({
   modalities,
   className,
+  fixedSlots = false,
 }: {
   modalities?: Modality[];
   className?: string;
+  fixedSlots?: boolean;
 }): JSX.Element {
   const list = modalities?.length ? modalities : (["text"] as Modality[]);
+  const items = fixedSlots
+    ? MODALITY_META
+    : MODALITY_META.filter((m) => list.includes(m.id));
   return (
     <span className={cn("inline-flex items-center gap-0.5", className)}>
-      {MODALITY_META.filter((m) => list.includes(m.id)).map((m) => (
-        <m.Icon key={m.id} className={cn("size-3", m.color)} />
-      ))}
+      {items.map((m) => {
+        const on = list.includes(m.id);
+        return (
+          <m.Icon
+            key={m.id}
+            className={cn("size-4", on ? m.color : "text-muted-foreground/20")}
+          />
+        );
+      })}
     </span>
   );
 }

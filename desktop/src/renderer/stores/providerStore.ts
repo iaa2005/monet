@@ -28,6 +28,10 @@ export interface ProviderModel {
   supportsEffort?: boolean;
   /** Hidden models don't show in the composer's model picker. */
   hidden?: boolean;
+  /** OpenRouter: per-1M-token pricing for display. */
+  pricing?: { promptPer1M: number; completionPer1M: number };
+  /** OpenRouter: prefer these providers, allow fallbacks. */
+  routing?: { providers?: string[]; allowFallbacks?: boolean };
 }
 
 export interface LLMProvider {

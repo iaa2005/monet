@@ -5,6 +5,7 @@
 import { ipcMain } from 'electron'
 import { getProviderManager } from '../provider/manager.js'
 import type { LLMProviderInput } from '../provider/types.js'
+import { fetchORModels, fetchORBalance } from '../llm/openrouter-api.js'
 
 export function registerProvidersIPC(): void {
   const pm = getProviderManager()
@@ -22,5 +23,29 @@ export function registerProvidersIPC(): void {
     'providers:setActiveModel',
     (_e, providerId: string, modelId: string) =>
       pm.setActiveModel(providerId, modelId),
+  )
+
+  // ── OpenRouter metadata ────────────────────────────────────────────────
+  ipcMain.handle(
+    'providers:orModels',
+    async (_e, apiKey: string) => {
+      try {
+        const models = await fetchORModels(apiKey)
+        return { ok: true, models }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+  ipcMain.handle(
+    'providers:orKeyInfo',
+    async (_e, apiKey: string) => {
+      try {
+        const info = await fetchORBalance(apiKey)
+        return { ok: true, info }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
   )
 }
