@@ -7,7 +7,15 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Check, Plus, Search, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ExternalLink,
+  Plus,
+  Search,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ORModel, ORKeyInfo } from "@/types/electron";
 import type { ProviderModel, Modality } from "@/stores/providerStore";
@@ -405,9 +413,19 @@ export function OpenRouterBrowser({
                         <span className="truncate font-medium">{m.name}</span>
                       </td>
                       <td className="px-2 py-1.5">
-                        <span className="font-mono text-[11px] text-muted-foreground">
+                        <button
+                          type="button"
+                          title={`Open on openrouter.ai/${m.id}`}
+                          onClick={() =>
+                            void window.electronAPI.shell.openExternal(
+                              `https://openrouter.ai/${m.id}`,
+                            )
+                          }
+                          className="group inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground transition-colors hover:text-link hover:underline"
+                        >
                           {m.id}
-                        </span>
+                          <ExternalLink className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+                        </button>
                       </td>
                       <td className="px-2 py-1.5 text-right text-[12px] text-muted-foreground">
                         {fmtPrice(promptPrice)}

@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import {
   ChevronDown,
+  ExternalLink,
   Eye,
   EyeOff,
   Pencil,
@@ -62,6 +63,13 @@ function newModelId(): string {
 function fmtK(n?: number): string {
   if (!n) return "—";
   return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+}
+
+/** The model's page on openrouter.ai (the id IS the URL path). */
+function openORModelPage(modelName: string): void {
+  void window.electronAPI?.shell.openExternal(
+    `https://openrouter.ai/${modelName}`,
+  );
 }
 
 function NumField({
@@ -412,9 +420,15 @@ function ProviderModal({
                             {m.pricing.completionPer1M} out per 1M
                           </span>
                         )}
-                        <span className="text-muted-foreground/60">
-                          auto from OpenRouter
-                        </span>
+                        <button
+                          type="button"
+                          title={`Open on openrouter.ai/${m.name}`}
+                          onClick={() => openORModelPage(m.name)}
+                          className="inline-flex items-center gap-1 text-link transition-opacity hover:underline"
+                        >
+                          openrouter.ai
+                          <ExternalLink className="size-3" />
+                        </button>
                       </div>
 
                       <button
@@ -780,6 +794,28 @@ export function ProviderSettings({
                         )}
                       >
                         <span className="truncate">{m.label || m.name}</span>
+                        {p.kind === "openrouter" && (
+                          // Not a <button>: the row itself is one (nested
+                          // buttons are invalid HTML — React logs an error).
+                          <span
+                            role="link"
+                            tabIndex={0}
+                            title={`Open on openrouter.ai/${m.name}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openORModelPage(m.name);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.stopPropagation();
+                                openORModelPage(m.name);
+                              }
+                            }}
+                            className="shrink-0 cursor-pointer text-muted-foreground/60 transition-colors hover:text-link"
+                          >
+                            <ExternalLink className="size-3" />
+                          </span>
+                        )}
                         <ModalityBadges modalities={m.modalities} />
                         {m.hidden && (
                           <EyeOff className="size-3 text-muted-foreground/70" />
