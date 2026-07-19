@@ -674,6 +674,16 @@ const electronAPI = {
       ipcRenderer.on("routines:ran", handler);
       return () => ipcRenderer.removeListener("routines:ran", handler);
     },
+    onStarted: (
+      callback: (p: { routineId: string; sessionId: string; name: string }) => void,
+    ): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        p: { routineId: string; sessionId: string; name: string },
+      ): void => callback(p);
+      ipcRenderer.on("routines:started", handler);
+      return () => ipcRenderer.removeListener("routines:started", handler);
+    },
   },
 
   transfer: {

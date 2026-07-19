@@ -613,6 +613,13 @@ export interface ElectronAPI {
         status: string;
       }) => void,
     ) => () => void;
+    onStarted: (
+      callback: (p: {
+        routineId: string;
+        sessionId: string;
+        name: string;
+      }) => void,
+    ) => () => void;
   };
   transfer: {
     exportChat: (

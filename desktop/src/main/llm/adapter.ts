@@ -89,12 +89,8 @@ export function sanitizeMaxTokens(n: number | undefined): number {
 
 export type LLMEvent =
   | { type: "text_delta"; text: string }
-  | {
-      type: "tool_use";
-      id: string;
-      name: string;
-      input: Record<string, unknown>;
-    }
+  | { type: "user_message"; content: string }
+  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | { type: "message_stop"; stop_reason: string; usage?: LLMUsage }
   | { type: "error"; error: string }
   | { type: "checkpoint"; sha: string }

@@ -68,7 +68,26 @@ export function RoutinesList({
         .catch(() => {});
     };
     load();
-    return api()?.routines.onRan(() => load());
+    const offRan = api()?.routines.onRan(() => load());
+    const offStarted = api()?.routines.onStarted((p) => {
+      setChats((prev) => {
+        if (prev.some((c) => c.id === p.sessionId)) return prev;
+        return [
+          {
+            id: p.sessionId,
+            title: p.name,
+            at: new Date().toISOString(),
+            routineId: p.routineId,
+            routineName: p.name,
+          },
+          ...prev,
+        ];
+      });
+    });
+    return () => {
+      offRan?.();
+      offStarted?.();
+    };
   }, []);
 
   // Close the context menu on outside click.

@@ -53,6 +53,7 @@ export interface ToolCall {
 
 export type LLMEvent =
   | { type: 'text_delta'; text: string }
+  | { type: 'user_message'; content: string }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
   | { type: 'message_stop'; stop_reason: string; usage?: { input_tokens: number; output_tokens: number } }
   | { type: 'error'; error: string }

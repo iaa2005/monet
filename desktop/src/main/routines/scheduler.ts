@@ -16,7 +16,7 @@ import {
 } from "@vendor/utils/cron.js";
 import { runAgent } from "../agent/index.js";
 import { getProviderManager } from "../provider/manager.js";
-import { getSessionStore, type ChatMessage } from "../session-store.js";
+import { getSessionStore } from "../session-store.js";
 import {
   getRoutine,
   listRoutines,
@@ -108,13 +108,27 @@ export async function executeRoutine(
   // Tag it now, not on success: a run that errors still produced this chat, and
   // the tag is what keeps it out of Recents.
   store.markRoutineChat(session.id, routine.id);
+  notify("routines:started", {
+    routineId: routine.id,
+    sessionId: session.id,
+    name: routine.name || "Routine",
+  });
   let assistantText = "";
+  // Show the routine prompt as the initial user message in the chat.
+  notify("chat:token", {
+    sessionId: session.id,
+    event: { type: "user_message", content: routine.prompt },
+  });
   try {
     await runAgent(
       session.id,
       prompt,
       (ev) => {
         if (ev.type === "text_delta") assistantText += ev.text;
+        // Forward every event to the renderer so chatStore can build the
+        // full display (tool calls, tool results) and persist it — same
+        // pattern as chat:send in ipc/chat.ts.
+        notify("chat:token", { sessionId: session.id, event: ev });
       },
       {
         space: routine.space,
@@ -167,17 +181,9 @@ export async function executeRoutine(
     return run;
   }
 
-  const now = Date.now();
-  const messages: ChatMessage[] = [
-    { id: randomUUID(), role: "user", content: routine.prompt, timestamp: now },
-    {
-      id: randomUUID(),
-      role: "assistant",
-      content: assistantText || "(no output)",
-      timestamp: now + 1,
-    },
-  ];
-  store.save({ ...session, title: routine.name || session.title, messages });
+  // Update only the title — chatStore already persisted the full display
+  // (user_message, tools, assistant text) via chat:token events.
+  store.updateTitle(session.id, routine.name || session.title);
 
   const run: RoutineRun = {
     id: runId,

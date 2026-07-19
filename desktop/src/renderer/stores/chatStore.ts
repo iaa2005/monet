@@ -362,6 +362,18 @@ export const useChatStore = create<ChatStore>((set, get) => {
         }
         return { ...prev, messages: msgs, isStreaming: true, error: null };
       }
+      case "user_message": {
+        const msgs = [
+          ...prev.messages,
+          {
+            id: generateId(),
+            role: "user" as const,
+            content: event.content,
+            timestamp: Date.now(),
+          },
+        ];
+        return { ...prev, messages: msgs };
+      }
       case "tool_use": {
         const msgs = [...prev.messages];
         // Drop a trailing empty assistant bubble so it can't get stranded.
@@ -543,6 +555,15 @@ export const useChatStore = create<ChatStore>((set, get) => {
       const existing = get().sessions[id];
       // Keep a live (streaming) background session as-is.
       if (existing?.isStreaming) {
+        get().setCurrentSessionId(id);
+        return;
+      }
+      // Don't clobber in-memory messages that haven't been persisted yet
+      // (e.g. a routine chat that's still accumulating events in the
+      // background but isn't streaming-flagged because message_stop hasn't
+      // arrived). If the DB has fewer messages than what we already have,
+      // keep the richer in-memory state.
+      if (existing && existing.messages.length > messages.length) {
         get().setCurrentSessionId(id);
         return;
       }
