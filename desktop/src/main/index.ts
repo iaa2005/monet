@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, Menu } from "electron";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { registerAllIPC } from "./ipc/index.js";
@@ -38,7 +38,7 @@ function createWindow(): void {
       sandbox: false,
       nodeIntegration: false,
       contextIsolation: true,
-      devTools: true,
+      devTools: isDev,
     },
   });
 
@@ -46,6 +46,22 @@ function createWindow(): void {
   // DevTools only with CLAUDE_DEVTOOLS=1
   if (isDev && process.env.CLAUDE_DEVTOOLS) {
     mainWindow.webContents.openDevTools();
+  }
+
+  // Block devtools shortcuts (F12, Ctrl/Cmd+Shift+I, Ctrl/Cmd+Shift+J,
+  // Ctrl/Cmd+R) in packaged builds so users can't open devtools.
+  if (!isDev) {
+    mainWindow.webContents.on("before-input-event", (event, input) => {
+      const mod = input.control || input.meta;
+      const devtoolsShortcut =
+        input.key === "F12" ||
+        (mod && input.alt && (input.key === "I" || input.key === "i")) ||
+        (mod && input.alt && (input.key === "J" || input.key === "j"));
+      const reloadShortcut = mod && (input.key === "R" || input.key === "r");
+      if (devtoolsShortcut || reloadShortcut) {
+        event.preventDefault();
+      }
+    });
   }
 
   // Log load failures
@@ -91,9 +107,22 @@ function openSecondaryWindow(): void {
       sandbox: false,
       nodeIntegration: false,
       contextIsolation: true,
-      devTools: true,
+      devTools: isDev,
     },
   });
+  if (!isDev) {
+    win.webContents.on("before-input-event", (event, input) => {
+      const mod = input.control || input.meta;
+      const devtoolsShortcut =
+        input.key === "F12" ||
+        (mod && input.alt && (input.key === "I" || input.key === "i")) ||
+        (mod && input.alt && (input.key === "J" || input.key === "j"));
+      const reloadShortcut = mod && (input.key === "R" || input.key === "r");
+      if (devtoolsShortcut || reloadShortcut) {
+        event.preventDefault();
+      }
+    });
+  }
   win.on("ready-to-show", () => win.show());
   win.on("maximize", () => win.webContents.send("window:maximized", true));
   win.on("unmaximize", () => win.webContents.send("window:maximized", false));
@@ -105,6 +134,13 @@ function openSecondaryWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // In packaged builds, replace the default menu (which exposes
+  // "Toggle Developer Tools" and "Reload") with an empty one so users
+  // can't open devtools via the menu bar.
+  if (!isDev) {
+    Menu.setApplicationMenu(null);
+  }
+
   // Time-limited beta builds die here — before any window or IPC exists.
   if (!initBetaGuard()) return;
 

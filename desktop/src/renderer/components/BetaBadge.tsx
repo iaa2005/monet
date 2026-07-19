@@ -26,7 +26,7 @@ export function BetaBadge(): JSX.Element | null {
       title={`Beta build — works until ${at.toLocaleDateString()} (${daysLeft} day${daysLeft === 1 ? "" : "s"} left)`}
       className="app-no-drag ml-1.5 inline-flex select-none items-center rounded-full bg-orange-500/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold lowercase leading-none text-orange-600 dark:bg-orange-400/15 dark:text-orange-400"
     >
-      beta
+      BETA
     </span>
   );
 }

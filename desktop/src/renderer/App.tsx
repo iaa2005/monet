@@ -44,12 +44,12 @@ import {
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import { ArtifactsPanel } from "@/components/ArtifactsPanel";
+import { ChangesPanel } from "@/components/ChangesPanel";
 import { SandboxFilesPanel } from "@/components/SandboxFilesPanel";
 import { BackgroundTasks } from "@/components/BackgroundTasks";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { FilterDropdown } from "@/components/FilterDropdown";
 import { SkillsPanel } from "@/components/SkillsPanel";
-import { DiffViewer, type DiffFile } from "@/components/diff/DiffViewer";
 import { FileTree } from "@/components/FileTree";
 import { FileViewer } from "@/components/FileViewer";
 import { WindowControls } from "@/components/WindowControls";
@@ -84,8 +84,8 @@ const Terminal = lazy(() =>
   import("@/components/Terminal").then((m) => ({ default: m.Terminal })),
 );
 
-type View = "chat" | "changes" | "skills" | "routines";
-type RightTab = "files" | "artifacts" | null;
+type View = "chat" | "skills" | "routines";
+type RightTab = "files" | "artifacts" | "changes" | null;
 type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
 function api(): ElectronAPI | undefined {
@@ -230,7 +230,6 @@ export default function App(): JSX.Element {
   const [homeShellSupported, setHomeShellSupported] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>(null);
   const [openFilePath, setOpenFilePath] = useState<string | null>(null);
-  const [diffs] = useState<DiffFile[]>([]);
   const [filters, setFilters] = useState({
     status: "all",
     activity: "all",
@@ -243,6 +242,7 @@ export default function App(): JSX.Element {
   // the entire app on every streaming update (a major lag source).
   const incognito = useChatStore((s) => s.incognito);
   const openFileRequest = useChatStore((s) => s.openFileRequest);
+  const openChangesRequest = useChatStore((s) => s.openChangesRequest);
   const viewerArtifact = useChatStore((s) => s.viewerArtifact);
   const closeArtifactViewer = useCallback(
     () => useChatStore.getState().openArtifactViewer(null),
@@ -263,6 +263,15 @@ export default function App(): JSX.Element {
       useChatStore.getState().requestOpenFile(null);
     }
   }, [openFileRequest]);
+
+  // GitCard's "+N −M" button asks to open the Changes tab.
+  useEffect(() => {
+    if (openChangesRequest) {
+      setRightTab("changes");
+      useChatStore.getState().requestOpenChanges();
+      useChatStore.setState({ openChangesRequest: false });
+    }
+  }, [openChangesRequest]);
 
   useEffect(() => {
     api()
@@ -881,10 +890,8 @@ export default function App(): JSX.Element {
               </IconBtn>
               <IconBtn
                 title="Changes"
-                active={view === "changes"}
-                onClick={() =>
-                  setView((v) => (v === "changes" ? "chat" : "changes"))
-                }
+                active={rightTab === "changes"}
+                onClick={() => toggleRight("changes")}
               >
                 <FileDiff className="size-4" />
               </IconBtn>
@@ -1289,17 +1296,6 @@ export default function App(): JSX.Element {
                                 sessionTitle={sessionTitle}
                               />
                             )}
-                            {view === "changes" && (
-                              <div className="h-full overflow-auto">
-                                <DiffViewer
-                                  files={diffs}
-                                  onAccept={() => {}}
-                                  onReject={() => {}}
-                                  onAcceptAll={() => {}}
-                                  onRejectAll={() => {}}
-                                />
-                              </div>
-                            )}
                             {view === "skills" && (
                               <div className="h-full overflow-auto">
                                 <SkillsPanel />
@@ -1383,6 +1379,17 @@ export default function App(): JSX.Element {
                           >
                             Artifacts
                           </button>
+                          <button
+                            onClick={() => setRightTab("changes")}
+                            className={cn(
+                              "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                              rightTab === "changes"
+                                ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            Changes
+                          </button>
                           <div className="flex-1" />
                           <button
                             type="button"
@@ -1403,6 +1410,11 @@ export default function App(): JSX.Element {
                             className={rightTab === "artifacts" ? "" : "hidden"}
                           >
                             <ArtifactsPanel />
+                          </div>
+                          <div
+                            className={rightTab === "changes" ? "" : "hidden"}
+                          >
+                            <ChangesPanel />
                           </div>
                         </div>
                       </Panel>

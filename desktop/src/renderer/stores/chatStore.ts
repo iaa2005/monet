@@ -171,6 +171,8 @@ interface ChatStore {
   /** A file the user asked to open in the in-app viewer (tool file links).
    * Consumed and cleared by App. */
   openFileRequest: string | null;
+  /** Request to open the Changes tab in the right panel. Consumed by App. */
+  openChangesRequest: boolean;
   /** Artifact currently shown in the in-app viewer drawer (null = closed). */
   viewerArtifact: {
     name: string;
@@ -569,6 +571,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     drafts: {},
     droppedFiles: null,
     openFileRequest: null,
+    openChangesRequest: false,
     viewerArtifact: null,
     space: "home",
     queue: [],
@@ -595,6 +598,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       set((s) => ({ drafts: { ...s.drafts, [key]: text } })),
     setDroppedFiles: (files) => set({ droppedFiles: files }),
     requestOpenFile: (path) => set({ openFileRequest: path }),
+    requestOpenChanges: () => set({ openChangesRequest: true }),
     openArtifactViewer: (item) => set({ viewerArtifact: item }),
     setSpace: (v) => set({ space: v }),
     bumpSessions: () =>

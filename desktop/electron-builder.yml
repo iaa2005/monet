@@ -12,7 +12,7 @@ win:
   target: nsis
   icon: build/icon.ico
   forceCodeSigning: false
-  signAndEditExecutable: false
+  # signAndEditExecutable defaults to true — rcedit embeds build/icon.ico into the .exe
 mac:
   target: dmg
   icon: build/icon.png
