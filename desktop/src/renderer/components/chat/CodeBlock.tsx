@@ -8,34 +8,12 @@
  * glass-panel wrapper — so Read / Search / Edit / Write all look consistent.
  */
 
-import { useEffect, useState } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import {
-  oneLight,
-  oneDark,
-} from "react-syntax-highlighter/dist/esm/styles/prism";
+import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DiffView } from "./DiffView";
 import { isUnifiedDiff, parseUnifiedDiff } from "./diff-core";
-
-/** Reactively tracks the `dark` class on <html> so highlighting follows theme. */
-export function useIsDark(): boolean {
-  const [dark, setDark] = useState(() =>
-    typeof document !== "undefined"
-      ? document.documentElement.classList.contains("dark")
-      : false,
-  );
-  useEffect(() => {
-    const el = document.documentElement;
-    const obs = new MutationObserver(() =>
-      setDark(el.classList.contains("dark")),
-    );
-    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
-    return () => obs.disconnect();
-  }, []);
-  return dark;
-}
+import { HighlightedCode } from "./highlight";
 
 // Fenced-block languages that don't need a "language:" label chip.
 const PLAIN = new Set(["", "text", "plaintext", "txt", "output"]);
@@ -111,7 +89,7 @@ const HEADER =
   "flex h-8 items-center justify-between border-b border-border bg-muted/50 pr-1 pl-3";
 
 const PREVIEW_LINES = 300;
-const HIGHLIGHT_CHAR_LIMIT = 60_000;
+const HIGHLIGHT_CHAR_LIMIT = 30_000;
 
 export function CodeBlock({
   code,
@@ -123,7 +101,6 @@ export function CodeBlock({
   className,
   maxHeight,
 }: CodeBlockProps): JSX.Element {
-  const dark = useIsDark();
   const [expanded, setExpanded] = useState(false);
   const lang = language.toLowerCase();
   const displayLang = PLAIN.has(lang) ? "" : lang;
@@ -193,27 +170,11 @@ export function CodeBlock({
             {shown}
           </pre>
         ) : (
-          <SyntaxHighlighter
+          <HighlightedCode
+            code={shown}
             language={displayLang || "text"}
-            style={dark ? oneDark : oneLight}
             showLineNumbers={showLineNumbers}
-            wrapLongLines={true}
-            customStyle={{
-              margin: 0,
-              padding: "0.75rem",
-              background: "transparent",
-              fontSize: "12.5px",
-              lineHeight: "1.6",
-            }}
-            codeTagProps={{
-              style: {
-                fontFamily: "var(--font-mono)",
-                background: "transparent",
-              },
-            }}
-          >
-            {shown}
-          </SyntaxHighlighter>
+          />
         )}
       </div>
       {truncatable && (

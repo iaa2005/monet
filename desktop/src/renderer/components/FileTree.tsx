@@ -11,7 +11,7 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useIsDark } from "@/components/chat/CodeBlock";
+import { useIsDark } from "@/components/chat/highlight";
 import { resolveIcon } from "@/components/icon-resolver";
 import type { ElectronAPI } from "@/types/electron";
 

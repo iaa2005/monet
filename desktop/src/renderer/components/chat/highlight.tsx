@@ -5,10 +5,33 @@
  * split the token tree into one ReactNode per source line. Token colours come
  * from the `.diff-hl .token.*` rules in globals.css (tuned to match the
  * oneDark / oneLight themes the plain CodeBlock uses).
+ *
+ * Also exports `HighlightedCode` — a drop-in replacement for
+ * react-syntax-highlighter's `<SyntaxHighlighter>` that uses refractor
+ * directly (no extra library overhead, no `wrapLongLines` perf hit).
  */
 
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import refractor from "refractor";
+import { cn } from "@/lib/utils";
+
+/** Reactively tracks the `dark` class on <html> so highlighting follows theme. */
+export function useIsDark(): boolean {
+  const [dark, setDark] = useState(() =>
+    typeof document !== "undefined"
+      ? document.documentElement.classList.contains("dark")
+      : false,
+  );
+  useEffect(() => {
+    const el = document.documentElement;
+    const obs = new MutationObserver(() =>
+      setDark(el.classList.contains("dark")),
+    );
+    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+  return dark;
+}
 
 interface HastText {
   type: "text";
@@ -98,4 +121,48 @@ export function highlightLines(code: string, language: string): ReactNode[] {
 /** Highlight a single line of code. */
 export function highlightOne(text: string, language: string): ReactNode {
   return highlightLines(text, language)[0] ?? text;
+}
+
+/**
+ * Full-block syntax highlighting via refractor — replaces react-syntax-highlighter.
+ * Avoids the `wrapLongLines` performance hit (uses CSS `white-space: pre-wrap`
+ * instead of JS-based character measurement).
+ */
+export function HighlightedCode({
+  code,
+  language = "text",
+  showLineNumbers = false,
+  className,
+}: {
+  code: string;
+  language?: string;
+  showLineNumbers?: boolean;
+  className?: string;
+}): JSX.Element {
+  const lines = useMemo(() => highlightLines(code, language), [code, language]);
+  return (
+    <pre
+      className={cn(
+        "diff-hl m-0 whitespace-pre-wrap break-words",
+        showLineNumbers && "show-ln",
+        className,
+      )}
+      style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: "12.5px",
+        lineHeight: "1.6",
+        background: "transparent",
+        padding: "0.75rem",
+      }}
+    >
+      <code>
+        {lines.map((node, i) => (
+          <span key={i} className="line">
+            <span className="ln" />
+            <span className="cl">{node}</span>
+          </span>
+        ))}
+      </code>
+    </pre>
+  );
 }

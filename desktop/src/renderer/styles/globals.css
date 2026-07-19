@@ -472,3 +472,36 @@
 .dark .diff-hl .token.url {
     color: #56b6c2;
 }
+
+/* Line numbers — pure CSS via counter, no JS overhead */
+pre.diff-hl code {
+    display: block;
+}
+pre.diff-hl .line {
+    display: table-row;
+}
+pre.diff-hl .ln {
+    display: none;
+}
+pre.diff-hl.show-ln .ln {
+    display: table-cell;
+    text-align: right;
+    padding-right: 1em;
+    user-select: none;
+    color: var(--muted-foreground);
+    opacity: 0.45;
+    min-width: 3ch;
+}
+pre.diff-hl.show-ln .ln::before {
+    counter-increment: line;
+    content: counter(line);
+}
+pre.diff-hl .cl {
+    display: table-cell;
+}
+pre.diff-hl.show-ln {
+    counter-reset: line 0;
+}
+pre.diff-hl.show-ln code {
+    display: block;
+}

@@ -25,13 +25,9 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import {
-  oneLight,
-  oneDark,
-} from "react-syntax-highlighter/dist/esm/styles/prism";
 import { MarkdownViewer } from "./chat/MarkdownViewer";
 import { CodeBlock } from "./chat/CodeBlock";
+import { HighlightedCode } from "./chat/highlight";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -239,7 +235,6 @@ export function FileViewer({
   const docxRef = useRef<HTMLDivElement>(null);
 
   const isMd = /\.(md|markdown)$/i.test(displayName);
-  const dark = document.documentElement.classList.contains("dark");
   const preview: PreviewKind = eff ? previewKindOf(eff) : "none";
 
   // --- Load plain file content (text/markdown/code) ---
@@ -536,24 +531,11 @@ export function FileViewer({
             <MarkdownViewer content={content} />
           </div>
         ) : (
-          <SyntaxHighlighter
+          <HighlightedCode
             language={langFor(displayName)}
-            style={dark ? oneDark : oneLight}
+            code={content}
             showLineNumbers
-            wrapLongLines={true}
-            customStyle={{
-              margin: 0,
-              padding: "1rem",
-              background: "transparent",
-              fontSize: "12.5px",
-              lineHeight: "1.6",
-            }}
-            codeTagProps={{
-              style: { fontFamily: "var(--font-mono)", background: "transparent" },
-            }}
-          >
-            {content}
-          </SyntaxHighlighter>
+          />
         )}
       </div>
     </div>
