@@ -20,7 +20,7 @@ import {
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
-import type { UiConnectorService } from "../../main/connectors/services/types.js";
+import type { UiConnectorService } from "../../../main/connectors/services/types";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -31,9 +31,11 @@ function api(): ElectronAPI | undefined {
 function ServiceIcon({
   svg,
   className,
+  dim,
 }: {
   svg?: string;
   className?: string;
+  dim?: boolean;
 }): JSX.Element {
   if (!svg)
     return <Plug className={cn("shrink-0 text-muted-foreground", className)} />;
@@ -41,7 +43,11 @@ function ServiceIcon({
     <span
       role="img"
       aria-hidden="true"
-      className={cn("inline-block shrink-0 [&>svg]:size-full", className)}
+      className={cn(
+        "inline-block shrink-0 [&>svg]:size-full",
+        dim && "opacity-40 grayscale",
+        className,
+      )}
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
