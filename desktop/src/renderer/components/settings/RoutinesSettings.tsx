@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Switch } from "@/components/ui/switch";
+import { MicButton } from "@/components/chat/MicButton";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, Routine } from "@/types/electron";
 
@@ -185,15 +186,22 @@ export function RoutinesSettings({
               {s}
             </button>
           ))}
-          <button
-            type="button"
-            disabled={!desc.trim() || drafting}
-            onClick={() => void draftFromText(desc)}
-            className="ml-auto flex items-center gap-1.5 rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background transition-colors hover:opacity-90 disabled:opacity-50"
-          >
-            {drafting && <Loader2 className="size-3 animate-spin" />}
-            Draft routine
-          </button>
+          <div className="ml-auto flex items-center gap-1.5">
+            <MicButton
+              onText={(t) =>
+                setDesc((prev) => (prev ? prev.trimEnd() + " " : "") + t)
+              }
+            />
+            <button
+              type="button"
+              disabled={!desc.trim() || drafting}
+              onClick={() => void draftFromText(desc)}
+              className="flex items-center gap-1.5 rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background transition-colors hover:opacity-90 disabled:opacity-50"
+            >
+              {drafting && <Loader2 className="size-3 animate-spin" />}
+              Draft routine
+            </button>
+          </div>
         </div>
       </div>
 
