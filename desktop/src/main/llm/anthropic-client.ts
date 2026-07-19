@@ -12,7 +12,7 @@ import type {
   LLMEvent,
   LLMRequest,
 } from "./adapter.js";
-import { MAX_OUTPUT_TOKENS, sanitizeMaxTokens } from "./adapter.js";
+import { sanitizeMaxTokens } from "./adapter.js";
 
 /** Extended-thinking token budget per effort level (Anthropic has no named
  * effort levels, so we map each to a budget). */
@@ -39,7 +39,7 @@ function applyThinking(
   if (!request.effort) return;
   const budget = THINKING_BUDGET[request.effort];
   body.thinking = { type: "enabled", budget_tokens: budget };
-  const min = Math.min(budget + 4096, MAX_OUTPUT_TOKENS);
+  const min = Math.min(budget + 4096, request.max_tokens);
   if ((body.max_tokens as number) < min) body.max_tokens = min;
 }
 

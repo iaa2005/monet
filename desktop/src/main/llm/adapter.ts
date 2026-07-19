@@ -76,15 +76,13 @@ export interface LLMRequest {
   effort?: EffortLevel;
 }
 
-/** Highest max_tokens we ever send to a provider. max_tokens is an OUTPUT
- * limit — if a context-window size (e.g. 380000) gets pasted into the
- * provider settings, some proxies silently ignore the invalid value and fall
- * back to a tiny default, which truncates long replies mid-sentence. */
-export const MAX_OUTPUT_TOKENS = 64000;
-
+/** Ensure max_tokens is a positive finite number. No hard cap — models like
+ * GLM-5.2 support 130K+ output tokens, and capping at 64K silently truncated
+ * long replies mid-sentence. The provider's maxOutputTokens is the source of
+ * truth; the caller (resolveProvider) sets the right value per model. */
 export function sanitizeMaxTokens(n: number | undefined): number {
   if (!n || !Number.isFinite(n) || n <= 0) return 16000;
-  return Math.min(Math.floor(n), MAX_OUTPUT_TOKENS);
+  return Math.floor(n);
 }
 
 export type LLMEvent =
