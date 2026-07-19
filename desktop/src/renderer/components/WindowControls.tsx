@@ -6,7 +6,12 @@ function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
-/** Custom min / maximize-restore / close buttons for the frameless window. */
+/** Custom min / maximize-restore / close buttons for the frameless window.
+ *
+ * Rendered as a FIXED layer above everything (modals sit at z-50/60): the
+ * window must stay minimizable/closable even mid-dialog — otherwise an open
+ * modal takes the whole window hostage. An in-flow spacer keeps the header
+ * layout exactly where it was. */
 export function WindowControls(): JSX.Element {
   const [maximized, setMaximized] = useState(false);
 
@@ -19,7 +24,10 @@ export function WindowControls(): JSX.Element {
     "app-no-drag flex h-full w-[46px] items-center justify-center text-muted-foreground transition-colors";
 
   return (
-    <div className="app-no-drag flex h-full items-stretch">
+    <>
+      {/* Spacer holds the header slot the fixed buttons visually occupy. */}
+      <div aria-hidden className="h-full w-[138px] shrink-0" />
+      <div className="app-no-drag fixed right-0 top-0 z-[200] flex h-11 items-stretch">
       <button
         type="button"
         title="Minimize"
@@ -51,6 +59,7 @@ export function WindowControls(): JSX.Element {
       >
         <X className="size-4" />
       </button>
-    </div>
+      </div>
+    </>
   );
 }
