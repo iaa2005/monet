@@ -220,24 +220,6 @@ export function ProtocolConnectors(): JSX.Element {
     () => new Map(services.map((s) => [s.id, s])),
     [services],
   );
-  // A company header exists only when it has TWO OR MORE services; companies
-  // of one (GitHub, Notion…) share the "Other" bucket. Order follows the
-  // registry.
-  const groups = useMemo(() => {
-    const byCompany = new Map<string, UiConnectorService[]>();
-    for (const s of services) {
-      const key = s.company || "";
-      byCompany.set(key, [...(byCompany.get(key) ?? []), s]);
-    }
-    const named: { title: string; items: UiConnectorService[] }[] = [];
-    const singles: UiConnectorService[] = [];
-    for (const [company, items] of byCompany) {
-      if (company && items.length >= 2) named.push({ title: company, items });
-      else singles.push(...items);
-    }
-    if (singles.length) named.push({ title: "Other", items: singles });
-    return named;
-  }, [services]);
 
   const test = async (id: string): Promise<void> => {
     setTesting(id);
@@ -272,7 +254,11 @@ export function ProtocolConnectors(): JSX.Element {
         </p>
       </section>
 
-      <StoreButton onChanged={load} />
+      <StoreButton
+        onChanged={load}
+        allServices={services}
+        onConnect={setEntry}
+      />
 
       {accounts.length > 0 && (
         <div className="space-y-1.5">
@@ -371,38 +357,6 @@ export function ProtocolConnectors(): JSX.Element {
           })}
         </div>
       )}
-
-      {groups.map((g) => (
-        <div key={g.title}>
-          <div className="mb-1.5 text-xs font-medium text-muted-foreground">
-            {g.title}
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {g.items.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setEntry(s)}
-                  className="flex items-start gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                >
-                  <ServiceIcon
-                    svg={s.iconSvg}
-                    className="mt-0.5 size-6"
-                    dim={s.auth.kind === "unavailable"}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium">{s.displayName}</div>
-                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {s.auth.kind === "unavailable"
-                        ? "Not connectable yet — read why"
-                        : s.description}
-                    </div>
-                  </div>
-                </button>
-              ))}
-          </div>
-        </div>
-      ))}
 
       {entry && (
         <ConnectForm

@@ -523,7 +523,7 @@ export interface ElectronAPI {
       error?: string;
     }>;
     storeInstall: (id: string) => Promise<{ ok: boolean; error?: string }>;
-    storeRemove: (id: string) => Promise<{ ok: boolean }>;
+    storeRemove: (id: string) => Promise<{ ok: boolean; error?: string }>;
     storeInstalled: () => Promise<string[]>;
     googleSignIn: (opts: {
       presetId: string;

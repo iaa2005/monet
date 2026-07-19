@@ -1,9 +1,11 @@
 /**
- * Connector Store — a modal window with search, install preview, and removal.
+ * Connector Catalog — a modal with builtin + community connectors, unified
+ * search, install preview, and removal.
  *
- * Community connectors are manifests (data, not code) from
- * github.com/iaa2005/monet-connectors. Installing downloads the manifest +
- * icon into the data dir; the connector then behaves like a builtin one.
+ * Two tabs: "Built-in" (services compiled into the app) and "Store"
+ * (manifests from github.com/iaa2005/monet-connectors). Search spans both.
+ * Installing a store connector downloads its manifest + icon; a builtin
+ * one opens the connect form.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -13,10 +15,12 @@ import {
   Store,
   Search,
   AlertCircle,
+  Trash2,
 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
+import type { UiConnectorService } from "../../main/connectors/services/types.js";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -54,11 +58,17 @@ interface StoreEntry {
   iconSvg?: string;
 }
 
-/** A button that opens the store modal. Shown in the connectors list. */
+type Tab = "builtin" | "store";
+
+/** A button that opens the catalog modal. Shown in the connectors list. */
 export function StoreButton({
   onChanged,
+  allServices,
+  onConnect,
 }: {
   onChanged: () => void;
+  allServices: UiConnectorService[];
+  onConnect: (svc: UiConnectorService) => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   return (
@@ -70,27 +80,40 @@ export function StoreButton({
       >
         <Store className="size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium">Browse Connector Store</div>
+          <div className="text-sm font-medium">Browse Connectors</div>
           <div className="mt-0.5 text-xs text-muted-foreground">
-            Community connectors — IMAP, WebDAV, CalDAV, MCP and more
+            Built-in and community connectors — IMAP, WebDAV, CalDAV, MCP and more
           </div>
         </div>
       </button>
       {open && (
-        <StoreModal onClose={() => setOpen(false)} onChanged={onChanged} />
+        <CatalogModal
+          onClose={() => setOpen(false)}
+          onChanged={onChanged}
+          allServices={allServices}
+          onConnect={(s) => {
+            setOpen(false);
+            onConnect(s);
+          }}
+        />
       )}
     </>
   );
 }
 
-/** Full-screen store modal with search and install/preview flow. */
-function StoreModal({
+/** Unified catalog modal with two tabs and cross-tab search. */
+function CatalogModal({
   onClose,
   onChanged,
+  allServices,
+  onConnect,
 }: {
   onClose: () => void;
   onChanged: () => void;
+  allServices: UiConnectorService[];
+  onConnect: (svc: UiConnectorService) => void;
 }): JSX.Element {
+  const [tab, setTab] = useState<Tab>("builtin");
   const [entries, setEntries] = useState<StoreEntry[] | null>(null);
   const [installed, setInstalled] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -154,16 +177,67 @@ function StoreModal({
   };
 
   const remove = async (id: string): Promise<void> => {
-    await api()?.connectors.storeRemove(id);
+    const r = await api()?.connectors.storeRemove(id);
+    if (r && !r.ok) {
+      setError(r.error ?? "Failed to remove.");
+      return;
+    }
     await refresh();
     onChanged();
   };
 
-  const filtered = useMemo(() => {
-    if (!entries) return null;
-    if (!query.trim()) return entries;
+  // ── Split services: builtin vs store-installed ───────────────────────────
+  // allServices (from presets()) includes BOTH builtin and installed store
+  // connectors. We split by checking against `installed` (storeInstalled).
+  const builtinServices = useMemo(
+    () => allServices.filter((s) => !installed.has(s.id)),
+    [allServices, installed],
+  );
+  const storeInstalledServices = useMemo(
+    () => allServices.filter((s) => installed.has(s.id)),
+    [allServices, installed],
+  );
+
+  // ── Search: spans both tabs ──────────────────────────────────────────────
+  // When the user types, we filter the CURRENT tab's items. But if the query
+  // matches nothing in the current tab, we show a hint to try the other tab.
+  const byDisplay = (a: { displayName?: string; name: string }, b: { displayName?: string; name: string }) =>
+    (a.displayName ?? a.name).localeCompare(b.displayName ?? b.name);
+
+  const builtinFiltered = useMemo(() => {
+    const sorted = [...builtinServices].sort(byDisplay);
+    if (!query.trim()) return sorted;
     const q = query.toLowerCase();
-    return entries.filter(
+    return sorted.filter(
+      (s) =>
+        (s.displayName ?? s.name).toLowerCase().includes(q) ||
+        s.name.toLowerCase().includes(q) ||
+        s.company.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q) ||
+        s.capabilities.some((c) => c.includes(q)),
+    );
+  }, [builtinServices, query]);
+
+  const storeInstalledFiltered = useMemo(() => {
+    const sorted = [...storeInstalledServices].sort(byDisplay);
+    if (!query.trim()) return sorted;
+    const q = query.toLowerCase();
+    return sorted.filter(
+      (s) =>
+        (s.displayName ?? s.name).toLowerCase().includes(q) ||
+        s.name.toLowerCase().includes(q) ||
+        s.company.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q) ||
+        s.capabilities.some((c) => c.includes(q)),
+    );
+  }, [storeInstalledServices, query]);
+
+  const storeAvailableFiltered = useMemo(() => {
+    if (!entries) return null;
+    const available = entries.filter((e) => !installed.has(e.id)).sort(byDisplay);
+    if (!query.trim()) return available;
+    const q = query.toLowerCase();
+    return available.filter(
       (e) =>
         (e.displayName ?? e.name).toLowerCase().includes(q) ||
         e.name.toLowerCase().includes(q) ||
@@ -171,7 +245,18 @@ function StoreModal({
         e.description.toLowerCase().includes(q) ||
         e.capabilities.some((c) => c.includes(q)),
     );
-  }, [entries, query]);
+  }, [entries, installed, query]);
+
+  // Auto-switch tab when search has results only in the other tab.
+  const hasBuiltinResults = builtinFiltered.length > 0;
+  const hasStoreResults =
+    (storeInstalledFiltered.length + (storeAvailableFiltered?.length ?? 0)) > 0;
+  const effectiveTab: Tab =
+    query.trim() && tab === "builtin" && !hasBuiltinResults && hasStoreResults
+      ? "store"
+      : query.trim() && tab === "store" && !hasStoreResults && hasBuiltinResults
+        ? "builtin"
+        : tab;
 
   return (
     <Modal open onClose={onClose} bare className="h-[85vh] max-w-3xl">
@@ -179,7 +264,54 @@ function StoreModal({
       <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
         <div className="flex items-center gap-2">
           <Store className="size-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold">Connector Store</h2>
+          <h2 className="text-sm font-semibold">Connectors</h2>
+        </div>
+      </div>
+
+      {/* Tabs + Search */}
+      <div className="shrink-0 border-b border-border px-5 py-2.5">
+        <div className="flex items-center gap-2">
+          {/* Tabs */}
+          <div className="flex shrink-0 rounded-lg border border-border p-0.5">
+            {(["builtin", "store"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                className={cn(
+                  "rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                  effectiveTab === t
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {t === "builtin" ? "Built-in" : "Store"}
+              </button>
+            ))}
+          </div>
+          {/* Search */}
+          <div className="flex flex-1 items-center gap-2 rounded-lg border border-border bg-black/[0.02] px-3 py-1.5 dark:bg-white/[0.03]">
+            <Search className="size-4 shrink-0 text-muted-foreground" />
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search all connectors…"
+              className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+        {effectiveTab === "store" && (
           <a
             href="https://github.com/iaa2005/monet-connectors"
             target="_blank"
@@ -190,35 +322,11 @@ function StoreModal({
                 "https://github.com/iaa2005/monet-connectors",
               );
             }}
-            className="ml-2 text-[11px] text-link hover:underline"
+            className="mt-1.5 inline-block text-[11px] text-link hover:underline"
           >
             iaa2005/monet-connectors
           </a>
-        </div>
-      </div>
-
-      {/* Search bar */}
-      <div className="shrink-0 border-b border-border px-5 py-2.5">
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-black/[0.02] px-3 py-1.5 dark:bg-white/[0.03]">
-          <Search className="size-4 shrink-0 text-muted-foreground" />
-          <input
-            autoFocus
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search connectors…"
-            className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => setQuery("")}
-              className="text-xs text-muted-foreground hover:text-foreground"
-            >
-              Clear
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Body */}
@@ -229,33 +337,30 @@ function StoreModal({
             <span className="break-words">{error}</span>
           </p>
         )}
-        {entries === null ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            Loading catalog…
-          </div>
-        ) : filtered === null || filtered.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {query
-              ? `No connectors match "${query}".`
-              : "The catalog is empty (or unreachable)."}
-          </p>
-        ) : (
+
+        {/* Built-in tab */}
+        {effectiveTab === "builtin" && (
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            {filtered.map((s) => {
-              const isInstalled = installed.has(s.id);
-              return (
+            {builtinFiltered.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {query
+                  ? `No built-in connectors match "${query}".`
+                  : "No built-in connectors."}
+              </p>
+            ) : (
+              builtinFiltered.map((s) => (
                 <div
                   key={s.id}
                   className="flex items-start gap-3 rounded-xl border border-border p-3"
                 >
-                  <ServiceIcon svg={s.iconSvg} className="mt-0.5 size-6" />
+                  <ServiceIcon
+                    svg={s.iconSvg}
+                    className="mt-0.5 size-6"
+                    dim={s.auth.kind === "unavailable"}
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium">
                       {s.displayName ?? s.name}
-                      <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
-                        v{s.version}
-                      </span>
                     </div>
                     {s.company && (
                       <div className="text-[11px] text-muted-foreground/70">
@@ -263,7 +368,9 @@ function StoreModal({
                       </div>
                     )}
                     <div className="mt-0.5 text-xs text-muted-foreground">
-                      {s.description}
+                      {s.auth.kind === "unavailable"
+                        ? "Not connectable yet — read why"
+                        : s.description}
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {s.capabilities.map((c) => (
@@ -276,32 +383,167 @@ function StoreModal({
                       ))}
                     </div>
                   </div>
-                  {isInstalled ? (
-                    <button
-                      type="button"
-                      onClick={() => void remove(s.id)}
-                      className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-destructive"
-                    >
-                      Remove
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={busy === s.id}
-                      onClick={() => void startInstall(s)}
-                      className="shrink-0 rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background disabled:opacity-50"
-                    >
-                      {busy === s.id ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        "Install"
-                      )}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => onConnect(s)}
+                    className="shrink-0 rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background"
+                  >
+                    Connect
+                  </button>
                 </div>
-              );
-            })}
+              ))
+            )}
           </div>
+        )}
+
+        {/* Store tab */}
+        {effectiveTab === "store" && (
+          <>
+            {entries === null ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Loading catalog…
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Installed store connectors — Connect or Remove */}
+                {storeInstalledFiltered.length > 0 && (
+                  <div>
+                    <div className="mb-1.5 text-xs font-medium text-muted-foreground">
+                      Installed
+                    </div>
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                      {storeInstalledFiltered.map((s) => (
+                        <div
+                          key={s.id}
+                          className="flex items-start gap-3 rounded-xl border border-border p-3"
+                        >
+                          <ServiceIcon
+                            svg={s.iconSvg}
+                            className="mt-0.5 size-6"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium">
+                              {s.displayName ?? s.name}
+                            </div>
+                            {s.company && (
+                              <div className="text-[11px] text-muted-foreground/70">
+                                {s.company}
+                              </div>
+                            )}
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              {s.description}
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {s.capabilities.map((c) => (
+                                <span
+                                  key={c}
+                                  className="rounded bg-black/[0.04] px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground dark:bg-white/[0.06]"
+                                >
+                                  {c}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => onConnect(s)}
+                              className="rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background"
+                            >
+                              Connect
+                            </button>
+                            <button
+                              type="button"
+                              title="Remove"
+                              onClick={() => void remove(s.id)}
+                              className="rounded-md p-1 text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Available store connectors — Install */}
+                {storeAvailableFiltered !== null &&
+                  storeAvailableFiltered.length > 0 && (
+                    <div>
+                      {storeInstalledFiltered.length > 0 && (
+                        <div className="mb-1.5 text-xs font-medium text-muted-foreground">
+                          Available
+                        </div>
+                      )}
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                        {storeAvailableFiltered.map((s) => (
+                          <div
+                            key={s.id}
+                            className="flex items-start gap-3 rounded-xl border border-border p-3"
+                          >
+                            <ServiceIcon
+                              svg={s.iconSvg}
+                              className="mt-0.5 size-6"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium">
+                                {s.displayName ?? s.name}
+                                <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
+                                  v{s.version}
+                                </span>
+                              </div>
+                              {s.company && (
+                                <div className="text-[11px] text-muted-foreground/70">
+                                  {s.company}
+                                </div>
+                              )}
+                              <div className="mt-0.5 text-xs text-muted-foreground">
+                                {s.description}
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {s.capabilities.map((c) => (
+                                  <span
+                                    key={c}
+                                    className="rounded bg-black/[0.04] px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground dark:bg-white/[0.06]"
+                                  >
+                                    {c}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={busy === s.id}
+                              onClick={() => void startInstall(s)}
+                              className="shrink-0 rounded-md bg-foreground px-2.5 py-1 text-xs font-medium text-background disabled:opacity-50"
+                            >
+                              {busy === s.id ? (
+                                <Loader2 className="size-3.5 animate-spin" />
+                              ) : (
+                                "Install"
+                              )}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                {/* Empty state */}
+                {storeInstalledFiltered.length === 0 &&
+                  (storeAvailableFiltered === null ||
+                    storeAvailableFiltered.length === 0) && (
+                    <p className="text-sm text-muted-foreground">
+                      {query
+                        ? `No store connectors match "${query}".`
+                        : "The catalog is empty (or unreachable)."}
+                    </p>
+                  )}
+              </div>
+            )}
+          </>
         )}
       </div>
 

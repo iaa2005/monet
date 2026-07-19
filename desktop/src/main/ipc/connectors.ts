@@ -197,7 +197,15 @@ export function registerConnectorsIPC(): void {
 
   ipcMain.handle(
     "connectors:storeRemove",
-    (_e, id: string): { ok: boolean } => {
+    (_e, id: string): { ok: boolean; error?: string } => {
+      // Block removal if accounts are still connected to this service.
+      const linked = listAccounts().filter((a) => a.presetId === id);
+      if (linked.length > 0) {
+        return {
+          ok: false,
+          error: `Cannot remove: ${linked.length} account(s) still connected. Disconnect them first.`,
+        };
+      }
       const ok = removeStoreConnector(id);
       resetVendorTools();
       return { ok };
