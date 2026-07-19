@@ -11,7 +11,8 @@
     "preview": "electron-vite preview",
     "package": "electron-builder",
     "typecheck": "node scripts/typecheck.mjs",
-    "smoke:agent": "node scripts/smoke-agent.mjs"
+    "smoke:agent": "node scripts/smoke-agent.mjs",
+    "build:beta": "node scripts/build-beta.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.0",
