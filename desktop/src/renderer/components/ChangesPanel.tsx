@@ -1,11 +1,12 @@
 /**
  * Changes panel — working-tree diff shown in the right sidebar (Code mode).
  * Loads the current workspace's git diff (tracked + untracked) and renders
- * per-file patches with +/- stats.
+ * per-file diffs with syntax highlighting via DiffView.
  */
 
-import { useEffect, useState } from "react";
-import { CodeBlock } from "@/components/chat/CodeBlock";
+import { useEffect, useMemo, useState } from "react";
+import { DiffView } from "@/components/chat/DiffView";
+import { parseUnifiedDiff, langFromPath } from "@/components/chat/diff-core";
 
 interface DiffFileChunk {
   path: string;
@@ -69,6 +70,16 @@ export function ChangesPanel(): JSX.Element {
 
   useEffect(load, []);
 
+  const diffFiles = useMemo(
+    () =>
+      files?.map((f) => ({
+        ...f,
+        rows: parseUnifiedDiff(f.body),
+        lang: langFromPath(f.path),
+      })) ?? null,
+    [files],
+  );
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
@@ -113,20 +124,26 @@ export function ChangesPanel(): JSX.Element {
             Loading diff…
           </p>
         )}
-        {files?.map((f) => (
+        {diffFiles?.map((f) => (
           <div key={f.path} className="mb-4">
-            <div className="mb-1 flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                {f.path}
-              </span>
-              <span className="shrink-0 text-[11px]">
-                <span className="text-green-text">+{f.added}</span>{" "}
-                <span className="text-red-text">−{f.removed}</span>
-              </span>
+              <div className="mb-1 flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                  {f.path}
+                </span>
+                <span className="shrink-0 text-[11px]">
+                  <span className="text-green-text">+{f.added}</span>{" "}
+                  <span className="text-red-text">−{f.removed}</span>
+                </span>
+              </div>
+              <div className="glass-panel overflow-hidden rounded-lg border border-border bg-card">
+                <DiffView
+                  rows={f.rows}
+                  language={f.lang}
+                  maxHeight={420}
+                />
+              </div>
             </div>
-            <CodeBlock code={f.body} language="diff" bare maxHeight={420} />
-          </div>
-        ))}
+          ))}
         {untracked.length > 0 && (
           <div className="mt-2">
             <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">

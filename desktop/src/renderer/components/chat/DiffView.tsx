@@ -130,23 +130,20 @@ export function DiffView({
           row.kind === "removed" && "bg-red-border",
         )}
       />
-      <span className="w-10 shrink-0 select-none px-1.5 text-right tabular-nums text-muted-foreground/50">
-        {(row.kind === "removed" ? row.oldNo : row.newNo) ?? " "}
-      </span>
       <span
-        aria-hidden
         className={cn(
-          "w-3 shrink-0 select-none text-center",
-          row.kind === "added" && "text-green-text",
-          row.kind === "removed" && "text-red-text",
-          row.kind === "normal" && "text-transparent",
+          "w-10 shrink-0 select-none px-1.5 text-right tabular-nums",
+          row.kind === "added"
+            ? "text-green-text"
+            : row.kind === "removed"
+              ? "text-red-text"
+              : "text-muted-foreground/50",
         )}
       >
-        {row.kind === "added" ? "+" : row.kind === "removed" ? "-" : ""}
+        {(row.kind === "removed" ? row.oldNo : row.newNo) ?? " "}
       </span>
       <code
-        className="diff-hl min-w-0 flex-1 whitespace-pre-wrap break-words pr-3 pl-1"
-        style={{ textIndent: "-1.5rem", paddingLeft: "1.75rem" }}
+        className="diff-hl min-w-0 flex-1 whitespace-pre-wrap break-words pr-3"
       >
         {content(row)}
       </code>
