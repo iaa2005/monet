@@ -24,162 +24,6 @@ const RANGES = [
   { id: 7, label: "7d" },
 ];
 
-// ─── Literary milestones ───
-// Each book has a personality — multiple hand-crafted messages so the
-// comparison never feels templated.
-interface Book {
-  name: string;
-  tokens: number;
-  emoji: string;
-  messages: string[];
-}
-
-const BOOKS: Book[] = [
-  {
-    name: "The Great Gatsby",
-    tokens: 65_000,
-    emoji: "🍸",
-    messages: [
-      "You've written enough to fill Gatsby's mansion with words.",
-      "Fitzgerald took years; you did it in conversation.",
-      "That's a whole lot of green lights and longing.",
-    ],
-  },
-  {
-    name: "Frankenstein",
-    tokens: 100_000,
-    emoji: "⚡",
-    messages: [
-      "Mary Shelley would be… intrigued.",
-      "You've brought to life more text than Frankenstein's monster.",
-      "It's alive! And it's your chat history.",
-    ],
-  },
-  {
-    name: "Harry Potter and the Philosopher's Stone",
-    tokens: 102_000,
-    emoji: "🪄",
-    messages: [
-      "You've outgrown Hogwarts — more tokens than the first Potter book.",
-      "Wingardium Levio-saaa… that's a lot of words.",
-      "Even Hermione would be impressed by this volume.",
-    ],
-  },
-  {
-    name: "Moby Dick",
-    tokens: 275_000,
-    emoji: "🐋",
-    messages: [
-      "Call me Ishmael. Actually, call me prolific.",
-      "A white whale of a conversation — you've outpaced Melville.",
-      "Thar she blows! And she's made of tokens.",
-    ],
-  },
-  {
-    name: "The Lord of the Rings (trilogy)",
-    tokens: 640_000,
-    emoji: "💍",
-    messages: [
-      "One does not simply… write 640K tokens. But you did.",
-      "The entire journey from the Shire to Mordor, in chat form.",
-      "You shall not pass! …without reading this much text.",
-    ],
-  },
-  {
-    name: "War and Peace",
-    tokens: 780_000,
-    emoji: "📖",
-    messages: [
-      "Tolstoy called. He wants his word count back.",
-      "Peace was never an option. More tokens!",
-      "Longer than War and Peace — and arguably more coherent.",
-    ],
-  },
-  {
-    name: "The Bible (KJV)",
-    tokens: 1_040_000,
-    emoji: "📜",
-    messages: [
-      "You've surpassed the Good Book itself.",
-      "Genesis to Revelation, and then some.",
-      "Let there be tokens. And there were tokens.",
-    ],
-  },
-];
-
-/** Pick a message for a book — stable per session, so it doesn't flicker. */
-function bookMessage(book: Book, factor: number): string {
-  const idx = Math.floor(factor * 37) % book.messages.length;
-  return book.messages[idx];
-}
-
-/** Build the tamagotchi snapshot for a given token count. */
-function tamagotchiSnapshot(tokens: number): {
-  lines: { emoji: string; text: string }[];
-} {
-  if (tokens <= 0) {
-    return {
-      lines: [{ emoji: "🌱", text: "Every epic starts with a single token. Go write something!" }],
-    };
-  }
-
-  const lines: { emoji: string; text: string }[] = [];
-  let maxBook: Book | null = null;
-
-  // Find the biggest book the user has surpassed (for the headline).
-  for (const b of BOOKS) {
-    if (tokens >= b.tokens) maxBook = b;
-  }
-
-  // Always show the biggest surpassed book with its unique message.
-  if (maxBook) {
-    const factor = tokens / maxBook.tokens;
-    const mult = factor >= 2 ? `×${factor.toFixed(1)}` : "";
-    lines.push({
-      emoji: maxBook.emoji,
-      text: `${bookMessage(maxBook, factor)} ${mult}`,
-    });
-  }
-
-  // Show one more comparison at a different scale for texture.
-  const smaller = [...BOOKS]
-    .reverse()
-    .find((b) => tokens >= b.tokens && b !== maxBook);
-  if (smaller && smaller !== maxBook) {
-    const factor = tokens / smaller.tokens;
-    if (factor >= 1.3) {
-      lines.push({
-        emoji: smaller.emoji,
-        text: `Also, that's ${factor.toFixed(1)}× ${smaller.name}. Just saying.`,
-      });
-    }
-  }
-
-  // Next milestone
-  const next = BOOKS.find((b) => tokens < b.tokens);
-
-  // For very large counts, show how many of a classic they've consumed.
-  if (!lines[1] && tokens >= BOOKS[0].tokens * 2) {
-    const n = Math.round(tokens / BOOKS[0].tokens);
-    lines.push({
-      emoji: "📚",
-      text: `Stack ${n} Great Gatsbys — that's your library now.`,
-    });
-  }
-
-  // If nothing matched (shouldn't happen with the zero guard above), at least
-  // give a nod to the smallest book.
-  if (lines.length === 0 && next) {
-    const pct = Math.round((tokens / next.tokens) * 100);
-    lines.push({
-      emoji: next.emoji,
-      text: `${pct}% of the way to ${next.name}. Keep going!`,
-    });
-  }
-
-  return { lines };
-}
-
 const HEATMAP_COLS = 52;
 const HEATMAP_ROWS = 7;
 
@@ -381,8 +225,6 @@ export function StatsDashboard(): JSX.Element {
       ]
     : [];
 
-  const tamagotchi = stats ? tamagotchiSnapshot(stats.approxTokens) : null;
-
   // Fill the full date window so the bar chart always has the right column count.
   const recentDays = range === 0 ? 365 : range;
   const recent = (() => {
@@ -462,7 +304,7 @@ export function StatsDashboard(): JSX.Element {
               ))}
             </div>
 
-            {stats && tamagotchi && (
+            {stats && (
               <div className="mt-4">
                 <Heatmap perDay={stats.perDay} pixels={paintingPixels} />
                 {paintingTitle && (
@@ -470,20 +312,6 @@ export function StatsDashboard(): JSX.Element {
                     Activity painted with «{paintingTitle}» by Claude Monet
                   </p>
                 )}
-                {tamagotchi.lines.map((line, i) => (
-                  <p
-                    key={i}
-                    className={cn(
-                      "mt-2 text-xs",
-                      i === 0
-                        ? "text-foreground"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    <span className="mr-1">{line.emoji}</span>
-                    {line.text}
-                  </p>
-                ))}
               </div>
             )}
           </>
