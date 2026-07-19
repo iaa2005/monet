@@ -13,6 +13,7 @@
 import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import { patchSecret } from "../../store.js";
+import { markdownToTelegramHtml } from "./markdown.js";
 import type { ProtocolResult } from "../../types.js";
 import type { ChatOps, ConnectorContext, ResolvedAccount } from "../types.js";
 
@@ -226,10 +227,17 @@ export async function telegramSend(
 ): Promise<ProtocolResult> {
   return withClient(acct, async (c) => {
     // A forum topic IS a message — posting into one is a reply to its root.
-    await c.sendMessage(opts.chat, {
+    // Convert markdown → HTML; fall back to plain text if Telegram rejects it.
+    const baseOpts = {
       message: opts.message,
       ...(opts.topic ? { replyTo: opts.topic } : {}),
-    });
+    };
+    const html = markdownToTelegramHtml(opts.message);
+    try {
+      await c.sendMessage(opts.chat, { ...baseOpts, message: html, parseMode: "html" });
+    } catch {
+      await c.sendMessage(opts.chat, baseOpts);
+    }
     return {
       ok: true,
       text: `Sent to ${opts.chat}${opts.topic ? ` (topic ${opts.topic})` : ""}.`,
@@ -256,14 +264,24 @@ export async function telegramSendFile(
     ? opts.file
     : ctx.files.resolveRead(opts.file);
   return withClient(acct, async (c) => {
-    await c.sendFile(opts.chat, {
+    const baseOpts = {
       file,
-      ...(opts.caption ? { caption: opts.caption } : {}),
       ...(opts.topic ? { replyTo: opts.topic } : {}),
       // Off by default, so an .mp4/.jpg arrives as playable video / a viewable
       // photo rather than a file to download.
       forceDocument: opts.asDocument === true,
-    });
+    };
+    if (opts.caption) {
+      // Try HTML caption first, fall back to plain.
+      const html = markdownToTelegramHtml(opts.caption);
+      try {
+        await c.sendFile(opts.chat, { ...baseOpts, caption: html, parseMode: "html" });
+      } catch {
+        await c.sendFile(opts.chat, { ...baseOpts, caption: opts.caption });
+      }
+    } else {
+      await c.sendFile(opts.chat, baseOpts);
+    }
     return {
       ok: true,
       text: `Sent ${opts.file} to ${opts.chat}${opts.topic ? ` (topic ${opts.topic})` : ""}.`,

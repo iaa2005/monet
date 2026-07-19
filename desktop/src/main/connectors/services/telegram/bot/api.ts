@@ -10,6 +10,7 @@
 
 import { fetchRetry } from "../../../../net-fetch.js";
 import { mimeOf } from "../../../lib/file-bridge.js";
+import { markdownToTelegramHtml } from "../markdown.js";
 import type { ProtocolResult } from "../../../types.js";
 import type {
   ChatOps,
@@ -89,6 +90,25 @@ function chatLabel(c: NonNullable<TgUpdate["message"]>["chat"]): string {
   return c.title ?? c.username ?? c.first_name ?? String(c.id);
 }
 
+/** Send a media/document with caption, trying HTML first then plain. */
+async function sendCaptionWithFallback(
+  acct: ResolvedAccount,
+  method: string,
+  baseBody: Record<string, unknown>,
+  caption?: string,
+): Promise<void> {
+  if (!caption) {
+    await botApi(acct, method, baseBody);
+    return;
+  }
+  const html = markdownToTelegramHtml(caption);
+  try {
+    await botApi(acct, method, { ...baseBody, caption: html, parse_mode: "HTML" });
+  } catch {
+    await botApi(acct, method, { ...baseBody, caption });
+  }
+}
+
 export async function botTest(acct: ResolvedAccount): Promise<ProtocolResult> {
   const me = await botApi<{ username?: string; first_name?: string }>(
     acct,
@@ -160,11 +180,18 @@ export const botOps: ChatOps = {
   },
 
   async send(acct, opts) {
-    await botApi(acct, "sendMessage", {
+    const body: Record<string, unknown> = {
       chat_id: opts.chat,
       text: opts.message,
       ...(opts.topic ? { message_thread_id: opts.topic } : {}),
-    });
+    };
+    // Convert markdown → HTML; fall back to plain text if Telegram rejects it.
+    const html = markdownToTelegramHtml(opts.message);
+    try {
+      await botApi(acct, "sendMessage", { ...body, text: html, parse_mode: "HTML" });
+    } catch {
+      await botApi(acct, "sendMessage", body);
+    }
     return {
       ok: true,
       text: `Sent to ${opts.chat}${opts.topic ? ` (topic ${opts.topic})` : ""} as the bot.`,
@@ -173,13 +200,12 @@ export const botOps: ChatOps = {
 
   async sendFile(acct, opts, ctx: ConnectorContext) {
     if (/^https?:\/\//i.test(opts.file)) {
-      // Telegram fetches URLs itself.
-      await botApi(acct, "sendDocument", {
+      const body: Record<string, unknown> = {
         chat_id: opts.chat,
         document: opts.file,
-        ...(opts.caption ? { caption: opts.caption } : {}),
         ...(opts.topic ? { message_thread_id: opts.topic } : {}),
-      });
+      };
+      await sendCaptionWithFallback(acct, "sendDocument", body, opts.caption);
       return { ok: true, text: `Sent ${opts.file} to ${opts.chat} as the bot.` };
     }
     const abs = ctx.files.resolveRead(opts.file);
@@ -190,14 +216,43 @@ export const botOps: ChatOps = {
     const photo = !opts.asDocument && mime.startsWith("image/");
     const form = new FormData();
     form.set("chat_id", opts.chat);
-    if (opts.caption) form.set("caption", opts.caption);
     if (opts.topic) form.set("message_thread_id", String(opts.topic));
     form.set(
       photo ? "photo" : "document",
       new Blob([new Uint8Array(data)], { type: mime }),
       name,
     );
-    await botApi(acct, photo ? "sendPhoto" : "sendDocument", form);
+    const method = photo ? "sendPhoto" : "sendDocument";
+    // Try with HTML caption, fall back to plain.
+    if (opts.caption) {
+      const html = markdownToTelegramHtml(opts.caption);
+      try {
+        form.set("caption", html);
+        form.set("parse_mode", "HTML");
+        await botApi(acct, method, form);
+        return {
+          ok: true,
+          text: `Sent ${name} (${Math.round(data.length / 1024)}KB) to ${opts.chat} as the bot.`,
+        };
+      } catch {
+        // Rebuild form without parse_mode (FormData is consumed on send).
+        const form2 = new FormData();
+        form2.set("chat_id", opts.chat);
+        if (opts.topic) form2.set("message_thread_id", String(opts.topic));
+        form2.set(
+          photo ? "photo" : "document",
+          new Blob([new Uint8Array(data)], { type: mime }),
+          name,
+        );
+        form2.set("caption", opts.caption);
+        await botApi(acct, method, form2);
+        return {
+          ok: true,
+          text: `Sent ${name} (${Math.round(data.length / 1024)}KB) to ${opts.chat} as the bot.`,
+        };
+      }
+    }
+    await botApi(acct, method, form);
     return {
       ok: true,
       text: `Sent ${name} (${Math.round(data.length / 1024)}KB) to ${opts.chat} as the bot.`,
