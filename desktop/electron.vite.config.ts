@@ -51,6 +51,14 @@ const vendorAliases = [
   { find: 'src', replacement: resolve('src/vendor/leaked') },
 ]
 
+// Time-limited beta builds: `MONET_BETA_EXPIRES=2026-09-01 npm run build`
+// BAKES the deadline into the bundles (a runtime env var could simply be
+// unset by whoever runs the app). Empty = a normal, unlimited build.
+// Date-only values are valid THROUGH that day; full ISO timestamps are exact.
+const betaDefine = {
+  __BETA_EXPIRES__: JSON.stringify(process.env.MONET_BETA_EXPIRES ?? ''),
+}
+
 export default defineConfig({
   main: {
     plugins: [
@@ -73,7 +81,7 @@ export default defineConfig({
     },
     // Bare `require('yaml')` etc. in vendor code paths are served by the
     // per-chunk `createRequire` shim electron-vite injects into ESM output.
-    define: vendorMacroDefine,
+    define: { ...vendorMacroDefine, ...betaDefine },
   },
   preload: {
     plugins: [externalizeDepsPlugin()],
@@ -94,6 +102,7 @@ export default defineConfig({
       ],
     },
     plugins: [react()],
+    define: betaDefine,
     css: {
       postcss: './postcss.config.js',
     },

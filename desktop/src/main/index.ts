@@ -7,6 +7,7 @@ import { applyDataDirEnv } from "./data-dir.js";
 import { purgeIncognitoLeftovers } from "./incognito.js";
 import { ensureBuiltinSkills } from "./builtin-skills.js";
 import { initPowerSaveBlocker } from "./power.js";
+import { initBetaGuard } from "./beta.js";
 
 // The main bundle is ESM ("type": "module"), where __dirname is not defined.
 // Derive it from import.meta.url so preload/renderer paths resolve.
@@ -104,6 +105,9 @@ function openSecondaryWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Time-limited beta builds die here — before any window or IPC exists.
+  if (!initBetaGuard()) return;
+
   registerAllIPC();
 
   // Incognito hygiene: a crash can leave incognito artifacts/sandboxes on

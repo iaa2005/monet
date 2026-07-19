@@ -53,6 +53,7 @@ import { DiffViewer, type DiffFile } from "@/components/diff/DiffViewer";
 import { FileTree } from "@/components/FileTree";
 import { FileViewer } from "@/components/FileViewer";
 import { WindowControls } from "@/components/WindowControls";
+import { BetaBadge } from "@/components/BetaBadge";
 import { AccountMenu } from "@/components/AccountMenu";
 import { AboutPanel } from "@/components/AboutPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
@@ -757,6 +758,7 @@ export default function App(): JSX.Element {
             >
               Code Monet
             </button>
+            <BetaBadge />
             {bg && title && (
               <span className="ml-4 text-[11px] text-muted-foreground truncate max-w-[200px]">
                 {title}{year ? `, ${year}` : ""}
