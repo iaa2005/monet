@@ -13,6 +13,7 @@ import {
   History,
   Loader2,
   Sparkles,
+  ListEnd,
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import { MicButton } from "./MicButton";
@@ -590,7 +591,7 @@ export function MessageInput({
 
   const send = async (): Promise<void> => {
     let text = input.trim();
-    if (!text || isStreaming) return;
+    if (!text) return;
 
     // Intercept app-level slash commands before anything reaches the model.
     const local = /^\/(compact|clear|rename)(?:\s+([\s\S]*))?$/.exec(text);
@@ -934,15 +935,23 @@ export function MessageInput({
                     return;
                   }
                 }
-                // Enter inserts a newline; Ctrl/Cmd+Enter sends.
+                // Enter inserts a newline; Ctrl/Cmd+Enter sends or queues.
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
-                  send();
+                  if (isStreaming) {
+                    const sid = useChatStore.getState().currentSessionId;
+                    const text = input.trim();
+                    if (sid && text) {
+                      useChatStore.getState().enqueueMessage(sid, text);
+                      setInput("");
+                    }
+                  } else {
+                    send();
+                  }
                 }
               }}
               placeholder="Type / for commands"
               rows={1}
-              disabled={isStreaming}
               className="pt-0.5 max-h-50 min-h-7 w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
             />
   
@@ -959,14 +968,37 @@ export function MessageInput({
                 }}
               />
               {isStreaming ? (
-                <button
-                  type="button"
-                  onClick={abort}
-                  title="Stop"
-                  className="flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity hover:opacity-90"
-                >
-                  <Square className="size-3.5 fill-current" />
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sid = useChatStore.getState().currentSessionId;
+                      const text = input.trim();
+                      if (!sid || !text) return;
+                      useChatStore.getState().enqueueMessage(sid, text);
+                      setInput("");
+                    }}
+                    disabled={!input.trim()}
+                    title="Queue message (send after generation)"
+                    className={cn(
+                      "flex size-7 items-center justify-center rounded-md transition-opacity",
+                      input.trim()
+                        ? "bg-foreground text-background hover:opacity-90"
+                        : "opacity-30",
+                    )}
+                  >
+                    <ListEnd className="size-4" />
+                  </button>
+                  <div className="w-1" />
+                  <button
+                    type="button"
+                    onClick={abort}
+                    title="Stop"
+                    className="flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity hover:opacity-90"
+                  >
+                    <Square className="size-3.5 fill-current" />
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"

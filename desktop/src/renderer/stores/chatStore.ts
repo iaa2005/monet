@@ -101,6 +101,8 @@ interface SessionState {
   isStreaming: boolean;
   usage: ChatUsage | null;
   error: string | null;
+  /** Messages queued while streaming — sent automatically when the run ends. */
+  queue: ChatMessage[];
 }
 
 const EMPTY: SessionState = {
@@ -108,6 +110,7 @@ const EMPTY: SessionState = {
   isStreaming: false,
   usage: null,
   error: null,
+  queue: [],
 };
 
 const INTERRUPT_MARK = "\n\n> ⏹️ Generation interrupted.";
@@ -231,6 +234,12 @@ interface ChatStore {
   /** Auto-continue: a background sub-agent finished while the chat is idle —
    * kick off a turn that delivers its queued report to the model. */
   deliverBackgroundResults: () => Promise<void>;
+  /** Queue a message to be sent when the current run finishes. */
+  enqueueMessage: (sessionId: string, content: string) => void;
+  /** Remove a message from the queue (cancel a pending queued send). */
+  dequeueMessage: (sessionId: string, messageId: string) => void;
+  /** Per-session queue (visible mirror of current session's queue). */
+  queue: ChatMessage[];
 }
 
 interface SessionsBridge {
@@ -290,6 +299,45 @@ export const useChatStore = create<ChatStore>((set, get) => {
     }
   }
 
+  /** Pop the first queued message and send it as a new turn. */
+  async function sendQueuedMessage(sessionId: string): Promise<void> {
+    const st = get();
+    const session = st.sessions[sessionId];
+    if (!session || session.isStreaming || session.queue.length === 0) return;
+    const msg = session.queue[0];
+    // Remove from queue and add to messages.
+    mutate(sessionId, (p) => ({
+      ...p,
+      queue: p.queue.slice(1),
+      messages: [...p.messages, msg],
+    }));
+    // Persist the updated messages.
+    void persistSession(sessionId);
+    // Send via the same path as chat:send.
+    const bridge = electron();
+    if (!bridge) return;
+    const seed = (get().sessions[sessionId]?.messages ?? [])
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .filter((m) => m.content)
+      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    get().startStreaming();
+    const mode =
+      st.space === "home"
+        ? "default"
+        : localStorage.getItem("permission-mode") ?? "default";
+    try {
+      await bridge.chat.send({
+        sessionId,
+        message: msg.content,
+        seed,
+        mode,
+        space: st.space,
+      });
+    } catch {
+      /* best-effort */
+    }
+  }
+
   // ─── Delta batching ───────────────────────────────────────────────────
   // A long reply arrives as thousands of tiny text_delta IPC events. Applying
   // each one individually re-renders the whole chat (and re-parses the
@@ -330,6 +378,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           isStreaming: next.isStreaming,
           usage: next.usage,
           error: next.error,
+          queue: next.queue,
         };
       }
       return { sessions };
@@ -522,6 +571,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     openFileRequest: null,
     viewerArtifact: null,
     space: "home",
+    queue: [],
 
     isSessionStreaming: (id) => get().sessions[id]?.isStreaming ?? false,
 
@@ -534,6 +584,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           isStreaming: cur.isStreaming,
           usage: cur.usage,
           error: cur.error,
+          queue: cur.queue,
         };
       });
     },
@@ -777,6 +828,26 @@ export const useChatStore = create<ChatStore>((set, get) => {
       }
     },
 
+    enqueueMessage: (sessionId, content) => {
+      const msg: ChatMessage = {
+        id: generateId(),
+        role: "user",
+        content,
+        timestamp: Date.now(),
+      };
+      mutate(sessionId, (p) => ({
+        ...p,
+        queue: [...p.queue, msg],
+      }));
+    },
+
+    dequeueMessage: (sessionId, messageId) => {
+      mutate(sessionId, (p) => ({
+        ...p,
+        queue: p.queue.filter((m) => m.id !== messageId),
+      }));
+    },
+
     handleLLMEvent: (sessionId, event) => {
       // Coalesce the text firehose (see the batching note above).
       if (event.type === "text_delta") {
@@ -831,6 +902,15 @@ export const useChatStore = create<ChatStore>((set, get) => {
           lastCheckpoint.set(sessionId, now);
           void persistSession(sessionId);
         }
+      }
+
+      // After a run ends, send the next queued message (if any).
+      if (
+        (event.type === "message_stop" || event.type === "error") &&
+        !get().sessions[sessionId]?.isStreaming &&
+        get().sessions[sessionId]?.queue?.length
+      ) {
+        void sendQueuedMessage(sessionId);
       }
     },
   };

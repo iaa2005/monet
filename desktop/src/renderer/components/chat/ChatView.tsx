@@ -31,6 +31,8 @@ import {
   Pencil,
   Play,
   RotateCcw,
+  Clock,
+  X as XIcon,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -704,6 +706,8 @@ export function ChatView({
   const messages = useChatStore((s) => s.messages);
   const error = useChatStore((s) => s.error);
   const isStreaming = useChatStore((s) => s.isStreaming);
+  const queue = useChatStore((s) => s.queue);
+  const dequeueMessage = useChatStore((s) => s.dequeueMessage);
   const setComposerDraft = useChatStore((s) => s.setComposerDraft);
   const isEmpty = messages.length === 0 && !error;
 
@@ -923,6 +927,42 @@ export function ChatView({
                       <WorkingRow />
                     </MessageScrollerItem>
                   )}
+
+                  {queue.map((msg) => (
+                    <MessageScrollerItem
+                      key={`q-${msg.id}`}
+                      messageId={`q-${msg.id}`}
+                    >
+                      <Message align="end">
+                        <MessageContent>
+                          <div className="group flex items-start justify-end gap-1">
+                            <button
+                              type="button"
+                              title="Remove from queue"
+                              onClick={() => {
+                                const sid = useChatStore.getState().currentSessionId;
+                                if (sid) dequeueMessage(sid, msg.id);
+                              }}
+                              className="mt-5 shrink-0 rounded-md p-1 text-muted-foreground transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                            >
+                              <XIcon className="size-5" />
+                            </button>
+                            <div className="flex flex-col items-end">
+                              <div className="mb-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                                <Clock className="size-3" />
+                                Queued
+                              </div>
+                              <Bubble variant="secondary" align="end">
+                                <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.06] glass-panel rounded-xl border border-dashed border-border opacity-70">
+                                  {msg.content}
+                                </BubbleContent>
+                              </Bubble>
+                            </div>
+                          </div>
+                        </MessageContent>
+                      </Message>
+                    </MessageScrollerItem>
+                  ))}
 
                   {error && (
                     <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
