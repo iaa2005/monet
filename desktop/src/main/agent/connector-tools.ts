@@ -558,7 +558,7 @@ const tgSchema = lazySchema(() =>
       .describe(
         "Forum topic id, from topics. Required to post into a forum group — without it the message lands in General.",
       ),
-    query: z.string().optional().describe("history: search within the chat."),
+    query: z.string().optional().describe("chats: filter by name; history: search within the chat."),
     message: z.string().optional().describe("send: message text."),
     file: z
       .string()
@@ -573,7 +573,7 @@ const tgSchema = lazySchema(() =>
       .describe(
         "send_file: send as a plain file. Default false, so images and video arrive as photo/video.",
       ),
-    limit: z.number().optional().describe("Default 30."),
+    limit: z.number().optional().describe("chats/history: max results. Default 50."),
   }),
 );
 type TgInput = ReturnType<typeof tgSchema>;
@@ -643,7 +643,7 @@ export const TelegramTool = buildTool({
       if (denied) return denied;
       switch (input.action) {
         case "chats":
-          return toOutput(await ops.chats(acct, { limit: input.limit }));
+          return toOutput(await ops.chats(acct, { limit: input.limit, query: input.query }));
         case "topics":
           if (!input.chat) return fail(new Error("topics needs a chat."));
           return toOutput(

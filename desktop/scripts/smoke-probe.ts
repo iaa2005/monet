@@ -261,7 +261,7 @@ async function main() {
   )
   check(
     'connector scope: gmail+telegram → both, nothing else',
-    names(['gmail', 'telegram']) === 'Mail,Telegram',
+    names(['gmail', 'telegram-account']) === 'Mail,Telegram',
   )
   // An MCP-backed connector must NOT pull in a protocol tool — it's scoped by
   // server name instead. Getting this wrong would hand a Notion routine the
@@ -355,13 +355,10 @@ async function main() {
     'yandex-disk': 'YandexDisk',
     'yandex-calendar': 'YandexCalendar',
     'yandex-contacts': 'YandexContacts',
-    telegram: 'Telegram',
+    'telegram-account': 'TelegramAccount',
     'telegram-bot': 'TelegramBot',
     github: 'GitHub',
-    notion: 'Notion',
-    slack: 'Slack',
-    linear: 'Linear',
-    sentry: 'Sentry',
+    // notion, slack, linear, sentry moved to the store (monet-connectors repo)
   }
   const badName = SERVICES.filter(sv => NAME_FOR[sv.id] && sv.name !== NAME_FOR[sv.id])
   check(
@@ -369,16 +366,20 @@ async function main() {
     badName.length === 0,
     badName.map(sv => `${sv.id}→${sv.name}`).join(',') || undefined,
   )
-  // Settings shows the spaced human form, derived from company + name; the
-  // compact name stays what the model, routines and the meter use.
+  // Settings shows the human-friendly displayName; the compact name is what
+  // the model, routines and the context meter use.
   const { displayNameOf } = await import('../src/main/connectors/services/types.js')
   const DISPLAY_FOR: Record<string, string> = {
     gmail: 'Google Gmail',
     'google-drive': 'Google Drive',
+    'google-calendar': 'Google Calendar',
+    'google-contacts': 'Google Contacts',
+    'yandex-mail': 'Yandex Mail',
     'yandex-disk': 'Yandex Disk',
+    'yandex-calendar': 'Yandex Calendar',
     'yandex-contacts': 'Yandex Contacts',
     github: 'GitHub',
-    telegram: 'Telegram',
+    'telegram-account': 'Telegram Account',
     'telegram-bot': 'Telegram Bot',
   }
   const badDisplay = SERVICES.filter(

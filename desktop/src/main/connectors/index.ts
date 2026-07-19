@@ -75,7 +75,9 @@ export function pickAccount(
           a.label.toLowerCase() === wanted ||
           a.username.toLowerCase() === wanted ||
           a.presetId === wanted ||
-          getService(a.presetId)?.name.toLowerCase() === wanted,
+          getService(a.presetId)?.name.toLowerCase() === wanted ||
+          // Match the hint format "Name (username)" that accountHint emits.
+          `${getService(a.presetId)?.name ?? ""} (${a.username})`.toLowerCase() === wanted,
       );
 
   if (!match) {

@@ -17,6 +17,7 @@ import type { ConnectorService } from "../../types.js";
 export const TelegramBot: ConnectorService = {
   id: "telegram-bot",
   name: "TelegramBot",
+  displayName: "Telegram Bot",
   company: "Telegram",
   description: "Send messages and files as a bot; reliable for routines.",
   iconSvg: icon,
@@ -40,5 +41,5 @@ export const TelegramBot: ConnectorService = {
   capabilities: { chat: botOps },
   test: botTest,
   promptHint:
-    "TelegramBot messages arrive AS THE BOT, not as the user. Its `chats` and `history` only cover chats where the bot is present and messages sent TO it recently; for the user's own chats use the Telegram (account) connector.",
+    "TelegramBot: sends AS THE BOT, not the user. Only sees chats it was added to. Use account='TelegramBot' when both are connected.",
 };

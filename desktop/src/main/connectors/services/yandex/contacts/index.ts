@@ -18,6 +18,7 @@ const ops = makeCarddavOps({
 export const YandexContacts: ConnectorService = {
   id: "yandex-contacts",
   name: "YandexContacts",
+  displayName: "Yandex Contacts",
   company: "Yandex",
   description: "Look up people: names, emails, phones. Read-only.",
   iconSvg: icon,

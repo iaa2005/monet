@@ -26,6 +26,7 @@ const ops = makeCaldavOps({
 export const GoogleCalendar: ConnectorService = {
   id: "google-calendar",
   name: "GoogleCalendar",
+  displayName: "Google Calendar",
   company: "Google",
   description: "Events and availability; can create events.",
   iconSvg: icon,

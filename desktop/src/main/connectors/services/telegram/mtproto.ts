@@ -132,13 +132,13 @@ async function withClient<T>(
 
 export async function telegramChats(
   acct: ResolvedAccount,
-  opts: { limit?: number },
+  opts: { limit?: number; query?: string },
 ): Promise<ProtocolResult> {
   return withClient(acct, async (c) => {
     const dialogs = await c.getDialogs({
-      limit: Math.min(Math.max(opts.limit ?? 30, 1), 100),
+      limit: Math.min(Math.max(opts.limit ?? 50, 1), 200),
     });
-    const rows = dialogs.map((d) => {
+    let rows = dialogs.map((d) => {
       const e = d.entity as { forum?: boolean; broadcast?: boolean } | undefined;
       // Spelling out the kind saves a round-trip: a forum needs a topic id to
       // post into, and a broadcast channel needs admin rights to post at all.
@@ -154,6 +154,12 @@ export async function telegramChats(
       const unread = d.unreadCount ? ` [${d.unreadCount} unread]` : "";
       return `${d.id?.toString() ?? "?"}  ${kind.padEnd(7)} ${d.title ?? d.name ?? "(untitled)"}${unread}`;
     });
+    // Server-side search via getInputEntity is not available for getDialogs;
+    // filter client-side after fetching a larger batch.
+    if (opts.query) {
+      const q = opts.query.toLowerCase();
+      rows = rows.filter((r) => r.toLowerCase().includes(q));
+    }
     return { ok: true, text: rows.join("\n") || "(no chats)" };
   });
 }

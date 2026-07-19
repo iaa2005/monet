@@ -16,6 +16,7 @@ import type { ConnectorService } from "../../types.js";
 export const GoogleDrive: ConnectorService = {
   id: "google-drive",
   name: "GoogleDrive",
+  displayName: "Google Drive",
   company: "Google",
   description: "Files on Drive: list, read, write; Docs/Sheets export on read.",
   iconSvg: icon,
@@ -33,5 +34,5 @@ export const GoogleDrive: ConnectorService = {
   capabilities: { files: driveOps },
   test: (acct) => driveOps.list(acct, { path: "/" }),
   promptHint:
-    "On GoogleDrive, delete moves to its trash; Google Docs/Sheets are exported as text/CSV on read.",
+    "GoogleDrive: delete moves to trash; Docs/Sheets exported as text/CSV on read.",
 };

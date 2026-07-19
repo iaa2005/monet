@@ -36,6 +36,8 @@ export interface ConnectorManifest {
    * builtin service. */
   id: string;
   name: string;
+  /** Human-friendly name for Settings ("Google Gmail"). Falls back to `name`. */
+  displayName?: string;
   company: string;
   description: string;
   /** Bump to ship an update; the store compares against the installed copy. */
@@ -141,6 +143,7 @@ export function manifestToService(
   const service: ConnectorService = {
     id: m.id,
     name: m.name,
+    displayName: m.displayName,
     company: m.company,
     description: m.description,
     iconSvg: opts.iconSvg?.includes("<svg") ? opts.iconSvg : undefined,

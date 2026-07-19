@@ -16,6 +16,7 @@ const ops = makeCaldavOps({
 export const YandexCalendar: ConnectorService = {
   id: "yandex-calendar",
   name: "YandexCalendar",
+  displayName: "Yandex Calendar",
   company: "Yandex",
   description: "Events and availability; can create events.",
   iconSvg: icon,

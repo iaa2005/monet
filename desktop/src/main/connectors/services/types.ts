@@ -255,7 +255,10 @@ export interface ContactOps {
 }
 
 export interface ChatOps {
-  chats(acct: ResolvedAccount, opts: { limit?: number }): Promise<ProtocolResult>;
+  chats(
+    acct: ResolvedAccount,
+    opts: { limit?: number; query?: string },
+  ): Promise<ProtocolResult>;
   topics(
     acct: ResolvedAccount,
     opts: { chat: string; limit?: number },
@@ -306,8 +309,11 @@ export interface ConnectorService {
   /** Stable id — the folder name, and what user accounts reference on disk.
    * NEVER change it once shipped: accounts.json rows point at it. */
   id: string;
-  /** Display name, company-prefixed: "YandexDisk", "GoogleGmail", "Telegram". */
+  /** Compact identifier-style name ("GoogleGmail") — what the model, routines
+   * and the context meter use. */
   name: string;
+  /** Human-friendly name for Settings ("Google Gmail"). Falls back to `name`. */
+  displayName?: string;
   /** The actual company/brand ("Google", "Yandex", "GitHub"; "" if none).
    * Settings groups services under a company header only when it has TWO OR
    * MORE services — a company of one lands in the shared "Other" bucket. */
@@ -374,15 +380,9 @@ export interface UiConnectorService {
   actions: (ActionSpec & { defaultLevel: PermissionLevel })[];
 }
 
-/** "GoogleGmail" + company "Google" → "Google Gmail"; "GitHub" stays "GitHub". */
+/** Human name for Settings — explicit `displayName` if set, else `name`. */
 export function displayNameOf(s: ConnectorService): string {
-  if (
-    s.company &&
-    s.name.startsWith(s.company) &&
-    s.name.length > s.company.length
-  )
-    return `${s.company} ${s.name.slice(s.company.length)}`;
-  return s.name;
+  return s.displayName ?? s.name;
 }
 
 export function toUiService(s: ConnectorService): UiConnectorService {

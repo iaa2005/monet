@@ -46,6 +46,7 @@ function ServiceIcon({
 interface StoreEntry {
   id: string;
   name: string;
+  displayName?: string;
   company: string;
   description: string;
   version: string;
@@ -164,6 +165,7 @@ function StoreModal({
     const q = query.toLowerCase();
     return entries.filter(
       (e) =>
+        (e.displayName ?? e.name).toLowerCase().includes(q) ||
         e.name.toLowerCase().includes(q) ||
         e.company.toLowerCase().includes(q) ||
         e.description.toLowerCase().includes(q) ||
@@ -250,7 +252,7 @@ function StoreModal({
                   <ServiceIcon svg={s.iconSvg} className="mt-0.5 size-6" />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium">
-                      {s.name}
+                      {s.displayName ?? s.name}
                       <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
                         v{s.version}
                       </span>
@@ -308,7 +310,7 @@ function StoreModal({
         <Modal
           open
           onClose={() => setConfirm(null)}
-          title={`Install ${confirm.entry.name}?`}
+          title={`Install ${confirm.entry.displayName ?? confirm.entry.name}?`}
           className="max-w-lg"
         >
           <div className="space-y-3">

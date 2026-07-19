@@ -272,6 +272,8 @@ export function ProtocolConnectors(): JSX.Element {
         </p>
       </section>
 
+      <StoreButton onChanged={load} />
+
       {accounts.length > 0 && (
         <div className="space-y-1.5">
           {accounts.map((a) => {
@@ -401,8 +403,6 @@ export function ProtocolConnectors(): JSX.Element {
           </div>
         </div>
       ))}
-
-      <StoreButton onChanged={load} />
 
       {entry && (
         <ConnectForm
@@ -547,9 +547,17 @@ function ConnectForm({
   const kind = service.auth.kind;
 
   return (
-    <Modal open onClose={onClose} title={`Connect ${service.displayName}`}>
+    <Modal
+      open
+      onClose={onClose}
+      title={
+        <span className="flex items-center gap-2">
+          <ServiceIcon svg={service.iconSvg} className="size-5" />
+          Connect {service.displayName}
+        </span>
+      }
+    >
       <div className="space-y-3">
-        <ServiceIcon svg={service.iconSvg} className="size-9" />
 
         {kind === "unavailable" ? (
           <>

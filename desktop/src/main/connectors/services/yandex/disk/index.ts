@@ -16,6 +16,7 @@ const ops = makeWebdavOps({
 export const YandexDisk: ConnectorService = {
   id: "yandex-disk",
   name: "YandexDisk",
+  displayName: "Yandex Disk",
   company: "Yandex",
   description: "Files on Disk: list, read, write.",
   iconSvg: icon,
@@ -37,5 +38,5 @@ export const YandexDisk: ConnectorService = {
   capabilities: { files: ops },
   test: (acct) => ops.list(acct, { path: "/" }),
   promptHint:
-    "YandexDisk is the user's real drive — confirm before overwriting or deleting.",
+    "YandexDisk: real drive — confirm before overwriting or deleting.",
 };

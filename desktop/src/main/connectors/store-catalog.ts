@@ -36,6 +36,8 @@ const REPO_RAW =
 export interface CatalogEntry {
   id: string;
   name: string;
+  /** Human-friendly name for the store UI ("Google Gmail"). Falls back to `name`. */
+  displayName?: string;
   company: string;
   description: string;
   version: string;
@@ -49,6 +51,7 @@ export interface CatalogEntry {
 export interface ManifestPreview {
   id: string;
   name: string;
+  displayName?: string;
   version: string;
   authKind: string;
   capabilities: string[];
@@ -82,6 +85,7 @@ export async function fetchCatalog(): Promise<CatalogEntry[]> {
     .map((e) => ({
       id: e.id,
       name: e.name,
+      displayName: e.displayName,
       company: e.company ?? "",
       description: e.description ?? "",
       version: e.version ?? "0",
@@ -128,6 +132,7 @@ export async function previewStoreConnector(id: string): Promise<ManifestPreview
   return {
     id: manifest.id,
     name: manifest.name,
+    displayName: manifest.displayName,
     version: manifest.version,
     authKind: manifest.auth.kind,
     capabilities: Object.keys(manifest.capabilities),

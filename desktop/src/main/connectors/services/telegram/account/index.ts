@@ -11,8 +11,9 @@ import { telegramOps } from "../mtproto.js";
 import type { ConnectorService } from "../../types.js";
 
 export const Telegram: ConnectorService = {
-  id: "telegram",
-  name: "Telegram",
+  id: "telegram-account",
+  name: "TelegramAccount",
+  displayName: "Telegram Account",
   company: "Telegram",
   description: "Your chats, channels and forum topics; send text and media.",
   iconSvg: icon,
@@ -23,5 +24,5 @@ export const Telegram: ConnectorService = {
   capabilities: { chat: telegramOps },
   test: (acct) => telegramOps.chats(acct, { limit: 1 }),
   promptHint:
-    "Telegram messages you send appear AS THE USER — never send one they did not ask for; show the text first. A chat listed as `forum` needs a topic id from topics, or the message lands in General.",
+    "TelegramAccount: sends as the USER — never send without asking. Forum chats need a topic id. Use account='TelegramAccount' when both are connected.",
 };

@@ -19,6 +19,7 @@ const ops = makeMailOps({
 export const YandexMail: ConnectorService = {
   id: "yandex-mail",
   name: "YandexMail",
+  displayName: "Yandex Mail",
   company: "Yandex",
   description: "Read, search and send email.",
   iconSvg: icon,

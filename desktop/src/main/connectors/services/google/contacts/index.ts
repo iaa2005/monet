@@ -16,6 +16,7 @@ import type { ConnectorService } from "../../types.js";
 export const GoogleContacts: ConnectorService = {
   id: "google-contacts",
   name: "GoogleContacts",
+  displayName: "Google Contacts",
   company: "Google",
   description: "Look up people: names, emails, phones. Read-only.",
   iconSvg: icon,

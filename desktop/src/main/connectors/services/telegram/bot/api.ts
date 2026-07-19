@@ -128,7 +128,12 @@ export const botOps: ChatOps = {
       const c = u.message?.chat;
       if (c && !seen.has(c.id)) seen.set(c.id, `${c.id}  ${c.type}  ${chatLabel(c)}`);
     }
-    const rows = [...seen.values()].slice(0, Math.max(opts.limit ?? 30, 1));
+    let rows = [...seen.values()];
+    if (opts.query) {
+      const q = opts.query.toLowerCase();
+      rows = rows.filter((r) => r.toLowerCase().includes(q));
+    }
+    rows = rows.slice(0, Math.max(opts.limit ?? 50, 1));
     return {
       ok: true,
       text: rows.length

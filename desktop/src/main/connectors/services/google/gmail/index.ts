@@ -21,6 +21,7 @@ const ops = makeMailOps({
 export const GoogleGmail: ConnectorService = {
   id: "gmail",
   name: "GoogleGmail",
+  displayName: "Google Gmail",
   company: "Google",
   description: "Read, search and send email.",
   iconSvg: icon,
@@ -41,5 +42,5 @@ export const GoogleGmail: ConnectorService = {
   capabilities: { mail: ops },
   test: (acct) => ops.folders(acct),
   promptHint:
-    "On GoogleGmail, `query` takes real Gmail search syntax (from:x has:attachment).",
+    "GoogleGmail: `query` takes Gmail search syntax (from:x has:attachment).",
 };
