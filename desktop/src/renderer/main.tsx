@@ -17,6 +17,10 @@ class ErrorBoundary extends React.Component<
     return { error };
   }
 
+  componentDidCatch(error: Error, info: React.ErrorInfo): void {
+    console.error("[renderer] unhandled render error", error, info.componentStack);
+  }
+
   render() {
     if (this.state.error) {
       return (
@@ -27,6 +31,22 @@ class ErrorBoundary extends React.Component<
             {"\n\n"}
             {this.state.error.stack}
           </pre>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            style={{
+              marginTop: 16,
+              cursor: "pointer",
+              border: "1px solid currentColor",
+              borderRadius: 6,
+              padding: "8px 12px",
+              background: "transparent",
+              color: "inherit",
+              fontFamily: "inherit",
+            }}
+          >
+            Reload application
+          </button>
         </div>
       );
     }

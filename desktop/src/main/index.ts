@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu } from "electron";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { EventEmitter } from "node:events";
 import { registerAllIPC } from "./ipc/index.js";
 import { createTray } from "./tray.js";
 import { applyDataDirEnv } from "./data-dir.js";
@@ -20,6 +21,73 @@ applyDataDirEnv();
 const isDev = !app.isPackaged;
 
 let mainWindow: BrowserWindow | null = null;
+let fatalErrorHandled = false;
+
+function logProcessError(kind: string, error: unknown): void {
+  const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+  console.error(`[main] ${kind}: ${detail}`);
+}
+
+// An uncaught exception can leave application state partially mutated. Log it,
+// then terminate through Electron's normal shutdown path instead of continuing
+// with a potentially corrupted main process.
+process.on("uncaughtException", (error) => {
+  logProcessError("uncaughtException", error);
+  if (!fatalErrorHandled) {
+    fatalErrorHandled = true;
+    app.quit();
+  }
+});
+
+process.on("unhandledRejection", (reason) => {
+  logProcessError("unhandledRejection", reason);
+});
+
+type ChildProcessGoneDetails = {
+  type: string;
+  reason: string;
+  exitCode: number;
+};
+
+function installWindowProcessHandlers(win: BrowserWindow, label: string): void {
+  let recoveryAttempts = 0;
+  let lastRecoveryAt = 0;
+  const recoveryCooldownMs = 30_000;
+  const maxRecoveryAttempts = 1;
+
+  win.webContents.on("render-process-gone", (_event, details) => {
+    console.error(
+      `[main] render-process-gone (${label}): reason=${details.reason}, exitCode=${details.exitCode}`,
+    );
+
+    const now = Date.now();
+    const canRecover =
+      recoveryAttempts < maxRecoveryAttempts &&
+      now - lastRecoveryAt >= recoveryCooldownMs &&
+      !win.isDestroyed();
+    if (!canRecover) {
+      console.error(`[main] renderer recovery skipped (${label}): retry limit reached`);
+      return;
+    }
+
+    recoveryAttempts += 1;
+    lastRecoveryAt = now;
+    console.error(`[main] reloading renderer once (${label})`);
+    win.reload();
+  });
+
+  // Electron 33 emits this event, but the bundled WebContents typings do not
+  // expose its overload. Keep the listener typed without weakening the rest of
+  // the BrowserWindow API.
+  (win.webContents as unknown as EventEmitter).on(
+    "child-process-gone",
+    (_event: unknown, details: ChildProcessGoneDetails) => {
+      console.error(
+        `[main] child-process-gone (${label}): type=${details.type}, reason=${details.reason}, exitCode=${details.exitCode}`,
+      );
+    },
+  );
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -41,6 +109,8 @@ function createWindow(): void {
       devTools: isDev,
     },
   });
+
+  installWindowProcessHandlers(mainWindow, "main");
 
   // Open DevTools in dev mode for debugging
   // DevTools only with CLAUDE_DEVTOOLS=1
@@ -110,6 +180,8 @@ function openSecondaryWindow(): void {
       devTools: isDev,
     },
   });
+  installWindowProcessHandlers(win, "secondary");
+
   if (!isDev) {
     win.webContents.on("before-input-event", (event, input) => {
       const mod = input.control || input.meta;
