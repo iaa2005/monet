@@ -6,6 +6,7 @@ import { ipcMain, dialog, BrowserWindow } from "electron";
 import {
   access,
   copyFile,
+  open,
   readdir,
   readFile,
   stat,
@@ -58,8 +59,24 @@ export function registerFilesIPC(): void {
     try {
       const info = await stat(p);
       if (!info.isFile()) throw new Error(`Not a file: ${filePath}`);
-      if (info.size > MAX_TEXT_BYTES)
-        throw new Error("File is too large to preview (400KB)");
+      // Oversized files are TRUNCATED, never refused: a 2MB log is the kind of
+      // file a user most wants to peek at, and the size cap exists to protect
+      // memory, not to hide the first page. Only the capped prefix is read.
+      if (info.size > MAX_TEXT_BYTES) {
+        const fh = await open(p, "r");
+        try {
+          const buf = Buffer.alloc(MAX_TEXT_BYTES);
+          const { bytesRead } = await fh.read(buf, 0, MAX_TEXT_BYTES, 0);
+          const shown = Math.round(MAX_TEXT_BYTES / 1000);
+          const total = Math.round(info.size / 1000);
+          return (
+            buf.subarray(0, bytesRead).toString("utf-8") +
+            `\n\n… (truncated — showing first ${shown}KB of ${total}KB)`
+          );
+        } finally {
+          await fh.close();
+        }
+      }
       return await readFile(p, "utf-8");
     } catch (err) {
       logFilesError("read", err);
