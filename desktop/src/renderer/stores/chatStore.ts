@@ -173,15 +173,16 @@ interface ChatStore {
   openFileRequest: string | null;
   /** Request to open the Changes tab in the right panel. Consumed by App. */
   openChangesRequest: boolean;
-  /** Artifact currently shown in the in-app viewer drawer (null = closed). */
-  viewerArtifact: {
+  /** Unified file/artifact viewer state (null = closed).
+   * source "artifact" → reads via artifacts:* IPC, pass as item prop.
+   * source "file" → reads via files:* IPC, pass as path prop. */
+  viewer: {
     name: string;
     path?: string;
     mediaType: string;
     kind: string;
-    /** In-memory preview (e.g. an attachment that was never saved to disk —
-     * incognito); the viewer prefers it over re-reading the path. */
     dataUrl?: string;
+    source?: "artifact" | "file";
   } | null;
   /** Current workspace ("home" | "code") — new chats are tagged with it so
    * Home and Code keep separate Recents. Mirrors App's appMode. */
@@ -198,13 +199,14 @@ interface ChatStore {
   setDroppedFiles: (files: File[] | null) => void;
   requestOpenFile: (path: string | null) => void;
   requestOpenChanges: () => void;
-  openArtifactViewer: (
+  openViewer: (
     item: {
       name: string;
       path?: string;
       mediaType: string;
       kind: string;
       dataUrl?: string;
+      source?: "artifact" | "file";
     } | null,
   ) => void;
   setSpace: (v: string) => void;
@@ -607,7 +609,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     droppedFiles: null,
     openFileRequest: null,
     openChangesRequest: false,
-    viewerArtifact: null,
+    viewer: null,
     space: "home",
     queue: [],
 
@@ -634,7 +636,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     setDroppedFiles: (files) => set({ droppedFiles: files }),
     requestOpenFile: (path) => set({ openFileRequest: path }),
     requestOpenChanges: () => set({ openChangesRequest: true }),
-    openArtifactViewer: (item) => set({ viewerArtifact: item }),
+    openViewer: (item) => set({ viewer: item }),
     setSpace: (v) => set({ space: v }),
     bumpSessions: () =>
       set((s) => ({ sessionsVersion: s.sessionsVersion + 1 })),

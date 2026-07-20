@@ -290,7 +290,6 @@ export default function App(): JSX.Element {
     useState<"pyodide" | "subprocess" | "docker">("pyodide");
   const [homeShellSupported, setHomeShellSupported] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>(null);
-  const [openFilePath, setOpenFilePath] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     status: "all",
     activity: "all",
@@ -304,23 +303,23 @@ export default function App(): JSX.Element {
   const incognito = useChatStore((s) => s.incognito);
   const openFileRequest = useChatStore((s) => s.openFileRequest);
   const openChangesRequest = useChatStore((s) => s.openChangesRequest);
-  const viewerArtifact = useChatStore((s) => s.viewerArtifact);
-  const closeArtifactViewer = useCallback(
-    () => useChatStore.getState().openArtifactViewer(null),
+  const viewer = useChatStore((s) => s.viewer);
+  const closeViewer = useCallback(
+    () => useChatStore.getState().openViewer(null),
     [],
   );
-  const closeFileViewer = useCallback(() => {
-    if (useChatStore.getState().viewerArtifact) {
-      closeArtifactViewer();
-    } else {
-      setOpenFilePath(null);
-    }
-  }, [closeArtifactViewer]);
 
   // Tool file links ask to open a file in the in-app viewer.
   useEffect(() => {
     if (openFileRequest) {
-      setOpenFilePath(openFileRequest);
+      const path = openFileRequest;
+      useChatStore.getState().openViewer({
+        name: path.split(/[/\\]/).pop() || path,
+        path,
+        mediaType: "application/octet-stream",
+        kind: "file",
+        source: "file",
+      });
       useChatStore.getState().requestOpenFile(null);
     }
   }, [openFileRequest]);
@@ -1226,16 +1225,16 @@ export default function App(): JSX.Element {
                   <ResizablePanelGroup direction="vertical" className="gap-1">
                     <ResizablePanel minSize={20}>
                       <div className="h-full min-h-0 overflow-hidden">
-                        {viewerArtifact ? (
+                        {viewer ? (
                           <ViewerErrorBoundary
-                            key={`artifact:${viewerArtifact.path ?? viewerArtifact.name}`}
-                            onClose={closeArtifactViewer}
+                            key={`viewer:${viewer.path ?? viewer.name}`}
+                            onClose={closeViewer}
                           >
-                            <FileViewer item={viewerArtifact} onClose={closeArtifactViewer} />
-                          </ViewerErrorBoundary>
-                        ) : openFilePath ? (
-                          <ViewerErrorBoundary key={`file:${openFilePath}`} onClose={closeFileViewer}>
-                            <FileViewer path={openFilePath} onClose={closeFileViewer} />
+                            <FileViewer
+                              path={viewer.source === "file" ? viewer.path : undefined}
+                              item={viewer.source !== "file" ? viewer : undefined}
+                              onClose={closeViewer}
+                            />
                           </ViewerErrorBoundary>
                         ) : view === "routines" ? (
                           <div className="h-full overflow-auto">
@@ -1360,16 +1359,16 @@ export default function App(): JSX.Element {
                   <ResizablePanelGroup direction="vertical" className="gap-1">
                     <ResizablePanel minSize={20}>
                       <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                        {viewerArtifact ? (
+                        {viewer ? (
                           <ViewerErrorBoundary
-                            key={`artifact:${viewerArtifact.path ?? viewerArtifact.name}`}
-                            onClose={closeArtifactViewer}
+                            key={`viewer:${viewer.path ?? viewer.name}`}
+                            onClose={closeViewer}
                           >
-                            <FileViewer item={viewerArtifact} onClose={closeArtifactViewer} />
-                          </ViewerErrorBoundary>
-                        ) : openFilePath ? (
-                          <ViewerErrorBoundary key={`file:${openFilePath}`} onClose={closeFileViewer}>
-                            <FileViewer path={openFilePath} onClose={closeFileViewer} />
+                            <FileViewer
+                              path={viewer.source === "file" ? viewer.path : undefined}
+                              item={viewer.source !== "file" ? viewer : undefined}
+                              onClose={closeViewer}
+                            />
                           </ViewerErrorBoundary>
                         ) : (
                           <>
@@ -1490,7 +1489,15 @@ export default function App(): JSX.Element {
                         <div className="min-h-0 flex-1 overflow-auto">
                           <div className={rightTab === "files" ? "" : "hidden"}>
                             <FileTree
-                              onSelectFile={(p) => setOpenFilePath(p)}
+                              onSelectFile={(p) => {
+                                useChatStore.getState().openViewer({
+                                  name: p.split(/[/\\]/).pop() || p,
+                                  path: p,
+                                  mediaType: "application/octet-stream",
+                                  kind: "file",
+                                  source: "file",
+                                });
+                              }}
                             />
                           </div>
                           <div

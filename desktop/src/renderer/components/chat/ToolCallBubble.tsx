@@ -282,9 +282,14 @@ function ToolDetail({
 function FilePathLink({ path }: { path: string }): JSX.Element {
   const handleClick = (e: React.MouseEvent): void => {
     e.stopPropagation();
-    // Open in the in-app file viewer (App consumes openFileRequest) instead
-    // of handing the file to the OS.
-    useChatStore.getState().requestOpenFile(path);
+    const name = path.split(/[/\\]/).pop() || path;
+    useChatStore.getState().openViewer({
+      name,
+      path,
+      mediaType: "application/octet-stream",
+      kind: "file",
+      source: "file",
+    });
   };
   // Rendered inside the ToolRow header <button>, so this must NOT be a
   // <button> itself (nested buttons are invalid HTML — React logs an error).

@@ -3,7 +3,7 @@
  *
  * Two entry points, ONE pipeline:
  *   - `item`  — a rich artifact (`{ name, path?, mediaType, kind, dataUrl? }`)
- *               from chatStore.viewerArtifact;
+ *               from chatStore.viewer;
  *   - `path`  — any file from the file trees. Known binary types (images, pdf,
  *               docx, xlsx, audio, video) are synthesized into the same rich
  *               item shape and previewed identically — never dumped as text;
@@ -34,7 +34,7 @@ function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
-/** Public shape for artifacts passed from chatStore.viewerArtifact. */
+/** Public shape for artifacts passed from chatStore.viewer. */
 export type FileViewerItem = {
   name: string;
   path?: string;

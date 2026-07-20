@@ -40,7 +40,7 @@ export function viewArtifact(a: {
   kind: string;
   dataUrl?: string;
 }): void {
-  useChatStore.getState().openArtifactViewer(a);
+  useChatStore.getState().openViewer({ ...a, source: "artifact" });
 }
 
 export function KindIcon({

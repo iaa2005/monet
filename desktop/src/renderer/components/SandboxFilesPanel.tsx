@@ -16,7 +16,7 @@ function api(): ElectronAPI | undefined {
 
 export function SandboxFilesPanel(): JSX.Element {
   const sessionId = useChatStore((s) => s.currentSessionId);
-  const requestOpenFile = useChatStore((s) => s.requestOpenFile);
+  const openViewer = useChatStore((s) => s.openViewer);
   const [workDir, setWorkDir] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -55,7 +55,10 @@ export function SandboxFilesPanel(): JSX.Element {
           <FileTree
             key={`${workDir}:${refreshKey}`}
             rootPath={workDir}
-            onSelectFile={(p) => requestOpenFile(p)}
+            onSelectFile={(p) => {
+              const name = p.split(/[/\\]/).pop() || p;
+              openViewer({ name, path: p, mediaType: "application/octet-stream", kind: "file", source: "file" });
+            }}
             emptyLabel="No files in this chat's sandbox yet. Files you attach and files RunPython/RunCommand write appear here."
           />
         ) : (
