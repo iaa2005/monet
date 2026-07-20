@@ -63,10 +63,58 @@ function activeModalities(): Set<string> {
   return new Set(vision ? ["text", "image"] : ["text"]);
 }
 
-function buildUserContent(
+/**
+ * Drop an attachment the model can't consume inline into the chat's file area
+ * (Home → its sandbox; Code → the run's cwd) and return the note the model
+ * sees. This is the "even if the model can't, still get the data to it" path:
+ * a vision-blind model can't SEE a PNG, but it can run OCR on the saved file;
+ * any model can read a saved PDF/CSV with its file tools.
+ */
+async function stashUnsupported(
+  a: ChatAttachment,
+  space: string | undefined,
+  sessionId: string,
+): Promise<string> {
+  const kindWord =
+    a.kind === "image" ? "view images"
+    : a.kind === "audio" ? "hear audio"
+    : a.kind === "video" ? "watch video"
+    : "read this file inline";
+  try {
+    const bytes = Buffer.from(a.dataBase64 ?? "", "base64");
+    if (bytes.length === 0) throw new Error("empty");
+    const safeName = a.name.replace(/[^\p{L}\p{N}._-]/gu, "_") || "attachment";
+    let savedPath: string | null;
+    if (space === "home") {
+      const { copyBufferIntoSandbox } = await import("../sandbox/files.js");
+      savedPath = copyBufferIntoSandbox(sessionId, safeName, bytes);
+    } else {
+      // Code: write next to the workspace the run operates in.
+      const { writeFile, mkdir } = await import("fs/promises");
+      const { join } = await import("path");
+      const dir = join(getWorkspacePath(), ".monet-attachments");
+      await mkdir(dir, { recursive: true });
+      const full = join(dir, safeName);
+      await writeFile(full, bytes);
+      savedPath = full;
+    }
+    if (!savedPath) throw new Error("could not save");
+    const how =
+      a.kind === "image"
+        ? "run OCR / an image tool on it in the sandbox"
+        : "read it with your file tools";
+    return `\n\n[Attached ${a.kind}: ${a.name} — this model can't ${kindWord}, so it was saved to \`${savedPath}\`. To use its contents, ${how}.]`;
+  } catch {
+    return `\n\n[Attached ${a.kind}: ${a.name} — this model can't ${kindWord}, and it couldn't be saved to the workspace.]`;
+  }
+}
+
+async function buildUserContent(
   message: string,
   attachments: ChatAttachment[] | undefined,
-): string | LLMContentBlock[] {
+  space: string | undefined,
+  sessionId: string,
+): Promise<string | LLMContentBlock[]> {
   if (!attachments || attachments.length === 0) return message;
 
   const mods = activeModalities();
@@ -88,10 +136,7 @@ function buildUserContent(
     } else if (a.kind === "image" && a.dataBase64) {
       if (mods.has("image"))
         mediaBlocks.push({ type: "image", source: src(a, "image/png") });
-      else
-        textParts.push(
-          `\n\n[Attached image: ${a.name} — the current model can't view images]`,
-        );
+      else textParts.push(await stashUnsupported(a, space, sessionId));
     } else if (a.kind === "audio" && a.dataBase64) {
       if (mods.has("audio"))
         mediaBlocks.push({
@@ -99,10 +144,7 @@ function buildUserContent(
           source: src(a, "audio/mpeg"),
           name: a.name,
         });
-      else
-        textParts.push(
-          `\n\n[Attached audio: ${a.name} — the current model can't hear audio]`,
-        );
+      else textParts.push(await stashUnsupported(a, space, sessionId));
     } else if (a.kind === "video" && a.dataBase64) {
       if (mods.has("video"))
         mediaBlocks.push({
@@ -110,10 +152,7 @@ function buildUserContent(
           source: src(a, "video/mp4"),
           name: a.name,
         });
-      else
-        textParts.push(
-          `\n\n[Attached video: ${a.name} — the current model can't watch video]`,
-        );
+      else textParts.push(await stashUnsupported(a, space, sessionId));
     } else if (a.kind === "file" && a.dataBase64) {
       if (mods.has("file"))
         mediaBlocks.push({
@@ -121,10 +160,7 @@ function buildUserContent(
           source: src(a, "application/pdf"),
           name: a.name,
         });
-      else
-        textParts.push(
-          `\n\n[Attached document: ${a.name} — the current model can't read files]`,
-        );
+      else textParts.push(await stashUnsupported(a, space, sessionId));
     } else {
       textParts.push(`\n\n[Attached file: ${a.name}]`);
     }
@@ -256,7 +292,12 @@ export function registerChatIPC(): void {
     try {
       await runAgent(
         sessionId,
-        buildUserContent(message, payload.attachments),
+        await buildUserContent(
+          message,
+          payload.attachments,
+          payload.space,
+          sessionId,
+        ),
         (event) => {
           // Tag every event with its session so the renderer routes it to the
           // right chat even after the user switched away.

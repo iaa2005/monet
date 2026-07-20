@@ -616,17 +616,19 @@ export function MessageInput({
         : "I want to create a routine. Ask me what it should do and when, then use the CreateRoutine tool.";
     }
 
-    // Respect the active model's input modalities and budget BEFORE clearing
-    // the composer, so a rejected send loses nothing.
+    // A model that can't consume an attachment inline no longer BLOCKS the
+    // send: the backend saves such files into the chat's sandbox / workspace
+    // and hands the model the path, so it can still get at the data (OCR an
+    // image, read a PDF with its file tools). Just tell the user what will
+    // happen instead of refusing.
     const mods = activeModel?.modalities ?? ["text"];
     const unsupported = files
       .map((f) => fileModality(f.file))
       .find((k) => k && !mods.includes(k));
     if (unsupported) {
-      setError(
-        `${modelLabel} doesn't accept ${unsupported} attachments — remove them or switch to a model with that modality.`,
+      setNotice(
+        `${modelLabel} can't read ${unsupported} directly — it'll be saved to the workspace so the model can open it with its tools.`,
       );
-      return;
     }
     const inputBudget =
       activeModel?.maxInputTokens ?? activeModel?.contextLength;
