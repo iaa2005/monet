@@ -31,9 +31,14 @@ const timers = new Map<string, NodeJS.Timeout>();
 const MAX_DELAY = 2_000_000_000;
 const SKIP_SENTINEL = "SKIP";
 
-/** Accept the historical exact SKIP response, but not prose beginning with it. */
+/**
+ * The sentinel alone — never prose that merely starts with it ("SKIP because
+ * nothing new" used to count and silently dropped real work). Trailing
+ * punctuation and case are tolerated: weak models answer "Skip." and the
+ * alternative is a junk chat containing one word.
+ */
 function isSkipSentinel(text: string): boolean {
-  return text.trim() === SKIP_SENTINEL;
+  return new RegExp(`^${SKIP_SENTINEL}[.!]?$`, "i").test(text.trim());
 }
 
 function skipInstruction(): string {
