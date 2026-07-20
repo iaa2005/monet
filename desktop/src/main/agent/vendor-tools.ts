@@ -47,6 +47,7 @@ import {
   connectorToolHasAccounts,
 } from "./connector-tools.js";
 import { CreateRoutineTool } from "./routine-tool.js";
+import { RememberTool } from "./remember-tool.js";
 import {
   SandboxListTool,
   SandboxReadTool,
@@ -82,6 +83,8 @@ const HOME_TOOL_NAMES = new Set([
   "WebFetch",
   "WebSearch",
   "SearchPastChats",
+  // Memory is about the USER, not the filesystem — it belongs in both spaces.
+  "Remember",
 ]);
 
 /** Sandbox-scoped tools make no sense in Code (it has the real filesystem). */
@@ -325,6 +328,7 @@ export function getVendorTools(): Tools {
     ComputerTool,
     ...CONNECTOR_TOOLS,
     CreateRoutineTool,
+    RememberTool,
   ] as unknown as Tool[];
   // Without a POSIX shell the vendor Bash tool errors on every call — drop
   // it so the model goes straight to PowerShell. (ensurePosixShell also

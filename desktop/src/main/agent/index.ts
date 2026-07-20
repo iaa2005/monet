@@ -212,6 +212,8 @@ export async function seedTunablePrompts(): Promise<void> {
     tunablePrompt("method", METHOD_DEFAULT);
     tunablePrompt("discipline", DISCIPLINE_DEFAULT);
     cavemanDirective();
+    // Seeds prompts/tool-remember.md alongside the rest.
+    await (await import("./remember-tool.js")).RememberTool.prompt();
   } catch {
     /* best-effort */
   }
