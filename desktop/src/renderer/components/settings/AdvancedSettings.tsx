@@ -36,6 +36,7 @@ function ToggleRow({
 export function AdvancedSettings(): JSX.Element {
   const [toolSearch, setToolSearch] = useState(false);
   const [lsp, setLsp] = useState(false);
+  const [caveman, setCaveman] = useState(false);
   const [reloaded, setReloaded] = useState(false);
   const [promptsDir, setPromptsDir] = useState<string>("");
   const [migrating, setMigrating] = useState(false);
@@ -44,11 +45,16 @@ export function AdvancedSettings(): JSX.Element {
   useEffect(() => {
     api()?.tuning.toolSearchGet().then((c) => setToolSearch(c.enabled)).catch(() => {});
     api()?.tuning.lspGet().then((c) => setLsp(c.enabled)).catch(() => {});
+    api()?.tuning.cavemanGet().then((c) => setCaveman(c.enabled)).catch(() => {});
   }, []);
 
   const toggleToolSearch = (v: boolean): void => {
     setToolSearch(v);
     void api()?.tuning.toolSearchSet({ enabled: v });
+  };
+  const toggleCaveman = (v: boolean): void => {
+    setCaveman(v);
+    void api()?.tuning.cavemanSet({ enabled: v });
   };
   const toggleLsp = (v: boolean): void => {
     setLsp(v);
@@ -94,6 +100,12 @@ export function AdvancedSettings(): JSX.Element {
             desc="Definitions, references, hover, symbols and diagnostics via a language server. Needs the server installed (typescript-language-server, pyright, gopls, rust-analyzer, clangd). Code only."
             checked={lsp}
             onChange={toggleLsp}
+          />
+          <ToggleRow
+            title="Caveman mode (terse)"
+            desc="The agent writes super-terse output and thinking — telegraphic, no filler — and squeezes context earlier and tighter. Great for saving tokens on weaker/cheaper models."
+            checked={caveman}
+            onChange={toggleCaveman}
           />
         </div>
       </section>

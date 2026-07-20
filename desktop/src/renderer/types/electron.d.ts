@@ -625,6 +625,8 @@ export interface ElectronAPI {
     }) => Promise<{ keepAwake: boolean; active: boolean }>;
     toolSearchGet: () => Promise<{ enabled: boolean }>;
     toolSearchSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
+    cavemanGet: () => Promise<{ enabled: boolean }>;
+    cavemanSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
     lspGet: () => Promise<{ enabled: boolean }>;
     lspSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
     promptsReload: () => Promise<{ ok: boolean }>;

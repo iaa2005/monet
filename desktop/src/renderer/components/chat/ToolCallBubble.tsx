@@ -469,9 +469,18 @@ function ToolGroupCard({ calls }: { calls: ToolCall[] }): JSX.Element {
   );
 }
 
-/** Single tool call (legacy / verbose mode). */
-function ToolCallItem({ toolCall }: { toolCall: ToolCall }): JSX.Element {
+/** Single tool call. In verbose mode it is expanded by default and reveals the
+ * FULL raw input params (every argument) in addition to the semantic detail and
+ * output. */
+function ToolCallItem({
+  toolCall,
+  verbose,
+}: {
+  toolCall: ToolCall;
+  verbose?: boolean;
+}): JSX.Element {
   const [open, setOpen] = useState(false);
+  const effectiveOpen = verbose || open;
   const preview = inputPreview(toolCall.name, toolCall.input);
   const isEdit =
     (toolCall.name === "Edit" || toolCall.name === "MultiEdit") &&
@@ -525,14 +534,26 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }): JSX.Element {
           <ChevronRight
             className={cn(
               "size-3.5 shrink-0 text-muted-foreground/70 transition-transform",
-              open && "rotate-90",
+              effectiveOpen && "rotate-90",
             )}
           />
         )}
       </button>
 
-      {open && hasDetails && (
-        <div className="mt-1.5">
+      {effectiveOpen && hasDetails && (
+        <div className="mt-1.5 space-y-1.5">
+          {verbose && Object.keys(toolCall.input).length > 0 && (
+            <div>
+              <div className="mb-1 px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                Parameters
+              </div>
+              <CodeBlock
+                code={JSON.stringify(toolCall.input, null, 2)}
+                language="json"
+                maxHeight={280}
+              />
+            </div>
+          )}
           <ToolDetail toolCall={toolCall} />
         </div>
       )}
@@ -742,12 +763,14 @@ function ToolCallBubbleImpl({
     return <ToolGroupCard calls={[toolCall, ...groupMembers]} />;
   }
 
-  if (mode === "normal") {
+  // Normal and Thinking both use the compact, collapsed row — Thinking's real
+  // distinction is the reasoning block rendered on the assistant message.
+  if (mode === "normal" || mode === "thinking") {
     return <SingleToolRow toolCall={toolCall} />;
   }
 
-  // Verbose / Thinking: legacy individual items with raw names
-  return <ToolCallItem toolCall={toolCall} />;
+  // Verbose: individual items, expanded, revealing full params + output.
+  return <ToolCallItem toolCall={toolCall} verbose />;
 }
 
 function sameMembers(a?: ToolCall[], b?: ToolCall[]): boolean {

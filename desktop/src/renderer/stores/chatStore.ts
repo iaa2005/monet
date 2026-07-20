@@ -348,11 +348,19 @@ export const useChatStore = create<ChatStore>((set, get) => {
   // switching. Buffer text per session and flush at most every FLUSH_MS.
   const FLUSH_MS = 50;
   const pendingText = new Map<string, string>();
+  const pendingReasoning = new Map<string, string>();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   /** Throttle for mid-run checkpoint saves (per session). */
   const lastCheckpoint = new Map<string, number>();
 
   function flushPendingFor(sessionId: string): void {
+    // Reasoning is emitted before the visible answer, so flush it first to keep
+    // ordering (thinking then text) intact.
+    const reasoning = pendingReasoning.get(sessionId);
+    if (reasoning) {
+      pendingReasoning.delete(sessionId);
+      mutate(sessionId, (p) => reduce(p, { type: "reasoning_delta", text: reasoning }));
+    }
     const text = pendingText.get(sessionId);
     if (text) {
       pendingText.delete(sessionId);
@@ -361,7 +369,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
   }
 
   function flushAllPending(): void {
-    for (const id of [...pendingText.keys()]) flushPendingFor(id);
+    const ids = new Set([...pendingText.keys(), ...pendingReasoning.keys()]);
+    for (const id of ids) flushPendingFor(id);
   }
 
   /** Update one session's state; mirror to the visible fields if it's current. */
@@ -409,6 +418,28 @@ export const useChatStore = create<ChatStore>((set, get) => {
           msgs[msgs.length - 1] = {
             ...last,
             content: last.content + event.text,
+          };
+        }
+        return { ...prev, messages: msgs, isStreaming: true, error: null };
+      }
+      case "reasoning_delta": {
+        // Thinking tokens attach to the current streaming assistant message
+        // (created here if the answer text hasn't started yet). Display-only.
+        const msgs = [...prev.messages];
+        const last = msgs[msgs.length - 1];
+        if (!last || last.role !== "assistant" || !last.isStreaming) {
+          msgs.push({
+            id: generateId(),
+            role: "assistant",
+            content: "",
+            reasoning: event.text,
+            timestamp: Date.now(),
+            isStreaming: true,
+          });
+        } else {
+          msgs[msgs.length - 1] = {
+            ...last,
+            reasoning: (last.reasoning ?? "") + event.text,
           };
         }
         return { ...prev, messages: msgs, isStreaming: true, error: null };
@@ -854,11 +885,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
     handleLLMEvent: (sessionId, event) => {
       // Coalesce the text firehose (see the batching note above).
-      if (event.type === "text_delta") {
-        pendingText.set(
-          sessionId,
-          (pendingText.get(sessionId) ?? "") + event.text,
-        );
+      if (event.type === "text_delta" || event.type === "reasoning_delta") {
+        const buf = event.type === "text_delta" ? pendingText : pendingReasoning;
+        buf.set(sessionId, (buf.get(sessionId) ?? "") + event.text);
         if (!flushTimer) {
           flushTimer = setTimeout(() => {
             flushTimer = null;

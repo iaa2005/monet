@@ -75,12 +75,16 @@ export async function compactMessages(opts: {
   model: string
   maxTokens: number
   signal?: AbortSignal
+  /** Extra instruction appended to the summary request (caveman mode). */
+  terseHint?: string
 }): Promise<LLMMessage[]> {
-  const { messages, adapter, model, maxTokens, signal } = opts
+  const { messages, adapter, model, maxTokens, signal, terseHint } = opts
   if (messages.length < 4) return messages
 
   try {
-    const compactPrompt = getCompactPrompt()
+    const compactPrompt = terseHint
+      ? `${getCompactPrompt()}\n\n${terseHint}`
+      : getCompactPrompt()
     const resp = await adapter.complete(
       {
         model,

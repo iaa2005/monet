@@ -32,6 +32,7 @@ import {
   Play,
   RotateCcw,
   Clock,
+  Brain,
   X as XIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -238,6 +239,33 @@ function RewindControl({ messageId }: { messageId: string }): JSX.Element {
 /** Memoized so a streaming flush only re-renders the message that changed —
  * finished messages keep their object identity in the store, so re-parsing
  * their markdown (the main scroll-lag source) is skipped entirely. */
+/** Thinking mode: the model's reasoning, shown in a muted collapsible block
+ * above the answer. Display-only — this text never re-enters the model context.
+ * Open while streaming (so you watch it think), collapsible once the answer
+ * lands. */
+function ReasoningBlock({
+  text,
+  streaming,
+}: {
+  text: string;
+  streaming: boolean;
+}): JSX.Element {
+  return (
+    <details
+      open={streaming}
+      className="mb-1.5 rounded-lg border border-border/60 bg-black/[0.02] px-3 py-2 dark:bg-white/[0.03]"
+    >
+      <summary className="flex cursor-pointer select-none items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
+        <Brain className="size-3.5" />
+        {streaming ? "Thinking…" : "Thought process"}
+      </summary>
+      <div className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-foreground">
+        {text}
+      </div>
+    </details>
+  );
+}
+
 const MessageRow = memo(
   function MessageRow({
     msg,
@@ -346,6 +374,9 @@ const MessageRow = memo(
             </div>
           ) : (
             <div className="group">
+              {mode === "thinking" && msg.reasoning ? (
+                <ReasoningBlock text={msg.reasoning} streaming={!msg.content && !!isStreaming} />
+              ) : null}
               <Bubble variant="ghost">
                 <BubbleContent
                   className={cn(msg.isError && "text-destructive")}
@@ -443,6 +474,8 @@ interface TurnSummary {
   request: string | null;
   /** Distinct tool names used in the turn, in first-use order. */
   toolNames: string[];
+  /** Distinct files created/edited in the turn (from Edit/Write/MultiEdit). */
+  filesChanged: string[];
   /** Number of tool calls in the turn. */
   stepCount: number;
   /** The assistant's final answer text for the turn. */
@@ -469,6 +502,7 @@ function summarizeTurns(msgs: ChatMessage[]): TurnSummary[] {
         id: m.id || `turn-${i}`,
         request: m.content,
         toolNames: [],
+        filesChanged: [],
         stepCount: 0,
         answer: "",
         answerIsError: false,
@@ -480,6 +514,7 @@ function summarizeTurns(msgs: ChatMessage[]): TurnSummary[] {
         id: m.id || `turn-${i}`,
         request: null,
         toolNames: [],
+        filesChanged: [],
         stepCount: 0,
         answer: "",
         answerIsError: false,
@@ -489,6 +524,12 @@ function summarizeTurns(msgs: ChatMessage[]): TurnSummary[] {
       cur.stepCount++;
       const name = m.toolCall.name;
       if (name && !cur.toolNames.includes(name)) cur.toolNames.push(name);
+      // Track files this turn wrote (Edit/Write/MultiEdit carry file_path).
+      if (name === "Edit" || name === "Write" || name === "MultiEdit") {
+        const fp = m.toolCall.input?.file_path;
+        if (typeof fp === "string" && fp && !cur.filesChanged.includes(fp))
+          cur.filesChanged.push(fp);
+      }
     } else if (m.role === "assistant" && m.content?.trim()) {
       cur.answer = m.content;
       cur.answerIsError = !!m.isError;
@@ -515,6 +556,22 @@ function SummaryTurnCard({ turn }: { turn: TurnSummary }): JSX.Element {
         <div className="mb-2 text-[11px] text-muted-foreground">
           {turn.stepCount} {turn.stepCount === 1 ? "step" : "steps"}
           {turn.toolNames.length > 0 && <> · {turn.toolNames.join(", ")}</>}
+        </div>
+      )}
+      {turn.filesChanged.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Files
+          </span>
+          {turn.filesChanged.map((f) => (
+            <span
+              key={f}
+              title={f}
+              className="max-w-[220px] truncate rounded bg-black/[0.04] px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground dark:bg-white/[0.06]"
+            >
+              {f.split(/[\\/]/).pop()}
+            </span>
+          ))}
         </div>
       )}
       {turn.answer ? (

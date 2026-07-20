@@ -57,6 +57,7 @@ import { BetaBadge } from "@/components/BetaBadge";
 import { AccountMenu } from "@/components/AccountMenu";
 import { AboutPanel } from "@/components/AboutPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { OnboardingIntro } from "@/components/OnboardingIntro";
 import { RoutinesSettings } from "@/components/settings/RoutinesSettings";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -203,6 +204,10 @@ function Panel({
 }
 
 export default function App(): JSX.Element {
+  // First-run intro: shown until the user completes (or skips) onboarding.
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => !localStorage.getItem("monet-onboarded"),
+  );
   const [view, setView] = useState<View>("chat");
   // Home = simple centered chat (no IDE chrome). Code = the full IDE shell
   // (terminal, files, changes, resizable panels).
@@ -718,6 +723,9 @@ export default function App(): JSX.Element {
 
   return (
     <div className="relative flex h-screen flex-col bg-sidebar text-foreground">
+      {showOnboarding && (
+        <OnboardingIntro onDone={() => setShowOnboarding(false)} />
+      )}
       {/* Fade-out layer (old painting) */}
       <div
         ref={fadeRef}

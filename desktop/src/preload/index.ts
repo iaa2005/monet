@@ -624,6 +624,10 @@ const electronAPI = {
       ipcRenderer.invoke("toolsearch:get"),
     toolSearchSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
       ipcRenderer.invoke("toolsearch:set", patch),
+    cavemanGet: (): Promise<{ enabled: boolean }> =>
+      ipcRenderer.invoke("caveman:get"),
+    cavemanSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
+      ipcRenderer.invoke("caveman:set", patch),
     lspGet: (): Promise<{ enabled: boolean }> => ipcRenderer.invoke("lsp:get"),
     lspSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
       ipcRenderer.invoke("lsp:set", patch),
