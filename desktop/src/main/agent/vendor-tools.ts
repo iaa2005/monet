@@ -294,50 +294,70 @@ export function getVendorTools(): Tools {
     cachedForWorkspace = ws;
   }
   if (cachedTools) return cachedTools;
-  const all = [
-    BashTool,
-    PowerShellTool,
-    FileReadTool,
-    FileWriteTool,
-    FileEditTool,
-    GlobTool,
-    GrepTool,
-    TodoWriteTool,
-    InlineSkillTool,
-    AskUserQuestionTool,
-    ToolSearchTool,
-    LSPTool,
-    AgentTaskTool,
-    SearchPastChatsTool,
-    WebFetchTool,
-    WebSearchTool,
-    RunPythonTool,
-    RunCommandTool,
-    ListMcpResourcesTool,
-    ReadMcpResourceTool,
-    SandboxListTool,
-    SandboxReadTool,
-    SandboxWriteTool,
-    SandboxEditTool,
-    BrowserNavigateTool,
-    BrowserReadPageTool,
-    BrowserClickTool,
-    BrowserTypeTool,
-    BrowserScrollTool,
-    BrowserScreenshotTool,
-    ComputerTool,
-    ...CONNECTOR_TOOLS,
-    CreateRoutineTool,
-    RememberTool,
-  ] as unknown as Tool[];
   // Without a POSIX shell the vendor Bash tool errors on every call — drop
   // it so the model goes straight to PowerShell. (ensurePosixShell also
   // exports SHELL when git-bash exists, which makes Bash actually WORK.)
   const posixShell = ensurePosixShell();
-  cachedTools = all.filter(
+  cachedTools = ALL_TOOLS.filter(
     (t) => t.isEnabled() && (posixShell !== null || t.name !== "Bash"),
   );
   return cachedTools;
+}
+
+/** Every tool the app can advertise, enablement aside. The source of truth for
+ * both getVendorTools() (filtered by isEnabled) and prompt seeding (unfiltered,
+ * so a disabled tool still materialises its editable prompt file). */
+const ALL_TOOLS = [
+  BashTool,
+  PowerShellTool,
+  FileReadTool,
+  FileWriteTool,
+  FileEditTool,
+  GlobTool,
+  GrepTool,
+  TodoWriteTool,
+  InlineSkillTool,
+  AskUserQuestionTool,
+  ToolSearchTool,
+  LSPTool,
+  AgentTaskTool,
+  SearchPastChatsTool,
+  WebFetchTool,
+  WebSearchTool,
+  RunPythonTool,
+  RunCommandTool,
+  ListMcpResourcesTool,
+  ReadMcpResourceTool,
+  SandboxListTool,
+  SandboxReadTool,
+  SandboxWriteTool,
+  SandboxEditTool,
+  BrowserNavigateTool,
+  BrowserReadPageTool,
+  BrowserClickTool,
+  BrowserTypeTool,
+  BrowserScrollTool,
+  BrowserScreenshotTool,
+  ComputerTool,
+  ...CONNECTOR_TOOLS,
+  CreateRoutineTool,
+  RememberTool,
+] as unknown as Tool[];
+
+/** Every tool, for prompt seeding — see seedTunablePrompts(). */
+export function getAllToolsForSeeding(): Tool[] {
+  return ALL_TOOLS;
+}
+
+/** The options object a tool's prompt() reads. Built once for seeding. */
+export async function toolPromptOptions(): Promise<Record<string, unknown>> {
+  initVendorRuntime();
+  return {
+    getToolPermissionContext: async () => getAppState().toolPermissionContext,
+    tools: ALL_TOOLS,
+    agents: [],
+    sandboxEngine: getSandboxConfig().engine,
+  };
 }
 
 /** Reset cached tools (workspace switch changes isEnabled outcomes). */

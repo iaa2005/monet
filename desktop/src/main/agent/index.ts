@@ -195,25 +195,42 @@ function withUserMemory(prompt: string): string {
   }
 }
 
-/** Touch every tunable-prompt producer so its file exists under
- * <dataDir>/prompts for editing (used by the "open prompts folder" action).
- * Best-effort: config-gated tool prompts (ToolSearch/LSP) only seed when those
- * tools are enabled. */
+/** Materialise EVERY tunable-prompt file under <dataDir>/prompts, so the
+ * "edit prompts" folder is complete regardless of what happens to be enabled.
+ *
+ * The old version only touched prompts of ENABLED tools (getVendorApiTools
+ * filters by isEnabled), so a user with no Telegram connector, LSP off, etc.
+ * never saw tool-telegram.md / tool-lsp.md / tool-calendar.md and 9 others.
+ * Here every tool's prompt() is called directly, gates bypassed. */
 export async function seedTunablePrompts(): Promise<void> {
   try {
-    await getVendorApiTools("home").catch(() => []);
-    await getVendorApiTools("code").catch(() => []);
+    // Non-tool prompt producers.
     await getFallbackSystemPrompt().catch(() => "");
     getSubAgentPrompt();
     buildMemoryPrompt();
+    (await import("../memory/store.js")).memoryPreamble();
     getProfilePrompt();
     homeDirective();
     tunablePrompt("system-append", "");
     tunablePrompt("method", METHOD_DEFAULT);
     tunablePrompt("discipline", DISCIPLINE_DEFAULT);
     cavemanDirective();
-    // Seeds prompts/tool-remember.md alongside the rest.
-    await (await import("./remember-tool.js")).RememberTool.prompt();
+
+    // Every tool's prompt(), enabled or not — call the tool directly so a
+    // disabled/unconfigured tool still writes its editable file. The prompt
+    // options carry what the vendor tools read; connector/sandbox tools ignore
+    // the extras.
+    const { getAllToolsForSeeding, toolPromptOptions } = await import(
+      "./vendor-tools.js"
+    );
+    const opts = await toolPromptOptions();
+    for (const tool of getAllToolsForSeeding()) {
+      try {
+        await tool.prompt(opts as never);
+      } catch {
+        /* a tool whose prompt needs live context — skip, non-fatal */
+      }
+    }
   } catch {
     /* best-effort */
   }

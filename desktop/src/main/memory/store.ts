@@ -168,19 +168,24 @@ export function slugifyMemoryName(name: string): string {
 }
 
 /** The system-prompt injection: every memory file, size-capped. */
+/** The memory section's preamble. Exported so it can be seeded as an editable
+ * prompt file even before any memory exists (buildMemoryPrompt returns early
+ * then). */
+export function memoryPreamble(): string {
+  return tunablePrompt(
+    "memory-preamble",
+    [
+      "# User memory",
+      "Long-term facts about the user, accumulated across past conversations.",
+      "Use them for context; the user does not see this section.",
+    ].join("\n\n"),
+  );
+}
+
 export function buildMemoryPrompt(): string | null {
   const files = listMemoryFiles();
   if (files.length === 0) return null;
-  const parts: string[] = [
-    tunablePrompt(
-      "memory-preamble",
-      [
-        "# User memory",
-        "Long-term facts about the user, accumulated across past conversations.",
-        "Use them for context; the user does not see this section.",
-      ].join("\n\n"),
-    ),
-  ];
+  const parts: string[] = [memoryPreamble()];
   let total = 0;
   for (const f of files) {
     const r = readMemoryFile(f.id);
