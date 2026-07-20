@@ -451,21 +451,25 @@ function ToolGroupCard({ calls }: { calls: ToolCall[] }): JSX.Element {
           {calls.map((tc, i) => (
             <div key={tc.id}>
               {i > 0 && <hr className="-mx-2.5 my-1.5 border-border/30" />}
-              <ToolRow
-                toolCall={tc}
-                open={openIndices.has(i)}
-                onToggle={() =>
-                  setOpenIndices((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(i)) next.delete(i);
-                    else next.add(i);
-                    return next;
-                  })
-                }
-                compact
-                inGroup
-                showIcon={false}
-              />
+              {tc.subAgent || tc.name === "Task" ? (
+                <SubAgentBubble toolCall={tc} inGroup />
+              ) : (
+                <ToolRow
+                  toolCall={tc}
+                  open={openIndices.has(i)}
+                  onToggle={() =>
+                    setOpenIndices((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(i)) next.delete(i);
+                      else next.add(i);
+                      return next;
+                    })
+                  }
+                  compact
+                  inGroup
+                  showIcon={false}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -619,7 +623,7 @@ const ICON_BTN =
  * (same tool/markdown components as the main chat), collapsible inline, and
  * expandable to a full-screen overlay you can dismiss back to the chat.
  */
-function SubAgentBubble({ toolCall }: { toolCall: ToolCall }): JSX.Element {
+function SubAgentBubble({ toolCall, inGroup }: { toolCall: ToolCall; inGroup?: boolean }): JSX.Element {
   const sa = toolCall.subAgent;
   const agentType = sa?.agentType ?? "general-purpose";
   const description =
@@ -708,16 +712,26 @@ function SubAgentBubble({ toolCall }: { toolCall: ToolCall }): JSX.Element {
     </div>
   );
 
+  const body = (
+    <>
+      {header(false)}
+      {!collapsed && (
+        <div className="mt-2 border-l-2 border-violet-500/20 pl-3">
+          <SubAgentTranscript messages={messages} running={running} />
+        </div>
+      )}
+    </>
+  );
+
   return (
     <>
-      <div className="glass-panel rounded-lg border border-border bg-card px-3 py-2">
-        {header(false)}
-        {!collapsed && (
-          <div className="mt-2 border-l-2 border-violet-500/20 pl-3">
-            <SubAgentTranscript messages={messages} running={running} />
-          </div>
-        )}
-      </div>
+      {inGroup ? (
+        body
+      ) : (
+        <div className="glass-panel rounded-lg border border-border bg-card px-3 py-2">
+          {body}
+        </div>
+      )}
 
       {fullscreen &&
         createPortal(
