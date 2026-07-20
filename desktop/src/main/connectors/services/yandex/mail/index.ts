@@ -45,4 +45,6 @@ export const YandexMail: ConnectorService = {
   }),
   capabilities: { mail: ops },
   test: (acct) => ops.folders(acct),
+  promptHint:
+    "YandexMail: `query` is matched as plain text in the subject, body, or sender; Gmail search syntax is not supported.",
 };

@@ -8,6 +8,7 @@
  */
 
 import { ImapFlow } from "imapflow";
+import { simpleParser } from "mailparser";
 import nodemailer from "nodemailer";
 import { basename } from "path";
 import type { ProtocolResult } from "../../types.js";
@@ -200,22 +201,9 @@ export function makeMailOps(cfg: MailConfig): MailOps {
               error: `No message with uid ${opts.uid} in ${folder}.`,
             };
 
-          // Parse just enough: headers, then the first text/plain part. A full
-          // MIME parser is a heavier dependency than the agent needs.
-          const raw = msg.source.toString("utf-8");
-          const split = raw.indexOf("\r\n\r\n");
-          const headers = split > 0 ? raw.slice(0, split) : "";
-          let body = split > 0 ? raw.slice(split + 4) : raw;
-          const boundary = /boundary="?([^";\r\n]+)"?/i.exec(headers)?.[1];
-          if (boundary) {
-            const part = body
-              .split(`--${boundary}`)
-              .find((p) => /content-type:\s*text\/plain/i.test(p));
-            if (part) {
-              const ps = part.indexOf("\r\n\r\n");
-              if (ps > 0) body = part.slice(ps + 4);
-            }
-          }
+          const parsed = await simpleParser(msg.source);
+          const body = parsed.text?.trim() ||
+            (typeof parsed.html === "string" ? parsed.html.trim() : "");
           const e = msg.envelope;
           const head = [
             `From: ${e?.from?.map((a) => `${a.name || ""} <${a.address}>`).join(", ") ?? ""}`,
@@ -223,7 +211,7 @@ export function makeMailOps(cfg: MailConfig): MailOps {
             `Date: ${e?.date ? new Date(e.date).toISOString() : ""}`,
             `Subject: ${e?.subject ?? ""}`,
           ].join("\n");
-          const trimmed = body.trim().slice(0, MAX_BODY);
+          const trimmed = body.slice(0, MAX_BODY);
           const atts = msg.bodyStructure
             ? collectAttachments(msg.bodyStructure)
             : [];
