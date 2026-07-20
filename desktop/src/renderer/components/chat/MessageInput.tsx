@@ -137,12 +137,11 @@ const BINARY_CAP = 20 * 1024 * 1024;
 /** Which input modality a staged file needs from the model. */
 export function fileModality(
   file: File,
-): "image" | "audio" | "video" | "file" | null {
+): "image" | "audio" | "video" | "file" {
   if (file.type.startsWith("image/")) return "image";
   if (file.type.startsWith("audio/")) return "audio";
   if (file.type.startsWith("video/")) return "video";
-  if (file.type === "application/pdf") return "file";
-  return null;
+  return "file";
 }
 
 async function buildAttachments(
@@ -166,7 +165,7 @@ async function buildAttachments(
           kind: "image",
           dataBase64: await readAsBase64(file),
         });
-      } else if (modality === "audio" || modality === "video" || modality === "file") {
+      } else if (modality === "audio" || modality === "video") {
         out.push({
           name: file.name,
           mediaType: file.type,
@@ -182,10 +181,15 @@ async function buildAttachments(
           text: text.slice(0, 200000),
         });
       } else {
+        // Any other file: encode as base64 and send as a document attachment.
+        // This covers pdf, docx, xlsx, zip, and everything else.
+        const base64 =
+          file.size <= BINARY_CAP ? await readAsBase64(file) : undefined;
         out.push({
           name: file.name,
           mediaType: file.type || "application/octet-stream",
-          kind: "text",
+          kind: "file",
+          dataBase64: base64,
         });
       }
     } catch {
