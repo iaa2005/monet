@@ -852,9 +852,11 @@ async function runAgentScoped(
     // Caveman mode squeezes context earlier (60% of the normal trigger) and
     // asks for a tighter summary.
     const cave = isCaveman();
-    const threshold = compactionThreshold(
-      provider.inputLimit ?? provider.contextLimit,
-    );
+    const threshold = compactionThreshold({
+      inputLimit: provider.inputLimit,
+      contextLimit: provider.contextLimit,
+      outputReserve: provider.maxTokens || 16000,
+    });
     if (shouldCompact(messages, cave ? Math.floor(threshold * 0.6) : threshold)) {
       const beforeSnapshot = messages.map((m) => ({ ...m }));
       const beforeTokens = estimateTokens(messages);

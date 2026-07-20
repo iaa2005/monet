@@ -12,10 +12,25 @@
 import { getCompactPrompt, formatCompactSummary } from '@vendor/services/compact/prompt.js'
 import type { LLMAdapter, LLMMessage } from '../llm/adapter.js'
 
-// Trigger compaction when the estimated input tokens exceed this. Kept high so
-// it only fires on genuinely long sessions; override for smaller-context
-// providers (e.g. deepseek) via MONET_COMPACT_TOKENS.
-const DEFAULT_THRESHOLD = Number(process.env.MONET_COMPACT_TOKENS) || 150_000
+// Fallback only for providers that expose neither an input nor a context limit.
+// A configured MONET_COMPACT_TOKENS value remains an explicit override.
+const configuredThreshold = Number(process.env.MONET_COMPACT_TOKENS)
+const EXPLICIT_THRESHOLD =
+  Number.isFinite(configuredThreshold) && configuredThreshold > 0
+    ? configuredThreshold
+    : undefined
+const DEFAULT_THRESHOLD = EXPLICIT_THRESHOLD ?? 200_000
+
+const DEFAULT_OUTPUT_RESERVE = 16_000
+
+export interface CompactionBudget {
+  /** Maximum prompt/input tokens, when the provider exposes one. */
+  inputLimit?: number
+  /** Total model context window, used when inputLimit is absent. */
+  contextLimit?: number
+  /** Output tokens to reserve when deriving an input budget from contextLimit. */
+  outputReserve?: number
+}
 
 // Keep the summarization request itself from blowing the output budget.
 const SUMMARY_MAX_TOKENS = 8_000
@@ -47,12 +62,40 @@ export function shouldCompact(
   return messages.length >= 4 && estimateTokens(messages) > threshold
 }
 
-/** Compaction trigger for a model's input budget (its max input tokens or
- * context length): 70% of the budget, but never above the global default. */
-export function compactionThreshold(budget?: number): number {
-  if (!budget || !Number.isFinite(budget) || budget <= 0)
-    return DEFAULT_THRESHOLD
-  return Math.min(DEFAULT_THRESHOLD, Math.floor(budget * 0.7))
+/** Compaction trigger for a model's input budget.
+ *
+ * The numeric form is kept for callers that already pass a resolved input
+ * budget. The object form preserves the distinction between max input tokens
+ * and total context length, reserving output space only for the latter.
+ */
+export function compactionThreshold(
+  budget?: number | CompactionBudget,
+): number {
+  if (EXPLICIT_THRESHOLD != null) return EXPLICIT_THRESHOLD
+
+  if (typeof budget === 'number') {
+    return validLimit(budget)
+      ? Math.floor(budget * 0.7)
+      : DEFAULT_THRESHOLD
+  }
+
+  if (!budget) return DEFAULT_THRESHOLD
+  if (validLimit(budget.inputLimit))
+    return Math.floor(budget.inputLimit * 0.7)
+
+  if (validLimit(budget.contextLimit)) {
+    const reserve = validLimit(budget.outputReserve)
+      ? Math.min(budget.outputReserve, budget.contextLimit)
+      : Math.min(DEFAULT_OUTPUT_RESERVE, budget.contextLimit)
+    const inputBudget = Math.max(1, budget.contextLimit - reserve)
+    return Math.floor(inputBudget * 0.7)
+  }
+
+  return DEFAULT_THRESHOLD
+}
+
+function validLimit(value: number | undefined): value is number {
+  return value != null && Number.isFinite(value) && value > 0
 }
 
 function extractText(msg: LLMMessage): string {
