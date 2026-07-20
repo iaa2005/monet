@@ -10,7 +10,7 @@
  * across chat switches and stays live through a session (never disappears).
  */
 import { useEffect, useMemo, useState } from "react";
-import { Gauge } from "lucide-react";
+import { ChevronDown, ChevronRight, Gauge } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -64,8 +64,6 @@ const COLORS: Record<string, string> = {
 };
 const colorOf = (key: string): string => COLORS[key] ?? "#94a3b8";
 
-/** Max drill-down rows shown per category before collapsing into "+N more". */
-const MAX_ITEMS = 6;
 
 export function ContextMeter({
   sessionId,
@@ -88,12 +86,20 @@ export function ContextMeter({
     { id: string; at: string; beforeTokens: number | null; afterTokens: number | null }[]
   >([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  // Collapse all categories by default when new breakdown data arrives.
+  useEffect(() => {
+    if (!data) return;
+    setCollapsed(new Set(data.categories.map((c) => c.key)));
+  }, [data]);
 
   // Drop the previous chat's breakdown the instant the session changes, so a
   // new/old chat never shows the last chat's numbers while the refetch runs.
   useEffect(() => {
     setData(null);
     setCompactions([]);
+    setCollapsed(new Set());
   }, [sessionId]);
 
   // Compaction history for this chat — powers "rewind through compact".
@@ -191,21 +197,38 @@ export function ContextMeter({
         {loading && !data ? (
           <div className="py-1 text-xs text-muted-foreground">Calculating…</div>
         ) : (
-          <div className="space-y-1.5">
+          <div className="max-h-64 space-y-1.5 overflow-y-auto">
             {data?.categories.map((c) => {
               const items = c.items ?? [];
-              const shown = items.slice(0, MAX_ITEMS);
-              const restTokens = items
-                .slice(MAX_ITEMS)
-                .reduce((n, it) => n + it.tokens, 0);
+              const hasItems = items.length > 0;
               return (
                 <div key={c.key}>
-                  <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 text-xs"
+                    onClick={() =>
+                      setCollapsed((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(c.key)) next.delete(c.key);
+                        else next.add(c.key);
+                        return next;
+                      })
+                    }
+                  >
+                    {hasItems ? (
+                      collapsed.has(c.key) ? (
+                        <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
+                      )
+                    ) : (
+                      <ChevronRight className="size-3 shrink-0 opacity-0" />
+                    )}
                     <span
                       className="size-2.5 shrink-0 rounded-sm"
                       style={{ background: colorOf(c.key) }}
                     />
-                    <span className="flex-1 truncate text-foreground">
+                    <span className="flex-1 truncate text-left text-foreground">
                       {c.label}
                     </span>
                     <span className="tabular-nums text-muted-foreground">
@@ -214,28 +237,21 @@ export function ContextMeter({
                     <span className="w-12 text-right tabular-nums text-muted-foreground">
                       {pctOf(c.tokens).toFixed(1)}%
                     </span>
-                  </div>
-                  {shown.length > 0 && (
+                  </button>
+                  {hasItems && !collapsed.has(c.key) && (
                     <div className="mt-0.5 ml-[18px] space-y-0.5 border-l border-border pl-2">
-                      {shown.map((it) => (
+                      {items.map((it) => (
                         <div
                           key={it.label}
                           className="flex items-center gap-2 text-[10px] text-muted-foreground"
                         >
                           <span className="flex-1 truncate">{it.label}</span>
                           <span className="tabular-nums">{fmt(it.tokens)}</span>
+                          <span className="w-12 text-right tabular-nums">
+                            {pctOf(it.tokens).toFixed(1)}%
+                          </span>
                         </div>
                       ))}
-                      {items.length > MAX_ITEMS && (
-                        <div className="flex items-center gap-2 text-[10px] italic text-muted-foreground/70">
-                          <span className="flex-1 truncate">
-                            +{items.length - MAX_ITEMS} more
-                          </span>
-                          <span className="tabular-nums">
-                            {fmt(restTokens)}
-                          </span>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
