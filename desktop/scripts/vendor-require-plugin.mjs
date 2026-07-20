@@ -98,9 +98,12 @@ export const vendorMacroDefine = Object.fromEntries(
     BUILD_TIME: new Date().toISOString(),
     PACKAGE_URL: '@anthropic-ai/claude-code',
     NATIVE_PACKAGE_URL: '@anthropic-ai/claude-code',
-    FEEDBACK_CHANNEL: '#claude-code-feedback',
+    // User-visible in prompts and error messages ("report issues at …",
+    // "post in …"), so these must name THIS product's channels — pointing
+    // users at Anthropic's tracker sends bug reports to the wrong project.
+    FEEDBACK_CHANNEL: 'the Code Monet issue tracker',
     ISSUES_EXPLAINER:
-      'report issues at https://github.com/anthropics/claude-code/issues',
+      'report issues at https://github.com/iaa2005/monet/issues',
     VERSION_CHANGELOG: '',
   }).map(([k, v]) => [`MACRO.${k}`, JSON.stringify(v)]),
 )

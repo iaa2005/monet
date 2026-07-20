@@ -114,9 +114,6 @@ export const CLAUDE_CODE_DOCS_MAP_URL =
 export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY =
   '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'
 
-// @[MODEL LAUNCH]: Update the latest frontier model.
-const FRONTIER_MODEL_NAME = 'Code Monet Opus 4.6'
-
 // @[MODEL LAUNCH]: Update the model family IDs below to the latest in each tier.
 const CLAUDE_4_5_OR_4_6_MODEL_IDS = {
   opus: 'claude-opus-4-6',
@@ -691,15 +688,16 @@ export async function computeSimpleEnvInfo(
     `OS Version: ${unameSR}`,
     modelDescription,
     knowledgeCutoffMessage,
+    // Facts about the underlying MODELS keep their real names: these are the
+    // actual ids the API answers to, and Code Monet runs on several providers.
+    // Renaming the family here would make the agent hand out model names that
+    // do not exist. The PRODUCT identity above is rebranded; model facts are not.
     process.env.USER_TYPE === 'ant' && isUndercover()
       ? null
-      : `The most recent Code Monet model family is Code Monet 4.5/4.6. Model IDs — Opus 4.6: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.opus}', Sonnet 4.6: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.sonnet}', Haiku 4.5: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.haiku}'. When building AI applications, default to the latest and most capable Code Monet models.`,
+      : `The most recent Claude model family is Claude 4.5/4.6. Model IDs — Opus 4.6: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.opus}', Sonnet 4.6: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.sonnet}', Haiku 4.5: '${CLAUDE_4_5_OR_4_6_MODEL_IDS.haiku}'. Code Monet can also run DeepSeek, OpenRouter and any OpenAI-compatible provider — check the active provider before recommending a model.`,
     process.env.USER_TYPE === 'ant' && isUndercover()
       ? null
-      : `Code Monet is available as a desktop app (Mac/Windows) and IDE extensions (VS Code, JetBrains).`,
-    process.env.USER_TYPE === 'ant' && isUndercover()
-      ? null
-      : `Fast mode for Code Monet uses the same ${FRONTIER_MODEL_NAME} model with faster output. It does NOT switch to a different model. It can be toggled with /fast.`,
+      : `Code Monet is a desktop app (Windows/Mac/Linux).`,
   ].filter(item => item !== null)
 
   return [
