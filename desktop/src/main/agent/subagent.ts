@@ -16,6 +16,7 @@ import { createAdapter } from "../llm/adapter.js";
 import type { LLMContentBlock, LLMMessage } from "../llm/adapter.js";
 import type { AgentDefinition } from "./agent-defs.js";
 import { getSubAgentPrompt } from "./prompts-vendor.js";
+import { cavemanDirective, isCaveman } from "./caveman.js";
 import { executeVendorTool, getVendorApiTools } from "./vendor-tools.js";
 import { runWithCwdOverride } from "@vendor/utils/cwd.js";
 
@@ -85,8 +86,25 @@ async function runSubAgentWithCwd(opts: SubAgentOptions): Promise<string> {
     const deny = new Set(def.disallowedTools);
     tools = tools.filter((t) => !deny.has(t.name));
   }
-  const system = (def?.systemPrompt || getSubAgentPrompt())
-    + `\n\n# Environment\n- Working directory: ${cwd}`
+  // Delegated work inherits the same method and discipline as the main agent —
+  // a sub-agent that skips read-before-edit or claims success without running
+  // anything does the damage in the parent's name. Caveman applies too: a
+  // terse chat should not spawn a chatty child.
+  //
+  // Imported lazily on purpose: index → vendor-tools → agent-tool → here, so a
+  // static import back into index would close that loop (same reason
+  // routine-tool defers its scheduler import).
+  const { agentMethodPrompt, agentDisciplinePrompt } = await import("./index.js");
+  const system = [
+    def?.systemPrompt || getSubAgentPrompt(),
+    agentMethodPrompt(),
+    agentDisciplinePrompt(),
+    isCaveman() ? cavemanDirective() : "",
+    `# Environment\n- Working directory: ${cwd}`,
+  ]
+    .map((s) => s?.trim())
+    .filter(Boolean)
+    .join("\n\n");
 
   const messages: LLMMessage[] = [{ role: "user", content: prompt }];
   const sessionId = `sub:${Math.random().toString(36).slice(2)}`;

@@ -38,7 +38,12 @@ import { drainBgResults } from "./bg-agents.js";
 import { buildMemoryPrompt } from "../memory/store.js";
 import { getProfilePrompt } from "../profile.js";
 import { tunablePrompt } from "../prompts/index.js";
-import { isCaveman, cavemanDirective, CAVEMAN_COMPACT_HINT } from "./caveman.js";
+import {
+  isCaveman,
+  cavemanDirective,
+  CAVEMAN_COMPACT_HINT,
+  CAVEMAN_TURN_REMINDER,
+} from "./caveman.js";
 import { clearRevealedTools } from "./revealed-tools.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import {
@@ -101,6 +106,34 @@ async function buildSystemPrompt(
   }
 }
 
+/**
+ * How to work a task, not just what not to do.
+ *
+ * The discipline block below is a list of prohibitions; a weak model obeys
+ * those and still flails, because what separates strong work is the ORDER of
+ * operations: ground truth before plan, cause before fix, evidence before
+ * claim. These are the habits that make a smaller model behave like a careful
+ * one. Kept short — it is paid on every turn. Tunable via prompts/method.md.
+ */
+const METHOD_DEFAULT = [
+  "# Method (how to work a task)",
+  "1. Ground truth first. Read the actual file, output or error before forming",
+  "   a plan. Never propose a change to code you have not read.",
+  "2. Cause before fix. When something fails, state WHY it fails before you",
+  "   change anything. A fix you cannot explain is a guess.",
+  "3. Sequence by risk. Do the uncertain, load-bearing part first — if it fails,",
+  "   the rest of the plan changes. Leave cheap, reversible steps for last.",
+  "4. One change at a time while debugging. Two at once makes the result",
+  "   uninterpretable.",
+  "5. Evidence, not inspection. Run it and quote the output. “Looks correct” is",
+  "   not a result.",
+  "6. Separate what you verified from what you assume. Claim only what you ran;",
+  "   mark the rest as an assumption and name what would confirm it.",
+  "7. If the evidence contradicts the request — the cause is elsewhere, the file",
+  "   says otherwise, the approach cannot work — say so instead of proceeding.",
+  "8. Stop at done. No adjacent cleanups, no speculative abstractions.",
+].join("\n");
+
 /** Hardening block, always applied. Spells out — in short imperative lines a
  * weak model (DeepSeek etc.) can follow — the git / pre-commit / edit discipline
  * that the vendor prompt only implies. Tunable via prompts/discipline.md. */
@@ -131,6 +164,15 @@ const DISCIPLINE_DEFAULT = [
   "  success — do not assume code works because it looks right.",
 ].join("\n");
 
+/** The method / discipline blocks, exported so delegated runs (sub-agents)
+ * inherit the same rules the main agent works under. */
+export function agentMethodPrompt(): string {
+  return tunablePrompt("method", METHOD_DEFAULT);
+}
+export function agentDisciplinePrompt(): string {
+  return tunablePrompt("discipline", DISCIPLINE_DEFAULT);
+}
+
 /** Append the user's long-term memory files (Settings → Memory), the always-on
  * working-discipline block, a global user-tunable addendum, and — when caveman
  * mode is on — the terse-style directive. `system-append` is empty by default
@@ -140,6 +182,7 @@ function withUserMemory(prompt: string): string {
     const extra = [
       getProfilePrompt(),
       buildMemoryPrompt(),
+      tunablePrompt("method", METHOD_DEFAULT),
       tunablePrompt("discipline", DISCIPLINE_DEFAULT),
       tunablePrompt("system-append", ""),
       isCaveman() ? cavemanDirective() : "",
@@ -166,6 +209,7 @@ export async function seedTunablePrompts(): Promise<void> {
     getProfilePrompt();
     homeDirective();
     tunablePrompt("system-append", "");
+    tunablePrompt("method", METHOD_DEFAULT);
     tunablePrompt("discipline", DISCIPLINE_DEFAULT);
     cavemanDirective();
   } catch {
@@ -888,12 +932,24 @@ async function runAgentScoped(
     let lastUsage: LLMUsage | undefined;
     let lastStopReason: string | undefined;
 
+    // Caveman reinforcement rides at the TAIL of the message list, not only in
+    // the system prompt: adherence to a style rule decays with distance, and
+    // the system prompt is thousands of tokens behind by the time the model
+    // writes. Rebuilt per turn and never persisted into `messages`, so it can't
+    // accumulate in the transcript or leak into compaction.
+    const turnMessages = cave
+      ? [
+          ...messages,
+          { role: "user" as const, content: CAVEMAN_TURN_REMINDER },
+        ]
+      : messages;
+
     try {
       await adapter.stream(
         {
           model: provider.model,
           system: systemPrompt,
-          messages,
+          messages: turnMessages,
           tools,
           max_tokens: provider.maxTokens || 16000,
           temperature: provider.temperature,

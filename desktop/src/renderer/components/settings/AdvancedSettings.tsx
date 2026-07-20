@@ -37,6 +37,8 @@ export function AdvancedSettings(): JSX.Element {
   const [toolSearch, setToolSearch] = useState(false);
   const [lsp, setLsp] = useState(false);
   const [caveman, setCaveman] = useState(false);
+  const [leanTools, setLeanTools] = useState(true);
+  const [vendorMemory, setVendorMemory] = useState(false);
   const [reloaded, setReloaded] = useState(false);
   const [promptsDir, setPromptsDir] = useState<string>("");
   const [migrating, setMigrating] = useState(false);
@@ -46,6 +48,13 @@ export function AdvancedSettings(): JSX.Element {
     api()?.tuning.toolSearchGet().then((c) => setToolSearch(c.enabled)).catch(() => {});
     api()?.tuning.lspGet().then((c) => setLsp(c.enabled)).catch(() => {});
     api()?.tuning.cavemanGet().then((c) => setCaveman(c.enabled)).catch(() => {});
+    api()
+      ?.tuning.leanGet()
+      .then((c) => {
+        setLeanTools(c.leanTools);
+        setVendorMemory(c.vendorMemory);
+      })
+      .catch(() => {});
   }, []);
 
   const toggleToolSearch = (v: boolean): void => {
@@ -55,6 +64,14 @@ export function AdvancedSettings(): JSX.Element {
   const toggleCaveman = (v: boolean): void => {
     setCaveman(v);
     void api()?.tuning.cavemanSet({ enabled: v });
+  };
+  const toggleLeanTools = (v: boolean): void => {
+    setLeanTools(v);
+    void api()?.tuning.leanSet({ leanTools: v });
+  };
+  const toggleVendorMemory = (v: boolean): void => {
+    setVendorMemory(v);
+    void api()?.tuning.leanSet({ vendorMemory: v });
   };
   const toggleLsp = (v: boolean): void => {
     setLsp(v);
@@ -103,9 +120,21 @@ export function AdvancedSettings(): JSX.Element {
           />
           <ToggleRow
             title="Caveman mode (terse)"
-            desc="The agent writes super-terse output and thinking — telegraphic, no filler — and squeezes context earlier and tighter. Great for saving tokens on weaker/cheaper models."
+            desc="The agent writes super-terse output and thinking — telegraphic, no filler — and squeezes context earlier and tighter. Reinforced on every turn, not just in the system prompt. Great for saving tokens on weaker/cheaper models."
             checked={caveman}
             onChange={toggleCaveman}
+          />
+          <ToggleRow
+            title="Lean tool descriptions"
+            desc="Strip worked examples from tool descriptions, keeping every rule. Measured on this app: TodoWrite 9114 → 3288 characters, ~1.6K tokens saved on every request."
+            checked={leanTools}
+            onChange={toggleLeanTools}
+          />
+          <ToggleRow
+            title="Vendor auto-memory instructions"
+            desc="The bundled agent ships a second, file-based memory system this app never shows — 3.1K tokens of instructions per request, on top of Settings → Memory. Off by default. Takes effect after a restart."
+            checked={vendorMemory}
+            onChange={toggleVendorMemory}
           />
         </div>
       </section>

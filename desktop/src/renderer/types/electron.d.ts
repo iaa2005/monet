@@ -627,6 +627,11 @@ export interface ElectronAPI {
     toolSearchSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
     cavemanGet: () => Promise<{ enabled: boolean }>;
     cavemanSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
+    leanGet: () => Promise<{ leanTools: boolean; vendorMemory: boolean }>;
+    leanSet: (patch: {
+      leanTools?: boolean;
+      vendorMemory?: boolean;
+    }) => Promise<{ leanTools: boolean; vendorMemory: boolean }>;
     lspGet: () => Promise<{ enabled: boolean }>;
     lspSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
     promptsReload: () => Promise<{ ok: boolean }>;

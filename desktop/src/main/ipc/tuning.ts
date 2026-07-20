@@ -19,6 +19,11 @@ import {
   type CavemanConfig,
 } from "../agent/caveman.js";
 import {
+  getLeanConfig,
+  setLeanConfig,
+  type LeanConfig,
+} from "../agent/lean-context.js";
+import {
   getPowerConfig,
   setPowerConfig,
   isKeepingAwake,
@@ -61,6 +66,15 @@ export function registerTuningIPC(): void {
     "caveman:set",
     (_e, patch: Partial<CavemanConfig>): CavemanConfig => setCavemanConfig(patch),
   );
+
+  ipcMain.handle("lean:get", (): LeanConfig => getLeanConfig());
+  ipcMain.handle("lean:set", (_e, patch: Partial<LeanConfig>): LeanConfig => {
+    const next = setLeanConfig(patch);
+    // Tool descriptions are cached per tool-name set — drop it so the next
+    // prompt is built with (or without) the trimmed versions.
+    resetVendorTools();
+    return next;
+  });
 
   ipcMain.handle("lsp:get", (): LspConfig => getLspConfig());
   ipcMain.handle("lsp:set", (_e, patch: Partial<LspConfig>): LspConfig => {

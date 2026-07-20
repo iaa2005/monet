@@ -628,6 +628,13 @@ const electronAPI = {
       ipcRenderer.invoke("caveman:get"),
     cavemanSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
       ipcRenderer.invoke("caveman:set", patch),
+    leanGet: (): Promise<{ leanTools: boolean; vendorMemory: boolean }> =>
+      ipcRenderer.invoke("lean:get"),
+    leanSet: (patch: {
+      leanTools?: boolean;
+      vendorMemory?: boolean;
+    }): Promise<{ leanTools: boolean; vendorMemory: boolean }> =>
+      ipcRenderer.invoke("lean:set", patch),
     lspGet: (): Promise<{ enabled: boolean }> => ipcRenderer.invoke("lsp:get"),
     lspSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
       ipcRenderer.invoke("lsp:set", patch),

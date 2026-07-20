@@ -9,6 +9,7 @@ import { purgeIncognitoLeftovers } from "./incognito.js";
 import { ensureBuiltinSkills } from "./builtin-skills.js";
 import { initPowerSaveBlocker } from "./power.js";
 import { initBetaGuard } from "./beta.js";
+import { applyLeanEnv } from "./agent/lean-context.js";
 
 // The main bundle is ESM ("type": "module"), where __dirname is not defined.
 // Derive it from import.meta.url so preload/renderer paths resolve.
@@ -17,6 +18,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Redirect vendored Claude Code config/memory into our data dir before anything
 // touches the filesystem.
 applyDataDirEnv();
+
+// Lean context: the vendor memoises its auto-memory prompt section on first
+// build, so the opt-out has to be set now — before any prompt exists.
+applyLeanEnv();
 
 const isDev = !app.isPackaged;
 

@@ -8,6 +8,7 @@
  */
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
+import { leanToolDescription } from "./lean-context.js";
 import type { Tool, Tools, ToolUseContext } from "@vendor/Tool.js";
 import { findToolByName } from "@vendor/Tool.js";
 import { BashTool } from "@vendor/tools/BashTool/BashTool.js";
@@ -448,7 +449,9 @@ export async function getVendorApiTools(
         ) as LLMTool["input_schema"];
         return {
           name: tool.name,
-          description: await tool.prompt(promptOptions),
+          // Lean mode drops worked examples and keeps every rule (measured:
+          // TodoWrite 9114 → 3288 chars, no NEVER/IMPORTANT line lost).
+          description: leanToolDescription(await tool.prompt(promptOptions)),
           input_schema: {
             type: "object" as const,
             properties: schema.properties ?? {},

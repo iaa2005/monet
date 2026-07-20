@@ -70,6 +70,22 @@ export function cavemanDirective(): string {
   return tunablePrompt("caveman-directive", CAVEMAN_DIRECTIVE_DEFAULT);
 }
 
+/**
+ * Per-turn reinforcement, appended to the message list right before the model
+ * generates.
+ *
+ * The system prompt is ~6K tokens of instructions and sits behind the whole
+ * conversation; by the time the model writes, a style directive that far back
+ * competes with everything after it — which is why caveman "worked sometimes".
+ * A short reminder adjacent to the generation point is what actually holds.
+ * Deliberately tiny (~30 tokens): it is paid on every turn.
+ */
+export const CAVEMAN_TURN_REMINDER =
+  "<system-reminder>CAVEMAN MODE. Answer in the fewest words that carry the " +
+  "meaning. No preamble, no restating the task, no closing summary, no " +
+  "offers of further help. Fragments over sentences. Code, paths and commands " +
+  "stay verbatim.</system-reminder>";
+
 /** Extra instruction appended to the compaction summary request in caveman mode:
  * squeeze harder, keep only load-bearing facts. */
 export const CAVEMAN_COMPACT_HINT =
