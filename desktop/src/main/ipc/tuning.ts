@@ -14,6 +14,11 @@ import {
 } from "../agent/toolsearch-config.js";
 import { getLspConfig, setLspConfig, type LspConfig } from "../agent/lsp/config.js";
 import {
+  getCavemanConfig,
+  setCavemanConfig,
+  type CavemanConfig,
+} from "../agent/caveman.js";
+import {
   getPowerConfig,
   setPowerConfig,
   isKeepingAwake,
@@ -49,6 +54,12 @@ export function registerTuningIPC(): void {
       resetVendorTools(); // toolset advertisement changes (defer MCP + ToolSearch)
       return next;
     },
+  );
+
+  ipcMain.handle("caveman:get", (): CavemanConfig => getCavemanConfig());
+  ipcMain.handle(
+    "caveman:set",
+    (_e, patch: Partial<CavemanConfig>): CavemanConfig => setCavemanConfig(patch),
   );
 
   ipcMain.handle("lsp:get", (): LspConfig => getLspConfig());

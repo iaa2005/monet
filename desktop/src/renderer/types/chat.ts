@@ -25,6 +25,9 @@ export interface ChatMessage {
   attachments?: ChatAttachmentMeta[]
   isStreaming?: boolean
   isError?: boolean
+  /** Extended-thinking / reasoning text, shown only in Thinking mode. Display-
+   * only: it is NEVER fed back into the model context. */
+  reasoning?: string
   /** Code Rewind: workspace snapshot taken after this (assistant) turn. */
   checkpointSha?: string
 }
@@ -53,6 +56,7 @@ export interface ToolCall {
 
 export type LLMEvent =
   | { type: 'text_delta'; text: string }
+  | { type: 'reasoning_delta'; text: string }
   | { type: 'user_message'; content: string }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
   | { type: 'message_stop'; stop_reason: string; usage?: { input_tokens: number; output_tokens: number } }

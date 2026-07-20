@@ -38,6 +38,7 @@ import { drainBgResults } from "./bg-agents.js";
 import { buildMemoryPrompt } from "../memory/store.js";
 import { getProfilePrompt } from "../profile.js";
 import { tunablePrompt } from "../prompts/index.js";
+import { isCaveman, cavemanDirective, CAVEMAN_COMPACT_HINT } from "./caveman.js";
 import { clearRevealedTools } from "./revealed-tools.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import {
@@ -106,16 +107,48 @@ async function buildSystemPrompt(
   }
 }
 
-/** Append the user's long-term memory files (Settings → Memory) plus a global,
- * user-tunable system-prompt addendum to the prompt. `system-append` is empty
- * by default (a no-op) and applies to BOTH the vendor and fallback prompts —
- * it's the knob for tuning the live system prompt without editing code. */
+/** Hardening block, always applied. Spells out — in short imperative lines a
+ * weak model (DeepSeek etc.) can follow — the git / pre-commit / edit discipline
+ * that the vendor prompt only implies. Tunable via prompts/discipline.md. */
+const DISCIPLINE_DEFAULT = [
+  "# Working discipline (follow exactly)",
+  "## Edits",
+  "- ALWAYS read a file before you edit it. Never edit blind.",
+  "- For an edit, provide the EXACT existing text as old_string (enough lines to",
+  "  be unique). If an edit fails, re-read the file — do not guess.",
+  "- Change only what the task needs. No drive-by refactors or reformatting.",
+  "## Verify before you claim done",
+  "- Before saying a task is complete, actually run it: the project's tests,",
+  "  build, lint and/or a smoke test. State the result. If you could not run",
+  "  them, say so explicitly.",
+  "## Git (only when the user asked to commit/push)",
+  "- NEVER run `git commit` until you have run the project's tests/build/lint or",
+  "  a smoke test IN THIS SESSION and they passed. If none exist or you could",
+  "  not run them, say so and ask before committing.",
+  "- Run `git status` and `git diff` before staging. Stage only files you",
+  "  changed — never `git add -A`/`git add .` blindly.",
+  "- If on the default branch (main/master), create a branch before committing.",
+  "- NEVER: force-push, `git reset --hard` or `git checkout --` on a dirty tree,",
+  "  `commit --no-verify`/`--no-gpg-sign`, or amend an already-pushed commit —",
+  "  unless the user explicitly asked. If a hook fails, fix the cause.",
+  "## Commands & sandbox",
+  "- Prefer the dedicated tool over an ad-hoc shell command when one exists.",
+  "- Use the sandbox/RunCommand tools to run tests and checks before reporting",
+  "  success — do not assume code works because it looks right.",
+].join("\n");
+
+/** Append the user's long-term memory files (Settings → Memory), the always-on
+ * working-discipline block, a global user-tunable addendum, and — when caveman
+ * mode is on — the terse-style directive. `system-append` is empty by default
+ * and applies to BOTH the vendor and fallback prompts. */
 function withUserMemory(prompt: string): string {
   try {
     const extra = [
       getProfilePrompt(),
       buildMemoryPrompt(),
+      tunablePrompt("discipline", DISCIPLINE_DEFAULT),
       tunablePrompt("system-append", ""),
+      isCaveman() ? cavemanDirective() : "",
     ]
       .map((s) => s?.trim())
       .filter(Boolean);
@@ -139,6 +172,8 @@ export async function seedTunablePrompts(): Promise<void> {
     getProfilePrompt();
     homeDirective();
     tunablePrompt("system-append", "");
+    tunablePrompt("discipline", DISCIPLINE_DEFAULT);
+    cavemanDirective();
   } catch {
     /* best-effort */
   }
@@ -814,12 +849,13 @@ async function runAgentScoped(
     // place so the per-session conversations Map keeps the same array ref.
     // Budget comes from the active model: max input tokens if set, else its
     // context length (resolved by the provider manager).
-    if (
-      shouldCompact(
-        messages,
-        compactionThreshold(provider.inputLimit ?? provider.contextLimit),
-      )
-    ) {
+    // Caveman mode squeezes context earlier (60% of the normal trigger) and
+    // asks for a tighter summary.
+    const cave = isCaveman();
+    const threshold = compactionThreshold(
+      provider.inputLimit ?? provider.contextLimit,
+    );
+    if (shouldCompact(messages, cave ? Math.floor(threshold * 0.6) : threshold)) {
       const beforeSnapshot = messages.map((m) => ({ ...m }));
       const beforeTokens = estimateTokens(messages);
       const compacted = await compactMessages({
@@ -828,6 +864,7 @@ async function runAgentScoped(
         model: provider.model,
         maxTokens: provider.maxTokens || 16000,
         signal,
+        terseHint: cave ? CAVEMAN_COMPACT_HINT : undefined,
       });
       if (compacted !== messages) {
         messages.length = 0;

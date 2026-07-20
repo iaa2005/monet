@@ -89,6 +89,9 @@ export function sanitizeMaxTokens(n: number | undefined): number {
 
 export type LLMEvent =
   | { type: "text_delta"; text: string }
+  // Extended-thinking / reasoning tokens. Display-only — the agent loop
+  // forwards these to the UI but never adds them to the model context.
+  | { type: "reasoning_delta"; text: string }
   | { type: "user_message"; content: string }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | { type: "message_stop"; stop_reason: string; usage?: LLMUsage }

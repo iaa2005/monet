@@ -28,7 +28,14 @@ interface ToolCallDelta {
 
 interface OpenAIChunk {
   choices?: {
-    delta?: { content?: string | null; tool_calls?: ToolCallDelta[] };
+    delta?: {
+      content?: string | null;
+      // Reasoning tokens: OpenRouter normalises to `reasoning`; DeepSeek and
+      // some OpenAI-compat servers use `reasoning_content`.
+      reasoning?: string | null;
+      reasoning_content?: string | null;
+      tool_calls?: ToolCallDelta[];
+    };
     finish_reason?: string | null;
   }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
@@ -348,6 +355,10 @@ export class OpenAICompatClient implements LLMAdapter {
         textLen += delta.content.length;
         textTail = (textTail + delta.content).slice(-80);
         onEvent({ type: "text_delta", text: delta.content });
+      }
+      const reasoning = delta.reasoning ?? delta.reasoning_content;
+      if (typeof reasoning === "string" && reasoning) {
+        onEvent({ type: "reasoning_delta", text: reasoning });
       }
       if (delta.tool_calls) {
         for (const tc of delta.tool_calls) {

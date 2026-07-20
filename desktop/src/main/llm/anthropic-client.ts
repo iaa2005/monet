@@ -85,6 +85,7 @@ interface AnthropicSSEEvent {
   delta?: {
     type: string;
     text?: string;
+    thinking?: string;
     partial_json?: string;
     // message_delta carries the final stop_reason (end_turn / max_tokens /
     // tool_use) — useful for diagnosing truncated/cut-off responses.
@@ -286,6 +287,13 @@ export class AnthropicClient implements LLMAdapter {
             textLen += event.delta.text.length;
             textTail = (textTail + event.delta.text).slice(-80);
             onEvent({ type: "text_delta", text: event.delta.text });
+          } else if (
+            event.delta?.type === "thinking_delta" &&
+            event.delta.thinking
+          ) {
+            // Extended-thinking tokens — surfaced to the UI (Thinking mode) but
+            // never added to the model context.
+            onEvent({ type: "reasoning_delta", text: event.delta.thinking });
           } else if (
             event.delta?.type === "input_json_delta" &&
             event.delta.partial_json
