@@ -197,6 +197,7 @@ interface ChatStore {
   setDraft: (key: string, text: string) => void;
   setDroppedFiles: (files: File[] | null) => void;
   requestOpenFile: (path: string | null) => void;
+  requestOpenChanges: () => void;
   openArtifactViewer: (
     item: {
       name: string;
