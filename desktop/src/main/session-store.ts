@@ -10,6 +10,7 @@ import { join } from "path";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "module";
 import { getDataSubdir } from "./data-dir.js";
+import { getWorkspacePath } from "./ipc/workspace.js";
 
 const require = createRequire(import.meta.url);
 const Database = require("better-sqlite3");
@@ -200,15 +201,17 @@ export class SessionStore {
     const d = getDb();
     const id = randomUUID();
     const now = new Date().toISOString();
+    const ws = getWorkspacePath();
     d.prepare(
-      "INSERT INTO sessions (id, title, created_at, updated_at, message_count, space) VALUES (?, ?, ?, ?, 0, ?)",
-    ).run(id, title || "New Session", now, now, space);
+      "INSERT INTO sessions (id, title, created_at, updated_at, message_count, space, workspace) VALUES (?, ?, ?, ?, 0, ?, ?)",
+    ).run(id, title || "New Session", now, now, space, ws);
     return {
       id,
       title: title || "New Session",
       createdAt: now,
       updatedAt: now,
       messageCount: 0,
+      workspace: ws,
       messages: [],
     };
   }

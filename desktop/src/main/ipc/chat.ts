@@ -264,12 +264,14 @@ export function registerChatIPC(): void {
     const abort = new AbortController();
     aborts.set(sessionId, abort);
 
-    // Run in the folder the user is actually looking at — the current workspace,
-    // which is exactly what the picker and the git bar show (both read the same
-    // global). runAgent captures it at start and pins the whole run to it. The
-    // per-chat folder is applied to that global when you open/switch a chat, so
-    // we must NOT re-derive cwd from the session row here: a stale saved folder
-    // would silently override what the picker plainly shows.
+    // Resolve this session's working directory from the per-session column
+    // (set at create time, updated by the workspace picker on every folder
+    // change), which is authoritative. Fall back to the global for legacy
+    // sessions that predate the workspace column. This avoids the race where
+    // the renderer's fire-and-forget workspace:set on session-open hasn't
+    // landed yet.
+    const sessionRow = getSessionStore().get(sessionId);
+    const cwd = sessionRow?.workspace || getWorkspacePath();
 
     const mode =
       payload.mode && VALID_MODES.has(payload.mode)
@@ -310,7 +312,7 @@ export function registerChatIPC(): void {
           requestPermission: (ask) => requestPermissionFromRenderer(win, ask),
           askUser: (questions) => askUserFromRenderer(win, questions),
           space: payload.space,
-          cwd: getWorkspacePath(),
+          cwd,
           effort: payload.effort,
         },
       );
