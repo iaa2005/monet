@@ -59,8 +59,12 @@ function FileDiff({ file, onAccept, onReject }: {
         </div>
       </div>
 
+      {/* rows are precomputed here (the stats above need them) — the texts go
+          along so DiffView still tokenises each side instead of per line. */}
       <DiffView
         rows={rows}
+        oldText={file.oldContent}
+        newText={file.newContent}
         language={langFromPath(file.path)}
         maxHeight={480}
       />

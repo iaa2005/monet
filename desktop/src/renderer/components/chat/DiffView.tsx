@@ -83,7 +83,12 @@ export function DiffView({
   );
 
   const highlightOn = language !== "" && rows.length <= HIGHLIGHT_CAP;
-  const haveSides = rowsProp == null && oldText != null && newText != null;
+  // Both sides present = tokenise per side (multi-line-aware). This holds even
+  // when `rows` were precomputed from those same texts — a caller that diffs
+  // once and passes the result must not lose block-comment/template-literal
+  // highlighting. Only the unified-patch path (rows, no texts) falls back to
+  // per-row highlighting.
+  const haveSides = oldText != null && newText != null;
 
   // Tokenise each side once (multi-line-aware) so a row picks its highlighted
   // line by number; the unified-patch path (no sides) highlights per row.
