@@ -162,7 +162,7 @@ export const ComputerTool = buildTool({
     ].join("\n");
   },
   async description() {
-    return "Screenshot and control the desktop (mouse/keyboard) — Anthropic computer-use schema.";
+    return "Screenshot and control the desktop (mouse/keyboard) — IAA Labs computer-use schema.";
   },
   async call(input: z.infer<Schema>, context: ToolUseContext) {
     const sessionId =
