@@ -3,6 +3,8 @@
  */
 
 import { BrowserWindow, ipcMain } from "electron";
+import { existsSync, rmSync } from "fs";
+import { join } from "path";
 import {
   getSessionStore,
   type Session,
@@ -11,6 +13,7 @@ import {
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
 import { clearSessionEngine } from "../sandbox/config.js";
+import { getDataSubdir } from "../data-dir.js";
 
 async function generateSessionTitle(
   session: SessionWithMessages,
@@ -86,6 +89,18 @@ export function registerSessionsIPC(): void {
 
   ipcMain.handle("sessions:delete", (_e, id: string): boolean => {
     clearSessionEngine(id); // drop any per-chat sandbox-engine override
+    // Remove the session's artifacts and sandbox directories from disk.
+    const safe = id.replace(/[^a-zA-Z0-9_-]/g, "_") || "session";
+    for (const dir of [
+      join(getDataSubdir("artifacts"), safe),
+      join(getDataSubdir("sandboxes"), safe),
+    ]) {
+      try {
+        if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+      } catch {
+        /* best-effort */
+      }
+    }
     return store.delete(id);
   });
 
