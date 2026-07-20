@@ -5,6 +5,9 @@ import {
   useRef,
   lazy,
   Suspense,
+  Component,
+  Fragment,
+  type ErrorInfo,
   type ReactNode,
 } from "react";
 import {
@@ -91,6 +94,58 @@ type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
+}
+
+class ViewerErrorBoundary extends Component<
+  { children: ReactNode; onClose: () => void },
+  { error: Error | null; retryKey: number }
+> {
+  state: { error: Error | null; retryKey: number } = {
+    error: null,
+    retryKey: 0,
+  };
+
+  static getDerivedStateFromError(error: Error): { error: Error } {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error("[renderer] FileViewer render error", error, info.componentStack);
+  }
+
+  private retry = (): void => {
+    this.setState(({ retryKey }) => ({ error: null, retryKey: retryKey + 1 }));
+  };
+
+  render(): ReactNode {
+    if (this.state.error) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+          <p className="text-sm font-medium text-destructive">File preview failed</p>
+          <p className="max-w-md text-xs text-muted-foreground">
+            {this.state.error.message || "The file preview could not be rendered."}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={this.retry}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={this.props.onClose}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return <Fragment key={this.state.retryKey}>{this.props.children}</Fragment>;
+  }
 }
 
 function useTheme(): {
@@ -1171,9 +1226,16 @@ export default function App(): JSX.Element {
                     <ResizablePanel minSize={20}>
                       <div className="h-full min-h-0 overflow-hidden">
                         {viewerArtifact ? (
-                          <FileViewer item={viewerArtifact} onClose={closeArtifactViewer} />
+                          <ViewerErrorBoundary
+                            key={`artifact:${viewerArtifact.path ?? viewerArtifact.name}`}
+                            onClose={closeArtifactViewer}
+                          >
+                            <FileViewer item={viewerArtifact} onClose={closeArtifactViewer} />
+                          </ViewerErrorBoundary>
                         ) : openFilePath ? (
-                          <FileViewer path={openFilePath} onClose={closeFileViewer} />
+                          <ViewerErrorBoundary key={`file:${openFilePath}`} onClose={closeFileViewer}>
+                            <FileViewer path={openFilePath} onClose={closeFileViewer} />
+                          </ViewerErrorBoundary>
                         ) : view === "routines" ? (
                           <div className="h-full overflow-auto">
                             <div className="mx-auto max-w-4xl px-6 py-8">
@@ -1294,9 +1356,16 @@ export default function App(): JSX.Element {
                     <ResizablePanel minSize={20}>
                       <div className="flex h-full min-h-0 flex-col overflow-hidden">
                         {viewerArtifact ? (
-                          <FileViewer item={viewerArtifact} onClose={closeArtifactViewer} />
+                          <ViewerErrorBoundary
+                            key={`artifact:${viewerArtifact.path ?? viewerArtifact.name}`}
+                            onClose={closeArtifactViewer}
+                          >
+                            <FileViewer item={viewerArtifact} onClose={closeArtifactViewer} />
+                          </ViewerErrorBoundary>
                         ) : openFilePath ? (
-                          <FileViewer path={openFilePath} onClose={closeFileViewer} />
+                          <ViewerErrorBoundary key={`file:${openFilePath}`} onClose={closeFileViewer}>
+                            <FileViewer path={openFilePath} onClose={closeFileViewer} />
+                          </ViewerErrorBoundary>
                         ) : (
                           <>
                             {view === "chat" && (

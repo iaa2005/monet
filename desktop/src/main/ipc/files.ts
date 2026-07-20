@@ -27,6 +27,31 @@ function normPath(p: string): string {
   return p.replace(/\//g, "\\");
 }
 
+function errorCode(err: unknown): string | undefined {
+  return (err as NodeJS.ErrnoException)?.code;
+}
+
+/** Log operation context without echoing local paths or file contents. */
+function logFilesError(operation: string, err: unknown): void {
+  console.error(`[files] ${operation} failed`, {
+    code: errorCode(err) ?? "unknown",
+    errorType: err instanceof Error ? err.name : typeof err,
+  });
+}
+
+function publicError(operation: string, filePath: string, err: unknown): Error {
+  const code = errorCode(err);
+  const name = basename(filePath) || "file";
+  if (code === "ENOENT") return new Error(`${operation}: ${name} not found`);
+  if (code === "EACCES" || code === "EPERM")
+    return new Error(`${operation}: permission denied for ${name}`);
+  if (err instanceof Error && err.message.startsWith("Not a file"))
+    return new Error(`${operation}: ${name} is not a file`);
+  if (err instanceof Error && err.message.startsWith("File is too large"))
+    return err;
+  return new Error(`${operation} failed for ${name}`);
+}
+
 export function registerFilesIPC(): void {
   ipcMain.handle("files:read", async (_event, filePath: string) => {
     const p = normPath(filePath);
@@ -37,31 +62,38 @@ export function registerFilesIPC(): void {
         throw new Error("File is too large to preview (400KB)");
       return await readFile(p, "utf-8");
     } catch (err) {
-      if (err instanceof Error && err.message.startsWith("File is too large"))
-        throw err;
-      if ((err as NodeJS.ErrnoException)?.code === "ENOENT")
-        throw new Error(`File not found: ${filePath}`);
-      throw err;
+      logFilesError("read", err);
+      throw publicError("Read file", filePath, err);
     }
   });
 
   ipcMain.handle(
     "files:write",
     async (_event, filePath: string, content: string) => {
-      await writeFile(normPath(filePath), content, "utf-8");
-      return { ok: true };
+      try {
+        await writeFile(normPath(filePath), content, "utf-8");
+        return { ok: true };
+      } catch (err) {
+        logFilesError("write", err);
+        throw publicError("Write file", filePath, err);
+      }
     },
   );
 
   ipcMain.handle("files:list", async (_event, dirPath: string) => {
     const p = normPath(dirPath);
-    const entries = await readdir(p, { withFileTypes: true });
-    return entries.map((e) => ({
-      name: e.name,
-      isDirectory: e.isDirectory(),
-      isFile: e.isFile(),
-      path: join(p, e.name),
-    }));
+    try {
+      const entries = await readdir(p, { withFileTypes: true });
+      return entries.map((e) => ({
+        name: e.name,
+        isDirectory: e.isDirectory(),
+        isFile: e.isFile(),
+        path: join(p, e.name),
+      }));
+    } catch (err) {
+      logFilesError("list", err);
+      throw publicError("List directory", dirPath, err);
+    }
   });
 
   ipcMain.handle("files:exists", async (_event, filePath: string) => {
@@ -74,15 +106,25 @@ export function registerFilesIPC(): void {
   });
 
   ipcMain.handle("files:pick-directory", async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ["openDirectory"],
-    });
-    return result.canceled ? null : result.filePaths[0];
+    try {
+      const result = await dialog.showOpenDialog({
+        properties: ["openDirectory"],
+      });
+      return result.canceled ? null : result.filePaths[0];
+    } catch (err) {
+      logFilesError("pick-directory", err);
+      throw new Error("Pick directory failed");
+    }
   });
 
   ipcMain.handle("files:stat", async (_event, filePath: string) => {
-    const s = await stat(normPath(filePath));
-    return { size: s.size, isFile: s.isFile(), isDirectory: s.isDirectory() };
+    try {
+      const s = await stat(normPath(filePath));
+      return { size: s.size, isFile: s.isFile(), isDirectory: s.isDirectory() };
+    } catch (err) {
+      logFilesError("stat", err);
+      throw publicError("Stat file", filePath, err);
+    }
   });
 
   // Raw bytes (base64) for rich previews of ANY file the user opens from the
@@ -97,12 +139,20 @@ export function registerFilesIPC(): void {
       try {
         const p = normPath(filePath);
         const info = await stat(p);
-        if (!info.isFile()) return { ok: false, error: "not a file" };
-        if (info.size > MAX_PREVIEW_BYTES)
-          return { ok: false, error: "File is too large to preview (40MB)" };
+        if (!info.isFile()) {
+          const error = new Error("not a file");
+          logFilesError("readBytes", error);
+          return { ok: false, error: error.message };
+        }
+        if (info.size > MAX_PREVIEW_BYTES) {
+          const error = new Error("File is too large to preview (40MB)");
+          logFilesError("readBytes", error);
+          return { ok: false, error: error.message };
+        }
         const buf = await readFile(p);
         return { ok: true, base64: buf.toString("base64") };
       } catch (err) {
+        logFilesError("readBytes", err);
         return {
           ok: false,
           error: err instanceof Error ? err.message : "read failed",
@@ -124,7 +174,8 @@ export function registerFilesIPC(): void {
         const p = normPath(filePath);
         try {
           await access(p);
-        } catch {
+        } catch (err) {
+          logFilesError("saveAs", err);
           return { ok: false, error: "not found" };
         }
         const win = BrowserWindow.getFocusedWindow() ?? undefined;
@@ -135,6 +186,7 @@ export function registerFilesIPC(): void {
         await copyFile(p, res.filePath);
         return { ok: true, savedTo: res.filePath };
       } catch (err) {
+        logFilesError("saveAs", err);
         return {
           ok: false,
           error: err instanceof Error ? err.message : "save failed",
