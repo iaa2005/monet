@@ -271,7 +271,7 @@ export default function App(): JSX.Element {
   const [sessionTitle, setSessionTitle] = useState("New session");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<"general" | "sandbox">("general");
+  const [settingsSection, setSettingsSection] = useState<"general" | "sandbox" | "providers">("general");
   const [aboutOpen, setAboutOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -1252,6 +1252,10 @@ export default function App(): JSX.Element {
                               setSettingsSection("sandbox");
                               setSettingsOpen(true);
                             }}
+                            onOpenProvidersSettings={() => {
+                              setSettingsSection("providers");
+                              setSettingsOpen(true);
+                            }}
                           />
                         )}
                       </div>
@@ -1373,6 +1377,10 @@ export default function App(): JSX.Element {
                               <ChatView
                                 transcriptMode={transcriptMode}
                                 sessionTitle={sessionTitle}
+                                onOpenProvidersSettings={() => {
+                                  setSettingsSection("providers");
+                                  setSettingsOpen(true);
+                                }}
                               />
                             )}
                             {view === "skills" && (

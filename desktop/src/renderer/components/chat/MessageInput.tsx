@@ -6,6 +6,7 @@ import {
   Eye,
   EyeOff,
   Plus,
+  Settings,
   Square,
   X,
   FileText,
@@ -204,9 +205,11 @@ function api(): ElectronAPI | undefined {
 
 export function MessageInput({
   flush = false,
+  onOpenProviders,
 }: {
   /** No horizontal padding — for the centered Home empty state. */
   flush?: boolean;
+  onOpenProviders?: () => void;
 } = {}): JSX.Element {
   // The composer text lives in the store PER CHAT (keyed by sessionId, or
   // "new:<space>" for a blank chat) — switching chats and coming back
@@ -1216,6 +1219,16 @@ export function MessageInput({
                     </button>
                   ) : null;
                 })()}
+                {onOpenProviders && (
+                  <button
+                    type="button"
+                    onClick={onOpenProviders}
+                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/6"
+                  >
+                    <Settings className="size-3" />
+                    Providers
+                  </button>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

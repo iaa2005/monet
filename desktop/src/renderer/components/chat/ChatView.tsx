@@ -669,6 +669,7 @@ export function ChatView({
   sessionTitle,
   home = false,
   onOpenSettings,
+  onOpenProvidersSettings,
 }: {
   transcriptMode?: TranscriptMode;
   sessionTitle?: string;
@@ -676,6 +677,7 @@ export function ChatView({
    * overview instead. */
   home?: boolean;
   onOpenSettings?: () => void;
+  onOpenProvidersSettings?: () => void;
 }): JSX.Element {
   const [podmanWarning, setPodmanWarning] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -843,7 +845,7 @@ export function ChatView({
             </p>
           </div>
           <div className="mt-6 w-full max-w-2xl">
-            <MessageInput flush />
+            <MessageInput flush onOpenProviders={onOpenProvidersSettings} />
           </div>
           {podmanWarning && (
             <div className="glass-panel glass-amber mt-1 mb-3 flex w-full max-w-2xl items-center justify-between gap-3 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2.5 text-left text-[13px]">
@@ -1048,7 +1050,7 @@ export function ChatView({
             </div>
           )}
           {!home && <GitCard />}
-          <MessageInput />
+          <MessageInput onOpenProviders={onOpenProvidersSettings} />
         </>
       )}
     </div>
