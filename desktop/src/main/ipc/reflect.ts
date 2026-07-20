@@ -12,6 +12,7 @@ import { getDataDir } from "../data-dir.js";
 import { getSessionStore } from "../session-store.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
+import { buildMemoryPrompt } from "../memory/store.js";
 
 export interface ReflectDigest {
   headline: string;
@@ -59,26 +60,90 @@ async function generateDigest(days: number): Promise<ReflectDigest> {
         `- [${String(s.updatedAt).slice(0, 10)}] "${s.title}" (${s.space ?? "home"}, ${s.messageCount} msgs)`,
     )
     .join("\n");
+
+  // Long-term memory grounds the digest: session titles alone say WHAT the user
+  // did; memory says WHO they are and what they're building, so the narrative
+  // and skill cards can be specific instead of guessing from titles.
+  const memory = buildMemoryPrompt();
+  const memorySection = memory
+    ? `\n\nWhat you already know about this user (from memory — weave it in, don't quote it):\n${memory.slice(0, 4_000)}`
+    : "";
+
   const adapter = createAdapter(provider);
-  const res = await adapter.complete({
-    model: provider.model,
-    system: SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: `Sessions of the last ${days} days:\n${lines}`,
-      },
-    ],
-    max_tokens: 1_600,
-  });
-  const raw = (typeof res.content === "string" ? res.content : "")
-    .trim()
+  let res;
+  try {
+    res = await adapter.complete({
+      model: provider.model,
+      system: SYSTEM,
+      messages: [
+        {
+          role: "user",
+          content: `Sessions of the last ${days} days:\n${lines}${memorySection}`,
+        },
+      ],
+      // Reasoning models (deepseek-reasoner) spend part of the budget on
+      // thinking BEFORE emitting the JSON — 1600 was enough for a chat model
+      // but could leave nothing for the answer. Give it room.
+      max_tokens: 4_000,
+    });
+  } catch (e) {
+    // Surface the provider's own words (bad key, 402, wrong endpoint) instead
+    // of a generic failure — this is where "deepseek fails" actually lands.
+    throw new Error(
+      `${provider.name || "The model"} couldn't be reached: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+
+  const raw = (typeof res.content === "string" ? res.content : "").trim();
+  if (!raw)
+    // A reasoning model that spent its whole budget thinking returns empty
+    // text; the fix is a bigger max_tokens (above) or a non-reasoning model.
+    throw new Error(
+      `${provider.name || "The model"} returned an empty response. If it's a reasoning model, try a larger context or a non-reasoning model for the digest.`,
+    );
+
+  const parsed = extractJson(raw);
+  if (!parsed)
+    throw new Error(
+      `Couldn't read a digest from ${provider.name || "the model"}'s reply. It answered with prose instead of JSON — try Refresh, or a stronger model. First 200 chars: ${raw.slice(0, 200)}`,
+    );
+  return parsed as ReflectDigest;
+}
+
+/**
+ * Pull the first complete JSON object out of a reply. `lastIndexOf("}")` breaks
+ * when a model wraps the JSON in prose that itself contains a brace ("Here's
+ * the digest: {…}. Hope that helps!"): it grabbed to the wrong closer. This
+ * scans for a balanced object instead, ignoring braces inside strings.
+ */
+function extractJson(text: string): unknown {
+  const cleaned = text
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/```\s*$/, "");
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end <= start) throw new Error("Digest generation failed.");
-  return JSON.parse(raw.slice(start, end + 1)) as ReflectDigest;
+  const start = cleaned.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < cleaned.length; i++) {
+    const c = cleaned[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) {
+      try {
+        return JSON.parse(cleaned.slice(start, i + 1));
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
 }
 
 export function registerReflectIPC(): void {
