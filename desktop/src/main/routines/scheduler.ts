@@ -140,15 +140,17 @@ export async function executeRoutine(
         // creation; destructive is never grantable (the engine enforces both).
         connectorGrants: routine.grants,
         maxTurns: 30,
-        // Scope to declared connectors; ensure the output connector is included.
-        connectors:
-          routine.connectors.length > 0 &&
-          routine.output.kind === "connector" &&
-          routine.output.connector
-            ? Array.from(
-                new Set([...routine.connectors, routine.output.connector]),
-              )
-            : routine.connectors,
+        // Scope to declared connectors plus every connector needed by the
+        // trigger/output. An empty declared scope means the default toolset,
+        // but an explicit output/event connector must still be available.
+        connectors: (() => {
+          const scope = new Set(routine.connectors);
+          if (routine.output.kind === "connector" && routine.output.connector)
+            scope.add(routine.output.connector);
+          if (routine.trigger.kind === "event" && routine.trigger.event?.connector)
+            scope.add(routine.trigger.event.connector);
+          return [...scope];
+        })(),
       },
     );
   } catch (err) {

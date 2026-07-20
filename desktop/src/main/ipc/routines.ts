@@ -25,7 +25,30 @@ import {
 import { getProviderManager } from "../provider/manager.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getTriggerConfig, triggerBaseUrl } from "../routines/trigger-server.js";
+import { listAccounts } from "../connectors/store.js";
+import { loadConfig } from "../mcp/manager.js";
 import { randomUUID } from "node:crypto";
+
+function knownConnectorIds(): Set<string> {
+  const ids = new Set(
+    listAccounts()
+      .filter((account) => account.enabled)
+      .map((account) => account.presetId),
+  );
+  for (const name of Object.keys(loadConfig().mcpServers)) ids.add(name);
+  return ids;
+}
+
+function validateOutputConnector(output: Routine["output"]): void {
+  if (output.kind !== "connector") return;
+  const connector = output.connector?.trim();
+  if (!connector) {
+    throw new Error("Output connector must be selected.");
+  }
+  if (!knownConnectorIds().has(connector)) {
+    throw new Error(`Output connector is not connected: ${connector}.`);
+  }
+}
 
 function withHuman(r: Routine): Routine & { humanSchedule?: string } {
   if (r.trigger.kind === "schedule" && r.trigger.cron) {
@@ -46,6 +69,7 @@ export function registerRoutinesIPC(): void {
   });
 
   ipcMain.handle("routines:create", (_e, input: RoutineInput) => {
+    validateOutputConnector(input.output);
     // Webhook routines need a stable secret id embedded in their inbound URL.
     if (input.trigger.kind === "webhook" && !input.trigger.webhookId)
       input = {
@@ -66,6 +90,10 @@ export function registerRoutinesIPC(): void {
   ipcMain.handle(
     "routines:update",
     (_e, id: string, patch: Partial<Routine>) => {
+      const current = getRoutine(id);
+      if (!current) return null;
+      const next = { ...current, ...patch };
+      validateOutputConnector(next.output);
       const r = updateRoutine(id, patch);
       if (r) rescheduleRoutine(id);
       return r ? withHuman(r) : null;

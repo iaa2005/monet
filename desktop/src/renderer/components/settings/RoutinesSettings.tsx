@@ -3,7 +3,7 @@
  * or (later) by webhook/connector event. Draft one from natural language, start
  * from a template, or hand-edit. Each run produces a new chat.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Zap,
   Plus,
@@ -26,7 +26,7 @@ import { Modal } from "@/components/ui/modal";
 import { Switch } from "@/components/ui/switch";
 import { MicButton } from "@/components/chat/MicButton";
 import { cn } from "@/lib/utils";
-import type { ElectronAPI, Routine } from "@/types/electron";
+import type { ElectronAPI, Routine, UiConnectorService } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -47,6 +47,7 @@ interface Draft {
   eventInterval: number;
   eventFilter: string;
   connectors: string[];
+  grants: string[];
   outputKind: "chat" | "notification" | "connector";
   outputConnector: string;
   condition: string;
@@ -81,7 +82,7 @@ const TEMPLATES: Template[] = [
 ];
 
 function emptyDraft(): Draft {
-  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", eventConnector: "", eventType: "", eventInterval: 15, eventFilter: "", connectors: [], outputKind: "chat", outputConnector: "", condition: "", enabled: true };
+  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", eventConnector: "", eventType: "", eventInterval: 15, eventFilter: "", connectors: [], grants: [], outputKind: "chat", outputConnector: "", condition: "", enabled: true };
 }
 
 export function RoutinesSettings({
@@ -152,8 +153,8 @@ export function RoutinesSettings({
             Routines
           </h3>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Templated routines that run on a schedule (webhook &amp; connector
-            events coming). Each run opens a new chat with the result.
+            Templated routines that run on a schedule, webhook, or connector
+            event. Each run opens a new chat with the result.
           </p>
         </div>
         <button
@@ -250,6 +251,7 @@ export function RoutinesSettings({
                     eventInterval: r.trigger.event?.intervalMinutes ?? 15,
                     eventFilter: r.trigger.event?.filter ?? "",
                     connectors: r.connectors ?? [],
+                    grants: r.grants ?? [],
                     outputKind: r.output?.kind ?? "chat",
                     outputConnector: r.output?.connector ?? "",
                     condition: r.condition?.prompt ?? "",
@@ -378,17 +380,67 @@ function RoutineEditor({
   const [d, setD] = useState<Draft>(draft);
   const [preview, setPreview] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const [trig, setTrig] = useState<{ baseUrl: string; apiKey: string } | null>(null);
   // Connector accounts AND raw MCP servers — mcp.list() alone went blank once
   // connectors moved out of mcp-servers.json into the encrypted store.
   const [servers, setServers] = useState<
     { id: string; label: string; kind: "connector" | "mcp" }[]
   >([]);
+  const [presets, setPresets] = useState<UiConnectorService[]>([]);
   const set = (patch: Partial<Draft>): void => setD((p) => ({ ...p, ...patch }));
+  const grantOptions = useMemo(() => {
+    const connected = new Map(servers.map((server) => [server.id, server]));
+    const options = new Map<
+      string,
+      {
+        connectorLabel: string;
+        actionId: string;
+        actionLabel: string;
+        access: "read" | "write" | "destructive";
+      }
+    >();
+    const addOption = (option: {
+      connectorLabel: string;
+      actionId: string;
+      actionLabel: string;
+      access: "read" | "write" | "destructive";
+    }): void => {
+      const existing = options.get(option.actionId);
+      options.set(
+        option.actionId,
+        existing
+          ? { ...existing, connectorLabel: `${existing.connectorLabel}, ${option.connectorLabel}` }
+          : option,
+      );
+    };
+    for (const preset of presets) {
+      const server = connected.get(preset.id);
+      if (!server || server.kind !== "connector") continue;
+      for (const action of preset.actions)
+        addOption({
+          connectorLabel: server.label,
+          actionId: action.id,
+          actionLabel: action.label,
+          access: action.access,
+        });
+    }
+    for (const server of servers) {
+      if (server.kind !== "mcp") continue;
+      addOption({
+        connectorLabel: server.label,
+        actionId: "mcp.use",
+        actionLabel: "Use the service's MCP tools",
+        access: "write",
+      });
+    }
+    return [...options.values()];
+  }, [presets, servers]);
 
   useEffect(() => {
     void api()?.routines.triggerInfo().then(setTrig);
     void api()?.connectors.options().then(setServers).catch(() => {});
+    void api()?.connectors.presets().then(setPresets).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -409,6 +461,11 @@ function RoutineEditor({
   }, [d.cron]);
 
   const save = async (): Promise<void> => {
+    setError("");
+    if (d.outputKind === "connector" && !d.outputConnector.trim()) {
+      setError("Pick a connector for connector output.");
+      return;
+    }
     setBusy(true);
     const trigger =
       d.triggerKind === "schedule"
@@ -437,14 +494,17 @@ function RoutineEditor({
         : { kind: "always" as const },
       output:
         d.outputKind === "connector"
-          ? { kind: "connector" as const, connector: d.outputConnector }
+          ? { kind: "connector" as const, connector: d.outputConnector.trim() }
           : { kind: d.outputKind },
+      grants: d.grants,
       enabled: d.enabled,
     };
     try {
       if (d.id) await api()?.routines.update(d.id, input);
       else await api()?.routines.create(input);
       onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save routine.");
     } finally {
       setBusy(false);
     }
@@ -670,6 +730,61 @@ function RoutineEditor({
               })}
             </div>
           </div>
+        )}
+        {grantOptions.some((option) => option.access !== "read") && (
+          <div>
+            <label className="text-xs text-muted-foreground">
+              Unattended permissions — allow write actions when nobody is watching
+            </label>
+            <div className="mt-1 space-y-1 rounded-md border border-border p-2">
+              {grantOptions
+                .filter((option) => option.access !== "read")
+                .map((option) => {
+                  const checked = d.grants.includes(option.actionId);
+                  const destructive = option.access === "destructive";
+                  return (
+                    <label
+                      key={option.actionId}
+                      className={cn(
+                        "flex items-center gap-2 text-xs",
+                        destructive && "text-muted-foreground",
+                      )}
+                      title={
+                        destructive
+                          ? "Destructive actions cannot be granted to unattended runs"
+                          : undefined
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked && !destructive}
+                        disabled={destructive}
+                        onChange={(e) =>
+                          set({
+                            grants: e.target.checked
+                              ? [...d.grants, option.actionId]
+                              : d.grants.filter((id) => id !== option.actionId),
+                          })
+                        }
+                      />
+                      <span>
+                        {option.connectorLabel}: {option.actionLabel}
+                        {destructive ? " (never unattended)" : ""}
+                      </span>
+                    </label>
+                  );
+                })}
+            </div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Read actions are available automatically. Connector-level Deny still
+              takes precedence over a routine grant.
+            </p>
+          </div>
+        )}
+        {error && (
+          <p role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
         )}
         <div className="flex items-center justify-between border-t border-border pt-3">
           <label className="flex items-center gap-2 text-sm">
