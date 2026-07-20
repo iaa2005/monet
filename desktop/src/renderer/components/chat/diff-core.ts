@@ -50,6 +50,28 @@ export function computeRows(
       kind: "removed" as const,
     }));
 
+  // jsdiff's LCS can use quadratic time and memory. Keep large edits useful
+  // without letting an accidental whole-file diff freeze the renderer.
+  const MAX_DIFF_LINES = 20_000;
+  const MAX_DIFF_CELLS = 2_000_000;
+  if (
+    oldLines.length + newLines.length > MAX_DIFF_LINES ||
+    oldLines.length * newLines.length > MAX_DIFF_CELLS
+  ) {
+    return [
+      ...oldLines.map((text, i) => ({
+        text,
+        oldNo: offset + i + 1,
+        kind: "removed" as const,
+      })),
+      ...newLines.map((text, i) => ({
+        text,
+        newNo: offset + i + 1,
+        kind: "added" as const,
+      })),
+    ];
+  }
+
   const rows: DiffRow[] = [];
   let oldNo = offset + 1;
   let newNo = offset + 1;

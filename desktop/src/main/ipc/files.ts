@@ -4,16 +4,19 @@
 
 import { ipcMain, dialog, BrowserWindow } from "electron";
 import {
-  copyFileSync,
-  readFileSync,
-  writeFileSync,
-  readdirSync,
-  statSync,
-  existsSync,
-} from "fs";
+  access,
+  copyFile,
+  readdir,
+  readFile,
+  stat,
+  writeFile,
+} from "fs/promises";
 import { basename, join } from "path";
 
 /** Normalise Unix-style paths (/c/Users/...) to Windows (C:\Users\...). */
+const MAX_TEXT_BYTES = 400_000;
+const MAX_PREVIEW_BYTES = 40 * 1024 * 1024;
+
 function normPath(p: string): string {
   if (process.platform !== "win32") return p;
   // MSYS/Git Bash sends /c/Users/foo → C:/Users/foo
@@ -27,23 +30,32 @@ function normPath(p: string): string {
 export function registerFilesIPC(): void {
   ipcMain.handle("files:read", async (_event, filePath: string) => {
     const p = normPath(filePath);
-    if (!existsSync(p)) {
-      throw new Error(`File not found: ${filePath}`);
+    try {
+      const info = await stat(p);
+      if (!info.isFile()) throw new Error(`Not a file: ${filePath}`);
+      if (info.size > MAX_TEXT_BYTES)
+        throw new Error("File is too large to preview (400KB)");
+      return await readFile(p, "utf-8");
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("File is too large"))
+        throw err;
+      if ((err as NodeJS.ErrnoException)?.code === "ENOENT")
+        throw new Error(`File not found: ${filePath}`);
+      throw err;
     }
-    return readFileSync(p, "utf-8");
   });
 
   ipcMain.handle(
     "files:write",
     async (_event, filePath: string, content: string) => {
-      writeFileSync(normPath(filePath), content, "utf-8");
+      await writeFile(normPath(filePath), content, "utf-8");
       return { ok: true };
     },
   );
 
   ipcMain.handle("files:list", async (_event, dirPath: string) => {
     const p = normPath(dirPath);
-    const entries = readdirSync(p, { withFileTypes: true });
+    const entries = await readdir(p, { withFileTypes: true });
     return entries.map((e) => ({
       name: e.name,
       isDirectory: e.isDirectory(),
@@ -53,7 +65,12 @@ export function registerFilesIPC(): void {
   });
 
   ipcMain.handle("files:exists", async (_event, filePath: string) => {
-    return existsSync(normPath(filePath));
+    try {
+      await access(normPath(filePath));
+      return true;
+    } catch {
+      return false;
+    }
   });
 
   ipcMain.handle("files:pick-directory", async () => {
@@ -64,7 +81,7 @@ export function registerFilesIPC(): void {
   });
 
   ipcMain.handle("files:stat", async (_event, filePath: string) => {
-    const s = statSync(filePath);
+    const s = await stat(normPath(filePath));
     return { size: s.size, isFile: s.isFile(), isDirectory: s.isDirectory() };
   });
 
@@ -73,12 +90,17 @@ export function registerFilesIPC(): void {
   // refuse paths outside the artifacts dir by design.
   ipcMain.handle(
     "files:readBytes",
-    (_e, filePath: string): { ok: boolean; base64?: string; error?: string } => {
+    async (
+      _e,
+      filePath: string,
+    ): Promise<{ ok: boolean; base64?: string; error?: string }> => {
       try {
         const p = normPath(filePath);
-        const buf = readFileSync(p);
-        if (buf.length > 40 * 1024 * 1024)
+        const info = await stat(p);
+        if (!info.isFile()) return { ok: false, error: "not a file" };
+        if (info.size > MAX_PREVIEW_BYTES)
           return { ok: false, error: "File is too large to preview (40MB)" };
+        const buf = await readFile(p);
         return { ok: true, base64: buf.toString("base64") };
       } catch (err) {
         return {
@@ -100,13 +122,17 @@ export function registerFilesIPC(): void {
     ): Promise<{ ok: boolean; savedTo?: string; error?: string }> => {
       try {
         const p = normPath(filePath);
-        if (!existsSync(p)) return { ok: false, error: "not found" };
+        try {
+          await access(p);
+        } catch {
+          return { ok: false, error: "not found" };
+        }
         const win = BrowserWindow.getFocusedWindow() ?? undefined;
         const res = await dialog.showSaveDialog(win!, {
           defaultPath: name || basename(p),
         });
         if (res.canceled || !res.filePath) return { ok: false };
-        copyFileSync(p, res.filePath);
+        await copyFile(p, res.filePath);
         return { ok: true, savedTo: res.filePath };
       } catch (err) {
         return {

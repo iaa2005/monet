@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { DiffView } from '@/components/chat/DiffView'
-import { diffStats, langFromPath } from '@/components/chat/diff-core'
+import { computeRows, langFromPath } from '@/components/chat/diff-core'
 
 export interface DiffFile {
   path: string
@@ -30,7 +30,13 @@ function FileDiff({ file, onAccept, onReject }: {
   onAccept: () => void
   onReject: () => void
 }): JSX.Element {
-  const stats = diffStats(file.oldContent, file.newContent)
+  const rows = computeRows(file.oldContent, file.newContent)
+  let added = 0
+  let removed = 0
+  for (const row of rows) {
+    if (row.kind === 'added') added++
+    else if (row.kind === 'removed') removed++
+  }
 
   return (
     <div className="glass-panel mb-4 overflow-hidden rounded-lg border border-border bg-card">
@@ -38,9 +44,9 @@ function FileDiff({ file, onAccept, onReject }: {
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate font-mono text-sm font-medium">{file.path}</span>
           <span className="shrink-0 font-mono text-xs">
-            <span className="text-green-text">+{stats.added}</span>
+            <span className="text-green-text">+{added}</span>
             {' '}
-            <span className="text-red-text">-{stats.removed}</span>
+            <span className="text-red-text">-{removed}</span>
           </span>
         </div>
         <div className="flex shrink-0 gap-1">
@@ -54,8 +60,7 @@ function FileDiff({ file, onAccept, onReject }: {
       </div>
 
       <DiffView
-        oldText={file.oldContent}
-        newText={file.newContent}
+        rows={rows}
         language={langFromPath(file.path)}
         maxHeight={480}
       />

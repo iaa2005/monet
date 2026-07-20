@@ -128,6 +128,8 @@ export function highlightOne(text: string, language: string): ReactNode {
  * Avoids the `wrapLongLines` performance hit (uses CSS `white-space: pre-wrap`
  * instead of JS-based character measurement).
  */
+const MAX_HIGHLIGHT_CHARS = 30_000;
+
 export function HighlightedCode({
   code,
   language = "text",
@@ -139,7 +141,14 @@ export function HighlightedCode({
   showLineNumbers?: boolean;
   className?: string;
 }): JSX.Element {
-  const lines = useMemo(() => highlightLines(code, language), [code, language]);
+  const source =
+    code.length > MAX_HIGHLIGHT_CHARS
+      ? `${code.slice(0, MAX_HIGHLIGHT_CHARS)}\n\n… (highlighting skipped for large input)`
+      : code;
+  const lines = useMemo(
+    () => highlightLines(source, language),
+    [source, language],
+  );
   return (
     <pre
       className={cn(

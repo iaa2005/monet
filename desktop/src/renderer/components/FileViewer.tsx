@@ -98,6 +98,15 @@ function langFor(name: string): string {
 
 const TEXT_EXT =
   /\.(txt|md|csv|tsv|json|jsonc|js|mjs|ts|tsx|py|html|css|xml|svg|yaml|yml|log|tex|bib|sty)$/i;
+const MAX_TEXT_PREVIEW_CHARS = 400_000;
+const MAX_XLSX_ROWS = 500;
+const MAX_XLSX_CELLS = 20_000;
+
+function truncateText(text: string): string {
+  return text.length > MAX_TEXT_PREVIEW_CHARS
+    ? text.slice(0, MAX_TEXT_PREVIEW_CHARS) + "\n\n… (truncated)"
+    : text;
+}
 
 type PreviewKind =
   | "image"
@@ -248,9 +257,7 @@ export function FileViewer({
       ?.files.read(path)
       .then((c) => {
         if (!cancelled)
-          setContent(
-            c.length > 400000 ? c.slice(0, 400000) + "\n\n… (truncated)" : c,
-          );
+          setContent(truncateText(c));
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -344,9 +351,35 @@ export function FileViewer({
             const wb = XLSX.read(b64ToBytes(b64), { type: "array" });
             const parts: string[] = [];
             for (const sheetName of wb.SheetNames.slice(0, 8)) {
+              const sheet = wb.Sheets[sheetName];
+              const sourceRange = sheet["!ref"]
+                ? XLSX.utils.decode_range(sheet["!ref"])
+                : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
+              const sourceRows = sourceRange.e.r - sourceRange.s.r + 1;
+              const sourceCols = sourceRange.e.c - sourceRange.s.c + 1;
+              const rows = Math.min(sourceRows, MAX_XLSX_ROWS);
+              const cols = Math.min(
+                sourceCols,
+                Math.max(1, Math.floor(MAX_XLSX_CELLS / rows)),
+              );
+              const range = {
+                s: sourceRange.s,
+                e: {
+                  r: sourceRange.s.r + rows - 1,
+                  c: sourceRange.s.c + cols - 1,
+                },
+              };
+              const truncated = rows < sourceRows || cols < sourceCols;
+              const previewSheet = {
+                ...sheet,
+                "!ref": XLSX.utils.encode_range(range),
+              };
               parts.push(
                 `<h3 class="sheet-name">${sheetName}</h3>` +
-                  XLSX.utils.sheet_to_html(wb.Sheets[sheetName], { header: "", footer: "" }),
+                  XLSX.utils.sheet_to_html(previewSheet, { header: "", footer: "" }) +
+                  (truncated
+                    ? `<p class="sheet-truncated">… preview capped at ${rows} rows / ${rows * cols} cells</p>`
+                    : ""),
               );
             }
             if (alive) setSheetHtml(parts.join("\n"));
@@ -355,12 +388,12 @@ export function FileViewer({
           if (effPath && source === "artifact") {
             const r = await bridge?.artifacts.readText(effPath);
             if (alive) {
-              if (r?.ok) setArtText(r.content ?? "");
+              if (r?.ok) setArtText(truncateText(r.content ?? ""));
               else setError(r?.error ?? "Can't read file");
             }
           } else if (effPath) {
             const c = await bridge?.files.read(effPath);
-            if (alive) setArtText(c ?? "");
+            if (alive) setArtText(truncateText(c ?? ""));
           } else if (alive) {
             setError("No preview data for this file.");
           }
@@ -491,7 +524,7 @@ export function FileViewer({
 
             {!error && preview === "xlsx" && sheetHtml && (
               <div
-                className="p-4 text-[13px] [&_.sheet-name]:mb-1 [&_.sheet-name]:mt-4 [&_.sheet-name]:font-semibold [&_.sheet-name]:first:mt-0 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1"
+                className="p-4 text-[13px] [&_.sheet-name]:mb-1 [&_.sheet-name]:mt-4 [&_.sheet-name]:font-semibold [&_.sheet-name]:first:mt-0 [&_.sheet-truncated]:mt-2 [&_.sheet-truncated]:text-xs [&_.sheet-truncated]:text-muted-foreground [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1"
                 dangerouslySetInnerHTML={{ __html: sheetHtml }}
               />
             )}
