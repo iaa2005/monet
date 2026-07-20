@@ -925,16 +925,14 @@ export default function App(): JSX.Element {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          {/* Artifacts: a sandbox surface — Home only. */}
-          {appMode === "home" && (
-            <IconBtn
-              title="Artifacts"
-              active={rightTab === "artifacts"}
-              onClick={() => toggleRight("artifacts")}
-            >
-              <Blocks className="size-4" />
-            </IconBtn>
-          )}
+          {/* Artifacts: files the model produced + files the user attached. */}
+          <IconBtn
+            title="Artifacts"
+            active={rightTab === "artifacts"}
+            onClick={() => toggleRight("artifacts")}
+          >
+            <Blocks className="size-4" />
+          </IconBtn>
           {/* Home sandbox shell — only when the engine has one (Podman /
               subprocess). Runs inside the chat's sandbox, not on the host. */}
           {appMode === "home" && homeShellSupported && (
