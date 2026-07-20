@@ -91,7 +91,7 @@ export function DiffView({
   const haveSides = oldText != null && newText != null;
 
   // Tokenise each side once (multi-line-aware) so a row picks its highlighted
-  // line by number; the unified-patch path (no sides) highlights per row.
+  // line by number.
   const oldHi = useMemo(
     () => (highlightOn && haveSides ? highlightLines(oldText ?? "", language) : null),
     [highlightOn, haveSides, oldText, language],
@@ -101,7 +101,22 @@ export function DiffView({
     [highlightOn, haveSides, newText, language],
   );
 
-  const content = (row: DiffRow): ReactNode => {
+  // Batch-highlight for unified-patch path: join all row texts, tokenize once,
+  // split back, and assign each row its highlighted node by index. Per-row
+  // refractor calls (highlightOne) would freeze the UI on modestly-sized diffs.
+  const batchHi = useMemo(() => {
+    if (!highlightOn || haveSides) return null;
+    const texts = rows.map((r) => r.text);
+    const all = texts.join("\n");
+    try {
+      const lines = highlightLines(all, language);
+      return texts.map((_, i) => lines[i] ?? null);
+    } catch {
+      return null;
+    }
+  }, [highlightOn, haveSides, rows, language]);
+
+  const content = (row: DiffRow, ri: number): ReactNode => {
     if (row.text.length === 0) return " ";
     if (!highlightOn) return row.text;
     if (haveSides && oldHi && newHi) {
@@ -113,12 +128,13 @@ export function DiffView({
       }
       return row.text;
     }
+    if (batchHi) return batchHi[ri] ?? row.text;
     return highlightOne(row.text, language) ?? row.text;
   };
 
   const segments = useMemo(() => foldRows(rows, context), [rows, context]);
 
-  const renderRow = (row: DiffRow, key: string): JSX.Element => (
+  const renderRow = (row: DiffRow, key: string, ri: number): JSX.Element => (
     <div
       key={key}
       className={cn(
@@ -150,7 +166,7 @@ export function DiffView({
       <code
         className="diff-hl min-w-0 flex-1 whitespace-pre-wrap break-words pr-3"
       >
-        {content(row)}
+        {content(row, ri)}
       </code>
     </div>
   );
@@ -159,6 +175,7 @@ export function DiffView({
   const out: ReactNode[] = [];
   let budget = showAll ? Infinity : PREVIEW_ROWS;
   let hidden = 0;
+  let absIdx = 0;
   segments.forEach((seg, si) => {
     if (seg.kind === "gap") {
       const open = expanded.has(si);
@@ -177,14 +194,17 @@ export function DiffView({
           }
         />,
       );
+      absIdx += seg.rows.length;
       if (!open) return;
     }
     seg.rows.forEach((row, ri) => {
       if (budget <= 0) {
         hidden++;
+        absIdx++;
         return;
       }
-      out.push(renderRow(row, `${si}-${ri}`));
+      out.push(renderRow(row, `${si}-${ri}`, absIdx));
+      absIdx++;
       budget--;
     });
   });

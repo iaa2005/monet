@@ -1575,11 +1575,7 @@ export default function App(): JSX.Element {
                           >
                             <ArtifactsPanel />
                           </div>
-                          <div
-                            className={rightTab === "changes" ? "" : "hidden"}
-                          >
-                            <ChangesPanel />
-                          </div>
+                          {rightTab === "changes" && <ChangesPanel />}
                         </div>
                       </Panel>
                     </ResizablePanel>
