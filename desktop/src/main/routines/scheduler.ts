@@ -29,6 +29,16 @@ import {
 const timers = new Map<string, NodeJS.Timeout>();
 // setTimeout caps at ~24.8 days; re-arm for anything further out.
 const MAX_DELAY = 2_000_000_000;
+const SKIP_SENTINEL = "SKIP";
+
+/** Accept the historical exact SKIP response, but not prose beginning with it. */
+function isSkipSentinel(text: string): boolean {
+  return text.trim() === SKIP_SENTINEL;
+}
+
+function skipInstruction(): string {
+  return `If the condition is not met, reply with exactly "${SKIP_SENTINEL}" and nothing else. Do not perform the task.`;
+}
 
 function notify(event: string, payload: unknown): void {
   for (const w of BrowserWindow.getAllWindows())
@@ -39,7 +49,7 @@ function notify(event: string, payload: unknown): void {
 function withCondition(conditionPrompt: string, task: string): string {
   return [
     `First evaluate this condition: ${conditionPrompt}`,
-    `If it does NOT hold, reply with exactly "SKIP" and nothing else — do not perform the task.`,
+    skipInstruction(),
     `If it holds, perform this task:`,
     "",
     task,
@@ -88,7 +98,7 @@ export async function executeRoutine(
     effective = [
       `Check ${ev?.connector || "the connected service"} for new ${ev?.type || "events"} since ${since}.`,
       ev?.filter ? `Only consider events matching: ${ev.filter}.` : "",
-      `If there is nothing new, reply with exactly "SKIP" and stop.`,
+      skipInstruction(),
       `Otherwise, for the new events, do the following:`,
       "",
       effective,
@@ -169,7 +179,7 @@ export async function executeRoutine(
   }
 
   const text = assistantText.trim();
-  if (useGate && (text === "SKIP" || /^SKIP\b/.test(text))) {
+  if (useGate && isSkipSentinel(text)) {
     store.delete(session.id); // condition unmet — no chat
     const run: RoutineRun = {
       id: runId,

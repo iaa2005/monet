@@ -26,6 +26,8 @@ import { getProviderManager } from "../provider/manager.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getTriggerConfig, triggerBaseUrl } from "../routines/trigger-server.js";
 import { listAccounts } from "../connectors/store.js";
+import { allServices } from "../connectors/services/registry.js";
+import { actionsForService } from "../connectors/services/types.js";
 import { loadConfig } from "../mcp/manager.js";
 import { randomUUID } from "node:crypto";
 
@@ -37,6 +39,90 @@ function knownConnectorIds(): Set<string> {
   );
   for (const name of Object.keys(loadConfig().mcpServers)) ids.add(name);
   return ids;
+}
+
+export interface RoutineDraftConnector {
+  id: string;
+  label: string;
+  description?: string;
+  kind: "connector" | "mcp";
+  capabilities: string[];
+  actions: { id: string; label: string; access: "read" | "write" | "destructive" }[];
+}
+
+export interface RoutineDraft {
+  name: string;
+  prompt: string;
+  cron: string;
+  space: "home" | "code";
+  connectors?: string[];
+  output?: { kind: "chat" | "notification" | "connector"; connector?: string };
+  grants?: string[];
+}
+
+function connectedDraftConnectors(): RoutineDraftConnector[] {
+  const services = new Map(allServices().map((service) => [service.id, service]));
+  const result: RoutineDraftConnector[] = [];
+  const seen = new Set<string>();
+  for (const account of listAccounts()) {
+    if (!account.enabled || seen.has(account.presetId)) continue;
+    seen.add(account.presetId);
+    const service = services.get(account.presetId);
+    if (!service) continue;
+    result.push({
+      id: service.id,
+      label: service.name,
+      description: service.description,
+      kind: "connector",
+      capabilities: Object.keys(service.capabilities),
+      actions: actionsForService(service).map(({ id, label, access }) => ({ id, label, access })),
+    });
+  }
+  for (const id of Object.keys(loadConfig().mcpServers)) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    result.push({
+      id,
+      label: id,
+      kind: "mcp",
+      capabilities: ["mcp"],
+      actions: [{ id: "mcp.use", label: "Use the service's MCP tools", access: "write" }],
+    });
+  }
+  return result;
+}
+
+function hydrateDraft(
+  parsed: Partial<RoutineDraft>,
+  description: string,
+  space: "home" | "code",
+  available: RoutineDraftConnector[],
+): RoutineDraft {
+  const ids = new Set(available.map((connector) => connector.id));
+  const actions = new Set(available.flatMap((connector) => connector.actions.map((action) => action.id)));
+  const connectors = Array.isArray(parsed.connectors)
+    ? parsed.connectors.filter((id): id is string => typeof id === "string" && ids.has(id))
+    : undefined;
+  const output: RoutineDraft["output"] = parsed.output && typeof parsed.output === "object"
+    ? {
+        kind: parsed.output.kind === "notification" || parsed.output.kind === "connector" ? parsed.output.kind : "chat",
+        ...(parsed.output.kind === "connector" && typeof parsed.output.connector === "string" && ids.has(parsed.output.connector)
+          ? { connector: parsed.output.connector }
+          : {}),
+      }
+    : undefined;
+  const grants = Array.isArray(parsed.grants)
+    ? parsed.grants.filter((id): id is string => typeof id === "string" && actions.has(id))
+    : undefined;
+  return {
+    name: (typeof parsed.name === "string" && parsed.name ? parsed.name : "New routine").slice(0, 80),
+    prompt: typeof parsed.prompt === "string" && parsed.prompt ? parsed.prompt : description,
+    cron: typeof parsed.cron === "string" && parseCronExpression(parsed.cron) ? parsed.cron : "0 9 * * 1-5",
+    space,
+    ...(connectors ? { connectors } : {}),
+    ...(output ? { output } : {}),
+    ...(grants ? { grants } : {}),
+  };
 }
 
 function validateOutputConnector(output: Routine["output"]): void {
@@ -145,41 +231,33 @@ export function registerRoutinesIPC(): void {
       space: "home" | "code" = "code",
     ): Promise<{
       ok: boolean;
-      draft?: { name: string; prompt: string; cron: string; space: "home" | "code" };
+      draft?: RoutineDraft;
       error?: string;
     }> => {
       const provider = getProviderManager().getActive();
       if (!provider) return { ok: false, error: "No active provider." };
       try {
+        const available = connectedDraftConnectors();
+        const connectorContext = available.length
+          ? available
+              .map((connector) => `${connector.id} (${connector.label}${connector.description ? ` — ${connector.description}` : ""}, ${connector.kind}; capabilities: ${connector.capabilities.join(", ") || "none"}; actions: ${connector.actions.map((action) => `${action.id} [${action.access}]`).join(", ") || "none"})`)
+              .join("\n")
+          : "(none)";
         const res = await createAdapter(provider).complete({
           model: provider.model,
           system:
             "You turn a user's request into an automation ('routine'). Reply with ONLY a JSON object: " +
             '{"name": short title, "prompt": the full instruction the agent should run each time (imperative, self-contained), ' +
-            '"cron": a 5-field cron expression for when it should run in the user\'s LOCAL time (default "0 9 * * 1-5" for weekday mornings if unspecified)}. ' +
-            "No markdown, no prose — only the JSON.",
+            '"cron": a 5-field cron expression for when it should run in the user\'s LOCAL time (default "0 9 * * 1-5" for weekday mornings if unspecified), "connectors": an array of connector ids from the catalog, "output": {"kind": "chat"|"notification"|"connector", "connector": connector id only for connector output}, "grants": an array of action ids from the catalog to allow for unattended writes}. ' +
+            "Use only ids and action ids present in the connected catalog below; omit optional fields when not needed. No secrets, usernames, tokens, or credentials are included or requested. No markdown, no prose — only the JSON.\nConnected catalog:\n" +
+            connectorContext,
           messages: [{ role: "user", content: description }],
           max_tokens: 500,
         });
         const raw = typeof res.content === "string" ? res.content : "";
         const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
-        const parsed = JSON.parse(json) as {
-          name?: string;
-          prompt?: string;
-          cron?: string;
-        };
-        return {
-          ok: true,
-          draft: {
-            name: (parsed.name || "New routine").slice(0, 80),
-            prompt: parsed.prompt || description,
-            cron:
-              parsed.cron && parseCronExpression(parsed.cron)
-                ? parsed.cron
-                : "0 9 * * 1-5",
-            space,
-          },
-        };
+        const parsed = JSON.parse(json) as Partial<RoutineDraft>;
+        return { ok: true, draft: hydrateDraft(parsed, description, space, available) };
       } catch (err) {
         return {
           ok: false,

@@ -113,7 +113,21 @@ export function RoutinesSettings({
     try {
       const r = await api()?.routines.draft(text.trim(), "code");
       if (r?.ok && r.draft)
-        setEditor({ ...emptyDraft(), name: r.draft.name, prompt: r.draft.prompt, cron: r.draft.cron, space: r.draft.space });
+        setEditor({
+          ...emptyDraft(),
+          name: r.draft.name,
+          prompt: r.draft.prompt,
+          cron: r.draft.cron,
+          space: r.draft.space,
+          ...(r.draft.connectors ? { connectors: r.draft.connectors } : {}),
+          ...(r.draft.grants ? { grants: r.draft.grants } : {}),
+          ...(r.draft.output
+            ? {
+                outputKind: r.draft.output.kind,
+                outputConnector: r.draft.output.connector ?? "",
+              }
+            : {}),
+        });
       else setEditor({ ...emptyDraft(), prompt: text.trim() });
     } finally {
       setDrafting(false);

@@ -656,7 +656,15 @@ export interface ElectronAPI {
       space: "home" | "code",
     ) => Promise<{
       ok: boolean;
-      draft?: { name: string; prompt: string; cron: string; space: "home" | "code" };
+      draft?: {
+        name: string;
+        prompt: string;
+        cron: string;
+        space: "home" | "code";
+        connectors?: string[];
+        output?: { kind: "chat" | "notification" | "connector"; connector?: string };
+        grants?: string[];
+      };
       error?: string;
     }>;
     onRan: (
