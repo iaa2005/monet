@@ -643,7 +643,7 @@ export interface ElectronAPI {
     runNow: (id: string) => Promise<RoutineRun | null>;
     listRuns: (id: string) => Promise<RoutineRun[]>;
     triggerInfo: () => Promise<{ baseUrl: string; apiKey: string }>;
-    chats: () => Promise<
+    chats: (space?: string) => Promise<
       { id: string; title: string; at: string; routineId: string; routineName: string }[]
     >;
     cronPreview: (

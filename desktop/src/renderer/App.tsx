@@ -1175,6 +1175,7 @@ export default function App(): JSX.Element {
                       setRenameOpen(true);
                     }}
                     onFork={forkSession}
+                    space={appMode}
                   />
 
                   <div className="flex min-h-0 flex-1 flex-col px-2">

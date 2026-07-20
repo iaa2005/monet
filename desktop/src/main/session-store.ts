@@ -271,20 +271,17 @@ export class SessionStore {
     const d = getDb();
     const now = new Date().toISOString();
     const tx = d.transaction(() => {
-      // Include space on INSERT so a session first written via save() (the
-      // persist-on-message_stop path) lands in the right space instead of the
-      // 'code' column default — that leaked Home chats into Code. On CONFLICT
-      // we deliberately do NOT touch space: a chat's space is set once and
-      // never changed by a later save.
+      // UPDATE-only: the row was already inserted by create().  Never INSERT here
+      // — a routine that was skipped deletes its session, and a still-in-flight
+      // async persist from the renderer would otherwise re-insert it WITHOUT the
+      // routine_id tag, leaking the routine chat into Recents.
       d.prepare(
-        "INSERT INTO sessions (id, title, created_at, updated_at, message_count, space) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at, message_count = excluded.message_count",
+        "UPDATE sessions SET title = ?, updated_at = ?, message_count = ? WHERE id = ?",
       ).run(
-        session.id,
         session.title,
         now,
-        now,
         session.messages.length,
-        session.space || "code",
+        session.id,
       );
 
       // Replace messages
@@ -402,12 +399,12 @@ export class SessionStore {
       space
         ? d
             .prepare(
-              "SELECT * FROM sessions WHERE archived = 1 AND space = ? ORDER BY updated_at DESC",
+              "SELECT * FROM sessions WHERE archived = 1 AND space = ? AND routine_id IS NULL ORDER BY updated_at DESC",
             )
             .all(space)
         : d
             .prepare(
-              "SELECT * FROM sessions WHERE archived = 1 ORDER BY updated_at DESC",
+              "SELECT * FROM sessions WHERE archived = 1 AND routine_id IS NULL ORDER BY updated_at DESC",
             )
             .all()
     ) as SessionRow[];
@@ -430,7 +427,7 @@ export class SessionStore {
     const d = getDb();
     const rows = d
       .prepare(
-        "SELECT * FROM sessions WHERE title LIKE ? ORDER BY updated_at DESC LIMIT ?",
+        "SELECT * FROM sessions WHERE title LIKE ? AND routine_id IS NULL ORDER BY updated_at DESC LIMIT ?",
       )
       .all(`%${query}%`, limit) as SessionRow[];
     return rows.map(rowToSession);

@@ -276,18 +276,25 @@ export function recordRun(run: RoutineRun): void {
  */
 export function listRoutineChats(
   limit = 50,
+  space?: string,
 ): { id: string; title: string; at: string; routineId: string; routineName: string }[] {
   try {
+    let query =
+      `SELECT s.id AS id, s.title AS title, s.updated_at AS at,
+              s.routine_id AS routineId, r.name AS routineName
+       FROM sessions s
+       LEFT JOIN routines r ON r.id = s.routine_id
+       WHERE s.routine_id IS NOT NULL AND s.archived = 0`;
+    const params: (string | number)[] = [];
+    if (space) {
+      query += " AND s.space = ?";
+      params.push(space);
+    }
+    query += " ORDER BY s.updated_at DESC LIMIT ?";
+    params.push(limit);
     return db()
-      .prepare(
-        `SELECT s.id AS id, s.title AS title, s.updated_at AS at,
-                s.routine_id AS routineId, r.name AS routineName
-         FROM sessions s
-         LEFT JOIN routines r ON r.id = s.routine_id
-         WHERE s.routine_id IS NOT NULL AND s.archived = 0
-         ORDER BY s.updated_at DESC LIMIT ?`,
-      )
-      .all(limit) as { id: string; title: string; at: string; routineId: string; routineName: string }[];
+      .prepare(query)
+      .all(...params) as { id: string; title: string; at: string; routineId: string; routineName: string }[];
   } catch {
     return [];
   }

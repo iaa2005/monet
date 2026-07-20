@@ -202,7 +202,7 @@ export function registerRoutinesIPC(): void {
   });
 
   ipcMain.handle("routines:listRuns", (_e, id: string) => listRuns(id));
-  ipcMain.handle("routines:chats", () => listRoutineChats());
+  ipcMain.handle("routines:chats", (_e, space?: string) => listRoutineChats(50, space));
 
   // Human text + next fire time for a cron, for the editor's live preview.
   ipcMain.handle("routines:cronPreview", (_e, cron: string) => {

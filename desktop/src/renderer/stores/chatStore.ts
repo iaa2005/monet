@@ -281,18 +281,21 @@ export const useChatStore = create<ChatStore>((set, get) => {
         | { title?: string; space?: string }
         | null
         | undefined;
+      // If the row is gone the session was deleted (e.g. skipped routine) — a
+      // late-arriving async persist must not revive it.
+      if (!existing) return;
       const derived =
         msgs.find((m) => m.role === "user")?.content?.slice(0, 60) ??
         "New Session";
       const title =
-        existing?.title && existing.title !== "New Session"
+        existing.title && existing.title !== "New Session"
           ? existing.title
           : derived;
       // Preserve the chat's space from the DB row (set at create()); only fall
       // back to the current visible space if the row doesn't exist yet. Using
       // the DB value keeps a Home chat that persists while a Code chat is on
       // screen (background run) from being reclassified.
-      const space = existing?.space ?? get().space;
+      const space = existing.space ?? get().space;
       // Re-read the buffer AFTER the awaits — more deltas may have landed.
       const latest = get().sessions[sessionId]?.messages ?? msgs;
       await api.save({ id: sessionId, title, messages: latest, space });

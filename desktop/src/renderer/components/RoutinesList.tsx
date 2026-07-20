@@ -32,6 +32,8 @@ interface RoutinesListProps {
   onDelete: (id: string) => void;
   onRename?: (id: string, title: string) => void;
   onFork?: (id: string) => void;
+  /** Only show chats from routines in this space ("home" | "code"). */
+  space?: string;
 }
 
 /** Collapsible sidebar section listing chats produced by routine runs, shown
@@ -45,6 +47,7 @@ export function RoutinesList({
   onDelete,
   onRename,
   onFork,
+  space,
 }: RoutinesListProps): JSX.Element | null {
   const [chats, setChats] = useState<RoutineChat[]>([]);
   const [open, setOpen] = useState(true);
@@ -63,7 +66,7 @@ export function RoutinesList({
   useEffect(() => {
     const load = (): void => {
       void api()
-        ?.routines.chats()
+        ?.routines.chats(space)
         .then((c) => setChats(c ?? []))
         .catch(() => {});
     };
@@ -88,7 +91,7 @@ export function RoutinesList({
       offRan?.();
       offStarted?.();
     };
-  }, []);
+  }, [space]);
 
   // Close the context menu on outside click.
   useEffect(() => {
