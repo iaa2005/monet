@@ -5,3 +5,4 @@ release/
 *.log
 out-smoke/
 out-measure/
+out-seed/
