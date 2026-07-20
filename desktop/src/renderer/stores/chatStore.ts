@@ -184,6 +184,8 @@ interface ChatStore {
     dataUrl?: string;
     source?: "artifact" | "file";
   } | null;
+  /** Sub-agent expanded to fill the chat area (like FileViewer). */
+  expandedSubAgent: SubAgentState | null;
   /** Current workspace ("home" | "code") — new chats are tagged with it so
    * Home and Code keep separate Recents. Mirrors App's appMode. */
   space: string;
@@ -209,6 +211,7 @@ interface ChatStore {
       source?: "artifact" | "file";
     } | null,
   ) => void;
+  openExpandedSubAgent: (sa: SubAgentState | null) => void;
   setSpace: (v: string) => void;
   bumpSessions: () => void;
   bumpWorkspace: () => void;
@@ -610,6 +613,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     openFileRequest: null,
     openChangesRequest: false,
     viewer: null,
+    expandedSubAgent: null,
     space: "home",
     queue: [],
 
@@ -636,7 +640,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
     setDroppedFiles: (files) => set({ droppedFiles: files }),
     requestOpenFile: (path) => set({ openFileRequest: path }),
     requestOpenChanges: () => set({ openChangesRequest: true }),
-    openViewer: (item) => set({ viewer: item }),
+    openViewer: (item) =>
+      set({ viewer: item, ...(item ? { expandedSubAgent: null } : {}) }),
+    openExpandedSubAgent: (sa) =>
+      set({ expandedSubAgent: sa, ...(sa ? { viewer: null } : {}) }),
     setSpace: (v) => set({ space: v }),
     bumpSessions: () =>
       set((s) => ({ sessionsVersion: s.sessionsVersion + 1 })),

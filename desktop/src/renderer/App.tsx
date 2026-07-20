@@ -55,6 +55,7 @@ import { FilterDropdown } from "@/components/FilterDropdown";
 import { SkillsPanel } from "@/components/SkillsPanel";
 import { FileTree } from "@/components/FileTree";
 import { FileViewer } from "@/components/FileViewer";
+import { SubAgentTranscript } from "@/components/chat/ToolCallBubble";
 import { WindowControls } from "@/components/WindowControls";
 import { BetaBadge } from "@/components/BetaBadge";
 import { AccountMenu } from "@/components/AccountMenu";
@@ -304,8 +305,13 @@ export default function App(): JSX.Element {
   const openFileRequest = useChatStore((s) => s.openFileRequest);
   const openChangesRequest = useChatStore((s) => s.openChangesRequest);
   const viewer = useChatStore((s) => s.viewer);
+  const expandedSubAgent = useChatStore((s) => s.expandedSubAgent);
   const closeViewer = useCallback(
     () => useChatStore.getState().openViewer(null),
+    [],
+  );
+  const closeExpandedSubAgent = useCallback(
+    () => useChatStore.getState().openExpandedSubAgent(null),
     [],
   );
 
@@ -1224,19 +1230,8 @@ export default function App(): JSX.Element {
                 <ResizablePanel minSize={30}>
                   <ResizablePanelGroup direction="vertical" className="gap-1">
                     <ResizablePanel minSize={20}>
-                      <div className="h-full min-h-0 overflow-hidden">
-                        {viewer ? (
-                          <ViewerErrorBoundary
-                            key={`viewer:${viewer.path ?? viewer.name}`}
-                            onClose={closeViewer}
-                          >
-                            <FileViewer
-                              path={viewer.source === "file" ? viewer.path : undefined}
-                              item={viewer.source !== "file" ? viewer : undefined}
-                              onClose={closeViewer}
-                            />
-                          </ViewerErrorBoundary>
-                        ) : view === "routines" ? (
+                      <div className="h-full min-h-0 overflow-hidden relative">
+                        {view === "routines" ? (
                           <div className="h-full overflow-auto">
                             <div className="mx-auto max-w-4xl px-6 py-8">
                               <RoutinesSettings />
@@ -1250,12 +1245,57 @@ export default function App(): JSX.Element {
                             onOpenSettings={() => {
                               setSettingsSection("sandbox");
                               setSettingsOpen(true);
-                            }}
-                            onOpenProvidersSettings={() => {
-                              setSettingsSection("providers");
-                              setSettingsOpen(true);
-                            }}
+                        }}
+                        onOpenProvidersSettings={() => {
+                          setSettingsSection("providers");
+                          setSettingsOpen(true);
+                        }}
+                      />
+                    )}
+                    {viewer && (
+                      <div className="!absolute inset-0 z-10">
+                        <ViewerErrorBoundary
+                          key={`viewer:${viewer.path ?? viewer.name}`}
+                          onClose={closeViewer}
+                        >
+                          <FileViewer
+                            path={viewer.source === "file" ? viewer.path : undefined}
+                            item={viewer.source !== "file" ? viewer : undefined}
+                            onClose={closeViewer}
                           />
+                        </ViewerErrorBoundary>
+                      </div>
+                    )}
+                        {expandedSubAgent && (
+                          <div className="!absolute inset-0 z-10 flex h-full flex-col glass-panel rounded-xl border border-border bg-card overflow-hidden">
+                            <div className="relative shrink-0 border-b border-border px-4 py-3">
+                              <div className="mx-auto max-w-3xl flex items-center gap-2">
+                                <span className="text-sm font-medium text-foreground">Sub-agent</span>
+                                <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-400">
+                                  {expandedSubAgent.agentType}
+                                </span>
+                                {expandedSubAgent.description && (
+                                  <span className="text-xs text-muted-foreground">{expandedSubAgent.description}</span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={closeExpandedSubAgent}
+                                title="Back to chat"
+                                className="absolute right-4 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+                              >
+                                <X className="size-4" />
+                              </button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto px-4 py-3">
+                              <div className="mx-auto max-w-3xl">
+                                <SubAgentTranscript
+                                  messages={expandedSubAgent.messages}
+                                  running={expandedSubAgent.status === "running"}
+                                />
+                              </div>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </ResizablePanel>
@@ -1358,43 +1398,73 @@ export default function App(): JSX.Element {
                 <ResizablePanel defaultSize={72} minSize={25}>
                   <ResizablePanelGroup direction="vertical" className="gap-1">
                     <ResizablePanel minSize={20}>
-                      <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                        {viewer ? (
-                          <ViewerErrorBoundary
-                            key={`viewer:${viewer.path ?? viewer.name}`}
-                            onClose={closeViewer}
-                          >
-                            <FileViewer
-                              path={viewer.source === "file" ? viewer.path : undefined}
-                              item={viewer.source !== "file" ? viewer : undefined}
+                      <div className="flex h-full min-h-0 flex-col overflow-hidden relative">
+                        {view === "chat" && (
+                          <ChatView
+                            transcriptMode={transcriptMode}
+                            sessionTitle={sessionTitle}
+                            onOpenProvidersSettings={() => {
+                              setSettingsSection("providers");
+                              setSettingsOpen(true);
+                            }}
+                          />
+                        )}
+                        {view === "skills" && (
+                          <div className="h-full overflow-auto">
+                            <SkillsPanel />
+                          </div>
+                        )}
+                        {view === "routines" && (
+                          <div className="h-full overflow-auto">
+                            <div className="mx-auto max-w-4xl px-6 py-8">
+                              <RoutinesSettings onOpenChat={openChatById} />
+                            </div>
+                          </div>
+                        )}
+                        {viewer && (
+                          <div className="!absolute inset-0 z-10">
+                            <ViewerErrorBoundary
+                              key={`viewer:${viewer.path ?? viewer.name}`}
                               onClose={closeViewer}
-                            />
-                          </ViewerErrorBoundary>
-                        ) : (
-                          <>
-                            {view === "chat" && (
-                              <ChatView
-                                transcriptMode={transcriptMode}
-                                sessionTitle={sessionTitle}
-                                onOpenProvidersSettings={() => {
-                                  setSettingsSection("providers");
-                                  setSettingsOpen(true);
-                                }}
+                            >
+                              <FileViewer
+                                path={viewer.source === "file" ? viewer.path : undefined}
+                                item={viewer.source !== "file" ? viewer : undefined}
+                                onClose={closeViewer}
                               />
-                            )}
-                            {view === "skills" && (
-                              <div className="h-full overflow-auto">
-                                <SkillsPanel />
+                            </ViewerErrorBoundary>
+                          </div>
+                        )}
+                        {expandedSubAgent && (
+                          <div className="!absolute inset-0 z-10 flex h-full flex-col glass-panel rounded-xl border border-border bg-card overflow-hidden">
+                            <div className="relative shrink-0 border-b border-border px-4 py-3">
+                              <div className="mx-auto max-w-3xl flex items-center gap-2">
+                                <span className="text-sm font-medium text-foreground">Sub-agent</span>
+                                <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-400">
+                                  {expandedSubAgent.agentType}
+                                </span>
+                                {expandedSubAgent.description && (
+                                  <span className="text-xs text-muted-foreground">{expandedSubAgent.description}</span>
+                                )}
                               </div>
-                            )}
-                            {view === "routines" && (
-                              <div className="h-full overflow-auto">
-                                <div className="mx-auto max-w-4xl px-6 py-8">
-                                  <RoutinesSettings onOpenChat={openChatById} />
-                                </div>
+                              <button
+                                type="button"
+                                onClick={closeExpandedSubAgent}
+                                title="Back to chat"
+                                className="absolute right-4 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+                              >
+                                <X className="size-4" />
+                              </button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto px-4 py-3">
+                              <div className="mx-auto max-w-3xl">
+                                <SubAgentTranscript
+                                  messages={expandedSubAgent.messages}
+                                  running={expandedSubAgent.status === "running"}
+                                />
                               </div>
-                            )}
-                          </>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </ResizablePanel>

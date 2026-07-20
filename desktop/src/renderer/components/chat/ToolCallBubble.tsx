@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState, memo } from "react";
-import { createPortal } from "react-dom";
+import { useMemo, useState, memo } from "react";
 import {
   Bot,
   Check,
@@ -588,7 +587,7 @@ function SingleToolRow({ toolCall }: { toolCall: ToolCall }): JSX.Element {
  * each tool call is an expandable ToolCallBubble; each assistant chunk is
  * markdown. So the details (inputs, outputs, diffs) are always inspectable.
  */
-function SubAgentTranscript({
+export function SubAgentTranscript({
   messages,
   running,
 }: {
@@ -634,19 +633,17 @@ function SubAgentBubble({ toolCall, inGroup }: { toolCall: ToolCall; inGroup?: b
   const running = sa ? sa.status === "running" : toolCall.status !== "done";
   const messages = sa?.messages ?? [];
   const [collapsed, setCollapsed] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
 
-  // Esc closes the full-screen overlay.
-  useEffect(() => {
-    if (!fullscreen) return;
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") setFullscreen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [fullscreen]);
+  const expand = (): void => {
+    useChatStore.getState().openExpandedSubAgent({
+      agentType,
+      description,
+      status: running ? "running" : "done",
+      messages,
+    });
+  };
 
-  const header = (inOverlay: boolean): JSX.Element => (
+  const header = (
     <div className="flex items-center gap-2">
       <Bot className="size-4 shrink-0 text-violet-500" />
       <span className="shrink-0 text-sm font-medium text-foreground">
@@ -674,47 +671,34 @@ function SubAgentBubble({ toolCall, inGroup }: { toolCall: ToolCall; inGroup?: b
         ) : (
           <Check className="size-3.5 text-green-text" />
         )}
-        {inOverlay ? (
-          <button
-            type="button"
-            onClick={() => setFullscreen(false)}
-            title="Back to chat (Esc)"
-            className={ICON_BTN}
-          >
-            <X className="size-4" />
-          </button>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => setFullscreen(true)}
-              title="Expand to full screen"
-              className={ICON_BTN}
-            >
-              <Maximize2 className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setCollapsed((c) => !c)}
-              title={collapsed ? "Expand" : "Collapse"}
-              className={ICON_BTN}
-            >
-              <ChevronRight
-                className={cn(
-                  "size-4 transition-transform",
-                  !collapsed && "rotate-90",
-                )}
-              />
-            </button>
-          </>
-        )}
+        <button
+          type="button"
+          onClick={expand}
+          title="Expand to fill the chat area"
+          className={ICON_BTN}
+        >
+          <Maximize2 className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          title={collapsed ? "Expand" : "Collapse"}
+          className={ICON_BTN}
+        >
+          <ChevronRight
+            className={cn(
+              "size-4 transition-transform",
+              !collapsed && "rotate-90",
+            )}
+          />
+        </button>
       </div>
     </div>
   );
 
   const body = (
     <>
-      {header(false)}
+      {header}
       {!collapsed && (
         <div className="mt-2 border-l-2 border-violet-500/20 pl-3">
           <SubAgentTranscript messages={messages} running={running} />
@@ -724,30 +708,9 @@ function SubAgentBubble({ toolCall, inGroup }: { toolCall: ToolCall; inGroup?: b
   );
 
   return (
-    <>
-      {inGroup ? (
-        body
-      ) : (
-        <div className="glass-panel rounded-lg border border-border bg-card px-3 py-2">
-          {body}
-        </div>
-      )}
-
-      {fullscreen &&
-        createPortal(
-          <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm">
-            <div className="border-b border-border px-4 py-3">
-              {header(true)}
-            </div>
-            <div className="flex-1 overflow-y-auto px-4 py-4">
-              <div className="mx-auto max-w-3xl">
-                <SubAgentTranscript messages={messages} running={running} />
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-    </>
+    <div className={inGroup ? "" : "glass-panel rounded-lg border border-border bg-card px-3 py-2"}>
+      {body}
+    </div>
   );
 }
 
