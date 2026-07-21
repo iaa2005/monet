@@ -49,6 +49,8 @@ import {
 import { CreateRoutineTool } from "./routine-tool.js";
 import { RememberTool } from "./remember-tool.js";
 import { ExitPlanModeTool } from "./plan-tool.js";
+import { SleepTool } from "./sleep-tool.js";
+import { NotebookEditTool } from "@vendor/tools/NotebookEditTool/NotebookEditTool.js";
 import { effectiveMode } from "./session-mode.js";
 import type { AskPlanApprovalFn } from "../ipc/plan.js";
 import {
@@ -88,6 +90,8 @@ const HOME_TOOL_NAMES = new Set([
   "SearchPastChats",
   // Memory is about the USER, not the filesystem — it belongs in both spaces.
   "Remember",
+  // Waiting touches nothing, so it is safe in the isolated space too.
+  "Sleep",
 ]);
 
 /** Sandbox-scoped tools make no sense in Code (it has the real filesystem). */
@@ -408,6 +412,8 @@ const ALL_TOOLS = [
   CreateRoutineTool,
   RememberTool,
   ExitPlanModeTool,
+  SleepTool,
+  NotebookEditTool,
 ] as unknown as Tool[];
 
 /** Every tool, for prompt seeding — see seedTunablePrompts(). */

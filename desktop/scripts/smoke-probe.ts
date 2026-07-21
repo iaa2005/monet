@@ -309,6 +309,63 @@ async function main() {
     rmSync(planFile, { force: true })
   }
 
+  // 4e. Newly wired tools: Sleep (written here — the bundle ships only its
+  // prompt constants) and NotebookEdit (a real vendor tool that was never
+  // registered).
+  {
+    check('Sleep tool present', tools.some(t => t.name === 'Sleep'))
+    check('NotebookEdit tool present', tools.some(t => t.name === 'NotebookEdit'))
+
+    const t0 = Date.now()
+    const slept = await run('Sleep', { seconds: 0.2, reason: 'smoke' })
+    const elapsed = Date.now() - t0
+    check('Sleep waits and reports', !slept.isError && /Waited/.test(slept.content), `${elapsed}ms`)
+    check('Sleep actually blocked for the duration', elapsed >= 150, `${elapsed}ms`)
+
+    // An over-long request is clamped, not obeyed.
+    const clampT0 = Date.now()
+    const clamped = await run('Sleep', { seconds: 0 })
+    check('Sleep with 0s returns immediately', !clamped.isError && Date.now() - clampT0 < 1_000)
+
+    // NotebookEdit on a real notebook.
+    const nb = join(dir, 'smoke.ipynb')
+    writeFileSync(
+      nb,
+      JSON.stringify({
+        cells: [
+          { id: 'c1', cell_type: 'code', source: ['print(1)'], metadata: {}, outputs: [], execution_count: null },
+        ],
+        metadata: {},
+        nbformat: 4,
+        nbformat_minor: 5,
+      }),
+    )
+    // Read-before-write is enforced for notebooks too, same as Edit.
+    const nbBlind = await run('NotebookEdit', {
+      notebook_path: nb,
+      cell_id: 'c1',
+      new_source: 'print(0)',
+    })
+    check(
+      'NotebookEdit refuses a blind edit',
+      nbBlind.isError && /read/i.test(nbBlind.content),
+      nbBlind.content.slice(0, 60),
+    )
+
+    await run('Read', { file_path: nb })
+    const nbEdit = await run('NotebookEdit', {
+      notebook_path: nb,
+      cell_id: 'c1',
+      new_source: 'print(42)',
+    })
+    const nbAfter = readFileSync(nb, 'utf8')
+    check(
+      'NotebookEdit rewrites a cell',
+      !nbEdit.isError && nbAfter.includes('print(42)'),
+      nbEdit.content.slice(0, 70).replace(/\n/g, ' | '),
+    )
+  }
+
   // 5. TodoWrite
   const todo = await run('TodoWrite', {
     todos: [
