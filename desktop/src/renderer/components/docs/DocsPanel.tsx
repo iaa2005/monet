@@ -70,7 +70,9 @@ export function DocsPanel({ onClose }: { onClose: () => void }): JSX.Element {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background">
+    // Starts below the app's own title bar (h-11): covering it would put this
+    // panel on top of the window controls and the drag region.
+    <div className="fixed inset-x-0 bottom-0 top-11 z-50 flex flex-col bg-background">
       {/* Header */}
       <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
         <span className="text-sm font-semibold">Code Monet documentation</span>
@@ -97,8 +99,8 @@ export function DocsPanel({ onClose }: { onClose: () => void }): JSX.Element {
         {/* Sidebar */}
         <nav className="w-64 shrink-0 overflow-y-auto border-r border-border p-3">
           {DOC_SECTIONS.map((section) => (
-            <div key={section.id} className="mb-4">
-              <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <div key={section.id} className="mb-5">
+              <div className="mb-1.5 border-b border-border/60 px-2 pb-1.5 text-[10px] font-bold uppercase tracking-[0.09em] text-foreground/50">
                 {section.title}
               </div>
               {section.pages.map((p) => (
