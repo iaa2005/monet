@@ -163,14 +163,15 @@ export function PermissionModeMenu({
               key={m.id}
               onClick={() => pick(m)}
               className="items-start gap-2 py-2"
+              variant={m.id === "bypassPermissions" ? "destructive" : "default"}
             >
-              <m.icon className={cn("mt-0.5 size-4 shrink-0", m.tone)} />
+              <m.icon className="mt-0.5 size-4 shrink-0" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{m.label}</span>
                   {mode === m.id && <Check className="size-3.5" />}
                 </div>
-                <div className="text-xs text-muted-foreground">{m.hint}</div>
+                <div className={cn("text-xs", m.id === "bypassPermissions" ? "text-red-text" : "text-muted-foreground")}>{m.hint}</div>
               </div>
             </DropdownMenuItem>
           ))}
