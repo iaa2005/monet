@@ -23,6 +23,8 @@ import { StatsDashboard } from "@/components/StatsDashboard";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import {
   Bug,
+  Check,
+  Copy,
   FileSearch,
   FlaskConical,
   GitPullRequest,
@@ -468,6 +470,71 @@ function groupMessages(
   return out;
 }
 
+/** For each assistant turn (user→…→next-user), collect all assistant message
+ * text and map it to the index of the turn's last item in `grouped`. */
+function turnCopyTargets(grouped: GroupedItem[]): Map<number, string> {
+  const out = new Map<number, string>();
+  let parts: string[] = [];
+  let lastIdx = -1;
+
+  grouped.forEach((item, i) => {
+    if ("type" in item) {
+      // tool-group / artifact-strip — still part of the same turn
+      lastIdx = i;
+    } else if (item.role === "user") {
+      if (parts.length > 0 && lastIdx >= 0) out.set(lastIdx, parts.join("\n\n"));
+      parts = [];
+      lastIdx = -1;
+    } else if (item.content) {
+      parts.push(item.content);
+      lastIdx = i;
+    }
+  });
+
+  if (parts.length > 0 && lastIdx >= 0) out.set(lastIdx, parts.join("\n\n"));
+  return out;
+}
+
+function CopyMessageButton({ text }: { text: string }): JSX.Element {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard?.writeText(text).then(
+          () => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          },
+          () => {},
+        );
+      }}
+      className="flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+      title="Copy response"
+    >
+      {copied ? (
+        <>
+          <Check className="size-3" /> Copied
+        </>
+      ) : (
+        <>
+          <Copy className="size-3" /> Copy
+        </>
+      )}
+    </button>
+  );
+}
+
+function CopyRow({ text }: { text: string }): JSX.Element {
+  return (
+    <MessageScrollerItem messageId={`copy-${text.slice(0, 32)}`}>
+      <div className="flex justify-start pb-2">
+        <CopyMessageButton text={text} />
+      </div>
+    </MessageScrollerItem>
+  );
+}
+
 interface TurnSummary {
   id: string;
   /** The user request that opened the turn (null for a leading assistant turn). */
@@ -782,6 +849,7 @@ export function ChatView({
   const greeting = useMemo(() => pickGreeting(profileName, isFirstRun), [profileName, isFirstRun]);
 
   const grouped = groupMessages(messages, transcriptMode);
+  const copyTargets = useMemo(() => turnCopyTargets(grouped), [grouped]);
   const summaryTurns =
     transcriptMode === "summary" ? summarizeTurns(messages) : null;
 
@@ -936,9 +1004,10 @@ export function ChatView({
                           <SummaryTurnCard turn={t} />
                         </MessageScrollerItem>
                       ))
-                    : grouped.map((item, i) => {
+                    : grouped.flatMap((item, i) => {
+                    const copyBtn = copyTargets.get(i);
                     if ("type" in item && item.type === "tool-group") {
-                      return (
+                      const el = (
                         <MessageScrollerItem
                           key={item.id}
                           messageId={item.id}
@@ -953,9 +1022,11 @@ export function ChatView({
                           />
                         </MessageScrollerItem>
                       );
+                      if (!copyBtn) return [el];
+                      return [el, <CopyRow key={`copy-${i}`} text={copyBtn} />];
                     }
                     if ("type" in item && item.type === "artifact-strip") {
-                      return (
+                      const el = (
                         <MessageScrollerItem
                           key={item.id}
                           messageId={item.id}
@@ -966,8 +1037,10 @@ export function ChatView({
                           <ArtifactsStrip items={item.items} />
                         </MessageScrollerItem>
                       );
+                      if (!copyBtn) return [el];
+                      return [el, <CopyRow key={`copy-${i}`} text={copyBtn} />];
                     }
-                    return (
+                    const el = (
                       <MessageScrollerItem
                         key={item.id}
                         messageId={item.id}
@@ -979,6 +1052,8 @@ export function ChatView({
                         />
                       </MessageScrollerItem>
                     );
+                    if (!copyBtn) return [el];
+                    return [el, <CopyRow key={`copy-${i}`} text={copyBtn} />];
                   })}
 
                   {showWorking && (
