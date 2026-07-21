@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  BookOpen,
   Settings,
   Globe,
   HelpCircle,
@@ -30,11 +31,13 @@ function api(): ElectronAPI | undefined {
 interface AccountMenuProps {
   onOpenSettings: () => void;
   onOpenAbout: () => void;
+  onOpenDocs: () => void;
 }
 
 export function AccountMenu({
   onOpenSettings,
   onOpenAbout,
+  onOpenDocs,
 }: AccountMenuProps): JSX.Element {
   const [name, setName] = useState("friend");
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -114,6 +117,10 @@ export function AccountMenu({
         <DropdownMenuItem>
           <ScrollText />
           View changelog
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onOpenDocs}>
+          <BookOpen />
+          Get Help
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onOpenAbout}>
           <Info />

@@ -3,6 +3,7 @@
  * overrides (no typography plugin needed).
  */
 
+import type React from "react";
 import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -29,6 +30,36 @@ function artifactFromPath(path: string, alt: string) {
         ? "image/webp"
         : "application/octet-stream";
   return { name, path: cleanPath, mediaType, kind: mediaType.startsWith("image/") ? "image" : "file" } as const;
+}
+
+
+/** Flatten a blockquote's children to text, to detect a "[!NOTE]" marker. */
+function alertText(children: unknown): string {
+  const parts: string[] = [];
+  const walk = (n: unknown): void => {
+    if (typeof n === "string") parts.push(n);
+    else if (Array.isArray(n)) n.forEach(walk);
+    else if (n && typeof n === "object" && "props" in n)
+      walk((n as { props?: { children?: unknown } }).props?.children);
+  };
+  walk(children);
+  return parts.join("").trim();
+}
+
+/** Drop the "[!NOTE]" marker (and the newline after it) from the rendered body. */
+function stripAlertMarker(children: unknown): React.ReactNode {
+  const strip = (n: unknown): unknown => {
+    if (typeof n === "string")
+      return n.replace(/^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*\n?/i, "");
+    if (Array.isArray(n)) return n.map(strip);
+    if (n && typeof n === "object" && "props" in n) {
+      const el = n as { props?: { children?: unknown } };
+      if (el.props?.children !== undefined)
+        return { ...n, props: { ...el.props, children: strip(el.props.children) } };
+    }
+    return n;
+  };
+  return strip(children) as React.ReactNode;
 }
 
 export function MarkdownViewer({
@@ -61,7 +92,46 @@ export function MarkdownViewer({
       return <a className="font-medium text-link underline underline-offset-2 hover:opacity-80" target="_blank" rel="noreferrer" href={href}>{children}</a>;
     },
     strong: ({ node: _n, ...p }: any) => <strong className="font-semibold" {...p} />,
-    blockquote: ({ node: _n, ...p }: any) => <blockquote className="my-3 border-l-2 border-border pl-3 text-muted-foreground italic" {...p} />,
+    // GitHub-style alerts: "> [!NOTE]" / "> [!WARNING]" etc. render as callout
+    // panels. The syntax is deliberately the GitHub one — it survives being
+    // published by any static site generator, unlike a custom directive.
+    blockquote: ({ node: _n, children, ...p }: any) => {
+      const text = alertText(children);
+      const kind = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i.exec(text)?.[1]?.toUpperCase();
+      if (!kind)
+        return (
+          <blockquote
+            className="my-3 border-l-2 border-border pl-3 text-muted-foreground italic"
+            {...p}
+          >
+            {children}
+          </blockquote>
+        );
+      const styles: Record<string, string> = {
+        NOTE: "border-sky-500/30 bg-sky-500/10 text-sky-950 dark:text-sky-100",
+        TIP: "border-emerald-500/30 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100",
+        IMPORTANT: "border-violet-500/30 bg-violet-500/10 text-violet-950 dark:text-violet-100",
+        WARNING: "border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-100",
+        CAUTION: "border-red-500/30 bg-red-500/10 text-red-950 dark:text-red-100",
+      };
+      const labels: Record<string, string> = {
+        NOTE: "Note",
+        TIP: "Tip",
+        IMPORTANT: "Important",
+        WARNING: "Warning",
+        CAUTION: "Caution",
+      };
+      return (
+        <div className={cn("my-4 rounded-lg border px-4 py-3 text-sm", styles[kind])}>
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide">
+            {labels[kind]}
+          </div>
+          <div className="[&>p:first-child]:mt-0 [&>p:last-child]:mb-0">
+            {stripAlertMarker(children)}
+          </div>
+        </div>
+      );
+    },
     hr: ({ node: _n, ...p }: any) => <hr className="my-4 border-border" {...p} />,
     img: ({ node: _n, ...p }: any) => {
       const src = p.src ?? "";

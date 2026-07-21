@@ -59,6 +59,7 @@ import { SubAgentTranscript } from "@/components/chat/ToolCallBubble";
 import { WindowControls } from "@/components/WindowControls";
 import { BetaBadge } from "@/components/BetaBadge";
 import { AccountMenu } from "@/components/AccountMenu";
+import { DocsPanel } from "@/components/docs/DocsPanel";
 import { AboutPanel } from "@/components/AboutPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { OnboardingIntro } from "@/components/OnboardingIntro";
@@ -274,6 +275,7 @@ export default function App(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<"general" | "sandbox" | "providers">("general");
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [docsOpen, setDocsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
@@ -1209,6 +1211,7 @@ export default function App(): JSX.Element {
                     <AccountMenu
                       onOpenSettings={() => setSettingsOpen(true)}
                       onOpenAbout={() => setAboutOpen(true)}
+                      onOpenDocs={() => setDocsOpen(true)}
                     />
                   </div>
                 </aside>
@@ -1585,6 +1588,8 @@ export default function App(): JSX.Element {
         </ResizablePanelGroup>
       </div>
 
+
+      {docsOpen && <DocsPanel onClose={() => setDocsOpen(false)} />}
 
       <Modal
         open={aboutOpen}
