@@ -75,8 +75,8 @@ export function DocsPanel({ onClose }: { onClose: () => void }): JSX.Element {
     <div className="fixed inset-x-0 bottom-0 top-11 z-50 flex flex-col bg-background">
       {/* Header */}
       <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
-        <span className="text-sm font-semibold">Code Monet documentation</span>
-        <div className="relative ml-2 w-72">
+        {/*<span className="text-sm font-semibold">Code Monet documentation</span>*/}
+        <div className="relative w-84 ml-64">
           <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
             value={query}

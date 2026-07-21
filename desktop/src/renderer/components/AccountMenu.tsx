@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  BookOpen,
   Settings,
   Globe,
   HelpCircle,
@@ -95,7 +94,7 @@ export function AccountMenu({
           Language
           <ChevronRight className="ml-auto size-4" />
         </DropdownMenuItem>
-        <DropdownMenuItem>
+        <DropdownMenuItem onClick={onOpenDocs}>
           <HelpCircle />
           Get help
         </DropdownMenuItem>
@@ -117,10 +116,6 @@ export function AccountMenu({
         <DropdownMenuItem>
           <ScrollText />
           View changelog
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onOpenDocs}>
-          <BookOpen />
-          Get Help
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onOpenAbout}>
           <Info />
