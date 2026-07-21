@@ -19,7 +19,7 @@ import {
   writeMemoryFile,
   writeMemoryIndex,
 } from "../src/main/memory/store.js";
-import { getConsolidationState, runConsolidation } from "../src/main/memory/consolidate.js";
+import { extractJson as _extractJson, getConsolidationState, runConsolidation } from "../src/main/memory/consolidate.js";
 import { _shouldRunNow } from "../src/main/memory/nightly.js";
 
 let failed = 0;
@@ -88,6 +88,35 @@ const prompt = buildMemoryPrompt() ?? "";
 check("buildMemoryPrompt includes the index", prompt.includes("[Bun workflow](topics/bun-workflow.md)"));
 check("buildMemoryPrompt includes the file body", prompt.includes("Prefers bun over npm."));
 check("index precedes bodies", prompt.indexOf("# Memory index") < prompt.indexOf("Prefers bun over npm."));
+
+// ── Plan parsing / truncation salvage ───────────────────────────────────────
+type Parsed = { value: unknown; truncated: boolean };
+const P = (t: string): Parsed => _extractJson(t) as Parsed;
+
+const clean = P('{"upserts":[{"id":"profile","content":"x"}],"summary":"ok"}');
+check("clean plan parses", (clean.value as { summary: string }).summary === "ok" && !clean.truncated);
+
+const fenced = P('```json\n{"upserts":[],"summary":"fenced"}\n```');
+check("fenced plan parses", (fenced.value as { summary: string })?.summary === "fenced");
+
+const prose = P('Sure! {"upserts":[],"summary":"a {brace} inside"} Hope that helps!');
+check("prose around JSON with braces in strings", (prose.value as { summary: string })?.summary === "a {brace} inside");
+
+// The real failure the user hit: valid JSON that stops mid-body.
+const cut = P(
+  '{ "upserts": [ { "id": "profile", "name": "Profile", "summary": "Русскоязычный разработчик", "content": "полный текст" }, { "id": "areas/code-monet", "name": "Code Monet", "summary": "десктоп", "content": "обрыв здесь',
+);
+const cutPlan = cut.value as { upserts: { id: string }[] } | null;
+check("truncated plan is flagged", cut.truncated);
+check("truncated plan salvages the complete entries", !!cutPlan && cutPlan.upserts.length === 1 && cutPlan.upserts[0].id === "profile", `${cutPlan?.upserts.length ?? 0} recovered`);
+
+const cutAfterComma = P('{"upserts":[{"id":"profile","content":"a"},{"id":"topics/x","content":"b"},');
+check("truncated right after a comma still salvages", ((cutAfterComma.value as { upserts: unknown[] })?.upserts ?? []).length === 2);
+
+const cutNoObject = P('{"upserts":[{"id":"profile","content":"unterminated');
+check("nothing complete → null, still flagged truncated", cutNoObject.value === null && cutNoObject.truncated);
+
+check("prose-only reply → null, not truncated", P("I could not do this.").value === null && !P("I could not do this.").truncated);
 
 // ── Consolidation gates ─────────────────────────────────────────────────────
 // Each gate must short-circuit BEFORE the provider is called (a skipped run

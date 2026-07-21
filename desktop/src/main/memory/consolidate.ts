@@ -108,7 +108,12 @@ Reply with ONLY JSON (no fences, no prose):
  "index": [{"id": "...", "title": "Short Title", "hook": "one-line hook, under ~120 chars"}],
  "summary": "one sentence on what you consolidated"}
 
-"index" must list EVERY memory file that should exist after your upserts and deletes are applied — it replaces the index wholesale. At most 12 upserts.`;
+"index" must list EVERY memory file that should exist after your upserts and deletes are applied — it replaces the index wholesale.
+
+BUDGET — you have limited output, and a plan that gets cut off mid-way is wasted work:
+- At most 6 upserts. Touch only files the new signal actually changes; leave the rest alone (a file you don't list is kept as-is).
+- Keep each body under ~250 words: terse bullets, no preamble, no restating the file's own title.
+- Emit "upserts" first, then "deletes", then "index", then "summary".`;
 
 function currentMemoryBlock(): string {
   const files = listMemoryFiles();
@@ -147,11 +152,16 @@ interface Plan {
 /**
  * First balanced JSON object in the reply. A plain lastIndexOf("}") breaks when
  * the model wraps its JSON in prose that itself contains a brace.
+ *
+ * Returns `truncated` when the object never closes — the realistic failure
+ * here, since a plan carries a full replacement body per file and Cyrillic
+ * costs roughly twice the tokens per character. See salvage() for what we do
+ * with a cut-off plan.
  */
-function extractJson(text: string): unknown {
+export function extractJson(text: string): { value: unknown; truncated: boolean } {
   const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   const start = cleaned.indexOf("{");
-  if (start === -1) return null;
+  if (start === -1) return { value: null, truncated: false };
   let depth = 0;
   let inStr = false;
   let esc = false;
@@ -167,13 +177,58 @@ function extractJson(text: string): unknown {
     else if (c === "{") depth++;
     else if (c === "}" && --depth === 0) {
       try {
-        return JSON.parse(cleaned.slice(start, i + 1));
+        return { value: JSON.parse(cleaned.slice(start, i + 1)), truncated: false };
       } catch {
-        return null;
+        return { value: null, truncated: false };
       }
     }
   }
-  return null;
+  // Ran off the end with containers still open.
+  return { value: salvage(cleaned.slice(start)), truncated: true };
+}
+
+/**
+ * Rescue a cut-off plan. Losing an entire night's consolidation because the
+ * last file's body got clipped is far worse than applying the entries that did
+ * arrive intact: cut back to the last complete object, drop the dangling
+ * comma, and close whatever is still open. A missing "index" is fine — the
+ * caller rebuilds it from the files on disk.
+ */
+function salvage(text: string): unknown {
+  // Last "}" that isn't inside a string, plus the container stack up to it.
+  let inStr = false;
+  let esc = false;
+  const stack: string[] = [];
+  let cut = -1;
+  let cutStack: string[] = [];
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === "{" || c === "[") stack.push(c);
+    else if (c === "}" || c === "]") {
+      stack.pop();
+      if (c === "}" && stack.length > 0) {
+        cut = i;
+        cutStack = [...stack];
+      }
+    }
+  }
+  if (cut === -1) return null;
+  const closers = cutStack
+    .reverse()
+    .map((c) => (c === "{" ? "}" : "]"))
+    .join("");
+  try {
+    return JSON.parse(text.slice(0, cut + 1) + closers);
+  } catch {
+    return null;
+  }
 }
 
 /** Normalise a sloppy id ("topics/LaTeX Workflow") into a valid one. */
@@ -235,13 +290,19 @@ export async function runConsolidation(
       model: provider.model,
       system: SYSTEM,
       messages: [{ role: "user", content }],
-      max_tokens: 8_000,
+      max_tokens: 16_000,
     });
 
     const raw = (typeof res.content === "string" ? res.content : "").trim();
     if (!raw) throw new Error(`${provider.name || "the model"} returned an empty response`);
-    const plan = extractJson(raw) as Plan | null;
-    if (!plan) throw new Error(`couldn't parse an edit plan; first 200 chars: ${raw.slice(0, 200)}`);
+    const { value, truncated } = extractJson(raw);
+    const plan = value as Plan | null;
+    if (!plan)
+      throw new Error(
+        truncated
+          ? `${provider.name || "the model"} ran out of output budget — the plan was cut off after ${raw.length} chars and nothing complete could be salvaged. Try a model with a larger output limit.`
+          : `couldn't parse an edit plan; first 200 chars: ${raw.slice(0, 200)}`,
+      );
 
     const touched: string[] = [];
     for (const u of (plan.upserts ?? []).slice(0, 12)) {
@@ -285,10 +346,14 @@ export async function runConsolidation(
         : listMemoryFiles().map((f) => ({ id: f.id, title: f.name, hook: f.summary })),
     );
 
-    const summary =
+    let summary =
       typeof plan.summary === "string" && plan.summary.trim()
         ? plan.summary.trim()
         : `Consolidated ${logs.bullets} log entries.`;
+    if (truncated)
+      // Say so rather than reporting a clean run: the tail of the plan (often
+      // the index, sometimes a whole file) never arrived.
+      summary = `${summary} (partial — the model's reply was cut off; ${touched.length} file(s) applied)`;
     saveState({
       lastConsolidatedAt: startedAt,
       lastRunAt: startedAt,
