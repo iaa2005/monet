@@ -14,6 +14,7 @@ import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
 import { resolveBackgroundModel } from "../provider/routing.js";
 import { buildMemoryPrompt } from "../memory/store.js";
+import { extractJson } from "../llm/json-extract.js";
 
 export interface ReflectDigest {
   headline: string;
@@ -86,7 +87,9 @@ async function generateDigest(days: number): Promise<ReflectDigest> {
       // Reasoning models (deepseek-reasoner) spend part of the budget on
       // thinking BEFORE emitting the JSON — 1600 was enough for a chat model
       // but could leave nothing for the answer. Give it room.
-      max_tokens: 4_000,
+      // A Cyrillic digest (narrative + categories + 4 skill cards) is long, and
+      // a thinking model spends part of the budget before writing any of it.
+      max_tokens: 16_000,
     });
   } catch (e) {
     // Surface the provider's own words (bad key, 402, wrong endpoint) instead
@@ -104,48 +107,52 @@ async function generateDigest(days: number): Promise<ReflectDigest> {
       `${provider.name || "The model"} returned an empty response. If it's a reasoning model, try a larger context or a non-reasoning model for the digest.`,
     );
 
-  const parsed = extractJson(raw);
-  if (!parsed)
+  const { value, truncated } = extractJson(raw);
+  if (!value)
     throw new Error(
-      `Couldn't read a digest from ${provider.name || "the model"}'s reply. It answered with prose instead of JSON — try Refresh, or a stronger model. First 200 chars: ${raw.slice(0, 200)}`,
+      truncated
+        ? `${provider.name || "The model"} ran out of output budget before finishing the digest (${raw.length} chars). Try Refresh, or pick a model with a larger output limit.`
+        : `Couldn't read a digest from ${provider.name || "the model"}'s reply. It answered with prose instead of JSON — try Refresh, or a stronger model. First 200 chars: ${raw.slice(0, 200)}`,
     );
-  return parsed as ReflectDigest;
+  // A salvaged digest can be missing the tail (skills, or some categories).
+  // Filling the gaps beats telling the user it failed when the headline and
+  // narrative — the parts they actually read — arrived intact.
+  return fillDigest(value as Partial<ReflectDigest>);
 }
 
 /**
- * Pull the first complete JSON object out of a reply. `lastIndexOf("}")` breaks
- * when a model wraps the JSON in prose that itself contains a brace ("Here's
- * the digest: {…}. Hope that helps!"): it grabbed to the wrong closer. This
- * scans for a balanced object instead, ignoring braces inside strings.
+ * Make a possibly-partial digest safe to render.
+ *
+ * The reply is emitted headline → narrative → categories → skills, so a
+ * truncated one loses the tail first. The user reads the headline and the
+ * narrative; showing those with a note beats failing the whole digest because
+ * the fourth skill card never arrived.
  */
-function extractJson(text: string): unknown {
-  const cleaned = text
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/```\s*$/, "");
-  const start = cleaned.indexOf("{");
-  if (start === -1) return null;
-  let depth = 0;
-  let inStr = false;
-  let esc = false;
-  for (let i = start; i < cleaned.length; i++) {
-    const c = cleaned[i];
-    if (inStr) {
-      if (esc) esc = false;
-      else if (c === "\\") esc = true;
-      else if (c === '"') inStr = false;
-      continue;
-    }
-    if (c === '"') inStr = true;
-    else if (c === "{") depth++;
-    else if (c === "}" && --depth === 0) {
-      try {
-        return JSON.parse(cleaned.slice(start, i + 1));
-      } catch {
-        return null;
-      }
-    }
-  }
-  return null;
+function fillDigest(d: Partial<ReflectDigest>): ReflectDigest {
+  const card = (
+    v: { title?: unknown; body?: unknown } | undefined,
+    fallback: string,
+  ): { title: string; body: string } => ({
+    title: typeof v?.title === "string" && v.title ? v.title : fallback,
+    body: typeof v?.body === "string" ? v.body : "",
+  });
+  const s = d.skills;
+  return {
+    headline: typeof d.headline === "string" ? d.headline : "",
+    narrative: typeof d.narrative === "string" ? d.narrative : "",
+    categories: Array.isArray(d.categories)
+      ? d.categories.filter(
+          (c): c is ReflectDigest["categories"][number] =>
+            !!c && typeof c.name === "string",
+        )
+      : [],
+    skills: {
+      delegation: card(s?.delegation, "Delegation"),
+      description: card(s?.description, "Description"),
+      discernment: card(s?.discernment, "Discernment"),
+      diligence: card(s?.diligence, "Diligence"),
+    },
+  };
 }
 
 export function registerReflectIPC(): void {

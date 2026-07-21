@@ -138,6 +138,24 @@ if (anyProvider) {
 }
 setModelRouting({ backgroundProviderId: "", backgroundModel: "" });
 
+// ── Reflect digest salvage (the real Cyrillic truncation) ───────────────────
+{
+  const cut = _extractJson(
+    '{ "headline": "Отладка коннекторов, пересборка UI и взятие сандбокса", "narrative": "Июль стал месяцем интенсивной доработки десктоп-агента Monet: вы правили интерфейс", "categories": [{"name":"Разработка","pct":60,"detail":"UI и коннекторы"}], "skills": {"delegation": {"title":"Делегирование","body":"текст"}, "description": {"title":"Обр',
+  ) as { value: unknown; truncated: boolean };
+  check("reflect: a truncated Cyrillic digest is flagged", cut.truncated);
+  const salvaged = cut.value as { headline?: string; categories?: unknown[] } | null;
+  check(
+    "reflect: headline and narrative survive the cut",
+    !!salvaged && typeof salvaged.headline === "string" && salvaged.headline.includes("Отладка коннекторов"),
+    salvaged?.headline?.slice(0, 30) ?? "none",
+  );
+  check(
+    "reflect: complete categories survive too",
+    Array.isArray(salvaged?.categories) && salvaged!.categories.length === 1,
+  );
+}
+
 // ── Reasoning-model empty-content fallback ──────────────────────────────────
 // deepseek-reasoner puts its chain of thought in reasoning_content and the
 // answer in content; when the budget runs out mid-thought content is EMPTY.
