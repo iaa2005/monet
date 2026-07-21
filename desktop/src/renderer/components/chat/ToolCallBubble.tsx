@@ -62,7 +62,7 @@ function SandboxOutput({
           language="text"
           maxHeight={280}
           bare={inGroup}
-          className={inGroup ? "border-none bg-transparent my-0" : ""}
+          className={inGroup ? "my-0 border-0 rounded-none" : ""}
         />
       )}
       {files.length > 0 && (
@@ -203,12 +203,22 @@ function ToolDetail({
         code={str("new_string") ?? ""}
         oldCode={str("old_string") ?? ""}
         language={langFromPath(str("file_path") ?? "")}
+        bare={inGroup}
+        className={inGroup ? "my-0 border-0 rounded-none" : ""}
       />
     );
   }
 
   if (name === "Write" && str("content") != null) {
-    return <CodeBlock code={str("content") ?? ""} oldCode="" language={langFromPath(str("file_path") ?? "")} />;
+    return (
+      <CodeBlock
+        code={str("content") ?? ""}
+        oldCode=""
+        language={langFromPath(str("file_path") ?? "")}
+        bare={inGroup}
+        className={inGroup ? "my-0 border-0 rounded-none" : ""}
+      />
+    );
   }
 
   if (name === "RunPython" || name === "SandboxWrite") {
@@ -219,7 +229,7 @@ function ToolDetail({
             code={str("code") ?? ""}
             language="python"
             bare={inGroup}
-            className={inGroup ? "border-none bg-transparent my-0" : ""}
+        className={inGroup ? "my-0 border-0 rounded-none" : ""}
           />
         )}
         {name === "SandboxWrite" && str("content") && (
@@ -228,7 +238,7 @@ function ToolDetail({
             language={langFromPath(str("name") ?? "")}
             maxHeight={280}
             bare={inGroup}
-            className={inGroup ? "border-none bg-transparent my-0" : ""}
+        className={inGroup ? "my-0 border-0 rounded-none" : ""}
           />
         )}
         {output && <SandboxOutput output={output} inGroup={inGroup} />}
@@ -248,7 +258,7 @@ function ToolDetail({
           code={str("command") ?? ""}
           language={shellLang}
           bare={inGroup}
-          className={inGroup ? "border-none bg-transparent my-0" : ""}
+        className={inGroup ? "my-0 border-0 rounded-none" : ""}
         />
       )}
       {output && output.includes("[artifact]") ? (
@@ -261,7 +271,7 @@ function ToolDetail({
           language={outLang}
           maxHeight={320}
           bare={inGroup}
-          className={inGroup ? "border-none bg-transparent my-0" : ""}
+        className={inGroup ? "my-0 border-0 rounded-none" : ""}
         />
       ) : Object.keys(input).length > 0 &&
         name !== "Bash" &&
@@ -270,7 +280,7 @@ function ToolDetail({
           code={JSON.stringify(input, null, 2)}
           language="json"
           bare={inGroup}
-          className={inGroup ? "border-none bg-transparent my-0" : ""}
+        className={inGroup ? "my-0 border-0 rounded-none" : ""}
         />
       ) : null}
     </div>
@@ -347,6 +357,7 @@ function ToolRow({
         onClick={hasDetails ? onToggle : undefined}
         className={cn(
           "mx-0 flex w-full items-center gap-2 text-left",
+          inGroup && "p-2",
           hasDetails && "cursor-pointer",
         )}
       >
@@ -382,7 +393,7 @@ function ToolRow({
       </button>
 
       {open && hasDetails && (
-        <div className={inGroup ? "mt-1 pl-1" : "mt-1.5"}>
+        <div className={inGroup ? "" : "mt-1.5"}>
           <ToolDetail toolCall={toolCall} inGroup={inGroup} />
         </div>
       )}
@@ -433,10 +444,10 @@ function ToolGroupCard({ calls }: { calls: ToolCall[] }): JSX.Element {
       </button>
 
       {groupOpen && (
-        <div className="glass-panel mt-1.5 rounded-lg border border-border bg-card px-2.5 py-2">
+        <div className="glass-panel mt-1.5 rounded-lg border border-border bg-card overflow-hidden">
           {calls.map((tc, i) => (
             <div key={tc.id}>
-              {i > 0 && <hr className="-mx-2.5 my-1.5 border-border/30" />}
+              {i > 0 && <hr className="border-border/30" />}
               {tc.subAgent || tc.name === "Task" ? (
                 <SubAgentBubble toolCall={tc} inGroup />
               ) : (
