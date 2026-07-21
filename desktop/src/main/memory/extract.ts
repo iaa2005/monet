@@ -174,6 +174,8 @@ export async function maybeExtractMemory(
   try {
     const cfg = getMemoryConfig();
     if (!cfg.generateMemory) return;
+    // 0 = "Never": the user doesn't want a request spent after every turn.
+    if (cfg.extractEveryMinutes <= 0) return;
     if (!sessionId || sessionId === "default" || sessionId.startsWith("incognito-"))
       return;
     if (!conversationText || conversationText.length < 200) return;

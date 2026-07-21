@@ -13,12 +13,15 @@ import { getDataDir } from "../src/main/data-dir.js";
 import { appendDailyLog, dailyLogPath, pendingBulletCount, readLogsSince } from "../src/main/memory/daily-log.js";
 import {
   buildMemoryPrompt,
+  getMemoryConfig,
   getMemoryDir,
   indexPath,
   readMemoryIndex,
+  setMemoryConfig,
   writeMemoryFile,
   writeMemoryIndex,
 } from "../src/main/memory/store.js";
+import { maybeExtractMemory } from "../src/main/memory/extract.js";
 import { extractJson as _extractJson, getConsolidationState, runConsolidation } from "../src/main/memory/consolidate.js";
 import { _shouldRunNow } from "../src/main/memory/nightly.js";
 
@@ -88,6 +91,17 @@ const prompt = buildMemoryPrompt() ?? "";
 check("buildMemoryPrompt includes the index", prompt.includes("[Bun workflow](topics/bun-workflow.md)"));
 check("buildMemoryPrompt includes the file body", prompt.includes("Prefers bun over npm."));
 check("index precedes bodies", prompt.indexOf("# Memory index") < prompt.indexOf("Prefers bun over npm."));
+
+// ── "Never" extraction interval ─────────────────────────────────────────────
+setMemoryConfig({ extractEveryMinutes: 0 });
+check("0 survives the config round-trip as Never", getMemoryConfig().extractEveryMinutes === 0);
+const logBefore = pendingBulletCount(0);
+await maybeExtractMemory("some-session", "x".repeat(500));
+check("Never means the per-turn pass writes nothing", pendingBulletCount(0) === logBefore, `${pendingBulletCount(0)} vs ${logBefore}`);
+setMemoryConfig({ extractEveryMinutes: -5 });
+check("a negative interval is not treated as a valid delay", getMemoryConfig().extractEveryMinutes === 0, `${getMemoryConfig().extractEveryMinutes}`);
+setMemoryConfig({ extractEveryMinutes: 3 }); // restore for the gate checks
+check("a normal interval still round-trips", getMemoryConfig().extractEveryMinutes === 3);
 
 // ── Plan parsing / truncation salvage ───────────────────────────────────────
 type Parsed = { value: unknown; truncated: boolean };

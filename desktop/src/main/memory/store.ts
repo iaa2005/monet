@@ -25,7 +25,11 @@ import { tunablePrompt } from "../prompts/index.js";
 export interface MemoryConfig {
   searchChats: boolean;
   generateMemory: boolean;
-  /** Auto-extraction runs at most once per this many minutes per chat. */
+  /**
+   * Auto-extraction runs at most once per this many minutes per chat.
+   * 0 = never: no per-turn pass at all, while explicit memories and the
+   * nightly consolidation keep working.
+   */
   extractEveryMinutes: number;
 }
 
@@ -68,8 +72,14 @@ export function getMemoryConfig(): MemoryConfig {
     return {
       searchChats: j.searchChats !== false,
       generateMemory: j.generateMemory !== false,
-      extractEveryMinutes:
-        Number.isFinite(mins) && mins >= 1 ? Math.min(mins, 240) : 3,
+      // 0 = never run the per-turn pass. Distinct from generateMemory: off —
+      // explicit "remember this" and the nightly consolidation still work.
+      // A missing/NaN value means "unconfigured" → the default. A present but
+      // negative one is nonsense, and the safe reading of nonsense is "don't
+      // run" rather than silently resurrecting a per-turn request.
+      extractEveryMinutes: Number.isFinite(mins)
+        ? Math.min(Math.max(mins, 0), 240)
+        : 3,
     };
   } catch {
     return { searchChats: true, generateMemory: true, extractEveryMinutes: 3 };

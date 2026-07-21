@@ -253,25 +253,34 @@ export function MemorySettings(): JSX.Element {
       </div>
 
       {config.generateMemory && (
-        <div className="mt-3 flex items-center justify-between gap-4 pl-4">
-          <span className="text-sm text-muted-foreground">
-            Run extraction at most once per…
-          </span>
-          <select
-            value={config.extractEveryMinutes}
-            onChange={(e) =>
-              void api()
-                ?.memory.setConfig({ extractEveryMinutes: Number(e.target.value) })
-                .then((next) => next && setConfig(next))
-            }
-            className="rounded-lg border border-border bg-background px-2 py-1 text-sm outline-none"
-          >
-            {[1, 3, 10, 30, 60].map((m) => (
-              <option key={m} value={m}>
-                {m} min
-              </option>
-            ))}
-          </select>
+        <div className="mt-3 pl-4">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm text-muted-foreground">
+              Run extraction at most once per…
+            </span>
+            <select
+              value={config.extractEveryMinutes}
+              onChange={(e) =>
+                void api()
+                  ?.memory.setConfig({ extractEveryMinutes: Number(e.target.value) })
+                  .then((next) => next && setConfig(next))
+              }
+              className="rounded-lg border border-border bg-background px-2 py-1 text-sm outline-none"
+            >
+              <option value={0}>Never</option>
+              {[1, 3, 10, 30, 60].map((m) => (
+                <option key={m} value={m}>
+                  {m} min
+                </option>
+              ))}
+            </select>
+          </div>
+          {config.extractEveryMinutes === 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Nothing is noted automatically. Memories you ask for explicitly
+              still get saved, and nightly consolidation still tidies them up.
+            </p>
+          )}
         </div>
       )}
 
