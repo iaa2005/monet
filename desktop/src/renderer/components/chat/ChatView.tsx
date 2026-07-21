@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, memo } from "react";
-import { useChatStore } from "@/stores/chatStore";
+import { useChatStore, INTERRUPT_MARK } from "@/stores/chatStore";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { ToolCallBubble } from "./ToolCallBubble";
 import { MessageInput } from "./MessageInput";
@@ -385,9 +385,14 @@ const MessageRow = memo(
                 >
                   {msg.content ? (
                     <MarkdownViewer
-                      content={msg.content}
+                      content={stripInterrupt(msg.content)}
                     />
                   ) : null}
+                  {isInterrupted(msg.content) && (
+                    <span className="mt-2 inline-flex items-center rounded-md bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
+                      Stopped
+                    </span>
+                  )}
                 </BubbleContent>
               </Bubble>
             </div>
@@ -486,13 +491,23 @@ function turnCopyTargets(grouped: GroupedItem[]): Map<number, string> {
       parts = [];
       lastIdx = -1;
     } else if (item.content) {
-      parts.push(item.content);
+      parts.push(stripInterrupt(item.content));
       lastIdx = i;
     }
   });
 
   if (parts.length > 0 && lastIdx >= 0) out.set(lastIdx, parts.join("\n\n"));
   return out;
+}
+
+function isInterrupted(content: string | undefined): boolean {
+  return !!(content && content.includes(INTERRUPT_MARK));
+}
+
+function stripInterrupt(content: string): string {
+  return content.endsWith(INTERRUPT_MARK)
+    ? content.slice(0, -INTERRUPT_MARK.length)
+    : content;
 }
 
 function CopyMessageButton({ text }: { text: string }): JSX.Element {

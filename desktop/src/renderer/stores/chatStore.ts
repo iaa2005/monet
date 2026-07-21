@@ -113,7 +113,7 @@ const EMPTY: SessionState = {
   queue: [],
 };
 
-const INTERRUPT_MARK = "\n\n> ⏹️ Generation interrupted.";
+export const INTERRUPT_MARK = "\n\n⏹️ Generation interrupted.";
 
 /** Finalize all messages and stamp a visible "interrupted" note at the end —
  * a stopped chat should say so instead of looking like a finished answer. */
@@ -132,7 +132,7 @@ function markInterrupted(msgs: ChatMessage[]): ChatMessage[] {
     out.push({
       id: generateId(),
       role: "assistant",
-      content: "> ⏹️ Generation interrupted.",
+      content: "⏹️ Generation interrupted.",
       timestamp: Date.now(),
     });
   }

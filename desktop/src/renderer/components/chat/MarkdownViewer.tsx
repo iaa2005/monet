@@ -49,7 +49,7 @@ export function MarkdownViewer({
     h4: ({ node: _n, ...p }: any) => <h4 className="mt-3 mb-1 font-semibold" {...p} />,
     ul: ({ node: _n, ...p }: any) => <ul className="my-2 list-disc space-y-1 pl-5" {...p} />,
     ol: ({ node: _n, ...p }: any) => <ol className="my-2 list-decimal space-y-1 pl-5" {...p} />,
-    li: ({ node: _n, ...p }: any) => <li className="marker:text-muted-foreground" {...p} />,
+    li: ({ node: _n, ...p }: any) => <li className="marker:text-foreground" {...p} />,
     a: ({ node: _n, children, ...p }: any) => {
       const href = p.href ?? "";
       const item = href.startsWith("artifacts/") || /^file:\/\//i.test(href)
