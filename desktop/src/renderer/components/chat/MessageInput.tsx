@@ -410,6 +410,18 @@ export function MessageInput({
     localStorage.setItem("permission-mode", id);
   };
 
+  // Approving a plan switches the mode from inside the plan dialog; without
+  // this the selector would keep showing "Plan" after the model started work.
+  useEffect(() => {
+    const sync = (): void =>
+      setMode(
+        (localStorage.getItem("permission-mode") as PermissionMode | null) ||
+          "default",
+      );
+    window.addEventListener("permission-mode-changed", sync);
+    return () => window.removeEventListener("permission-mode-changed", sync);
+  }, []);
+
   const stageFiles = (list: FileList | File[] | null): void => {
     if (!list) return;
     setFiles((prev) => [

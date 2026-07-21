@@ -229,6 +229,85 @@ async function main() {
     }
   }
 
+  // 4d. Plan approval — ExitPlanMode must reach the user, report the verdict,
+  // and an approval must unblock the REST of the same turn (plan mode blocks
+  // writes, so the model would otherwise be told "start work" and immediately
+  // hit a wall).
+  {
+    const { clearSessionMode } = await import('../src/main/agent/session-mode.js')
+    const planFile = join(getWorkspacePath(), '.smoke-plan.txt')
+    const runPlan = async (
+      session: string,
+      decision: 'approve' | 'approve-auto' | 'keep-planning',
+      feedback?: string,
+    ) => {
+      let shown: string | null = null
+      const res = await executeVendorTool({
+        sessionId: session,
+        toolUseID: `toolu_${Math.random().toString(36).slice(2)}`,
+        name: 'ExitPlanMode',
+        input: { plan: '## Plan\n1. Do the thing' },
+        model: MODEL,
+        permissionMode: 'plan',
+        askPlanApproval: async (plan: string) => {
+          shown = plan
+          return { decision, feedback }
+        },
+      })
+      return { shown, res }
+    }
+
+    const kept = await runPlan('plan-keep', 'keep-planning', 'add tests first')
+    check('plan: the plan reaches the user', (kept.shown ?? '').includes('Do the thing'))
+    check(
+      'plan: rejection returns the feedback to the model',
+      /add tests first/.test(kept.res.content) && /[Dd]o not start/.test(kept.res.content),
+      kept.res.content.slice(0, 70).replace(/\n/g, ' | '),
+    )
+
+    // Before approval, plan mode blocks a write.
+    const beforeSession = 'plan-approve'
+    clearSessionMode(beforeSession)
+    const blockedWrite = await executeVendorTool({
+      sessionId: beforeSession,
+      toolUseID: 'toolu_planblock',
+      name: 'Write',
+      input: { file_path: planFile, content: 'x' },
+      model: MODEL,
+      permissionMode: 'plan',
+    })
+    check('plan: writes are blocked before approval', blockedWrite.isError && /[Pp]lan mode/.test(blockedWrite.content))
+
+    const approved = await runPlan(beforeSession, 'approve')
+    check('plan: approval tells the model to start', /[Ss]tart working/.test(approved.res.content))
+
+    // Same session, same requested mode: the override must now let it through.
+    const afterWrite = await executeVendorTool({
+      sessionId: beforeSession,
+      toolUseID: 'toolu_planafter',
+      name: 'Write',
+      input: { file_path: planFile, content: 'approved\n' },
+      model: MODEL,
+      permissionMode: 'plan',
+      requestPermission: async () => ({ behavior: 'allow' as const }),
+    })
+    check('plan: approval unblocks the rest of the turn', !afterWrite.isError, afterWrite.content.slice(0, 60))
+    rmSync(planFile, { force: true })
+
+    // A different session must NOT inherit that approval.
+    const otherBlocked = await executeVendorTool({
+      sessionId: 'plan-other',
+      toolUseID: 'toolu_planother',
+      name: 'Write',
+      input: { file_path: planFile, content: 'x' },
+      model: MODEL,
+      permissionMode: 'plan',
+    })
+    check('plan: approval does not leak to another session', otherBlocked.isError)
+    clearSessionMode(beforeSession)
+    rmSync(planFile, { force: true })
+  }
+
   // 5. TodoWrite
   const todo = await run('TodoWrite', {
     todos: [

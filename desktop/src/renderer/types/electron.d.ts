@@ -302,6 +302,16 @@ export interface ElectronAPI {
     onRequest: (callback: (request: PermissionRequest) => void) => () => void;
     respond: (decision: PermissionDecision) => void;
   };
+  plan: {
+    onRequest: (
+      callback: (request: { id: string; plan: string }) => void,
+    ) => () => void;
+    respond: (
+      id: string,
+      decision: "approve" | "approve-auto" | "keep-planning",
+      feedback?: string,
+    ) => void;
+  };
   askUser: {
     onRequest: (callback: (request: AskUserRequest) => void) => () => void;
     respond: (

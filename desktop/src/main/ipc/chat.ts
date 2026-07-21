@@ -25,6 +25,7 @@ import { getProviderManager } from "../provider/manager.js";
 import type { EffortLevel } from "../provider/types.js";
 import { requestPermissionFromRenderer } from "./permissions.js";
 import { askUserFromRenderer } from "./ask-user.js";
+import { askPlanApprovalFromRenderer } from "./plan.js";
 import { tunablePrompt } from "../prompts/index.js";
 import { getWorkspacePath } from "./workspace.js";
 import type { LLMContentBlock } from "../llm/adapter.js";
@@ -311,6 +312,7 @@ export function registerChatIPC(): void {
           permissionMode: mode,
           requestPermission: (ask) => requestPermissionFromRenderer(win, ask),
           askUser: (questions) => askUserFromRenderer(win, questions),
+          askPlanApproval: (plan) => askPlanApprovalFromRenderer(win, plan),
           space: payload.space,
           cwd,
           effort: payload.effort,

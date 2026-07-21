@@ -48,6 +48,9 @@ import {
 } from "./connector-tools.js";
 import { CreateRoutineTool } from "./routine-tool.js";
 import { RememberTool } from "./remember-tool.js";
+import { ExitPlanModeTool } from "./plan-tool.js";
+import { effectiveMode } from "./session-mode.js";
+import type { AskPlanApprovalFn } from "../ipc/plan.js";
 import {
   SandboxListTool,
   SandboxReadTool,
@@ -404,6 +407,7 @@ const ALL_TOOLS = [
   ...CONNECTOR_TOOLS,
   CreateRoutineTool,
   RememberTool,
+  ExitPlanModeTool,
 ] as unknown as Tool[];
 
 /** Every tool, for prompt seeding — see seedTunablePrompts(). */
@@ -644,6 +648,8 @@ export async function executeVendorTool(opts: {
   space?: string;
   /** Round-trips a structured question to the user (AskUserQuestion tool). */
   askUser?: AskUserFn;
+  /** Round-trips a plan for approval (ExitPlanMode tool). */
+  askPlanApproval?: AskPlanApprovalFn;
   /** Nobody is watching (a routine firing) — distinct from bypassPermissions,
    * which a user enables while sitting right there. */
   unattended?: boolean;
@@ -656,16 +662,20 @@ export async function executeVendorTool(opts: {
     name,
     input,
     model,
-    permissionMode = "default",
+    permissionMode: requestedMode = "default",
     requestPermission,
     signal,
     onProgress,
     onSubAgentEvent,
     space,
     askUser,
+    askPlanApproval,
     unattended,
     connectorGrants,
   } = opts;
+  // Approving a plan flips the mode mid-turn, so the live value wins over the
+  // one captured when the turn started.
+  const permissionMode = effectiveMode(sessionId, requestedMode);
   initVendorRuntime();
 
   // Isolation gate, enforced at EXECUTION time (not just advertisement). MCP is
@@ -793,6 +803,9 @@ export async function executeVendorTool(opts: {
   (context as { connectorGrants?: string[] }).connectorGrants = connectorGrants;
   // AskUserQuestion round-trips a question to the renderer via this callback.
   (context as { askUser?: AskUserFn }).askUser = askUser;
+  // ExitPlanMode shows the plan and returns the user's verdict.
+  (context as { askPlanApproval?: AskPlanApprovalFn }).askPlanApproval =
+    askPlanApproval;
   if (onProgress)
     (context as Record<string, unknown>)._subAgentOnProgress = onProgress;
   if (onSubAgentEvent)

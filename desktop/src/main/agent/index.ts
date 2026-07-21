@@ -53,6 +53,7 @@ import {
   recordContextEvent,
 } from "../transcript-store.js";
 import type { AskUserFn } from "../ipc/ask-user.js";
+import type { AskPlanApprovalFn } from "../ipc/plan.js";
 
 /** Prepend finished background-agent reports to the user turn as context. */
 function mergeBackgroundResults(
@@ -291,6 +292,8 @@ export interface AgentRunOptions {
   requestPermission?: RequestPermission;
   /** Round-trips an AskUserQuestion to the renderer dialog. */
   askUser?: AskUserFn;
+  /** Round-trips a plan for approval (ExitPlanMode tool). */
+  askPlanApproval?: AskPlanApprovalFn;
   /** Workspace ("home" | "code") — selects the advertised toolset. */
   space?: string;
   /**
@@ -827,6 +830,7 @@ async function runAgentScoped(
     permissionMode = "default",
     requestPermission,
     askUser,
+    askPlanApproval,
     space,
     effort,
     connectors,
@@ -1086,6 +1090,7 @@ async function runAgentScoped(
         permissionMode,
         requestPermission,
         askUser,
+        askPlanApproval,
         signal,
         space,
         unattended,

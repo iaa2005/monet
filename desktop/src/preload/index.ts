@@ -6,6 +6,7 @@ import type {
   PermissionDecision,
 } from "../main/ipc/permissions.js";
 import type { AskUserRequest, AskUserAnswer } from "../main/ipc/ask-user.js";
+import type { PlanApprovalRequest, PlanDecision } from "../main/ipc/plan.js";
 import type { ConnectorAccount } from "../main/connectors/types.js";
 import type { UiConnectorService } from "../main/connectors/services/types.js";
 
@@ -180,6 +181,22 @@ const electronAPI = {
     },
     respond: (decision: PermissionDecision): void => {
       ipcRenderer.send("permissions:response", decision);
+    },
+  },
+
+  plan: {
+    onRequest: (
+      callback: (request: PlanApprovalRequest) => void,
+    ): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        req: PlanApprovalRequest,
+      ) => callback(req);
+      ipcRenderer.on("plan:request", handler);
+      return () => ipcRenderer.removeListener("plan:request", handler);
+    },
+    respond: (id: string, decision: PlanDecision, feedback?: string): void => {
+      ipcRenderer.send("plan:response", { id, decision, feedback });
     },
   },
 
