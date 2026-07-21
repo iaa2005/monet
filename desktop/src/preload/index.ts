@@ -168,6 +168,11 @@ const electronAPI = {
       ipcRenderer.invoke("providers:orModels", apiKey),
     orKeyInfo: (apiKey: string): Promise<{ ok: boolean; info?: unknown; error?: string }> =>
       ipcRenderer.invoke("providers:orKeyInfo", apiKey),
+    fetchModels: (
+      baseURL: string,
+      apiKey: string,
+    ): Promise<{ ok: boolean; models?: { name: string }[]; error?: string }> =>
+      ipcRenderer.invoke("providers:fetchModels", baseURL, apiKey),
     routingGet: (): Promise<{ backgroundProviderId: string; backgroundModel: string }> =>
       ipcRenderer.invoke("routing:get"),
     routingSet: (patch: {

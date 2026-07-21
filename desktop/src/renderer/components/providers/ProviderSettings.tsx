@@ -118,6 +118,53 @@ function ProviderModal({
   const [kind, setKind] = useState<ProviderKind>(provider?.kind ?? "anthropic");
   const [baseURL, setBaseURL] = useState(provider?.baseURL ?? "");
   const [apiKey, setApiKey] = useState("");
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverNote, setDiscoverNote] = useState<string | null>(null);
+
+  /**
+   * Ask the endpoint what it has. This is the only way to know a LOCAL
+   * server's models — Ollama / LM Studio / llama.cpp all answer /v1/models.
+   *
+   * Additive on purpose: models already configured (with their context and
+   * token settings) are kept, and only names not present yet are appended. A
+   * discovery call must never quietly discard what the user set up.
+   */
+  const discoverModels = async (): Promise<void> => {
+    setDiscovering(true);
+    setDiscoverNote(null);
+    try {
+      const key = apiKey || (isEdit ? (provider?.apiKey ?? "") : "");
+      const r = await window.electronAPI?.providers.fetchModels(baseURL.trim(), key);
+      if (!r?.ok) {
+        setDiscoverNote(r?.error ? `Couldn't load models: ${r.error}` : "Couldn't load models.");
+        return;
+      }
+      const found = r.models ?? [];
+      if (found.length === 0) {
+        setDiscoverNote("The endpoint answered, but listed no models.");
+        return;
+      }
+      let added = 0;
+      setModels((prev) => {
+        const have = new Set(prev.map((m: ProviderModel) => m.name).filter(Boolean));
+        const fresh = found
+          .filter((m: { name: string }) => !have.has(m.name))
+          .map((m: { name: string }) => ({ id: newModelId(), name: m.name }));
+        added = fresh.length;
+        // Drop a single blank row left over from "Add model".
+        const kept = prev.filter((m: ProviderModel) => m.name.trim());
+        return [...kept, ...fresh];
+      });
+      setDiscoverNote(
+        added === 0
+          ? `${found.length} model(s) found — all already listed.`
+          : `Added ${added} of ${found.length} model(s).`,
+      );
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
   const [models, setModels] = useState<ProviderModel[]>(() => {
     if (provider?.models?.length) return provider.models.map((m) => ({ ...m }));
     if (provider)
@@ -509,6 +556,19 @@ function ProviderModal({
               <Plus className="size-4" />
               Add model
             </button>
+            {kind !== "openrouter" && (
+              <button
+                type="button"
+                disabled={discovering || !baseURL.trim()}
+                onClick={() => void discoverModels()}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:bg-black/[0.03] hover:text-foreground disabled:opacity-50 dark:hover:bg-white/[0.04]"
+              >
+                {discovering ? "Loading…" : "Load models from this endpoint"}
+              </button>
+            )}
+            {discoverNote && (
+              <p className="text-xs text-muted-foreground">{discoverNote}</p>
+            )}
             {kind === "openrouter" && (apiKey || (isEdit && provider?.apiKey)) && (
               <button
                 type="button"

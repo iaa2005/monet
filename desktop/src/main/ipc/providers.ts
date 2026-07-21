@@ -6,6 +6,7 @@ import { ipcMain } from 'electron'
 import { getProviderManager } from '../provider/manager.js'
 import type { LLMProviderInput } from '../provider/types.js'
 import { fetchORModels, fetchORBalance } from '../llm/openrouter-api.js'
+import { fetchProviderModels } from '../llm/fetch-models.js'
 import {
   getModelRouting,
   setModelRouting,
@@ -53,6 +54,24 @@ export function registerProvidersIPC(): void {
       }
     },
   )
+
+  // Discover models from a provider's own /v1/models — the only way to know
+  // what a LOCAL server has loaded. Returns the list; the renderer decides
+  // what to keep, so a discovery call can never silently rewrite a config.
+  ipcMain.handle(
+    "providers:fetchModels",
+    async (
+      _e,
+      baseURL: string,
+      apiKey: string,
+    ): Promise<{ ok: boolean; models?: { name: string }[]; error?: string }> => {
+      try {
+        return { ok: true, models: await fetchProviderModels(baseURL, apiKey) };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
 
   // Model routing — which provider/model does the cheap background work
   // (memory log pass, nightly consolidation, Reflect). Empty = the active one.

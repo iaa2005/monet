@@ -297,6 +297,10 @@ export interface ElectronAPI {
       info?: ORKeyInfo;
       error?: string;
     }>;
+    fetchModels: (
+      baseURL: string,
+      apiKey: string,
+    ) => Promise<{ ok: boolean; models?: { name: string }[]; error?: string }>;
     routingGet: () => Promise<{
       backgroundProviderId: string;
       backgroundModel: string;
