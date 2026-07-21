@@ -93,6 +93,7 @@ export function RoutinesSettings({
   const [routines, setRoutines] = useState<RoutineRow[]>([]);
   const [desc, setDesc] = useState("");
   const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Draft | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
 
@@ -110,6 +111,7 @@ export function RoutinesSettings({
   const draftFromText = async (text: string): Promise<void> => {
     if (!text.trim()) return;
     setDrafting(true);
+    setDraftError(null);
     try {
       const r = await api()?.routines.draft(text.trim(), "code");
       if (r?.ok && r.draft)
@@ -128,7 +130,17 @@ export function RoutinesSettings({
               }
             : {}),
         });
-      else setEditor({ ...emptyDraft(), prompt: text.trim() });
+      else {
+        // Falling back to a bare prompt is fine, but doing it SILENTLY made a
+        // failed draft look like a working feature that just ignores the cron,
+        // connectors and output. Say what went wrong.
+        setEditor({ ...emptyDraft(), prompt: text.trim() });
+        setDraftError(
+          r?.error
+            ? `Couldn't draft the rest of the routine: ${r.error} — the description was kept, fill in the schedule yourself.`
+            : "Couldn't draft the rest of the routine — the description was kept, fill in the schedule yourself.",
+        );
+      }
     } finally {
       setDrafting(false);
     }
@@ -218,6 +230,9 @@ export function RoutinesSettings({
             </button>
           </div>
         </div>
+        {draftError && (
+          <p className="mt-2 text-xs text-destructive">{draftError}</p>
+        )}
       </div>
 
       {/* Existing routines / empty */}

@@ -451,11 +451,26 @@ export class OpenAICompatClient implements LLMAdapter {
       throw new Error(`API ${response.status}: ${errorText}`);
     }
     const data = (await response.json()) as {
-      choices?: { message?: { content?: string | null } }[];
+      choices?: {
+        message?: {
+          content?: string | null;
+          reasoning?: string | null;
+          reasoning_content?: string | null;
+        };
+        finish_reason?: string | null;
+      }[];
     };
-    return {
-      role: "assistant",
-      content: data.choices?.[0]?.message?.content ?? "",
-    };
+    const msg = data.choices?.[0]?.message;
+    const content = msg?.content ?? "";
+    if (content.trim()) return { role: "assistant", content };
+
+    // A thinking model (deepseek-reasoner and friends) streams its chain of
+    // thought into reasoning_content and the answer into content. When the
+    // budget runs out mid-thought, content comes back EMPTY while the thinking
+    // holds the real work — and every caller here wants JSON, which the model
+    // has usually already written inside that thinking. Returning "" made
+    // Reflect report "empty response" and the routine drafter silently fail.
+    const reasoning = msg?.reasoning ?? msg?.reasoning_content ?? "";
+    return { role: "assistant", content: reasoning };
   }
 }

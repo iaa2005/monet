@@ -4,6 +4,8 @@
  */
 
 import { ipcMain } from "electron";
+import { extractJson } from "../llm/json-extract.js";
+import { resolveBackgroundModel } from "../provider/routing.js";
 import { parseCronExpression, computeNextCronRun, cronToHuman } from "@vendor/utils/cron.js";
 import {
   listRoutines,
@@ -234,8 +236,9 @@ export function registerRoutinesIPC(): void {
       draft?: RoutineDraft;
       error?: string;
     }> => {
-      const provider = getProviderManager().getActive();
-      if (!provider) return { ok: false, error: "No active provider." };
+      const routed = resolveBackgroundModel();
+      if (!routed) return { ok: false, error: "No active provider." };
+      const provider = routed.provider;
       try {
         const available = connectedDraftConnectors();
         const connectorContext = available.length
@@ -244,7 +247,7 @@ export function registerRoutinesIPC(): void {
               .join("\n")
           : "(none)";
         const res = await createAdapter(provider).complete({
-          model: provider.model,
+          model: routed.model,
           system:
             "You turn a user's request into an automation ('routine'). Reply with ONLY a JSON object: " +
             '{"name": short title, "prompt": the full instruction the agent should run each time (imperative, self-contained), ' +
@@ -252,11 +255,26 @@ export function registerRoutinesIPC(): void {
             "Use only ids and action ids present in the connected catalog below; omit optional fields when not needed. No secrets, usernames, tokens, or credentials are included or requested. No markdown, no prose — only the JSON.\nConnected catalog:\n" +
             connectorContext,
           messages: [{ role: "user", content: description }],
-          max_tokens: 500,
+          // A thinking model spends part of its budget before writing a single
+          // character of the answer; 500 left nothing, so the draft came back
+          // empty and the form fell back to pasting the raw text.
+          max_tokens: 4_000,
         });
-        const raw = typeof res.content === "string" ? res.content : "";
-        const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
-        const parsed = JSON.parse(json) as Partial<RoutineDraft>;
+        const raw = (typeof res.content === "string" ? res.content : "").trim();
+        if (!raw)
+          return {
+            ok: false,
+            error: `${provider.name || "The model"} returned an empty response.`,
+          };
+        const { value, truncated } = extractJson(raw);
+        if (!value)
+          return {
+            ok: false,
+            error: truncated
+              ? `${provider.name || "The model"} ran out of output budget before finishing the draft.`
+              : `Couldn't read a routine from the reply. First 200 chars: ${raw.slice(0, 200)}`,
+          };
+        const parsed = value as Partial<RoutineDraft>;
         return { ok: true, draft: hydrateDraft(parsed, description, space, available) };
       } catch (err) {
         return {

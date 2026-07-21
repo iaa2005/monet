@@ -138,6 +138,35 @@ if (anyProvider) {
 }
 setModelRouting({ backgroundProviderId: "", backgroundModel: "" });
 
+// ── Reasoning-model empty-content fallback ──────────────────────────────────
+// deepseek-reasoner puts its chain of thought in reasoning_content and the
+// answer in content; when the budget runs out mid-thought content is EMPTY.
+// The client must fall back to the thinking rather than return "".
+{
+  const { OpenAICompatClient } = await import("../src/main/llm/openai-compat-client.js");
+  const shapes = [
+    { name: "content present", msg: { content: '{"ok":1}', reasoning_content: "thinking" }, want: '{"ok":1}' },
+    { name: "content empty, reasoning_content holds it", msg: { content: "", reasoning_content: '{"ok":2}' }, want: '{"ok":2}' },
+    { name: "content null, OpenRouter-style reasoning", msg: { content: null, reasoning: '{"ok":3}' }, want: '{"ok":3}' },
+    { name: "both empty", msg: { content: "", reasoning_content: "" }, want: "" },
+  ];
+  const realFetch = globalThis.fetch;
+  for (const shape of shapes) {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ choices: [{ message: shape.msg }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+    const client = new OpenAICompatClient({
+      id: "p", name: "stub", kind: "openai", baseURL: "http://localhost:1/v1",
+      apiKey: "", model: "m", maxTokens: 100, isActive: true,
+    } as never);
+    const res = await client.complete({ model: "m", system: "", messages: [], max_tokens: 10 } as never);
+    check(`reasoning fallback: ${shape.name}`, res.content === shape.want, JSON.stringify(res.content).slice(0, 40));
+  }
+  globalThis.fetch = realFetch;
+}
+
 // ── Plan parsing / truncation salvage ───────────────────────────────────────
 type Parsed = { value: unknown; truncated: boolean };
 const P = (t: string): Parsed => _extractJson(t) as Parsed;
