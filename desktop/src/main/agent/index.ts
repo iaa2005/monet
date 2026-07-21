@@ -928,6 +928,8 @@ async function runAgentScoped(
         maxTokens: provider.maxTokens || 16000,
         signal,
         terseHint: cave ? CAVEMAN_COMPACT_HINT : undefined,
+        // Lets compaction stop after the lossless pass when that already fits.
+        threshold: cave ? Math.floor(threshold * 0.6) : threshold,
       });
       if (compacted !== messages) {
         messages.length = 0;

@@ -11,6 +11,7 @@
 
 import { getCompactPrompt, formatCompactSummary } from '@vendor/services/compact/prompt.js'
 import type { LLMAdapter, LLMMessage } from '../llm/adapter.js'
+import { microCompact } from './microcompact.js'
 
 // Fallback only for providers that expose neither an input nor a context limit.
 // A configured MONET_COMPACT_TOKENS value remains an explicit override.
@@ -120,9 +121,38 @@ export async function compactMessages(opts: {
   signal?: AbortSignal
   /** Extra instruction appended to the summary request (caveman mode). */
   terseHint?: string
+  /** Token budget to aim for; enables the lossless pass. */
+  threshold?: number
+  /** User turns to keep verbatim after the summary. 0 = old behaviour. */
+  keepRecentTurns?: number
 }): Promise<LLMMessage[]> {
-  const { messages, adapter, model, maxTokens, signal, terseHint } = opts
+  const {
+    messages,
+    adapter,
+    model,
+    maxTokens,
+    signal,
+    terseHint,
+    threshold,
+    keepRecentTurns = 2,
+  } = opts
   if (messages.length < 4) return messages
+
+  // Pass 1 — lossless. Clearing replayable tool output is often enough on its
+  // own, and it costs no model call and loses nothing that was SAID.
+  const micro = microCompact(messages)
+  if (micro.cleared > 0 && threshold && estimateTokens(micro.messages) <= threshold) {
+    return micro.messages
+  }
+  const working = micro.cleared > 0 ? micro.messages : messages
+
+  // Pass 2 — summarise the old part, keep the recent turns verbatim. Replacing
+  // the WHOLE history with prose is what makes long sessions lose detail: the
+  // work in progress right now is exactly what must stay exact.
+  const splitAt = keepRecentTurns > 0 ? tailStart(working, keepRecentTurns) : working.length
+  const toSummarise = working.slice(0, splitAt)
+  const tail = working.slice(splitAt)
+  if (toSummarise.length < 2) return working
 
   try {
     const compactPrompt = terseHint
@@ -134,7 +164,7 @@ export async function compactMessages(opts: {
         system:
           'You summarize the conversation so it can continue within the context window. Output text only; do not call tools.',
         messages: [
-          ...messages,
+          ...toSummarise,
           { role: 'user', content: compactPrompt },
         ],
         max_tokens: Math.min(maxTokens || SUMMARY_MAX_TOKENS, SUMMARY_MAX_TOKENS),
@@ -143,17 +173,40 @@ export async function compactMessages(opts: {
       signal,
     )
     const summary = formatCompactSummary(extractText(resp)).trim()
-    if (!summary) return messages
-    return [
-      {
-        role: 'user',
-        content:
-          '[The earlier conversation was automatically summarized to stay within the ' +
-          'context window. Continue from this summary.]\n\n' +
-          summary,
-      },
-    ]
+    if (!summary) return working
+    const header: LLMMessage = {
+      role: 'user',
+      content:
+        (tail.length > 0
+          ? '[The earlier part of this conversation was summarized to stay within the ' +
+            'context window. The most recent exchanges follow it verbatim.]\n\n'
+          : '[The earlier conversation was automatically summarized to stay within the ' +
+            'context window. Continue from this summary.]\n\n') + summary,
+    }
+    return [header, ...tail]
   } catch {
-    return messages
+    // Even when summarising fails, the lossless pass is still a win.
+    return working
   }
+}
+
+/**
+ * Index of the message that starts the last `turns` user turns — the verbatim
+ * tail. Splitting on a user message keeps assistant/tool pairs together; a cut
+ * between a tool_use and its tool_result would be an invalid transcript.
+ */
+function tailStart(messages: LLMMessage[], turns: number): number {
+  let seen = 0
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') {
+      // Only count REAL user turns: a tool_result is delivered as a user
+      // message, and counting those would cut the tail mid-tool-call.
+      const c = messages[i].content
+      const isToolResult =
+        Array.isArray(c) && c.some(b => b.type === 'tool_result')
+      if (isToolResult) continue
+      if (++seen >= turns) return i
+    }
+  }
+  return 0
 }

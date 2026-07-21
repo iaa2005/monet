@@ -14,6 +14,7 @@ import {
 import { initVendorRuntime } from '../src/main/agent/vendor-context.js'
 import { getWorkspacePath } from '../src/main/ipc/workspace.js'
 import { shouldCompact, compactMessages } from '../src/main/agent/compaction.js'
+import { microCompact } from '../src/main/agent/microcompact.js'
 import {
   callMcpTool,
   ensureConnected,
@@ -379,18 +380,110 @@ async function main() {
       }
     },
   }
+  // Mark the last exchanges so we can prove they survive verbatim.
+  const tailMarked = [...bigHistory]
+  tailMarked[18] = { role: 'user', content: 'KEEP-ME-VERBATIM last request' }
+  tailMarked[19] = { role: 'assistant', content: 'KEEP-ME-TOO the reply' }
   const compacted = await compactMessages({
-    messages: bigHistory,
+    messages: tailMarked,
     adapter: stubAdapter,
     model: MODEL,
     maxTokens: 8_000,
   })
+  const asText = (m: LLMMessage) =>
+    typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
   check(
-    'compaction returns one summary message',
-    compacted.length === 1 &&
-      typeof compacted[0].content === 'string' &&
+    'compaction summarises the old part',
+    typeof compacted[0].content === 'string' &&
       compacted[0].content.includes('Condensed summary of the prior turns'),
     `len=${compacted.length}`,
+  )
+  check(
+    'compaction keeps the recent turns VERBATIM',
+    compacted.some(m => asText(m).includes('KEEP-ME-VERBATIM last request')) &&
+      compacted.some(m => asText(m).includes('KEEP-ME-TOO the reply')),
+  )
+  check('compaction still shrinks the history', compacted.length < tailMarked.length)
+
+  // 8b. Micro-compaction — lossless pass over replayable tool output.
+  const withTools: LLMMessage[] = [
+    { role: 'user', content: 'read some files' },
+    {
+      role: 'assistant',
+      content: [
+        { type: 'tool_use', id: 'tu_read', name: 'Read', input: { file_path: 'a.ts' } },
+        { type: 'tool_use', id: 'tu_ask', name: 'AskUserQuestion', input: {} },
+        { type: 'tool_use', id: 'tu_err', name: 'Bash', input: { command: 'x' } },
+      ],
+    },
+    {
+      role: 'user',
+      content: [
+        { type: 'tool_result', tool_use_id: 'tu_read', content: 'F'.repeat(5_000) },
+        { type: 'tool_result', tool_use_id: 'tu_ask', content: 'A'.repeat(5_000) },
+        { type: 'tool_result', tool_use_id: 'tu_err', content: 'E'.repeat(5_000), is_error: true },
+      ],
+    },
+    ...Array.from({ length: 8 }, (_, i): LLMMessage => ({
+      role: i % 2 === 0 ? 'assistant' : 'user',
+      content: `filler ${i}`,
+    })),
+  ]
+  const micro = microCompact(withTools)
+  const microText = micro.messages.map(asText).join('\n')
+  check('micro: clears a replayable tool result', !microText.includes('F'.repeat(5_000)) && micro.cleared === 1, `cleared=${micro.cleared}`)
+  check('micro: keeps a NON-replayable tool result', microText.includes('A'.repeat(5_000)))
+  check('micro: keeps an error result', microText.includes('E'.repeat(5_000)))
+  check('micro: reports the saving', micro.charsSaved > 4_000, `${micro.charsSaved} chars`)
+  check(
+    'micro: leaves what was SAID untouched',
+    microText.includes('read some files') && microText.includes('filler 7'),
+  )
+
+  // Recent tool results are protected even when replayable.
+  const recentOnly: LLMMessage[] = [
+    { role: 'user', content: 'go' },
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'tu_r', name: 'Read', input: {} }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu_r', content: 'R'.repeat(5_000) }] },
+  ]
+  check('micro: recent results are protected', microCompact(recentOnly).cleared === 0)
+
+  // When the lossless pass alone gets under the threshold, no summary is made.
+  let summaryCalls = 0
+  const countingAdapter: LLMAdapter = {
+    ...stubAdapter,
+    async complete() {
+      summaryCalls++
+      return { role: 'assistant', content: '<summary>should not happen</summary>' }
+    },
+  }
+  // ~10k chars survive the clear (the non-replayable + error results), so a
+  // 4k-token budget fits and a 100-token one cannot.
+  const fitsAfterMicro = await compactMessages({
+    messages: withTools,
+    adapter: countingAdapter,
+    model: MODEL,
+    maxTokens: 8_000,
+    threshold: 4_000,
+  })
+  check(
+    'compaction skips the model call when clearing alone fits',
+    summaryCalls === 0 && fitsAfterMicro.length === withTools.length,
+    `calls=${summaryCalls}`,
+  )
+
+  summaryCalls = 0
+  await compactMessages({
+    messages: withTools,
+    adapter: countingAdapter,
+    model: MODEL,
+    maxTokens: 8_000,
+    threshold: 100,
+  })
+  check(
+    'compaction still summarises when clearing is not enough',
+    summaryCalls === 1,
+    `calls=${summaryCalls}`,
   )
 
   // 9. MCP manager — loads the SDK, no-crash with no servers configured,
