@@ -15,6 +15,7 @@ import {
   computeNextCronRun,
 } from "@vendor/utils/cron.js";
 import { runAgent } from "../agent/index.js";
+import { resolveModel } from "../provider/routing.js";
 import { getProviderManager } from "../provider/manager.js";
 import { getSessionStore } from "../session-store.js";
 import {
@@ -69,7 +70,9 @@ export async function executeRoutine(
   const runId = randomUUID();
   const store = getSessionStore();
 
-  const provider = getProviderManager().getActive();
+  // A routine may pin its own provider/model (a nightly digest on a cheap or
+  // local model, regardless of what the user is chatting with).
+  const provider = resolveModel(routine.providerId, routine.model)?.provider;
   if (!provider) {
     const run: RoutineRun = {
       id: runId,
@@ -147,6 +150,8 @@ export async function executeRoutine(
       },
       {
         space: routine.space,
+        providerId: routine.providerId,
+        modelOverride: routine.model,
         permissionMode: "bypassPermissions",
         // This is the one place with no user behind it — tools that need a
         // person (CreateRoutine) refuse on this, not on the permission mode.

@@ -49,6 +49,11 @@ export interface Routine {
    * grant, ask-level actions are denied when nobody is watching; destructive
    * actions are never grantable at all (the engine enforces both). */
   grants?: string[];
+  /** Pin this routine to a provider+model. Empty = whatever is active when it
+   * fires — which is what most routines want, but a nightly digest may want a
+   * cheap or local model regardless of what the user is chatting with. */
+  providerId?: string;
+  model?: string;
   trigger: RoutineTrigger;
   condition?: RoutineCondition;
   output: { kind: OutputKind; connector?: string };
@@ -109,6 +114,18 @@ function db(): ReturnType<typeof getSessionDb> {
     } catch {
       /* column already exists */
     }
+    // Per-routine model pin. Separate try blocks: the second ALTER must still
+    // run on a DB that already has the first column.
+    try {
+      d.exec(`ALTER TABLE routines ADD COLUMN provider_id TEXT`);
+    } catch {
+      /* column already exists */
+    }
+    try {
+      d.exec(`ALTER TABLE routines ADD COLUMN model TEXT`);
+    } catch {
+      /* column already exists */
+    }
     // Backfill chats that predate sessions.routine_id, from the run history —
     // done here because routine_runs is guaranteed to exist by this point.
     // Chats whose routine was already deleted are unrecoverable: their runs went
@@ -137,6 +154,8 @@ interface Row {
   space: string;
   connectors: string;
   grants: string | null;
+  provider_id: string | null;
+  model: string | null;
   trigger: string;
   condition: string | null;
   output: string;
@@ -156,6 +175,8 @@ function rowToRoutine(r: Row): Routine {
     space: (r.space as Routine["space"]) || "code",
     connectors: JSON.parse(r.connectors || "[]") as string[],
     grants: r.grants ? (JSON.parse(r.grants) as string[]) : undefined,
+    providerId: r.provider_id ?? undefined,
+    model: r.model ?? undefined,
     trigger: JSON.parse(r.trigger) as RoutineTrigger,
     condition: r.condition ? (JSON.parse(r.condition) as RoutineCondition) : undefined,
     output: JSON.parse(r.output) as Routine["output"],
@@ -193,8 +214,8 @@ export function createRoutine(input: RoutineInput): Routine {
   const r: Routine = { ...input, id: randomUUID(), createdAt: now, updatedAt: now };
   db()
     .prepare(
-      `INSERT INTO routines (id, name, prompt, space, connectors, grants, trigger, condition, output, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO routines (id, name, prompt, space, connectors, grants, provider_id, model, trigger, condition, output, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       r.id,
@@ -203,6 +224,8 @@ export function createRoutine(input: RoutineInput): Routine {
       r.space,
       JSON.stringify(r.connectors),
       r.grants?.length ? JSON.stringify(r.grants) : null,
+      r.providerId || null,
+      r.model || null,
       JSON.stringify(r.trigger),
       r.condition ? JSON.stringify(r.condition) : null,
       JSON.stringify(r.output),
@@ -219,7 +242,7 @@ export function updateRoutine(id: string, patch: Partial<Routine>): Routine | nu
   const next: Routine = { ...cur, ...patch, id, updatedAt: new Date().toISOString() };
   db()
     .prepare(
-      `UPDATE routines SET name=?, prompt=?, space=?, connectors=?, grants=?, trigger=?, condition=?, output=?, enabled=?, updated_at=?, last_run=?, next_run=?, last_status=? WHERE id=?`,
+      `UPDATE routines SET name=?, prompt=?, space=?, connectors=?, grants=?, provider_id=?, model=?, trigger=?, condition=?, output=?, enabled=?, updated_at=?, last_run=?, next_run=?, last_status=? WHERE id=?`,
     )
     .run(
       next.name,
@@ -227,6 +250,8 @@ export function updateRoutine(id: string, patch: Partial<Routine>): Routine | nu
       next.space,
       JSON.stringify(next.connectors),
       next.grants?.length ? JSON.stringify(next.grants) : null,
+      next.providerId || null,
+      next.model || null,
       JSON.stringify(next.trigger),
       next.condition ? JSON.stringify(next.condition) : null,
       JSON.stringify(next.output),

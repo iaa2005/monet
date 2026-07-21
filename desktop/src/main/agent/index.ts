@@ -54,6 +54,7 @@ import {
 } from "../transcript-store.js";
 import type { AskUserFn } from "../ipc/ask-user.js";
 import type { AskPlanApprovalFn } from "../ipc/plan.js";
+import { resolveModel } from "../provider/routing.js";
 
 /** Prepend finished background-agent reports to the user turn as context. */
 function mergeBackgroundResults(
@@ -294,6 +295,9 @@ export interface AgentRunOptions {
   askUser?: AskUserFn;
   /** Round-trips a plan for approval (ExitPlanMode tool). */
   askPlanApproval?: AskPlanApprovalFn;
+  /** Pin this run to a provider+model (a routine that chose its own). */
+  providerId?: string;
+  modelOverride?: string;
   /** Workspace ("home" | "code") — selects the advertised toolset. */
   space?: string;
   /**
@@ -813,7 +817,9 @@ async function runAgentScoped(
   onEvent: (event: LLMEvent) => void,
   options: AgentRunOptions = {},
 ): Promise<void> {
-  const provider = getProviderManager().getActive();
+  // A routine may pin its own model; everything else uses the active provider.
+  const resolved = resolveModel(options.providerId, options.modelOverride);
+  const provider = resolved?.provider;
   if (!provider) {
     onEvent({
       type: "error",
@@ -822,6 +828,10 @@ async function runAgentScoped(
     return;
   }
 
+  // The pinned model, or the provider's own default. Everything downstream —
+  // the system prompt, each request, tool execution — must use THIS, not
+  // provider.model, or a routine's pin would be silently ignored.
+  const runModel = resolved.model;
   const adapter = createAdapter(provider);
   const {
     maxTurns = 40,
@@ -842,7 +852,7 @@ async function runAgentScoped(
   try {
     [tools, basePrompt] = await Promise.all([
       getVendorApiTools(space, sessionId, connectors),
-      buildSystemPrompt(provider.model, space, sessionId),
+      buildSystemPrompt(runModel, space, sessionId),
     ]);
   } catch (err) {
     onEvent({
@@ -924,7 +934,7 @@ async function runAgentScoped(
       const compacted = await compactMessages({
         messages,
         adapter,
-        model: provider.model,
+        model: runModel,
         maxTokens: provider.maxTokens || 16000,
         signal,
         terseHint: cave ? CAVEMAN_COMPACT_HINT : undefined,
@@ -972,7 +982,7 @@ async function runAgentScoped(
     try {
       await adapter.stream(
         {
-          model: provider.model,
+          model: runModel,
           system: systemPrompt,
           messages: turnMessages,
           tools,
@@ -1088,7 +1098,7 @@ async function runAgentScoped(
         toolUseID: tc.id,
         name: tc.name,
         input: tc.input,
-        model: provider.model,
+        model: runModel,
         permissionMode,
         requestPermission,
         askUser,
