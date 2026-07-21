@@ -7,6 +7,7 @@
 
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
+import { resolveBackgroundModel } from "../provider/routing.js";
 import {
   getMemoryConfig,
   isValidMemoryId,
@@ -151,11 +152,12 @@ function parseBullets(raw: string): string[] {
  * memory files, with the whole picture in view.
  */
 export async function runLogPass(excerpt: string): Promise<number> {
-  const provider = getProviderManager().getActive();
-  if (!provider) return 0;
-  const adapter = createAdapter(provider);
+  // Background work: routed to the cheap/local model when one is configured.
+  const routed = resolveBackgroundModel();
+  if (!routed) return 0;
+  const adapter = createAdapter(routed.provider);
   const res = await adapter.complete({
-    model: provider.model,
+    model: routed.model,
     system: LOG_SYSTEM,
     messages: [{ role: "user", content: `CONVERSATION:\n${excerpt.slice(0, 8_000)}` }],
     max_tokens: 800,

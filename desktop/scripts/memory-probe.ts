@@ -103,6 +103,41 @@ check("a negative interval is not treated as a valid delay", getMemoryConfig().e
 setMemoryConfig({ extractEveryMinutes: 3 }); // restore for the gate checks
 check("a normal interval still round-trips", getMemoryConfig().extractEveryMinutes === 3);
 
+// ── Model routing ───────────────────────────────────────────────────────────
+const { getModelRouting, setModelRouting, resolveBackgroundModel } = await import(
+  "../src/main/provider/routing.js"
+);
+check("routing defaults to empty (use the active provider)", getModelRouting().backgroundProviderId === "");
+const baseline = resolveBackgroundModel();
+check("resolves to the active provider by default", !!baseline, baseline?.provider.name ?? "none");
+
+setModelRouting({ backgroundProviderId: "does-not-exist", backgroundModel: "ghost" });
+const missing = resolveBackgroundModel();
+check(
+  "a deleted background provider falls back instead of breaking",
+  !!missing && missing.provider.id !== "does-not-exist",
+  missing?.provider.name ?? "none",
+);
+
+// Point it at a real provider and confirm both halves are honoured.
+const { getProviderManager } = await import("../src/main/provider/manager.js");
+const anyProvider = getProviderManager().list()[0];
+if (anyProvider) {
+  setModelRouting({ backgroundProviderId: anyProvider.id, backgroundModel: "tiny-model" });
+  const routed = resolveBackgroundModel();
+  check(
+    "routes to the configured provider and model",
+    routed?.provider.id === anyProvider.id && routed?.model === "tiny-model",
+    `${routed?.provider.name}/${routed?.model}`,
+  );
+  setModelRouting({ backgroundProviderId: anyProvider.id, backgroundModel: "" });
+  check(
+    "an empty model falls back to that provider's own default",
+    resolveBackgroundModel()?.model === anyProvider.model,
+  );
+}
+setModelRouting({ backgroundProviderId: "", backgroundModel: "" });
+
 // ── Plan parsing / truncation salvage ───────────────────────────────────────
 type Parsed = { value: unknown; truncated: boolean };
 const P = (t: string): Parsed => _extractJson(t) as Parsed;

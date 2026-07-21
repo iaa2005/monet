@@ -12,6 +12,7 @@ import { getDataDir } from "../data-dir.js";
 import { getSessionStore } from "../session-store.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
+import { resolveBackgroundModel } from "../provider/routing.js";
 import { buildMemoryPrompt } from "../memory/store.js";
 
 export interface ReflectDigest {
@@ -45,8 +46,9 @@ give context; discernment = how they verify outputs; diligence = rigour/
 traceability. Ground everything in the actual titles; never invent specifics.`;
 
 async function generateDigest(days: number): Promise<ReflectDigest> {
-  const provider = getProviderManager().getActive();
-  if (!provider) throw new Error("No active provider configured.");
+  const routed = resolveBackgroundModel();
+  if (!routed) throw new Error("No active provider configured.");
+  const provider = routed.provider;
   const since = Date.now() - days * 86_400_000;
   const sessions = getSessionStore()
     .list(300, 0)
@@ -73,7 +75,7 @@ async function generateDigest(days: number): Promise<ReflectDigest> {
   let res;
   try {
     res = await adapter.complete({
-      model: provider.model,
+      model: routed.model,
       system: SYSTEM,
       messages: [
         {

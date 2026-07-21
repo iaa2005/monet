@@ -121,6 +121,22 @@ export function resolveProvider(p: LLMProvider): LLMProvider {
 /** Preset providers with defaults (apiKey left empty for user to fill). */
 export const PRESET_PROVIDERS: LLMProviderInput[] = [
   {
+    // Ollama, LM Studio and llama.cpp's own server all expose the
+    // OpenAI-compatible API this app already speaks, so a local model needs no
+    // new transport and no key — the Authorization header is only sent when an
+    // API key is set. Default port is Ollama's; LM Studio uses 1234 and
+    // llama-server 8080.
+    name: 'Local (Ollama / LM Studio / llama.cpp)',
+    kind: 'openai',
+    baseURL: 'http://localhost:11434/v1',
+    apiKey: '',
+    model: 'qwen2.5:7b',
+    isActive: false,
+    maxTokens: 4096,
+    contextLimit: 32_768,
+    models: [],
+  },
+  {
     name: 'Anthropic',
     kind: 'anthropic',
     baseURL: 'https://api.anthropic.com',

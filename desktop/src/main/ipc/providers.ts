@@ -6,6 +6,11 @@ import { ipcMain } from 'electron'
 import { getProviderManager } from '../provider/manager.js'
 import type { LLMProviderInput } from '../provider/types.js'
 import { fetchORModels, fetchORBalance } from '../llm/openrouter-api.js'
+import {
+  getModelRouting,
+  setModelRouting,
+  type ModelRouting,
+} from '../provider/routing.js'
 
 export function registerProvidersIPC(): void {
   const pm = getProviderManager()
@@ -48,4 +53,11 @@ export function registerProvidersIPC(): void {
       }
     },
   )
+
+  // Model routing — which provider/model does the cheap background work
+  // (memory log pass, nightly consolidation, Reflect). Empty = the active one.
+  ipcMain.handle("routing:get", () => getModelRouting());
+  ipcMain.handle("routing:set", (_e, patch: Partial<ModelRouting>) =>
+    setModelRouting(patch),
+  );
 }

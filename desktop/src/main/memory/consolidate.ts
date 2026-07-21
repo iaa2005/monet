@@ -18,6 +18,7 @@ import { join } from "path";
 import { getDataDir } from "../data-dir.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
+import { resolveBackgroundModel } from "../provider/routing.js";
 import { getSessionStore } from "../session-store.js";
 import { pendingBulletCount, readLogsSince } from "./daily-log.js";
 import {
@@ -271,8 +272,9 @@ export async function runConsolidation(
       return { ok: true, ran: false, reason: "not enough new signal" };
   }
 
-  const provider = getProviderManager().getActive();
-  if (!provider) return { ok: false, ran: false, reason: "no active provider" };
+  const routed = resolveBackgroundModel();
+  if (!routed) return { ok: false, ran: false, reason: "no active provider" };
+  const provider = routed.provider;
 
   running = true;
   const startedAt = Date.now();
@@ -287,7 +289,7 @@ export async function runConsolidation(
 
     const adapter = createAdapter(provider);
     const res = await adapter.complete({
-      model: provider.model,
+      model: routed.model,
       system: SYSTEM,
       messages: [{ role: "user", content }],
       max_tokens: 16_000,
