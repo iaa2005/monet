@@ -115,7 +115,10 @@ export const AgentTaskTool = buildTool({
       const sessionId =
         (context as { sessionId?: string }).sessionId ?? "default";
       const controller = new AbortController();
-      registerBgAgent(sessionId, controller);
+      const memberName = registerBgAgent(sessionId, controller, {
+        agentType: def.type,
+        description,
+      });
       emit?.({ kind: "start", agentType: def.type, description, background: true });
       void runSubAgent({
         prompt,
@@ -124,6 +127,8 @@ export const AgentTaskTool = buildTool({
         signal: controller.signal,
         emit,
         cwd,
+        teamSessionId: sessionId,
+        memberName,
       })
         .then((report) => {
           // Queue BEFORE notifying the UI so an idle auto-continue that fires

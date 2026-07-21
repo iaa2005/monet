@@ -53,6 +53,10 @@ type SubAgentOptions = {
   emit?: (update: SubAgentUpdate) => void;
   /** The parent's resolved workspace, passed explicitly to the child run. */
   cwd: string;
+  /** Team addressing: the PARENT chat's id and this agent's member name, so
+   * messages sent to it can be delivered between turns. */
+  teamSessionId?: string;
+  memberName?: string;
 };
 
 export function runSubAgent(opts: SubAgentOptions): Promise<string> {
@@ -112,6 +116,19 @@ async function runSubAgentWithCwd(opts: SubAgentOptions): Promise<string> {
 
   for (let turn = 0; turn < SUBAGENT_MAX_TURNS; turn++) {
     if (signal?.aborted) return finalText || "Sub-agent aborted.";
+
+    // Messages addressed to this agent while it was working. Delivered at a
+    // turn boundary so a mid-turn arrival can't break the tool_use/tool_result
+    // pairing the API requires.
+    if (opts.teamSessionId && opts.memberName) {
+      const { drainInbox } = await import("./bg-agents.js");
+      const inbox = drainInbox(opts.teamSessionId, opts.memberName);
+      if (inbox.length > 0)
+        messages.push({
+          role: "user",
+          content: `<system-reminder>\nMessages for you:\n\n${inbox.join("\n\n")}\n</system-reminder>`,
+        });
+    }
 
     let assistantText = "";
     const toolCalls: {

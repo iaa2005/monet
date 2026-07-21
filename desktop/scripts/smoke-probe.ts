@@ -366,6 +366,47 @@ async function main() {
     )
   }
 
+  // 4f. Team — background agents are addressable: named, listable, messageable.
+  {
+    const {
+      registerBgAgent,
+      unregisterBgAgent,
+      listTeam,
+      sendToMember,
+      drainInbox,
+      stopMember,
+    } = await import('../src/main/agent/bg-agents.js')
+    const sid = 'smoke-team'
+    const c1 = new AbortController()
+    const c2 = new AbortController()
+    const n1 = registerBgAgent(sid, c1, { agentType: 'Explore', description: 'find X' })
+    const n2 = registerBgAgent(sid, c2, { agentType: 'Explore', description: 'find Y' })
+    check('team: names are unique per session', n1 === 'explore' && n2 === 'explore-2', `${n1}, ${n2}`)
+    check('team: both are listed', listTeam(sid).length === 2)
+
+    check('team: message to a known name is delivered', sendToMember(sid, n1, 'main', 'skip vendor/'))
+    check('team: message to an unknown name fails', !sendToMember(sid, 'nobody', 'main', 'hi'))
+    const inbox = drainInbox(sid, n1)
+    check('team: recipient drains its inbox', inbox.length === 1 && inbox[0].includes('skip vendor/'), inbox[0]?.slice(0, 40))
+    check('team: draining empties it', drainInbox(sid, n1).length === 0)
+    check('team: the other agent got nothing', drainInbox(sid, n2).length === 0)
+
+    check('team: stop removes a member and aborts it', stopMember(sid, n2) && c2.signal.aborted && listTeam(sid).length === 1)
+    check('team: stopping an unknown name fails', !stopMember(sid, 'nobody'))
+
+    // Finishing deregisters, so a finished agent is no longer addressable.
+    unregisterBgAgent(sid, c1)
+    check('team: a finished agent leaves the roster', listTeam(sid).length === 0)
+    check('team: messaging a finished agent fails', !sendToMember(sid, n1, 'main', 'late'))
+
+    check('SendMessage tool present', tools.some(t => t.name === 'SendMessage'))
+    check('TeamList tool present', tools.some(t => t.name === 'TeamList'))
+    const emptyList = await run('TeamList', {})
+    check('TeamList reports an empty team', !emptyList.isError && /No background agents/.test(emptyList.content))
+    const badSend = await run('SendMessage', { to: 'ghost', message: 'hi' })
+    check('SendMessage to a missing agent errors', badSend.isError && /No running agent/.test(badSend.content))
+  }
+
   // 5. TodoWrite
   const todo = await run('TodoWrite', {
     todos: [
