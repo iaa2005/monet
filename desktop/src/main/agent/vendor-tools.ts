@@ -960,6 +960,25 @@ export async function executeVendorTool(opts: {
     if (signal?.aborted) {
       return { content: "Tool execution aborted", isError: true };
     }
+    // A non-zero exit makes BashTool throw a ShellError whose .message is only
+    // "Shell command failed" — the real output lives in .stdout/.stderr and the
+    // exit code in .code. Taking just .message swallowed all of it, so a red
+    // pytest run, a `grep` with no match, or a `diff` with differences (all
+    // legitimate exit-1 commands) came back as a blank failure with nothing to
+    // act on. Surface the actual output, the way the CLI does.
+    const e = err as { name?: string; stdout?: unknown; stderr?: unknown; code?: unknown };
+    if (e?.name === "ShellError") {
+      const body = [e.stderr, e.stdout]
+        .map((s) => (typeof s === "string" ? s.trim() : ""))
+        .find((s) => s.length > 0);
+      const code = typeof e.code === "number" ? e.code : "?";
+      return {
+        content: body
+          ? `${body}\n\n(Exit code ${code})`
+          : `Command failed with exit code ${code} (no output captured).`,
+        isError: true,
+      };
+    }
     const message = err instanceof Error ? err.message : String(err);
     return { content: `Error: ${message}`, isError: true };
   }

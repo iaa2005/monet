@@ -438,6 +438,26 @@ async function main() {
     check('reports: wait with nothing running returns immediately', (await run('TeamList', { wait: true }, undefined, 'smoke-idle')).content.length > 0)
   }
 
+  // 4f. Non-zero exit must surface output, not swallow it. A red pytest, a
+  // grep with no match, a diff with differences all exit non-zero legitimately
+  // — BashTool throws ShellError and the executor must show its output.
+  {
+    const failing = await run('Bash', {
+      command: 'echo out; exit 3',
+      description: 'non-zero exit',
+    })
+    // The exit code MUST reach the model — before, a non-zero exit came back as
+    // a bare 'Shell command failed' with no code and no output, which is what
+    // left the model unable to tell a red test from a broken tool. (The command
+    // output itself is best-effort: it depends on the shell layer having read
+    // it back, which is not guaranteed in this headless harness.)
+    check(
+      'Bash: a non-zero exit reports the exit code, not a bare failure',
+      failing.isError && /exit code 3/i.test(failing.content) && !/^Error: Shell command failed$/.test(failing.content.trim()),
+      failing.content.slice(0, 80).replace(/\n/g, ' | '),
+    )
+  }
+
   // 5. TodoWrite
   const todo = await run('TodoWrite', {
     todos: [
