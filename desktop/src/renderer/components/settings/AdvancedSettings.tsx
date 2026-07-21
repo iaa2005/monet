@@ -42,7 +42,9 @@ export function AdvancedSettings(): JSX.Element {
   const [promptsDir, setPromptsDir] = useState<string>("");
   const [migrating, setMigrating] = useState(false);
   const [migrated, setMigrated] = useState<string | null>(null);
-  const [providers, setProviders] = useState<{ id: string; name: string; model: string }[]>([]);
+  const [providers, setProviders] = useState<
+    { id: string; name: string; model: string; models: { name: string; label?: string }[] }[]
+  >([]);
   const [bgProvider, setBgProvider] = useState("");
   const [bgModel, setBgModel] = useState("");
 
@@ -68,7 +70,19 @@ export function AdvancedSettings(): JSX.Element {
       .catch(() => {});
     void api()
       ?.providers.list()
-      .then((list) => setProviders(list.map((p) => ({ id: p.id, name: p.name, model: p.model }))))
+      .then((list) =>
+        setProviders(
+          list.map((p) => ({
+            id: p.id,
+            name: p.name,
+            model: p.model,
+            models: (p.models ?? []).map((m: { name: string; label?: string }) => ({
+              name: m.name,
+              label: m.label,
+            })),
+          })),
+        ),
+      )
       .catch(() => {});
     void api()
       ?.providers.routingGet()
@@ -174,16 +188,22 @@ export function AdvancedSettings(): JSX.Element {
             ))}
           </select>
           {bgProvider && (
-            <input
+            <select
               value={bgModel}
-              onChange={(e) => setBgModel(e.target.value)}
-              onBlur={() => saveRouting(bgProvider, bgModel)}
-              placeholder={
-                providers.find((p) => p.id === bgProvider)?.model ??
-                "that provider's default model"
-              }
+              onChange={(e) => saveRouting(bgProvider, e.target.value)}
               className="min-w-[16rem] flex-1 rounded-lg border border-border bg-background px-2 py-1 text-sm outline-none"
-            />
+            >
+              <option value="">
+                {providers.find((p) => p.id === bgProvider)?.model
+                  ? `Default (${providers.find((p) => p.id === bgProvider)?.model})`
+                  : "That provider's default"}
+              </option>
+              {(providers.find((p) => p.id === bgProvider)?.models ?? []).map((m) => (
+                <option key={m.name} value={m.name}>
+                  {m.label || m.name}
+                </option>
+              ))}
+            </select>
           )}
         </div>
       </section>

@@ -422,13 +422,23 @@ function RoutineEditor({
   >([]);
   const [presets, setPresets] = useState<UiConnectorService[]>([]);
   const [providers, setProviders] = useState<
-    { id: string; name: string; model: string }[]
+    { id: string; name: string; model: string; models: { name: string; label?: string }[] }[]
   >([]);
   useEffect(() => {
     void api()
       ?.providers.list()
       .then((list) =>
-        setProviders(list.map((p) => ({ id: p.id, name: p.name, model: p.model }))),
+        setProviders(
+          list.map((p) => ({
+            id: p.id,
+            name: p.name,
+            model: p.model,
+            models: (p.models ?? []).map((m: { name: string; label?: string }) => ({
+              name: m.name,
+              label: m.label,
+            })),
+          })),
+        ),
       )
       .catch(() => {});
   }, []);
@@ -610,15 +620,24 @@ function RoutineEditor({
                 ))}
               </select>
               {d.providerId && (
-                <input
+                <select
                   value={d.model}
                   onChange={(e) => set({ model: e.target.value })}
-                  placeholder={
-                    providers.find((p) => p.id === d.providerId)?.model ??
-                    "that provider's default"
-                  }
                   className="min-w-[12rem] flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none"
-                />
+                >
+                  <option value="">
+                    {providers.find((p) => p.id === d.providerId)?.model
+                      ? `Default (${providers.find((p) => p.id === d.providerId)?.model})`
+                      : "That provider's default"}
+                  </option>
+                  {(providers.find((p) => p.id === d.providerId)?.models ?? []).map(
+                    (m) => (
+                      <option key={m.name} value={m.name}>
+                        {m.label || m.name}
+                      </option>
+                    ),
+                  )}
+                </select>
               )}
             </div>
           </div>
