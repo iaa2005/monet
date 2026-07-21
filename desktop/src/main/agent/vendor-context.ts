@@ -24,6 +24,7 @@ import {
 import { getEmptyToolPermissionContext } from '@vendor/Tool.js'
 import type { PermissionMode } from '@vendor/types/permissions.js'
 import { enableConfigs } from '@vendor/utils/config.js'
+import { captureHooksConfigSnapshot } from '@vendor/utils/hooks/hooksConfigSnapshot.js'
 import { FileStateCache } from '@vendor/utils/fileStateCache.js'
 import { getWorkspacePath } from '../ipc/workspace.js'
 
@@ -49,6 +50,14 @@ export function initVendorRuntime(): string {
   setOriginalCwd(ws)
   setProjectRoot(ws)
   setCwdState(ws)
+  // Hooks are read from a snapshot taken here, not per call. Must follow the
+  // setProjectRoot above: project hooks live in <workspace>/.claude/settings.json,
+  // so a snapshot taken earlier would be scoped to the wrong project.
+  try {
+    captureHooksConfigSnapshot()
+  } catch {
+    /* no hooks configured is the normal case */
+  }
   // Workspace switch invalidates app state (permission ctx, todos, caches).
   appState = null
   initializedFor = ws

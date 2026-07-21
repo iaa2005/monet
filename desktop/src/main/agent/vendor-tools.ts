@@ -122,6 +122,7 @@ import {
   initVendorRuntime,
   setVendorPermissionMode,
 } from "./vendor-context.js";
+import { hooksAvailable, runPreToolHooks, runPostToolHooks } from "./tool-hooks.js";
 
 // ─── Permission modes ─────────────────────────────────────────────────────
 
@@ -761,10 +762,12 @@ export async function executeVendorTool(opts: {
   // Point the vendor tools' checkPermissions() at the selected mode.
   setVendorPermissionMode(VENDOR_MODE_FOR[permissionMode]);
   const tools = getVendorTools();
-  const tool = findToolByName(tools, name);
-  if (!tool) {
+  const found = findToolByName(tools, name);
+  if (!found) {
     return { content: `Unknown tool: ${name}`, isError: true };
   }
+  // Narrowing is lost inside the nested invokeTool closure below; bind it once.
+  const tool: Tool = found;
 
   const context: ToolUseContext = createToolUseContext({
     sessionId,
@@ -815,10 +818,42 @@ export async function executeVendorTool(opts: {
       }
     }
 
+    // 2b. PreToolUse hooks — before the permission gate, so a hook can block
+    //     the call, rewrite its input, or decide the permission itself.
+    let hookedInput = toolInput;
+    let hookContext: string[] | undefined;
+    const hooksOn = await hooksAvailable();
+    if (hooksOn) {
+      const pre = await runPreToolHooks({
+        toolName: tool.name,
+        toolUseID,
+        input: toolInput,
+        context,
+        permissionMode,
+        signal,
+      });
+      if (pre.blocked) return { content: pre.blocked, isError: true };
+      if (pre.stopReason) return { content: pre.stopReason, isError: true };
+      if (pre.updatedInput) hookedInput = pre.updatedInput;
+      hookContext = pre.additionalContext;
+      if (pre.permission === "deny")
+        return {
+          content: pre.permissionReason
+            ? `Permission denied by hook: ${pre.permissionReason}`
+            : `A PreToolUse hook denied ${tool.name}.`,
+          isError: true,
+        };
+      // An "allow" from a hook is an explicit user-configured decision, so it
+      // stands in for the prompt. "ask" falls through to the normal gate.
+      if (pre.permission === "allow") {
+        return await invokeTool(hookedInput, hookContext);
+      }
+    }
+
     // 3. Permission gate — mode-aware; routes 'ask' decisions to the UI.
     const gate = await gatePermission({
       tool,
-      input: toolInput,
+      input: hookedInput,
       context,
       permissionMode,
       requestPermission,
@@ -828,16 +863,23 @@ export async function executeVendorTool(opts: {
       return { content: gate.message, isError: true };
     }
     const finalInput = gate.input;
+    return await invokeTool(finalInput, hookContext);
+
+    // ── Execution + PostToolUse, shared by both paths above ──
+    async function invokeTool(
+      callInput: Record<string, unknown>,
+      extraContext: string[] | undefined,
+    ): Promise<VendorToolResult> {
 
     // 4. Execute.
     const parentMessage = createParentAssistantMessage(
       model,
       toolUseID,
       tool.name,
-      finalInput,
+      callInput,
     );
     const result = await tool.call(
-      finalInput,
+      callInput,
       context,
       canUseTool as never,
       parentMessage,
@@ -862,11 +904,33 @@ export async function executeVendorTool(opts: {
             mediaType: data.imageMediaType || "image/png",
           }
         : undefined;
-    return {
-      content: flattenToolResultContent(block.content),
-      isError: block.is_error === true,
-      image,
-    };
+    let content = flattenToolResultContent(block.content);
+    let isError = block.is_error === true;
+
+    // 6. PostToolUse hooks — may append context the model should see, or
+    //    report a problem with the result (exit code 2).
+    if (hooksOn) {
+      const post = await runPostToolHooks({
+        toolName: tool.name,
+        toolUseID,
+        input: callInput,
+        response: result.data,
+        context,
+        permissionMode,
+        signal,
+      });
+      const extras = [...(extraContext ?? []), ...(post.additionalContext ?? [])];
+      if (extras.length) content = `${content}\n\n${extras.join("\n\n")}`;
+      if (post.blocked) {
+        content = `${content}\n\n${post.blocked}`;
+        isError = true;
+      }
+    } else if (extraContext?.length) {
+      content = `${content}\n\n${extraContext.join("\n\n")}`;
+    }
+
+    return { content, isError, image };
+    }
   } catch (err) {
     if (signal?.aborted) {
       return { content: "Tool execution aborted", isError: true };

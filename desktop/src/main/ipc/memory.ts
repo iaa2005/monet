@@ -46,4 +46,18 @@ export function registerMemoryIPC(): void {
     return { ...s, pending: pendingBulletCount(s.lastConsolidatedAt) };
   });
   ipcMain.handle("memory:consolidate", () => runConsolidation({ force: true }));
+
+  // Hooks live in .claude/settings.json and are read from a snapshot taken at
+  // startup, so an edit made while the app runs needs an explicit reload.
+  ipcMain.handle("hooks:reload", async () => {
+    try {
+      const { reloadHooks, listConfiguredHooks } = await import(
+        "../agent/tool-hooks.js"
+      );
+      await reloadHooks();
+      return { ok: true, hooks: await listConfiguredHooks() };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
 }

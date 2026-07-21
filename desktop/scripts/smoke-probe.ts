@@ -3,7 +3,7 @@
  * Electron): lists tools, converts schemas, greps the repo, writes+reads a
  * temp file, runs a shell command, and builds the vendor system prompt.
  */
-import { mkdtempSync, readFileSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
@@ -160,6 +160,65 @@ async function main() {
     description: 'rm',
   })
   check('auto: a risky Bash command still prompts', riskyBash.asked)
+
+  // 4c. Hooks — a PreToolUse hook must actually run and be able to block.
+  // Exit code 2 is the vendor's "block and tell the model why" contract.
+  {
+    const hookDir = join(getWorkspacePath(), '.claude')
+    const settingsPath = join(hookDir, 'settings.json')
+    const hadSettings = existsSync(settingsPath)
+    const saved = hadSettings ? readFileSync(settingsPath, 'utf8') : null
+    try {
+      mkdirSync(hookDir, { recursive: true })
+      writeFileSync(
+        settingsPath,
+        JSON.stringify({
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: 'Glob',
+                hooks: [
+                  {
+                    type: 'command',
+                    // Hook commands run under bash on every platform (Git
+                    // Bash on Windows), so POSIX syntax is correct here.
+                    command: 'echo blocked-by-hook >&2; exit 2',
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      )
+      // Settings are cached per source, so a plain re-snapshot would copy the
+      // stale values — reloadHooks drops the cache first.
+      const { hooksAvailable, reloadHooks } = await import(
+        '../src/main/agent/tool-hooks.js'
+      )
+      await reloadHooks()
+      check('hooks: config snapshot sees the hook', await hooksAvailable())
+
+      const blockedRes = await run('Glob', { pattern: 'src/main/*.ts' })
+      check(
+        'hooks: PreToolUse exit-2 blocks the tool',
+        blockedRes.isError && /blocked-by-hook/.test(blockedRes.content),
+        blockedRes.content.slice(0, 100).replace(/\n/g, ' | '),
+      )
+
+      // An unmatched tool must be untouched by that hook.
+      const unaffected = await run('Grep', {
+        pattern: 'export',
+        path: 'src/main/agent',
+        output_mode: 'files_with_matches',
+      })
+      check('hooks: a non-matching tool is unaffected', !unaffected.isError)
+    } finally {
+      if (saved !== null) writeFileSync(settingsPath, saved)
+      else rmSync(settingsPath, { force: true })
+      const { reloadHooks } = await import('../src/main/agent/tool-hooks.js')
+      await reloadHooks()
+    }
+  }
 
   // 5. TodoWrite
   const todo = await run('TodoWrite', {
