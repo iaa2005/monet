@@ -133,7 +133,7 @@ export const AgentTaskTool = buildTool({
         .then((report) => {
           // Queue BEFORE notifying the UI so an idle auto-continue that fires
           // on the "done" event always finds the result in the pending queue.
-          pushBgResult(sessionId, def.type, description ?? "", report);
+          pushBgResult(sessionId, def.type, description ?? "", report, memberName);
           emit?.({ kind: "done" });
         })
         .catch((err) => {
@@ -142,6 +142,7 @@ export const AgentTaskTool = buildTool({
             def.type,
             description ?? "",
             `Sub-agent error: ${err instanceof Error ? err.message : String(err)}`,
+            memberName,
           );
           emit?.({ kind: "done" });
         })
@@ -149,9 +150,10 @@ export const AgentTaskTool = buildTool({
       return {
         data: {
           report:
-            `Launched sub-agent "${def.type}" in the background` +
+            `Launched background agent "${memberName}"` +
             (description ? ` for: ${description}` : "") +
-            `. Continue with other work — its report will be delivered to you when it finishes.`,
+            `. Keep working; to gather its result call TeamList (use wait:true to ` +
+            `block until an agent finishes). Do NOT poll with Sleep.`,
         },
       };
     }

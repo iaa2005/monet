@@ -16,8 +16,48 @@ import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
-import { listTeam, sendToMember, stopMember } from "./bg-agents.js";
+import {
+  collectBgReports,
+  listTeam,
+  pendingReportCount,
+  sendToMember,
+  stopMember,
+} from "./bg-agents.js";
 import { tunablePrompt } from "../prompts/index.js";
+
+/** Cap a wait so a stuck agent can't hang the turn forever; the model can call
+ * again. Long enough for real sub-agent work, short enough to stay responsive. */
+const WAIT_TIMEOUT_MS = 90_000;
+const sleep = (ms: number): Promise<void> =>
+  new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The reports of any newly-finished agents, then who is still running. Draining
+ * the reports here is what delivers them: they will NOT also arrive at the next
+ * turn boundary, so the model must act on what it sees.
+ */
+function render(sessionId: string): string {
+  const reports = collectBgReports(sessionId);
+  const parts: string[] = [];
+  for (const r of reports) {
+    const who = r.description ? `${r.name} (${r.description})` : r.name;
+    parts.push(`### Report from ${who}\n${r.report}`);
+  }
+  const running = listTeam(sessionId);
+  if (running.length > 0) {
+    const lines = running.map((m) => {
+      const secs = Math.round((Date.now() - m.startedAt) / 1000);
+      const unread = m.inbox.length > 0 ? `, ${m.inbox.length} unread` : "";
+      return `- ${m.name} (${m.agentType}) — running ${secs}s${unread}${m.description ? `: ${m.description}` : ""}`;
+    });
+    parts.push(`Still running:\n${lines.join("\n")}`);
+  } else if (reports.length === 0) {
+    return "No background agents are running, and no reports are waiting.";
+  } else {
+    parts.push("All background agents have finished.");
+  }
+  return parts.join("\n\n");
+}
 
 interface Output {
   text: string;
@@ -120,6 +160,12 @@ export const SendMessageTool = buildTool({
 
 const teamSchema = lazySchema(() =>
   z.strictObject({
+    wait: z
+      .boolean()
+      .optional()
+      .describe(
+        "Block until at least one background agent finishes (or all are done), then return their reports. This is how you collect a swarm — never Sleep in a loop.",
+      ),
     stop: z
       .string()
       .optional()
@@ -151,17 +197,24 @@ export const TeamListTool = buildTool({
     return tunablePrompt(
       "tool-team-list",
       [
-        "List the background agents running for this conversation, with the name",
-        "SendMessage uses to address each one and how long it has been going.",
+        "See your background agents and collect their results.",
         "",
-        "Pass `stop` with a name to end one early — when its work is no longer",
-        "needed, or it is clearly off track. Its progress is lost, so prefer",
-        "SendMessage to redirect it when the work is still worth having.",
+        "A finished agent's report is NOT pushed to you mid-turn. This tool is how",
+        "you get it: calling TeamList returns the reports of any agents that have",
+        "finished since you last checked, plus who is still running.",
+        "",
+        "To gather a swarm, call TeamList with `wait: true`. It blocks until an",
+        "agent finishes and returns its report, so you collect them one by one with",
+        "no delay. NEVER sleep in a loop to wait for agents — that just burns turns",
+        "while the reports sit here uncollected.",
+        "",
+        "Pass `stop` with a name to end one early. Its progress is lost, so prefer",
+        "SendMessage to redirect an agent whose work is still worth having.",
       ].join("\n"),
     );
   },
   async description() {
-    return "List running background agents, and optionally stop one.";
+    return "Collect finished background-agent reports and list who is still running; optionally wait, or stop one.";
   },
   async call(input: z.infer<TeamSchema>, context: ToolUseContext) {
     const sessionId = sessionOf(context);
@@ -170,14 +223,22 @@ export const TeamListTool = buildTool({
       if (!stopped) return out(`No running agent named "${input.stop}".`, true);
       return out(`Stopped "${input.stop}".`);
     }
-    const members = listTeam(sessionId);
-    if (members.length === 0) return out("No background agents are running.");
-    const lines = members.map((m) => {
-      const secs = Math.round((Date.now() - m.startedAt) / 1000);
-      const waiting = m.inbox.length > 0 ? `, ${m.inbox.length} unread` : "";
-      return `- ${m.name} (${m.agentType}) — running ${secs}s${waiting}${m.description ? `: ${m.description}` : ""}`;
-    });
-    return out(`Running background agents:\n${lines.join("\n")}`);
+
+    // wait: block until a report is ready or nothing is left running. This is
+    // the swarm-collection path — the model calls it instead of sleeping.
+    if (input.wait) {
+      const deadline = Date.now() + WAIT_TIMEOUT_MS;
+      while (
+        pendingReportCount(sessionId) === 0 &&
+        listTeam(sessionId).length > 0 &&
+        Date.now() < deadline &&
+        !context.abortController?.signal.aborted
+      ) {
+        await sleep(300);
+      }
+    }
+
+    return out(render(sessionId));
   },
   mapToolResultToToolResultBlockParam(
     content: Output,

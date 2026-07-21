@@ -14,7 +14,13 @@
  */
 
 const running = new Map<string, Set<AbortController>>();
-const pending = new Map<string, string[]>();
+interface BgReport {
+  name: string;
+  agentType: string;
+  description: string;
+  report: string;
+}
+const pending = new Map<string, BgReport[]>();
 
 /**
  * Addressable background agents.
@@ -151,20 +157,39 @@ export function pushBgResult(
   agentType: string,
   description: string,
   report: string,
+  name = agentType,
 ): void {
-  const label = description ? `"${agentType}" (${description})` : `"${agentType}"`;
-  const note =
-    `<system-reminder>\nA background sub-agent ${label} has finished. ` +
-    `Its report:\n\n${report}\n</system-reminder>`;
   const arr = pending.get(sessionId) ?? [];
-  arr.push(note);
+  arr.push({ name, agentType, description, report });
   pending.set(sessionId, arr);
 }
 
-/** Take and clear the pending background reports for a session. */
+/** Take and clear the pending reports, formatted for injection at a turn
+ * boundary (when the model ends its turn without collecting them itself). */
 export function drainBgResults(sessionId: string): string[] {
   const arr = pending.get(sessionId);
   if (!arr || arr.length === 0) return [];
   pending.delete(sessionId);
+  return arr.map((r) => {
+    const label = r.description ? `"${r.name}" (${r.description})` : `"${r.name}"`;
+    return (
+      `<system-reminder>\nA background sub-agent ${label} has finished. ` +
+      `Its report:\n\n${r.report}\n</system-reminder>`
+    );
+  });
+}
+
+/** Take and clear the pending reports as records — for TeamList, which shows
+ * them to the model inline rather than as an injected turn. Shares the queue
+ * with drainBgResults: whoever reads first delivers them, never both. */
+export function collectBgReports(sessionId: string): BgReport[] {
+  const arr = pending.get(sessionId);
+  if (!arr || arr.length === 0) return [];
+  pending.delete(sessionId);
   return arr;
+}
+
+/** How many reports are waiting to be collected. */
+export function pendingReportCount(sessionId: string): number {
+  return pending.get(sessionId)?.length ?? 0;
 }

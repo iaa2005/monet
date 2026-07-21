@@ -449,7 +449,9 @@ function ToolGroupCard({ calls }: { calls: ToolCall[] }): JSX.Element {
             <div key={tc.id}>
               {i > 0 && <hr className="border-border/30" />}
               {tc.subAgent || tc.name === "Task" ? (
-                <SubAgentBubble toolCall={tc} inGroup />
+                <div className="px-3 py-2">
+                  <SubAgentBubble toolCall={tc} inGroup />
+                </div>
               ) : (
                 <ToolRow
                   toolCall={tc}

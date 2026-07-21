@@ -43,10 +43,11 @@ async function run(
     permissionMode?: 'default' | 'bypassPermissions'
     unattended?: boolean
   },
+  sessionId = 'smoke',
 ) {
   const mode = opts?.permissionMode ?? 'bypassPermissions'
   return executeVendorTool({
-    sessionId: 'smoke',
+    sessionId,
     toolUseID: `toolu_${Math.random().toString(36).slice(2)}`,
     name,
     input,
@@ -375,6 +376,10 @@ async function main() {
       sendToMember,
       drainInbox,
       stopMember,
+      pushBgResult,
+      collectBgReports,
+      pendingReportCount,
+      drainBgResults,
     } = await import('../src/main/agent/bg-agents.js')
     const sid = 'smoke-team'
     const c1 = new AbortController()
@@ -405,6 +410,32 @@ async function main() {
     check('TeamList reports an empty team', !emptyList.isError && /No background agents/.test(emptyList.content))
     const badSend = await run('SendMessage', { to: 'ghost', message: 'hi' })
     check('SendMessage to a missing agent errors', badSend.isError && /No running agent/.test(badSend.content))
+
+    // Report collection — the fix for the Sleep-loop swarm. A finished agent's
+    // report reaches the model through TeamList, not only at the next turn.
+    const rsid = 'smoke-reports'
+    const rc = new AbortController()
+    const rn = registerBgAgent(rsid, rc, { agentType: 'Explore', description: 'scan' })
+    pushBgResult(rsid, 'Explore', 'scan', 'found 3 things', rn)
+    check('reports: TeamList surfaces a finished report', /found 3 things/.test((await run('TeamList', {}, undefined, rsid)).content))
+    check('reports: collecting drains the queue', pendingReportCount(rsid) === 0)
+    unregisterBgAgent(rsid, rc)
+
+    // A report collected by TeamList must NOT also arrive at the turn boundary.
+    pushBgResult(rsid, 'Explore', 'scan', 'second finding', 'explore')
+    collectBgReports(rsid)
+    check('reports: a collected report is not re-delivered at the turn boundary', drainBgResults(rsid).length === 0)
+
+    // wait returns promptly once a report exists, rather than blocking.
+    const wsid = 'smoke-wait'
+    const wc = new AbortController()
+    registerBgAgent(wsid, wc, { agentType: 'Explore', description: 'w' })
+    pushBgResult(wsid, 'Explore', 'w', 'ready', 'explore')
+    const t0 = Date.now()
+    const waited = await run('TeamList', { wait: true }, undefined, wsid)
+    check('reports: wait returns at once when a report is ready', Date.now() - t0 < 1_000 && /ready/.test(waited.content), `${Date.now() - t0}ms`)
+    unregisterBgAgent(wsid, wc)
+    check('reports: wait with nothing running returns immediately', (await run('TeamList', { wait: true }, undefined, 'smoke-idle')).content.length > 0)
   }
 
   // 5. TodoWrite
