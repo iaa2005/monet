@@ -161,61 +161,70 @@ async function main() {
   })
   check('auto: a risky Bash command still prompts', riskyBash.asked)
 
-  // 4c. Hooks — a PreToolUse hook must actually run and be able to block.
-  // Exit code 2 is the vendor's "block and tell the model why" contract.
+  // 4c. Hooks — configured in <dataDir>/hooks.json (this app does not read
+  // ~/.claude), and a repo's own .claude/settings.json must NOT be honoured:
+  // a cloned project could otherwise run any shell command via PreToolUse.
   {
-    const hookDir = join(getWorkspacePath(), '.claude')
-    const settingsPath = join(hookDir, 'settings.json')
-    const hadSettings = existsSync(settingsPath)
-    const saved = hadSettings ? readFileSync(settingsPath, 'utf8') : null
+    const { hooksFilePath, hooksAvailable, reloadHooks } = await import(
+      '../src/main/agent/tool-hooks.js'
+    )
+    const hookFile = hooksFilePath()
+    const hadHooks = existsSync(hookFile)
+    const savedHooks = hadHooks ? readFileSync(hookFile, 'utf8') : null
+    const projectSettings = join(getWorkspacePath(), '.claude', 'settings.json')
+    const hadProject = existsSync(projectSettings)
+    const savedProject = hadProject ? readFileSync(projectSettings, 'utf8') : null
+    const blockHook = (tag: string) => ({
+      PreToolUse: [
+        {
+          matcher: 'Glob',
+          // Hook commands run under bash on every platform (Git Bash on
+          // Windows) — cmd syntax would silently no-op.
+          hooks: [{ type: 'command', command: `echo ${tag} >&2; exit 2` }],
+        },
+      ],
+    })
     try {
-      mkdirSync(hookDir, { recursive: true })
-      writeFileSync(
-        settingsPath,
-        JSON.stringify({
-          hooks: {
-            PreToolUse: [
-              {
-                matcher: 'Glob',
-                hooks: [
-                  {
-                    type: 'command',
-                    // Hook commands run under bash on every platform (Git
-                    // Bash on Windows), so POSIX syntax is correct here.
-                    command: 'echo blocked-by-hook >&2; exit 2',
-                  },
-                ],
-              },
-            ],
-          },
-        }),
-      )
-      // Settings are cached per source, so a plain re-snapshot would copy the
-      // stale values — reloadHooks drops the cache first.
-      const { hooksAvailable, reloadHooks } = await import(
-        '../src/main/agent/tool-hooks.js'
-      )
-      await reloadHooks()
-      check('hooks: config snapshot sees the hook', await hooksAvailable())
+      writeFileSync(hookFile, JSON.stringify({ hooks: blockHook('blocked-by-datadir-hook') }))
+      const loaded = await reloadHooks()
+      check('hooks: loaded from dataDir/hooks.json', loaded.events === 1 && (await hooksAvailable()), JSON.stringify(loaded))
 
-      const blockedRes = await run('Glob', { pattern: 'src/main/*.ts' })
+      const blocked = await run('Glob', { pattern: 'src/main/*.ts' })
       check(
         'hooks: PreToolUse exit-2 blocks the tool',
-        blockedRes.isError && /blocked-by-hook/.test(blockedRes.content),
-        blockedRes.content.slice(0, 100).replace(/\n/g, ' | '),
+        blocked.isError && /blocked-by-datadir-hook/.test(blocked.content),
+        blocked.content.slice(0, 80).replace(/\n/g, ' | '),
       )
-
-      // An unmatched tool must be untouched by that hook.
       const unaffected = await run('Grep', {
         pattern: 'export',
         path: 'src/main/agent',
         output_mode: 'files_with_matches',
       })
       check('hooks: a non-matching tool is unaffected', !unaffected.isError)
+
+      // Reloading twice must not double-register (registerHookCallbacks merges).
+      await reloadHooks()
+      await reloadHooks()
+      const { listConfiguredHooks } = await import('../src/main/agent/tool-hooks.js')
+      const listed = await listConfiguredHooks()
+      check('hooks: reload does not duplicate registrations', listed.length === 1, `${listed.length} matchers`)
+
+      // Now the security property: a repo-supplied hook must be ignored.
+      rmSync(hookFile, { force: true })
+      mkdirSync(join(getWorkspacePath(), '.claude'), { recursive: true })
+      writeFileSync(projectSettings, JSON.stringify(blockHook('blocked-by-repo-hook')))
+      await reloadHooks()
+      const repoHooked = await run('Glob', { pattern: 'src/main/*.ts' })
+      check(
+        'hooks: a repo .claude/settings.json hook is NOT executed',
+        !repoHooked.isError && !/blocked-by-repo-hook/.test(repoHooked.content),
+        repoHooked.content.slice(0, 60).replace(/\n/g, ' | '),
+      )
     } finally {
-      if (saved !== null) writeFileSync(settingsPath, saved)
-      else rmSync(settingsPath, { force: true })
-      const { reloadHooks } = await import('../src/main/agent/tool-hooks.js')
+      if (savedHooks !== null) writeFileSync(hookFile, savedHooks)
+      else rmSync(hookFile, { force: true })
+      if (savedProject !== null) writeFileSync(projectSettings, savedProject)
+      else rmSync(projectSettings, { force: true })
       await reloadHooks()
     }
   }

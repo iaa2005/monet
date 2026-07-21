@@ -24,8 +24,10 @@ import {
 import { getEmptyToolPermissionContext } from '@vendor/Tool.js'
 import type { PermissionMode } from '@vendor/types/permissions.js'
 import { enableConfigs } from '@vendor/utils/config.js'
-import { captureHooksConfigSnapshot } from '@vendor/utils/hooks/hooksConfigSnapshot.js'
+import { reloadHooks } from './tool-hooks.js'
 import { FileStateCache } from '@vendor/utils/fileStateCache.js'
+import { join } from 'path'
+import { getDataDir } from '../data-dir.js'
 import { getWorkspacePath } from '../ipc/workspace.js'
 
 // ─── Vendor runtime bootstrap ───────────────────────────────────────────
@@ -43,6 +45,13 @@ export function initVendorRuntime(): string {
     process.env.CLAUDE_CODE_USE_POWERSHELL_TOOL ??= '1'
   }
 
+  // Move the vendor's entire config home into our data dir. getClaudeConfigHomeDir()
+  // defaults to ~/.claude and is memoized on this variable, so it must be set
+  // before anything reads it. This app does not use ~/.claude: user settings,
+  // the projects dir and the memory base all resolve under <dataDir>/claude,
+  // and the user's real Claude Code CLI config is left untouched.
+  process.env.CLAUDE_CONFIG_DIR ??= join(getDataDir(), 'claude')
+
   // Vendor config reads are gated until the bootstrap opens them (guards
   // against config access at module-init time). Idempotent.
   enableConfigs()
@@ -50,14 +59,12 @@ export function initVendorRuntime(): string {
   setOriginalCwd(ws)
   setProjectRoot(ws)
   setCwdState(ws)
-  // Hooks are read from a snapshot taken here, not per call. Must follow the
-  // setProjectRoot above: project hooks live in <workspace>/.claude/settings.json,
-  // so a snapshot taken earlier would be scoped to the wrong project.
-  try {
-    captureHooksConfigSnapshot()
-  } catch {
-    /* no hooks configured is the normal case */
-  }
+  // Load this app's hooks from <dataDir>/hooks.json. Deliberately NOT the
+  // vendor's settings channel: that would read ~/.claude and, worse, the
+  // opened project's .claude/settings.json — a cloned repo could ship a
+  // PreToolUse hook naming any shell command and it would run before the user
+  // saw anything.
+  void reloadHooks().catch(() => {})
   // Workspace switch invalidates app state (permission ctx, todos, caches).
   appState = null
   initializedFor = ws

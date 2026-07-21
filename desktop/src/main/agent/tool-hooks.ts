@@ -15,7 +15,10 @@
  * unchanged.
  */
 
+import { readFileSync } from "fs";
+import { join } from "path";
 import type { ToolUseContext } from "@vendor/Tool.js";
+import { getDataDir } from "../data-dir.js";
 
 export interface PreToolHookOutcome {
   /** A hook blocked the call; message goes back to the model. */
@@ -32,23 +35,69 @@ export interface PreToolHookOutcome {
   stopReason?: string;
 }
 
+/** The app's hook file. Everything lives under the app's data dir — this app
+ * does not use ~/.claude. */
+export function hooksFilePath(): string {
+  return join(getDataDir(), "hooks.json");
+}
+
+interface HookMatcherFile {
+  matcher?: string;
+  hooks?: { type?: string; command?: string; timeout?: number }[];
+}
+
+/** Shape check — a malformed file must not crash the agent on every tool call. */
+function parseHooksFile(raw: string): Record<string, HookMatcherFile[]> {
+  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  // Accept both {"hooks": {...}} and a bare {...} of events.
+  const events = (
+    parsed && typeof parsed === "object" && "hooks" in parsed
+      ? (parsed as { hooks: unknown }).hooks
+      : parsed
+  ) as Record<string, unknown>;
+  const out: Record<string, HookMatcherFile[]> = {};
+  for (const [event, matchers] of Object.entries(events ?? {})) {
+    if (!Array.isArray(matchers)) continue;
+    const kept = matchers.filter(
+      (m): m is HookMatcherFile =>
+        !!m && typeof m === "object" && Array.isArray((m as HookMatcherFile).hooks),
+    );
+    if (kept.length) out[event] = kept;
+  }
+  return out;
+}
+
 /**
- * Re-read hook definitions from disk.
+ * Load hook definitions from <dataDir>/hooks.json into the vendor engine.
  *
- * Both halves are required: the settings layer caches each source, so
- * re-snapshotting without dropping that cache would just re-copy the stale
- * values. Call after the user edits .claude/settings.json — otherwise a hook
- * added while the app is running does nothing until restart.
+ * They go through registerHookCallbacks (the engine's programmatic channel)
+ * rather than a settings file, so the app owns the whole story: no ~/.claude,
+ * and no repo-supplied hooks — a cloned project's .claude/settings.json can
+ * name arbitrary shell commands, and a PreToolUse hook runs them before the
+ * user sees anything.
+ *
+ * Clearing first is required: registerHookCallbacks MERGES, so reloading
+ * without a clear would run every hook twice, then three times.
  */
-export async function reloadHooks(): Promise<void> {
-  const { resetSettingsCache } = await import(
-    "@vendor/utils/settings/settingsCache.js"
+export async function reloadHooks(): Promise<{ events: number; error?: string }> {
+  const { clearRegisteredHooks, registerHookCallbacks } = await import(
+    "@vendor/bootstrap/state.js"
   );
-  const { captureHooksConfigSnapshot } = await import(
-    "@vendor/utils/hooks/hooksConfigSnapshot.js"
-  );
-  resetSettingsCache();
-  captureHooksConfigSnapshot();
+  clearRegisteredHooks();
+  let raw: string;
+  try {
+    raw = readFileSync(hooksFilePath(), "utf-8");
+  } catch {
+    return { events: 0 }; // no hooks configured is the normal case
+  }
+  try {
+    const events = parseHooksFile(raw);
+    if (Object.keys(events).length === 0) return { events: 0 };
+    registerHookCallbacks(events as never);
+    return { events: Object.keys(events).length };
+  } catch (e) {
+    return { events: 0, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** What is configured right now, per event — for showing the user that their
@@ -57,10 +106,8 @@ export async function listConfiguredHooks(): Promise<
   { event: string; matcher: string; commands: string[] }[]
 > {
   try {
-    const { getHooksConfigFromSnapshot } = await import(
-      "@vendor/utils/hooks/hooksConfigSnapshot.js"
-    );
-    const snap = getHooksConfigFromSnapshot() ?? {};
+    const { getRegisteredHooks } = await import("@vendor/bootstrap/state.js");
+    const snap = (getRegisteredHooks() ?? {}) as Record<string, unknown>;
     const out: { event: string; matcher: string; commands: string[] }[] = [];
     for (const [event, matchers] of Object.entries(snap)) {
       for (const m of (matchers ?? []) as {
@@ -84,11 +131,9 @@ export async function listConfiguredHooks(): Promise<
  * to call per tool call — the engine itself early-returns when no hook matches. */
 export async function hooksAvailable(): Promise<boolean> {
   try {
-    const { getHooksConfigFromSnapshot } = await import(
-      "@vendor/utils/hooks/hooksConfigSnapshot.js"
-    );
-    const snap = getHooksConfigFromSnapshot();
-    return !!snap && Object.keys(snap).length > 0;
+    const { getRegisteredHooks } = await import("@vendor/bootstrap/state.js");
+    const reg = getRegisteredHooks();
+    return !!reg && Object.keys(reg).length > 0;
   } catch {
     return false;
   }
