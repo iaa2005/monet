@@ -7,7 +7,6 @@ import {
   Loader2,
   Maximize2,
   X,
-  Wrench,
 } from "lucide-react";
 import type { ChatMessage, ToolCall } from "@/types/chat";
 import { cn } from "@/lib/utils";
@@ -300,7 +299,7 @@ function FilePathLink({ path }: { path: string }): JSX.Element {
       onKeyDown={(e) => {
         if (e.key === "Enter") handleClick(e as unknown as React.MouseEvent);
       }}
-      className="cursor-pointer font-mono text-xs text-link hover:underline"
+      className="cursor-pointer font-mono text-xs text-foreground hover:underline"
       title={path}
     >
       {baseName(path)}
@@ -315,14 +314,12 @@ function ToolRow({
   onToggle,
   compact,
   inGroup,
-  showIcon = true,
 }: {
   toolCall: ToolCall;
   open: boolean;
   onToggle: () => void;
   compact?: boolean;
   inGroup?: boolean;
-  showIcon?: boolean;
 }): JSX.Element {
   const human = humanName(toolCall.name);
   const preview = inputPreview(toolCall.name, toolCall.input);
@@ -349,29 +346,20 @@ function ToolRow({
         type="button"
         onClick={hasDetails ? onToggle : undefined}
         className={cn(
-          "mx-0 flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors",
-          hasDetails &&
-            "cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
-          compact && "py-0.5",
+          "mx-0 flex w-full items-center gap-2 text-left",
+          hasDetails && "cursor-pointer",
         )}
       >
-        {showIcon && <Wrench className="size-3.5 shrink-0 text-muted-foreground" />}
-        <span className="shrink-0 text-sm font-medium text-foreground">
+        <span className="text-sm text-muted-foreground whitespace-nowrap">
           {human}
         </span>
         {fp ? (
-          <>
-            <FilePathLink path={fp} />
-            <span className="flex-1" />
-          </>
+          <FilePathLink path={fp} />
         ) : preview ? (
-          <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+          <span className="truncate font-mono text-xs text-muted-foreground">
             {preview}
           </span>
-        ) : (
-          <span className="flex-1" />
-        )}
-        {!fp && !preview && <span className="flex-1" />}
+        ) : null}
         {stats && (stats.added > 0 || stats.removed > 0) && (
           <span className="shrink-0 font-mono text-[11px]">
             <span className="text-green-text">
@@ -382,7 +370,7 @@ function ToolRow({
             </span>
           </span>
         )}
-        <StatusIcon status={toolCall.status} />
+        {toolCall.status !== "done" && <StatusIcon status={toolCall.status} />}
         {hasDetails && (
           <ChevronRight
             className={cn(
@@ -431,15 +419,14 @@ function ToolGroupCard({ calls }: { calls: ToolCall[] }): JSX.Element {
       <button
         type="button"
         onClick={() => setGroupOpen((o) => !o)}
-        className="mx-0 flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+        className="mx-0 flex w-full items-center gap-2 text-left cursor-pointer"
       >
-        <Wrench className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="text-sm font-medium text-foreground">
+        <span className="text-sm text-muted-foreground whitespace-nowrap">
           Used {calls.length} tools
         </span>
         <ChevronRight
           className={cn(
-            "ml-auto size-3.5 shrink-0 text-muted-foreground/70 transition-transform",
+            "size-3.5 shrink-0 text-muted-foreground/70 transition-transform",
             groupOpen && "rotate-90",
           )}
         />
@@ -466,7 +453,6 @@ function ToolGroupCard({ calls }: { calls: ToolCall[] }): JSX.Element {
                   }
                   compact
                   inGroup
-                  showIcon={false}
                 />
               )}
             </div>
@@ -512,21 +498,18 @@ function ToolCallItem({
         type="button"
         onClick={() => hasDetails && setOpen((o) => !o)}
         className={cn(
-          "mx-0 flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors",
-          hasDetails &&
-            "cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
+          "mx-0 flex w-full items-center gap-2 text-left",
+          hasDetails && "cursor-pointer",
         )}
       >
-        <span className="shrink-0 text-sm font-medium text-foreground">
+        <span className="text-sm text-muted-foreground whitespace-nowrap">
           {toolCall.name}
         </span>
         {preview ? (
-          <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+          <span className="truncate font-mono text-xs text-muted-foreground">
             {preview}
           </span>
-        ) : (
-          <span className="flex-1" />
-        )}
+        ) : null}
         {stats && (stats.added > 0 || stats.removed > 0) && (
           <span className="shrink-0 font-mono text-[11px]">
             <span className="text-green-text">
@@ -537,7 +520,7 @@ function ToolCallItem({
             </span>
           </span>
         )}
-        <StatusIcon status={toolCall.status} />
+        {toolCall.status !== "done" && <StatusIcon status={toolCall.status} />}
         {hasDetails && (
           <ChevronRight
             className={cn(
