@@ -154,14 +154,33 @@ const VENDOR_MODE_FOR: Record<
 
 // Tools "Auto" mode runs without asking (read/search + file mutations). Shell
 // tools and anything else still prompt.
+/**
+ * Tools "Auto" runs without asking, mirroring the vendor's SAFE_YOLO allowlist
+ * (utils/permissions/classifierDecision.ts) narrowed to the tools this app
+ * actually ships. Everything here is read-only, a UI affordance, or touches
+ * only this session's own bookkeeping.
+ *
+ * Edit/Write/MultiEdit are deliberately NOT here: allowing them by NAME meant
+ * auto mode would write anywhere on disk, since checkPermissions only returns
+ * "deny" for hard rule violations and "ask" for everything else — including a
+ * path outside the workspace. They now go through the acceptEdits fast-path
+ * below, which is scoped to the working directory the way the vendor scopes it.
+ */
 const AUTO_ALLOW_TOOLS = new Set([
+  // Read-only file operations and search
   "Read",
   "Grep",
   "Glob",
-  "Edit",
-  "Write",
-  "MultiEdit",
+  "LSP",
+  "ToolSearch",
+  // MCP resource reads
+  "ListMcpResources",
+  "ReadMcpResource",
+  // Session bookkeeping (metadata only)
   "TodoWrite",
+  // UI affordances — these exist to involve the user, so gating them on a
+  // permission prompt is pure friction.
+  "AskUserQuestion",
 ]);
 
 // Per-session "Allow always" grants (keyed by sessionId:toolName) so a tool the
@@ -207,6 +226,41 @@ type GateResult =
   | { behavior: "allow"; input: Record<string, unknown> }
   | { behavior: "deny"; message: string };
 
+/**
+ * Would acceptEdits mode allow this call? Returns the (possibly rewritten)
+ * input when yes, null otherwise.
+ *
+ * The mode is supplied through a shim context rather than by flipping the
+ * global vendor mode: concurrency-safe tools can be in flight at the same
+ * time, and a global flip across an await would leak acceptEdits into an
+ * unrelated check.
+ */
+async function acceptEditsWouldAllow(
+  tool: Tool,
+  input: Record<string, unknown>,
+  context: ToolUseContext,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const state = context.getAppState();
+    const perm = state.toolPermissionContext;
+    if (perm.mode === "acceptEdits") return null; // already covered above
+    const scopedContext = {
+      ...context,
+      getAppState: () => ({
+        ...state,
+        toolPermissionContext: { ...perm, mode: "acceptEdits" as const },
+      }),
+    } as ToolUseContext;
+    const r = await tool.checkPermissions(input, scopedContext);
+    return r.behavior === "allow"
+      ? ((r.updatedInput as Record<string, unknown>) ?? input)
+      : null;
+  } catch {
+    // A failing probe must never widen permissions — fall through and ask.
+    return null;
+  }
+}
+
 async function gatePermission(args: {
   tool: Tool;
   input: Record<string, unknown>;
@@ -245,6 +299,13 @@ async function gatePermission(args: {
     if (tool.isReadOnly(input) || AUTO_ALLOW_TOOLS.has(tool.name)) {
       return { behavior: "allow", input: nextInput };
     }
+    // acceptEdits fast-path (the vendor's layer 4): re-ask the tool's own
+    // permission check as if the user were in acceptEdits. That mode allows
+    // writes inside the working directory and only there, so a file edit in
+    // the workspace runs silently while one outside it still prompts — the
+    // path scoping comes from the vendor's rules, not from a name list.
+    const scoped = await acceptEditsWouldAllow(tool, input, context);
+    if (scoped) return { behavior: "allow", input: scoped };
   }
 
   if (!requestPermission) {

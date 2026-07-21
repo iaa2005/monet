@@ -12,6 +12,7 @@ import {
   getVendorTools,
 } from '../src/main/agent/vendor-tools.js'
 import { initVendorRuntime } from '../src/main/agent/vendor-context.js'
+import { getWorkspacePath } from '../src/main/ipc/workspace.js'
 import { shouldCompact, compactMessages } from '../src/main/agent/compaction.js'
 import {
   callMcpTool,
@@ -112,6 +113,53 @@ async function main() {
   })
   check('Edit ok', !edit.isError, edit.content.slice(0, 80))
   check('Edit applied on disk', readFileSync(file, 'utf8').includes('edited by vendor pipeline'))
+
+  // 4b. Auto mode: writes are scoped to the workspace, not allowed by name.
+  // A file inside the workspace runs silently; the same tool aimed outside it
+  // must still reach the user. Fresh sessionId per call so an "allow always"
+  // grant from one check can't leak into the next.
+  const runAuto = async (name: string, input: Record<string, unknown>) => {
+    let asked = false
+    const res = await executeVendorTool({
+      sessionId: `smoke-auto-${Math.random().toString(36).slice(2)}`,
+      toolUseID: `toolu_${Math.random().toString(36).slice(2)}`,
+      name,
+      input,
+      model: MODEL,
+      permissionMode: 'auto',
+      requestPermission: async () => {
+        asked = true
+        return { behavior: 'allow' as const }
+      },
+    })
+    return { asked, res }
+  }
+
+  const inside = join(getWorkspacePath(), '.smoke-auto-inside.txt')
+  const insideWrite = await runAuto('Write', { file_path: inside, content: 'in workspace\n' })
+  check('auto: write inside the workspace does not prompt', !insideWrite.asked, insideWrite.res.content.slice(0, 60))
+  rmSync(inside, { force: true })
+
+  const outsideWrite = await runAuto('Write', {
+    file_path: join(dir, 'outside.txt'),
+    content: 'outside workspace\n',
+  })
+  check('auto: write OUTSIDE the workspace still prompts', outsideWrite.asked)
+
+  const autoRead = await runAuto('Read', { file_path: file })
+  check('auto: read does not prompt', !autoRead.asked)
+
+  // Bash is not blanket-prompted: the vendor's own rules already rate
+  // `echo`/`git status` as safe and only escalate risky shapes. Auto mode
+  // inherits both halves of that judgement.
+  const safeBash = await runAuto('Bash', { command: 'echo hi', description: 'echo' })
+  check('auto: a safe Bash command does not prompt', !safeBash.asked)
+
+  const riskyBash = await runAuto('Bash', {
+    command: 'rm -rf /tmp/definitely-not-real',
+    description: 'rm',
+  })
+  check('auto: a risky Bash command still prompts', riskyBash.asked)
 
   // 5. TodoWrite
   const todo = await run('TodoWrite', {
