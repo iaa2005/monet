@@ -297,6 +297,14 @@ export interface ElectronAPI {
       info?: ORKeyInfo;
       error?: string;
     }>;
+    routingGet: () => Promise<{
+      backgroundProviderId: string;
+      backgroundModel: string;
+    }>;
+    routingSet: (patch: {
+      backgroundProviderId?: string;
+      backgroundModel?: string;
+    }) => Promise<{ backgroundProviderId: string; backgroundModel: string }>;
   };
   permissions: {
     onRequest: (callback: (request: PermissionRequest) => void) => () => void;

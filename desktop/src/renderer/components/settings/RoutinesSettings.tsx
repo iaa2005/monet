@@ -48,6 +48,8 @@ interface Draft {
   eventFilter: string;
   connectors: string[];
   grants: string[];
+  providerId: string;
+  model: string;
   outputKind: "chat" | "notification" | "connector";
   outputConnector: string;
   condition: string;
@@ -82,7 +84,7 @@ const TEMPLATES: Template[] = [
 ];
 
 function emptyDraft(): Draft {
-  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", eventConnector: "", eventType: "", eventInterval: 15, eventFilter: "", connectors: [], grants: [], outputKind: "chat", outputConnector: "", condition: "", enabled: true };
+  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", eventConnector: "", eventType: "", eventInterval: 15, eventFilter: "", connectors: [], grants: [], providerId: "", model: "", outputKind: "chat", outputConnector: "", condition: "", enabled: true };
 }
 
 export function RoutinesSettings({
@@ -281,6 +283,8 @@ export function RoutinesSettings({
                     eventFilter: r.trigger.event?.filter ?? "",
                     connectors: r.connectors ?? [],
                     grants: r.grants ?? [],
+                    providerId: r.providerId ?? "",
+                    model: r.model ?? "",
                     outputKind: r.output?.kind ?? "chat",
                     outputConnector: r.output?.connector ?? "",
                     condition: r.condition?.prompt ?? "",
@@ -417,6 +421,17 @@ function RoutineEditor({
     { id: string; label: string; kind: "connector" | "mcp" }[]
   >([]);
   const [presets, setPresets] = useState<UiConnectorService[]>([]);
+  const [providers, setProviders] = useState<
+    { id: string; name: string; model: string }[]
+  >([]);
+  useEffect(() => {
+    void api()
+      ?.providers.list()
+      .then((list) =>
+        setProviders(list.map((p) => ({ id: p.id, name: p.name, model: p.model }))),
+      )
+      .catch(() => {});
+  }, []);
   const set = (patch: Partial<Draft>): void => setD((p) => ({ ...p, ...patch }));
   const grantOptions = useMemo(() => {
     const connected = new Map(servers.map((server) => [server.id, server]));
@@ -526,6 +541,8 @@ function RoutineEditor({
           ? { kind: "connector" as const, connector: d.outputConnector.trim() }
           : { kind: d.outputKind },
       grants: d.grants,
+      providerId: d.providerId || undefined,
+      model: d.model || undefined,
       enabled: d.enabled,
     };
     try {
@@ -575,6 +592,34 @@ function RoutineEditor({
                   {k}
                 </button>
               ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Model</label>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <select
+                value={d.providerId}
+                onChange={(e) => set({ providerId: e.target.value, model: "" })}
+                className="rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none"
+              >
+                <option value="">Whatever is active when it runs</option>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              {d.providerId && (
+                <input
+                  value={d.model}
+                  onChange={(e) => set({ model: e.target.value })}
+                  placeholder={
+                    providers.find((p) => p.id === d.providerId)?.model ??
+                    "that provider's default"
+                  }
+                  className="min-w-[12rem] flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none"
+                />
+              )}
             </div>
           </div>
           <div>

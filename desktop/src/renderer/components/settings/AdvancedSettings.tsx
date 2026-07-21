@@ -42,6 +42,21 @@ export function AdvancedSettings(): JSX.Element {
   const [promptsDir, setPromptsDir] = useState<string>("");
   const [migrating, setMigrating] = useState(false);
   const [migrated, setMigrated] = useState<string | null>(null);
+  const [providers, setProviders] = useState<{ id: string; name: string; model: string }[]>([]);
+  const [bgProvider, setBgProvider] = useState("");
+  const [bgModel, setBgModel] = useState("");
+
+  // Changing the provider clears the model: a model name from one provider is
+  // meaningless on another, and silently keeping it would route background work
+  // to a model that does not exist there.
+  const saveRouting = (providerId: string, model: string): void => {
+    setBgProvider(providerId);
+    setBgModel(model);
+    void api()?.providers.routingSet({
+      backgroundProviderId: providerId,
+      backgroundModel: model,
+    });
+  };
 
   useEffect(() => {
     api()?.tuning.toolSearchGet().then((c) => setToolSearch(c.enabled)).catch(() => {});
@@ -50,6 +65,17 @@ export function AdvancedSettings(): JSX.Element {
     api()
       ?.tuning.leanGet()
       .then((c) => setLeanTools(c.leanTools))
+      .catch(() => {});
+    void api()
+      ?.providers.list()
+      .then((list) => setProviders(list.map((p) => ({ id: p.id, name: p.name, model: p.model }))))
+      .catch(() => {});
+    void api()
+      ?.providers.routingGet()
+      .then((r) => {
+        setBgProvider(r.backgroundProviderId);
+        setBgModel(r.backgroundModel);
+      })
       .catch(() => {});
   }, []);
 
@@ -122,6 +148,43 @@ export function AdvancedSettings(): JSX.Element {
             checked={leanTools}
             onChange={toggleLeanTools}
           />
+        </div>
+      </section>
+
+      <section>
+        <h3 className="text-base font-semibold">Background model</h3>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Which model does the work that isn't the conversation: noting memory
+          after a turn, the nightly consolidation, the Reflect digest, drafting a
+          routine. Leave on the active provider, or point it at something cheap —
+          including a local Ollama / LM Studio / llama.cpp server, which needs no
+          API key.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <select
+            value={bgProvider}
+            onChange={(e) => saveRouting(e.target.value, "")}
+            className="rounded-lg border border-border bg-background px-2 py-1 text-sm outline-none"
+          >
+            <option value="">Same as the active provider</option>
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          {bgProvider && (
+            <input
+              value={bgModel}
+              onChange={(e) => setBgModel(e.target.value)}
+              onBlur={() => saveRouting(bgProvider, bgModel)}
+              placeholder={
+                providers.find((p) => p.id === bgProvider)?.model ??
+                "that provider's default model"
+              }
+              className="min-w-[16rem] flex-1 rounded-lg border border-border bg-background px-2 py-1 text-sm outline-none"
+            />
+          )}
         </div>
       </section>
 
