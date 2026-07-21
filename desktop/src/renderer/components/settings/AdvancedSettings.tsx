@@ -38,7 +38,6 @@ export function AdvancedSettings(): JSX.Element {
   const [lsp, setLsp] = useState(false);
   const [caveman, setCaveman] = useState(false);
   const [leanTools, setLeanTools] = useState(true);
-  const [vendorMemory, setVendorMemory] = useState(false);
   const [reloaded, setReloaded] = useState(false);
   const [promptsDir, setPromptsDir] = useState<string>("");
   const [migrating, setMigrating] = useState(false);
@@ -50,10 +49,7 @@ export function AdvancedSettings(): JSX.Element {
     api()?.tuning.cavemanGet().then((c) => setCaveman(c.enabled)).catch(() => {});
     api()
       ?.tuning.leanGet()
-      .then((c) => {
-        setLeanTools(c.leanTools);
-        setVendorMemory(c.vendorMemory);
-      })
+      .then((c) => setLeanTools(c.leanTools))
       .catch(() => {});
   }, []);
 
@@ -68,10 +64,6 @@ export function AdvancedSettings(): JSX.Element {
   const toggleLeanTools = (v: boolean): void => {
     setLeanTools(v);
     void api()?.tuning.leanSet({ leanTools: v });
-  };
-  const toggleVendorMemory = (v: boolean): void => {
-    setVendorMemory(v);
-    void api()?.tuning.leanSet({ vendorMemory: v });
   };
   const toggleLsp = (v: boolean): void => {
     setLsp(v);
@@ -129,12 +121,6 @@ export function AdvancedSettings(): JSX.Element {
             desc="Strip worked examples from tool descriptions, keeping every rule. Measured on this app: TodoWrite 9114 → 3288 characters, ~1.6K tokens saved on every request."
             checked={leanTools}
             onChange={toggleLeanTools}
-          />
-          <ToggleRow
-            title="Vendor auto-memory instructions"
-            desc="The bundled agent ships a second, file-based memory system this app never shows — 3.1K tokens of instructions per request, on top of Settings → Memory. Off by default. Takes effect after a restart."
-            checked={vendorMemory}
-            onChange={toggleVendorMemory}
           />
         </div>
       </section>

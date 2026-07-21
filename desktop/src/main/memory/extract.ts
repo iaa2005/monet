@@ -115,6 +115,57 @@ export async function runExtraction(excerpt: string): Promise<string[]> {
   return applied;
 }
 
+const LOG_SYSTEM = `You watch a conversation between a user and their AI assistant and note what is worth remembering in FUTURE conversations.
+
+Record:
+- Corrections and preferences the user states ("use bun, not npm"; "stop summarising diffs")
+- Facts about the user: role, field, languages, tools, goals
+- Project context not derivable from the code: decisions and their rationale, deadlines, incidents
+- Pointers to external systems (dashboards, repos, tickets)
+- Anything the user explicitly asks to remember
+
+Do NOT record: secrets or credentials, one-off task mechanics, anything already obvious from the code, or what the assistant said about itself.
+
+Reply with ONLY a JSON array of short self-contained strings, each one fact, in the user's language. Convert "yesterday"/"last week" to absolute dates. At most 5. If nothing is worth remembering: []`;
+
+function parseBullets(raw: string): string[] {
+  const text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  const start = text.indexOf("[");
+  const end = text.lastIndexOf("]");
+  if (start === -1 || end <= start) return [];
+  try {
+    const arr = JSON.parse(text.slice(start, end + 1)) as unknown;
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+      .slice(0, 5);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The per-turn pass. Appends observations to today's log instead of rewriting
+ * memory files: a cheap model looking at an 8K excerpt should never be able to
+ * drop facts it can't see. The nightly consolidation is what turns these into
+ * memory files, with the whole picture in view.
+ */
+export async function runLogPass(excerpt: string): Promise<number> {
+  const provider = getProviderManager().getActive();
+  if (!provider) return 0;
+  const adapter = createAdapter(provider);
+  const res = await adapter.complete({
+    model: provider.model,
+    system: LOG_SYSTEM,
+    messages: [{ role: "user", content: `CONVERSATION:\n${excerpt.slice(0, 8_000)}` }],
+    max_tokens: 800,
+  });
+  const bullets = parseBullets(typeof res.content === "string" ? res.content : "");
+  if (bullets.length === 0) return 0;
+  const { appendDailyLog } = await import("./daily-log.js");
+  return appendDailyLog(bullets);
+}
+
 /** Post-turn hook: throttled, gated, fire-and-forget. */
 export async function maybeExtractMemory(
   sessionId: string,
@@ -130,7 +181,7 @@ export async function maybeExtractMemory(
     if (now - (lastRun.get(sessionId) ?? 0) < cfg.extractEveryMinutes * 60_000)
       return;
     lastRun.set(sessionId, now);
-    await runExtraction(conversationText);
+    await runLogPass(conversationText);
   } catch {
     /* memory is best-effort */
   }

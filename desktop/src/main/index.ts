@@ -10,6 +10,7 @@ import { ensureBuiltinSkills } from "./builtin-skills.js";
 import { initPowerSaveBlocker } from "./power.js";
 import { initBetaGuard } from "./beta.js";
 import { applyLeanEnv } from "./agent/lean-context.js";
+import { initNightlyConsolidation } from "./memory/nightly.js";
 
 // The main bundle is ESM ("type": "module"), where __dirname is not defined.
 // Derive it from import.meta.url so preload/renderer paths resolve.
@@ -229,6 +230,10 @@ app.whenReady().then(() => {
 
   // Ship the built-in skills (created only when missing).
   ensureBuiltinSkills();
+
+  // Memory: distil the day's logs into memory files overnight (or on catch-up
+  // if the machine was off at 3am). No-ops unless there's new signal.
+  initNightlyConsolidation();
 
   // Re-arm "keep awake" if it was left on — a preference that forgets itself on
   // restart is worse than none, since the user thinks the machine is held awake.

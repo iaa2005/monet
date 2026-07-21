@@ -27,11 +27,9 @@ import { getDataDir } from "../data-dir.js";
 export interface LeanConfig {
   /** Strip worked examples from tool descriptions. */
   leanTools: boolean;
-  /** Keep the vendor's parallel auto-memory instructions in the prompt. */
-  vendorMemory: boolean;
 }
 
-const DEFAULT: LeanConfig = { leanTools: true, vendorMemory: false };
+const DEFAULT: LeanConfig = { leanTools: true };
 
 function configPath(): string {
   return join(getDataDir(), "lean-context.json");
@@ -40,10 +38,7 @@ function configPath(): string {
 export function getLeanConfig(): LeanConfig {
   try {
     const raw = JSON.parse(readFileSync(configPath(), "utf-8")) as Partial<LeanConfig>;
-    return {
-      leanTools: raw.leanTools !== false,
-      vendorMemory: raw.vendorMemory === true,
-    };
+    return { leanTools: raw.leanTools !== false };
   } catch {
     return { ...DEFAULT };
   }
@@ -60,14 +55,18 @@ export function setLeanConfig(patch: Partial<LeanConfig>): LeanConfig {
 }
 
 /**
- * Apply the vendor-memory choice. MUST run before anything builds a system
- * prompt — the vendor caches that section on first computation, so a later
- * change has no effect until restart (verified: toggling mid-process leaves
- * the block in place; setting it at startup drops 6356 tok → 3210 tok).
+ * Suppress the vendor's own auto-memory instructions. They describe a SECOND
+ * memory system (its own directory, its own index) that nothing in this app
+ * maintains — the app runs its own daily-log → nightly-consolidation → index
+ * memory, so leaving the vendor block in would point the model at a parallel
+ * store and waste ~3100 tokens doing it.
+ *
+ * MUST run before anything builds a system prompt: the vendor caches that
+ * section on first computation, so setting it later has no effect until
+ * restart (verified: at startup this drops 6356 tok → 3210 tok).
  */
 export function applyLeanEnv(): void {
-  if (!getLeanConfig().vendorMemory)
-    process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
+  process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
 }
 
 // ─── Tool description compression ───────────────────────────────────────────

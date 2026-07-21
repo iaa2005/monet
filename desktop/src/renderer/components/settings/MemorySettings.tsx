@@ -127,6 +127,31 @@ const SECTIONS: { key: MemoryFileInfo["section"]; label: string }[] = [
   { key: "areas", label: "Areas" },
 ];
 
+interface ConsolidationState {
+  lastConsolidatedAt: number;
+  lastSummary: string;
+  lastError: string | null;
+  runs: number;
+  pending: number;
+}
+
+/** One line of status: when it last ran, what it did, what's queued. */
+function describeConsolidation(s: ConsolidationState | null): string {
+  if (!s) return "";
+  const queued = s.pending > 0 ? `${s.pending} note${s.pending === 1 ? "" : "s"} waiting` : "nothing waiting";
+  if (!s.lastConsolidatedAt)
+    return s.lastError ? `Last attempt failed: ${s.lastError}` : `Never run — ${queued}.`;
+  const hours = (Date.now() - s.lastConsolidatedAt) / 3_600_000;
+  const when =
+    hours < 1
+      ? "less than an hour ago"
+      : hours < 24
+        ? `${Math.round(hours)}h ago`
+        : `${Math.round(hours / 24)}d ago`;
+  const tail = s.lastError ? ` Last attempt failed: ${s.lastError}` : "";
+  return `Last run ${when}${s.lastSummary ? ` — ${s.lastSummary}` : ""} · ${queued}.${tail}`;
+}
+
 export function MemorySettings(): JSX.Element {
   const [config, setConfig] = useState({
     searchChats: true,
@@ -138,12 +163,31 @@ export function MemorySettings(): JSX.Element {
   const [note, setNote] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [consState, setConsState] = useState<ConsolidationState | null>(null);
+  const [consolidating, setConsolidating] = useState(false);
+  const [consolidateMsg, setConsolidateMsg] = useState<string | null>(null);
 
   const load = (): void => {
     void api()?.memory.list().then(setFiles);
     void api()?.memory.getConfig().then(setConfig);
+    void api()?.memory.consolidationState().then(setConsState).catch(() => {});
   };
   useEffect(load, []);
+
+  const consolidateNow = async (): Promise<void> => {
+    if (consolidating) return;
+    setConsolidating(true);
+    setConsolidateMsg(null);
+    try {
+      const r = await api()?.memory.consolidate();
+      if (r?.ran) setConsolidateMsg(r.summary ?? "Consolidated ✓");
+      else if (r?.error) setConsolidateMsg(`Failed: ${r.error}`);
+      else setConsolidateMsg(r?.reason ? `Skipped — ${r.reason}` : "Nothing to do.");
+      load();
+    } finally {
+      setConsolidating(false);
+    }
+  };
 
   const toggle = async (
     key: "searchChats" | "generateMemory",
@@ -197,8 +241,9 @@ export function MemorySettings(): JSX.Element {
         <div>
           <div className="text-sm font-medium">Generate memory from chats</div>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            After a conversation, quietly distil durable facts (who you are,
-            projects, workflows) into the memory files below.
+            After a conversation, quietly note durable facts (who you are,
+            projects, workflows) in a daily log. Overnight those notes are
+            consolidated into the memory files below.
           </p>
         </div>
         <Switch
@@ -229,6 +274,30 @@ export function MemorySettings(): JSX.Element {
           </select>
         </div>
       )}
+
+      <div className="mt-5 rounded-xl border border-border p-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-sm font-medium">Nightly consolidation</div>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Runs itself around 3–5am when the computer is on (and catches up
+              if it was off). Reads the day's notes with the whole memory in
+              view, merges them in, drops what's stale, and rewrites the index.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void consolidateNow()}
+            disabled={consolidating}
+            className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+          >
+            {consolidating ? "Consolidating…" : "Consolidate now"}
+          </button>
+        </div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          {consolidateMsg ?? describeConsolidation(consState)}
+        </div>
+      </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-4">
         {SECTIONS.map(({ key, label }) => {

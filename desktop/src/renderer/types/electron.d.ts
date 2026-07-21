@@ -407,6 +407,23 @@ export interface ElectronAPI {
     ) => Promise<{ ok: boolean; error?: string }>;
     deleteById: (id: string) => Promise<{ ok: boolean }>;
     addNote: (note: string) => Promise<{ ok: boolean; applied: string[] }>;
+    consolidationState: () => Promise<{
+      lastConsolidatedAt: number;
+      lastRunAt: number;
+      lastSummary: string;
+      lastError: string | null;
+      lastTouched: string[];
+      runs: number;
+      pending: number;
+    }>;
+    consolidate: () => Promise<{
+      ok: boolean;
+      ran: boolean;
+      reason?: string;
+      summary?: string;
+      touched?: string[];
+      error?: string;
+    }>;
   };
   profile: {
     get: () => Promise<{

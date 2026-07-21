@@ -337,6 +337,24 @@ const electronAPI = {
       ipcRenderer.invoke("memory:delete", id),
     addNote: (note: string): Promise<{ ok: boolean; applied: string[] }> =>
       ipcRenderer.invoke("memory:addNote", note),
+    consolidationState: (): Promise<{
+      lastConsolidatedAt: number;
+      lastRunAt: number;
+      lastSummary: string;
+      lastError: string | null;
+      lastTouched: string[];
+      runs: number;
+      /** Log bullets waiting for the next pass. */
+      pending: number;
+    }> => ipcRenderer.invoke("memory:consolidationState"),
+    consolidate: (): Promise<{
+      ok: boolean;
+      ran: boolean;
+      reason?: string;
+      summary?: string;
+      touched?: string[];
+      error?: string;
+    }> => ipcRenderer.invoke("memory:consolidate"),
   },
 
   profile: {
@@ -628,12 +646,11 @@ const electronAPI = {
       ipcRenderer.invoke("caveman:get"),
     cavemanSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
       ipcRenderer.invoke("caveman:set", patch),
-    leanGet: (): Promise<{ leanTools: boolean; vendorMemory: boolean }> =>
+    leanGet: (): Promise<{ leanTools: boolean }> =>
       ipcRenderer.invoke("lean:get"),
     leanSet: (patch: {
       leanTools?: boolean;
-      vendorMemory?: boolean;
-    }): Promise<{ leanTools: boolean; vendorMemory: boolean }> =>
+    }): Promise<{ leanTools: boolean }> =>
       ipcRenderer.invoke("lean:set", patch),
     lspGet: (): Promise<{ enabled: boolean }> => ipcRenderer.invoke("lsp:get"),
     lspSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>

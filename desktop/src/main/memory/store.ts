@@ -41,10 +41,20 @@ export interface MemoryFileInfo {
 const FILE_CAP = 2_500;
 const TOTAL_CAP = 10_000;
 
+/** Index caps, matching the vendor's: it must always fit in context. */
+const ENTRYPOINT_NAME = "MEMORY.md";
+const MAX_INDEX_LINES = 200;
+const MAX_INDEX_BYTES = 25_000;
+
 function memoryDir(): string {
   const dir = join(getDataDir(), "claude", "memory");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+/** The memory root — daily logs and the MEMORY.md index live alongside the files. */
+export function getMemoryDir(): string {
+  return memoryDir();
 }
 
 function configFile(): string {
@@ -182,19 +192,61 @@ export function memoryPreamble(): string {
   );
 }
 
+/** MEMORY.md — the distilled index the nightly pass maintains. */
+export function indexPath(): string {
+  return join(memoryDir(), ENTRYPOINT_NAME);
+}
+
+export function readMemoryIndex(): string {
+  try {
+    return readFileSync(indexPath(), "utf-8").trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Rewrite the index. It is an INDEX, not a dump: one line per memory, capped
+ * the way the vendor caps it (200 lines / 25KB) so it can always be carried in
+ * context.
+ */
+export function writeMemoryIndex(
+  entries: { title: string; id: string; hook: string }[],
+): void {
+  const lines: string[] = ["# Memory index", ""];
+  for (const e of entries.slice(0, MAX_INDEX_LINES)) {
+    const title = e.title.replace(/[\r\n\]]+/g, " ").trim() || e.id;
+    const hook = e.hook.replace(/[\r\n]+/g, " ").trim();
+    let line = `- [${title}](${e.id}.md)${hook ? ` — ${hook}` : ""}`;
+    if (line.length > 200) line = line.slice(0, 199) + "…";
+    lines.push(line);
+  }
+  let out = lines.join("\n") + "\n";
+  if (Buffer.byteLength(out, "utf-8") > MAX_INDEX_BYTES)
+    out = out.slice(0, MAX_INDEX_BYTES) + "\n";
+  writeFileSync(indexPath(), out, "utf-8");
+}
+
 export function buildMemoryPrompt(): string | null {
   const files = listMemoryFiles();
   if (files.length === 0) return null;
   const parts: string[] = [memoryPreamble()];
+  // The index goes first: when the bodies below get capped, it still tells the
+  // model which memories exist so it can go read one deliberately.
+  const index = readMemoryIndex();
+  if (index) parts.push(index);
   let total = 0;
+  let bodies = 0;
   for (const f of files) {
     const r = readMemoryFile(f.id);
     if (!r.ok || !r.body) continue;
     const body = r.body.length > FILE_CAP ? r.body.slice(0, FILE_CAP) + "…" : r.body;
     if (total + body.length > TOTAL_CAP) break;
     total += body.length;
+    bodies++;
     parts.push(`## ${f.name}\n${body}`);
   }
-  // Only emit when at least one memory file was actually added (preamble + ≥1).
-  return parts.length > 1 ? parts.join("\n\n") : null;
+  // Emit when there is real content — a body, or an index pointing at files
+  // whose bodies were all capped out.
+  return bodies > 0 || index ? parts.join("\n\n") : null;
 }
