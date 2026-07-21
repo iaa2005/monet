@@ -367,7 +367,7 @@ function ToolRow({
         {fp ? (
           <FilePathLink path={fp} />
         ) : preview ? (
-          <span className="truncate font-mono text-xs text-muted-foreground">
+          <span className="truncate font-mono text-xs text-foreground">
             {preview}
           </span>
         ) : null}
@@ -517,7 +517,7 @@ function ToolCallItem({
           {toolCall.name}
         </span>
         {preview ? (
-          <span className="truncate font-mono text-xs text-muted-foreground">
+          <span className="truncate font-mono text-xs text-foreground">
             {preview}
           </span>
         ) : null}
