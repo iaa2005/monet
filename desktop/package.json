@@ -12,6 +12,7 @@
     "package": "electron-builder",
     "typecheck": "node scripts/typecheck.mjs",
     "smoke:agent": "node scripts/smoke-agent.mjs",
+    "smoke:retry": "node scripts/retry-probe.mjs",
     "smoke:memory": "node scripts/memory-probe.mjs",
     "probe:directory": "node scripts/directory-probe.mjs",
     "build:beta": "node scripts/build-beta.mjs",

@@ -27,6 +27,103 @@ function generateId(): string {
   return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
 }
 
+/** What chat.send wants for each attachment (raw content, not display meta). */
+type SendAttachment = NonNullable<
+  Parameters<NonNullable<ElectronAPI["chat"]>["send"]>[0]["attachments"]
+>[number];
+
+/** Allocates its own ArrayBuffer so the result is a BlobPart: a plain
+ * Uint8Array may be backed by a SharedArrayBuffer, which File() rejects. */
+function bytesFromBase64(b64: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(b64);
+  const buf = new ArrayBuffer(bin.length);
+  const out = new Uint8Array(buf);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/**
+ * Rebuild composer-ready File objects from a message's saved attachments, for
+ * the edit flow. Files with nothing on disk behind them are dropped — a
+ * composer entry that cannot be sent is worse than an absent one.
+ */
+async function restageAttachments(
+  metas: ChatAttachmentMeta[] | undefined,
+): Promise<StagedAttachment[]> {
+  if (!metas?.length) return [];
+  const api = electron();
+  const out: StagedAttachment[] = [];
+  for (const a of metas) {
+    if (!a.path) continue;
+    try {
+      const r = await api?.artifacts.readBytes(a.path);
+      if (!r?.ok || !r.base64) continue;
+      const file = new File([bytesFromBase64(r.base64)], a.name, {
+        type: a.mediaType,
+      });
+      out.push({
+        id: generateId(),
+        file,
+        url: a.kind === "image" ? URL.createObjectURL(file) : undefined,
+      });
+    } catch {
+      /* skip this one */
+    }
+  }
+  return out;
+}
+
+/**
+ * Turn the attachments STORED on a message back into a sendable payload.
+ *
+ * A message keeps only display metadata — name, kind, and where the file was
+ * saved. The bytes are re-read from that path, which is why a retry can hand
+ * the model the same files instead of quietly resending the turn without them.
+ */
+async function rebuildAttachments(
+  metas: ChatAttachmentMeta[],
+): Promise<SendAttachment[]> {
+  const api = electron();
+  const out: SendAttachment[] = [];
+  for (const a of metas) {
+    const base = { name: a.name, mediaType: a.mediaType, kind: a.kind };
+    try {
+      if (a.path && a.kind === "text") {
+        const r = await api?.artifacts.readText(a.path);
+        if (r?.ok && r.content != null) {
+          out.push({ ...base, text: r.content });
+          continue;
+        }
+      } else if (a.path) {
+        const r = await api?.artifacts.readBytes(a.path);
+        if (r?.ok && r.base64) {
+          out.push({ ...base, dataBase64: r.base64 });
+          continue;
+        }
+      }
+      // No file on disk (incognito chat, or a message from before attachments
+      // were persisted): the in-memory preview is the only copy left.
+      const inline = a.dataUrl?.split(",")[1];
+      if (inline) {
+        out.push({ ...base, dataBase64: inline });
+        continue;
+      }
+    } catch {
+      /* fall through to the note below */
+    }
+    // Say it plainly. The bubble still shows the file, so silently sending a
+    // turn without it would leave the model answering about something it was
+    // never given.
+    out.push({
+      name: a.name,
+      mediaType: a.mediaType,
+      kind: "text",
+      text: `\n\n[Attachment ${a.name} could not be re-read, so this retry does not include it.]`,
+    });
+  }
+  return out;
+}
+
 /** Apply one sub-agent event to the child's mini-transcript — mirrors the main
  * reducer's text_delta / tool_use / tool_result handling on a nested list, so
  * the child renders with the same components as the top-level chat. */
@@ -747,7 +844,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
       const idx = msgs.findIndex((m) => m.id === messageId);
       if (idx < 0 || msgs[idx].role !== "user") return;
       const text = (newText ?? msgs[idx].content).trim();
-      if (!text) return;
+      // An attachment-only turn is legitimate ("look at this"), so the guard
+      // is on having SOMETHING to send, not on having text.
+      const carried = msgs[idx].attachments;
+      if (!text && !carried?.length) return;
 
       // Truncate the renderer to the history strictly BEFORE the target user
       // message; the main-process durable transcript is truncated to the same
@@ -772,7 +872,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
         keepUserTurns,
         totalUserTurns,
       );
-      get().addUserMessage(text);
+      // Re-read the files BEFORE the turn starts: if a read fails we still
+      // send, but the note about it has to be in the payload from the start.
+      const attachments = carried?.length
+        ? await rebuildAttachments(carried)
+        : undefined;
+
+      get().addUserMessage(text, carried);
       get().startStreaming();
       const eff = localStorage.getItem("monet.effort");
       const effort =
@@ -783,6 +889,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         seed,
         space: state.space,
         effort,
+        attachments,
       });
     },
 
@@ -873,6 +980,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
         totalUserTurns,
       );
       get().setComposerDraft(text);
+      // Put the turn's files back in the composer too. Without this the prompt
+      // comes back for editing but its attachments do not, and the resend goes
+      // out missing them — with the user seeing no sign that it happened.
+      const restaged = await restageAttachments(msgs[idx].attachments);
+      get().setStagedFiles(sessionId, restaged);
     },
 
     deliverBackgroundResults: async () => {

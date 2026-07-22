@@ -196,6 +196,16 @@ function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
+/** UTF-8 safe text → base64. Chunked: String.fromCharCode(...bytes) on a
+ * 200 000-character attachment overflows the argument limit. */
+function textToBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
 export function MessageInput({
   flush = false,
   onOpenProviders,
@@ -732,12 +742,17 @@ export function MessageInput({
     if (bridge && sessionId && !incognito && attachments && displayAttachments) {
       await Promise.all(
         attachments.map(async (a, i) => {
-          if (!a.dataBase64) return;
+          // Text attachments were skipped here, so they had no file behind
+          // them: they could not be opened from the chat later, and a retry
+          // had nothing to re-read. They are small — save them too.
+          const data =
+            a.dataBase64 ?? (a.text != null ? textToBase64(a.text) : undefined);
+          if (!data) return;
           try {
             const r = await bridge.artifacts.save({
               sessionId,
               name: a.name,
-              dataBase64: a.dataBase64,
+              dataBase64: data,
             });
             if (r.ok && r.path) displayAttachments[i].path = r.path;
           } catch {
