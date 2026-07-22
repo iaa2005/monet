@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Plug, RefreshCw, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
+import { DirectoryButton } from "@/components/directory/DirectoryModal";
 import type {
   ElectronAPI,
   McpServerConfig,
@@ -22,7 +23,7 @@ const STATUS_STYLE: Record<McpServerStatus["status"], string> = {
 const INPUT =
   "mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-foreground/20";
 
-interface KV {
+export interface KV {
   key: string;
   value: string;
 }
@@ -104,23 +105,45 @@ function pairsToRecord(pairs: KV[]): Record<string, string> {
   );
 }
 
-function AddConnectorModal({
+/** A pre-filled form — what the Directory hands over after picking a server
+ * from the MCP registry. Every field stays editable: the registry's suggestion
+ * is a starting point, and the user reads the command line before it runs. */
+export interface AddConnectorInitial {
+  name?: string;
+  kind?: "command" | "url";
+  command?: string;
+  args?: string;
+  env?: KV[];
+  url?: string;
+  urlType?: "http" | "sse";
+  headers?: KV[];
+  /** Provenance line above the form. */
+  note?: string;
+}
+
+export function AddConnectorModal({
   existingNames,
+  initial,
   onClose,
   onSaved,
 }: {
   existingNames: string[];
+  initial?: AddConnectorInitial;
   onClose: () => void;
   onSaved: (list: McpServerStatus[]) => void;
 }): JSX.Element {
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState<"command" | "url">("command");
-  const [command, setCommand] = useState("");
-  const [args, setArgs] = useState("");
-  const [env, setEnv] = useState<KV[]>([]);
-  const [url, setUrl] = useState("");
-  const [urlType, setUrlType] = useState<"http" | "sse">("http");
-  const [headers, setHeaders] = useState<KV[]>([]);
+  const [name, setName] = useState(initial?.name ?? "");
+  const [kind, setKind] = useState<"command" | "url">(
+    initial?.kind ?? "command",
+  );
+  const [command, setCommand] = useState(initial?.command ?? "");
+  const [args, setArgs] = useState(initial?.args ?? "");
+  const [env, setEnv] = useState<KV[]>(initial?.env ?? []);
+  const [url, setUrl] = useState(initial?.url ?? "");
+  const [urlType, setUrlType] = useState<"http" | "sse">(
+    initial?.urlType ?? "http",
+  );
+  const [headers, setHeaders] = useState<KV[]>(initial?.headers ?? []);
   const [oauthClientId, setOauthClientId] = useState("");
   const [timeout, setTimeoutStr] = useState("60");
   const [error, setError] = useState<string | null>(null);
@@ -214,6 +237,11 @@ function AddConnectorModal({
         </div>
 
         <div className="-mr-1 min-h-0 flex-1 overflow-y-auto pr-1">
+          {initial?.note && (
+            <p className="mt-3 rounded-lg border border-border bg-black/[0.02] p-2.5 text-xs leading-relaxed text-muted-foreground dark:bg-white/[0.03]">
+              {initial.note}
+            </p>
+          )}
           <Field
             label="Server Name"
             required
@@ -415,10 +443,20 @@ export function ConnectorsSettings(): JSX.Element {
         </div>
       </div>
 
+      <div className="mb-3">
+        <DirectoryButton
+          section="mcp"
+          title="Browse the Directory"
+          subtitle="Search the official MCP registry — the command line is shown before anything runs"
+          onChanged={load}
+        />
+      </div>
+
       {servers.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
-          No connectors yet. Use <span className="font-medium">Add</span> to
-          connect an MCP server.
+          No connectors yet. Browse the Directory, or use{" "}
+          <span className="font-medium">Add</span> for a server you already
+          know.
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-border">

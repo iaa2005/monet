@@ -137,9 +137,37 @@ export interface PaintingInfo {
 
 export interface StoreSkill {
   path: string;
+  /** The `owner/repo[/sub]` this skill came from. */
+  source: string;
   name: string;
   description: string;
   installed: boolean;
+  /** Local folder name once installed — what removal needs. */
+  slug: string;
+}
+
+export interface RegistryVar {
+  name: string;
+  description?: string;
+  required: boolean;
+  secret: boolean;
+  value?: string;
+}
+
+export interface RegistryServer {
+  id: string;
+  name: string;
+  namespace: string;
+  description: string;
+  version: string;
+  repoUrl?: string;
+  transport: "stdio" | "http" | "sse";
+  command?: string;
+  args?: string[];
+  url?: string;
+  vars: RegistryVar[];
+  placeholders?: string[];
+  unsupported?: string;
 }
 
 export interface AgentSummary {
@@ -492,12 +520,25 @@ export interface ElectronAPI {
     ) => Promise<{ ok: boolean; digest?: ReflectDigest; error?: string }>;
   };
   skillStore: {
-    getSource: () => Promise<string>;
-    setSource: (source: string) => Promise<string>;
-    list: () => Promise<{ ok: boolean; skills?: StoreSkill[]; error?: string }>;
-    install: (
-      dir: string,
-    ) => Promise<{ ok: boolean; slug?: string; error?: string }>;
+    getSources: () => Promise<string[]>;
+    setSources: (list: string[]) => Promise<string[]>;
+    list: () => Promise<{
+      ok: boolean;
+      skills?: StoreSkill[];
+      errors?: string[];
+      error?: string;
+    }>;
+    install: (payload: {
+      source: string;
+      path: string;
+    }) => Promise<{ ok: boolean; slug?: string; error?: string }>;
+  };
+  mcpRegistry: {
+    search: (payload: { query?: string; limit?: number }) => Promise<{
+      ok: boolean;
+      servers?: RegistryServer[];
+      error?: string;
+    }>;
   };
   agents: {
     list: () => Promise<AgentSummary[]>;

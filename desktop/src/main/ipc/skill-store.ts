@@ -1,11 +1,14 @@
 /**
- * Skill store IPC — browse and install skills from a GitHub repository.
+ * Skill store IPC — browse and install skills from GitHub repositories.
  *
- * The source is `owner/repo` or `owner/repo/subdir` (default: iaa2005/monet-skills).
- * Listing costs ONE API request (git trees, recursive) — every directory
- * containing a SKILL.md is a skill; names/descriptions come from raw SKILL.md
- * frontmatter (raw.githubusercontent.com, not rate-limited like the API).
- * Install downloads the skill folder's files into the local skills dir.
+ * A source is `owner/repo` or `owner/repo/subdir`; the user keeps a LIST of
+ * them (default: iaa2005/monet-skills) and the Directory shows them merged,
+ * each card labelled with the repo it came from.
+ *
+ * Listing one repo costs ONE API request (git trees, recursive) — every
+ * directory containing a SKILL.md is a skill; names/descriptions come from raw
+ * SKILL.md frontmatter (raw.githubusercontent.com, not rate-limited like the
+ * API). Install downloads the skill folder's files into the local skills dir.
  */
 
 import { ipcMain } from "electron";
@@ -14,15 +17,20 @@ import { dirname, join } from "path";
 import { getDataDir } from "../data-dir.js";
 
 export interface StoreSkill {
-  /** Repo-relative dir of the skill (unique id within the store). */
+  /** Repo-relative dir of the skill. Unique only WITHIN a source. */
   path: string;
+  /** The `owner/repo[/sub]` this came from — the card's provenance line. */
+  source: string;
   name: string;
   description: string;
   installed: boolean;
+  /** Local folder name once installed — what removal needs. */
+  slug: string;
 }
 
 const UA = { "User-Agent": "monet-desktop" };
 const CACHE_MS = 10 * 60 * 1000;
+const DEFAULT_SOURCES = ["iaa2005/monet-skills"];
 
 function skillsDir(): string {
   const dir = join(getDataDir(), "claude", "skills");
@@ -34,20 +42,55 @@ function configFile(): string {
   return join(getDataDir(), "skill-store.json");
 }
 
-function getSource(): string {
+/** Normalize a user-typed source: accepts a full GitHub URL or `owner/repo`. */
+export function normalizeSource(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^https?:\/\/(www\.)?github\.com\//i, "")
+    .replace(/\.git$/i, "")
+    .replace(/\/tree\/[^/]+\//, "/") // .../tree/main/subdir → .../subdir
+    .replace(/^\/+|\/+$/g, "");
+}
+
+function getSources(): string[] {
   try {
     const j = JSON.parse(readFileSync(configFile(), "utf-8")) as {
-      source?: string;
+      sources?: unknown;
+      source?: unknown;
     };
-    if (typeof j.source === "string" && j.source.trim()) return j.source.trim();
+    // Migration: the single-source config predates the Directory.
+    const list = Array.isArray(j.sources)
+      ? j.sources
+      : typeof j.source === "string"
+        ? [j.source]
+        : [];
+    const clean = list
+      .filter((s): s is string => typeof s === "string")
+      .map(normalizeSource)
+      .filter((s) => s.split("/").length >= 2);
+    if (clean.length) return [...new Set(clean)];
   } catch {
     /* default below */
   }
-  return "iaa2005/monet-skills";
+  return DEFAULT_SOURCES;
+}
+
+function setSources(list: string[]): string[] {
+  const clean = [
+    ...new Set(
+      list.map(normalizeSource).filter((s) => s.split("/").length >= 2),
+    ),
+  ];
+  writeFileSync(
+    configFile(),
+    JSON.stringify({ sources: clean }, null, 2),
+    "utf-8",
+  );
+  return clean.length ? clean : DEFAULT_SOURCES;
 }
 
 function parseSource(src: string): { repo: string; sub: string } {
-  const parts = src.replace(/^\/+|\/+$/g, "").split("/");
+  const parts = normalizeSource(src).split("/");
   const repo = parts.slice(0, 2).join("/");
   const sub = parts.slice(2).join("/");
   return { repo, sub };
@@ -70,17 +113,13 @@ function slugify(name: string): string {
   );
 }
 
-// One tree cache per source spec.
-let treeCache: { source: string; at: number; paths: string[] } | null = null;
+// One tree cache per repo (not per source — a subdir shares its repo's tree).
+const treeCache = new Map<string, { at: number; paths: string[] }>();
 
 async function fetchTree(source: string): Promise<string[]> {
-  if (
-    treeCache &&
-    treeCache.source === source &&
-    Date.now() - treeCache.at < CACHE_MS
-  )
-    return treeCache.paths;
   const { repo } = parseSource(source);
+  const hit = treeCache.get(repo);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.paths;
   const res = await fetch(
     `https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`,
     { headers: { ...UA, Accept: "application/vnd.github+json" } },
@@ -89,7 +128,9 @@ async function fetchTree(source: string): Promise<string[]> {
     throw new Error(
       res.status === 404
         ? `Repository "${repo}" not found (private repos aren't supported).`
-        : `GitHub API error ${res.status} — try again later.`,
+        : res.status === 403
+          ? `GitHub rate limit reached — wait a few minutes.`
+          : `GitHub API error ${res.status} — try again later.`,
     );
   const json = (await res.json()) as {
     tree?: { path: string; type: string }[];
@@ -98,7 +139,7 @@ async function fetchTree(source: string): Promise<string[]> {
   const paths = (json.tree ?? [])
     .filter((e) => e.type === "blob")
     .map((e) => e.path);
-  treeCache = { source, at: Date.now(), paths };
+  treeCache.set(repo, { at: Date.now(), paths });
   return paths;
 }
 
@@ -114,7 +155,7 @@ async function fetchRaw(repo: string, path: string): Promise<string | null> {
   }
 }
 
-async function listStore(source: string): Promise<StoreSkill[]> {
+async function listOne(source: string): Promise<StoreSkill[]> {
   const { repo, sub } = parseSource(source);
   const paths = await fetchTree(source);
   const prefix = sub ? `${sub}/` : "";
@@ -128,18 +169,39 @@ async function listStore(source: string): Promise<StoreSkill[]> {
       const md = await fetchRaw(repo, `${dir}/SKILL.md`);
       const fm = md ? parseFrontmatter(md) : {};
       const base = dir.split("/").pop() ?? dir;
+      const slug = slugify(base);
       return {
         path: dir,
+        source,
         name: fm.name || base,
-        description: (fm.description ?? "").slice(0, 240),
-        installed: existsSync(join(local, slugify(base))),
+        description: (fm.description ?? "").slice(0, 400),
+        installed: existsSync(join(local, slug)),
+        slug,
       } satisfies StoreSkill;
     }),
   );
   return metas
     .filter((r): r is PromiseFulfilledResult<StoreSkill> => r.status === "fulfilled")
-    .map((r) => r.value)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .map((r) => r.value);
+}
+
+/** Every source, merged. One unreachable repo must not blank the whole
+ * Directory, so failures come back as `errors` alongside whatever loaded. */
+async function listAll(
+  sources: string[],
+): Promise<{ skills: StoreSkill[]; errors: string[] }> {
+  const results = await Promise.allSettled(sources.map(listOne));
+  const skills: StoreSkill[] = [];
+  const errors: string[] = [];
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") skills.push(...r.value);
+    else
+      errors.push(
+        `${sources[i]}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`,
+      );
+  });
+  skills.sort((a, b) => a.name.localeCompare(b.name));
+  return { skills, errors };
 }
 
 async function installSkill(
@@ -181,20 +243,21 @@ async function installSkill(
 }
 
 export function registerSkillStoreIPC(): void {
-  ipcMain.handle("skillstore:getSource", (): string => getSource());
-  ipcMain.handle("skillstore:setSource", (_e, source: string): string => {
-    writeFileSync(
-      configFile(),
-      JSON.stringify({ source: source.trim() }, null, 2),
-    );
-    treeCache = null;
-    return getSource();
-  });
+  ipcMain.handle("skillstore:getSources", (): string[] => getSources());
+  ipcMain.handle("skillstore:setSources", (_e, list: string[]): string[] =>
+    setSources(Array.isArray(list) ? list : []),
+  );
   ipcMain.handle(
     "skillstore:list",
-    async (): Promise<{ ok: boolean; skills?: StoreSkill[]; error?: string }> => {
+    async (): Promise<{
+      ok: boolean;
+      skills?: StoreSkill[];
+      errors?: string[];
+      error?: string;
+    }> => {
       try {
-        return { ok: true, skills: await listStore(getSource()) };
+        const { skills, errors } = await listAll(getSources());
+        return { ok: true, skills, errors };
       } catch (err) {
         return {
           ok: false,
@@ -203,7 +266,9 @@ export function registerSkillStoreIPC(): void {
       }
     },
   );
-  ipcMain.handle("skillstore:install", (_e, dir: string) =>
-    installSkill(getSource(), dir),
+  ipcMain.handle(
+    "skillstore:install",
+    (_e, payload: { source: string; path: string }) =>
+      installSkill(payload.source, payload.path),
   );
 }

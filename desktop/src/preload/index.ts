@@ -439,15 +439,29 @@ const electronAPI = {
   },
 
   skillStore: {
-    getSource: (): Promise<string> => ipcRenderer.invoke("skillstore:getSource"),
-    setSource: (source: string): Promise<string> =>
-      ipcRenderer.invoke("skillstore:setSource", source),
-    list: (): Promise<{ ok: boolean; skills?: unknown[]; error?: string }> =>
-      ipcRenderer.invoke("skillstore:list"),
-    install: (
-      dir: string,
-    ): Promise<{ ok: boolean; slug?: string; error?: string }> =>
-      ipcRenderer.invoke("skillstore:install", dir),
+    getSources: (): Promise<string[]> =>
+      ipcRenderer.invoke("skillstore:getSources"),
+    setSources: (list: string[]): Promise<string[]> =>
+      ipcRenderer.invoke("skillstore:setSources", list),
+    list: (): Promise<{
+      ok: boolean;
+      skills?: unknown[];
+      errors?: string[];
+      error?: string;
+    }> => ipcRenderer.invoke("skillstore:list"),
+    install: (payload: {
+      source: string;
+      path: string;
+    }): Promise<{ ok: boolean; slug?: string; error?: string }> =>
+      ipcRenderer.invoke("skillstore:install", payload),
+  },
+
+  mcpRegistry: {
+    search: (payload: {
+      query?: string;
+      limit?: number;
+    }): Promise<{ ok: boolean; servers?: unknown[]; error?: string }> =>
+      ipcRenderer.invoke("mcpregistry:search", payload),
   },
 
   agents: {

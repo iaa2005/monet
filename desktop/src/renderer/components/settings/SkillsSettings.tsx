@@ -15,7 +15,8 @@ import {
 import { cn } from "@/lib/utils";
 import { MarkdownViewer } from "@/components/chat/MarkdownViewer";
 import { CodeBlock } from "@/components/chat/CodeBlock";
-import type { ElectronAPI, SkillInfo, StoreSkill } from "@/types/electron";
+import { DirectoryButton } from "@/components/directory/DirectoryModal";
+import type { ElectronAPI, SkillInfo } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -549,129 +550,6 @@ function SkillDetailModal({
   );
 }
 
-// ─── Skill store (GitHub repo catalog) ─────────────────────────────────────
-
-function SkillStoreSection({
-  onInstalled,
-}: {
-  onInstalled: () => void;
-}): JSX.Element {
-  const [source, setSource] = useState("");
-  const [skills, setSkills] = useState<StoreSkill[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [busyPath, setBusyPath] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    void api()
-      ?.skillStore.getSource()
-      .then(setSource)
-      .catch(() => {});
-  }, []);
-
-  const browse = async (): Promise<void> => {
-    setLoading(true);
-    setError(null);
-    try {
-      if (source.trim()) await api()?.skillStore.setSource(source);
-      const r = await api()?.skillStore.list();
-      if (r?.ok) setSkills(r.skills ?? []);
-      else setError(r?.error ?? "Failed to load the store");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const install = async (s: StoreSkill): Promise<void> => {
-    setBusyPath(s.path);
-    setError(null);
-    try {
-      const r = await api()?.skillStore.install(s.path);
-      if (r?.ok) {
-        setSkills(
-          (prev) =>
-            prev?.map((x) =>
-              x.path === s.path ? { ...x, installed: true } : x,
-            ) ?? null,
-        );
-        onInstalled();
-      } else {
-        setError(r?.error ?? "Install failed");
-      }
-    } finally {
-      setBusyPath(null);
-    }
-  };
-
-  return (
-    <div className="mt-8">
-      <h3 className="text-base font-semibold">Skill store</h3>
-      <p className="mt-0.5 text-sm text-muted-foreground">
-        Browse and install skills from a GitHub repository — any folder with a{" "}
-        <span className="font-mono">SKILL.md</span> is a skill. Source is{" "}
-        <span className="font-mono">owner/repo</span> or{" "}
-        <span className="font-mono">owner/repo/subfolder</span>.
-      </p>
-      <div className="mt-3 flex items-center gap-2">
-        <input
-          value={source}
-          onChange={(e) => setSource(e.target.value)}
-          placeholder="anthropics/skills"
-          className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-xs outline-none focus:ring-1 focus:ring-foreground/20"
-        />
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() => void browse()}
-          className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] disabled:opacity-50 dark:hover:bg-white/[0.05]"
-        >
-          {loading ? "Loading…" : "Browse"}
-        </button>
-      </div>
-      {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
-
-      {skills && (
-        <div className="mt-3 overflow-hidden rounded-xl border border-border">
-          {skills.length === 0 && (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              No skills found in this repository.
-            </div>
-          )}
-          {skills.map((s) => (
-            <div
-              key={s.path}
-              className="flex items-center gap-3 border-b border-border px-4 py-2.5 last:border-b-0"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{s.name}</div>
-                {s.description && (
-                  <div className="truncate text-xs text-muted-foreground">
-                    {s.description}
-                  </div>
-                )}
-              </div>
-              {s.installed ? (
-                <span className="shrink-0 text-xs text-green-text">
-                  Installed
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  disabled={busyPath === s.path}
-                  onClick={() => void install(s)}
-                  className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-black/[0.04] disabled:opacity-50 dark:hover:bg-white/[0.05]"
-                >
-                  {busyPath === s.path ? "Installing…" : "Install"}
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Main panel ────────────────────────────────────────────────────────────
 
 export function SkillsSettings(): JSX.Element {
@@ -831,7 +709,14 @@ export function SkillsSettings(): JSX.Element {
         <p className="mt-3 text-xs text-destructive">{dropError}</p>
       )}
 
-      <SkillStoreSection onInstalled={load} />
+      <div className="mt-4">
+        <DirectoryButton
+          section="skills"
+          title="Browse the Directory"
+          subtitle="Install skills from monet-skills or any GitHub repo whose folders hold a SKILL.md"
+          onChanged={load}
+        />
+      </div>
 
       {modal === "write" && (
         <WriteSkillModal onClose={() => setModal("none")} onCreated={load} />

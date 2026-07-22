@@ -13,6 +13,7 @@
     "typecheck": "node scripts/typecheck.mjs",
     "smoke:agent": "node scripts/smoke-agent.mjs",
     "smoke:memory": "node scripts/memory-probe.mjs",
+    "probe:directory": "node scripts/directory-probe.mjs",
     "build:beta": "node scripts/build-beta.mjs",
     "measure:prompt": "node scripts/measure-prompt.mjs"
   },

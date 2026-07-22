@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 import type { ConnectorAccount } from "../../../main/connectors/types";
 import type { UiConnectorService } from "../../../main/connectors/services/types";
-import { StoreButton } from "./StoreModal";
+import { DirectoryButton } from "@/components/directory/DirectoryModal";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -254,10 +254,11 @@ export function ProtocolConnectors(): JSX.Element {
         </p>
       </section>
 
-      <StoreButton
+      <DirectoryButton
+        section="connectors"
+        title="Browse the Directory"
+        subtitle="Built-in and community connectors — IMAP, WebDAV, CalDAV, MCP and more"
         onChanged={load}
-        allServices={services}
-        onConnect={setEntry}
       />
 
       {accounts.length > 0 && (
@@ -372,10 +373,11 @@ export function ProtocolConnectors(): JSX.Element {
   );
 }
 
-// ─── Store: manifests from github.com/iaa2005/monet-connectors ──────────────
-// Extracted to StoreModal.tsx — imported as { StoreButton } at the top.
+// ─── Store: builtins + manifests from github.com/iaa2005/monet-connectors ───
+// Lives in the Directory now — directory/ConnectorsSection.tsx, reached by the
+// DirectoryButton above. It reuses ConnectForm below, hence the export.
 
-function ConnectForm({
+export function ConnectForm({
   service,
   onClose,
   onDone,

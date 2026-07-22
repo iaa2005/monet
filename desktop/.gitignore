@@ -4,6 +4,7 @@ dist/
 release/
 *.log
 out-smoke/
+out-dirprobe/
 out-measure/
 out-seed/
 out-memprobe/

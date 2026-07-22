@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Settings,
   Globe,
+  Store,
   HelpCircle,
   ArrowUpCircle,
   Download,
@@ -31,12 +32,14 @@ interface AccountMenuProps {
   onOpenSettings: () => void;
   onOpenAbout: () => void;
   onOpenDocs: () => void;
+  onOpenDirectory: () => void;
 }
 
 export function AccountMenu({
   onOpenSettings,
   onOpenAbout,
   onOpenDocs,
+  onOpenDirectory,
 }: AccountMenuProps): JSX.Element {
   const [name, setName] = useState("friend");
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -93,6 +96,10 @@ export function AccountMenu({
           <Globe />
           Language
           <ChevronRight className="ml-auto size-4" />
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onOpenDirectory}>
+          <Store />
+          Directory
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onOpenDocs}>
           <HelpCircle />
