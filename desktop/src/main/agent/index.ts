@@ -787,6 +787,9 @@ export async function computeContextBreakdown(
   };
 }
 
+/** Working directory the cached env prompt section was last built for. */
+let lastPromptCwd: string | null = null;
+
 export async function runAgent(
   sessionId: string,
   userContent: string | LLMContentBlock[],
@@ -806,6 +809,26 @@ export async function runAgent(
   );
   if (options.cwd) applyWorkspaceForRun(options.cwd);
   const runCwd = options.cwd ?? getWorkspacePath();
+
+  // The vendor caches system-prompt sections by name for the life of the
+  // process, and "env_info_simple" carries the working directory. In the CLI
+  // that is safe — one process, one cwd — but here the directory changes when
+  // the user switches workspace or a run pins its own. Left cached, the prompt
+  // keeps announcing the FIRST directory while the tools work in the current
+  // one: verified by asking the model, which read a stale path out of its
+  // prompt and sent sub-agents to the wrong folder.
+  if (lastPromptCwd !== runCwd) {
+    try {
+      const { getSystemPromptSectionCache } = await import(
+        "@vendor/bootstrap/state.js"
+      );
+      getSystemPromptSectionCache().delete("env_info_simple");
+    } catch {
+      /* worst case the prompt keeps a stale path — don't fail the run */
+    }
+    lastPromptCwd = runCwd;
+  }
+
   return runWithCwdOverride(runCwd, () =>
     runAgentScoped(sessionId, userContent, onEvent, options),
   );
