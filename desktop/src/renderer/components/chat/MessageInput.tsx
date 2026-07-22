@@ -8,8 +8,6 @@ import {
   Plus,
   Settings,
   Square,
-  X,
-  FileText,
   Gauge,
   History,
   Loader2,
@@ -29,15 +27,7 @@ import {
 } from "./EffortSlider";
 import { ModalityBadges } from "@/components/providers/ModalityBadges";
 import type { Modality } from "@/stores/providerStore";
-import {
-  Attachment,
-  AttachmentMedia,
-  AttachmentContent,
-  AttachmentTitle,
-  AttachmentDescription,
-  AttachmentActions,
-  AttachmentAction,
-} from "@/components/ui/attachment";
+import { extOf, FilePreviewTile } from "@/components/FileCard";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -46,15 +36,14 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { useChatStore } from "@/stores/chatStore";
+import { useChatStore, type StagedAttachment } from "@/stores/chatStore";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 
-interface StagedFile {
-  id: string;
-  file: File;
-  url?: string;
-}
+type StagedFile = StagedAttachment;
+
+/** Stable empty array — a fresh `[]` per render would re-run every selector. */
+const EMPTY_STAGED: StagedFile[] = [];
 
 interface ProviderModelEntry {
   id: string;
@@ -231,7 +220,17 @@ export function MessageInput({
     },
     [],
   );
-  const [files, setFiles] = useState<StagedFile[]>([]);
+  // Staged attachments live in the store under the SAME per-chat key as the
+  // text draft. As component state they outlived a chat switch, so files you
+  // picked in one chat were still attached — and got sent — in the next.
+  const files = useChatStore((s) => s.stagedFiles[draftKey] ?? EMPTY_STAGED);
+  const setFiles = useCallback(
+    (update: StagedFile[] | ((prev: StagedFile[]) => StagedFile[])): void => {
+      const st = useChatStore.getState();
+      st.setStagedFiles(st.currentSessionId ?? `new:${st.space}`, update);
+    },
+    [],
+  );
   const [providers, setProviders] = useState<Provider[]>([]);
   const [activeId, setActiveId] = useState<string>("");
   const [mode, setMode] = useState<PermissionMode>(
@@ -885,35 +884,20 @@ export function MessageInput({
         )}
         
         {files.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2">
-            {files.map((f) => {
-              const isImg = f.file.type.startsWith("image/");
-              return (
-                <Attachment key={f.id} size="sm" className="max-w-56">
-                  <AttachmentMedia variant={isImg ? "image" : "icon"}>
-                    {isImg && f.url ? (
-                      <img src={f.url} alt={f.file.name} />
-                    ) : (
-                      <FileText />
-                    )}
-                  </AttachmentMedia>
-                  <AttachmentContent>
-                    <AttachmentTitle>{f.file.name}</AttachmentTitle>
-                    <AttachmentDescription>
-                      {formatSize(f.file.size)}
-                    </AttachmentDescription>
-                  </AttachmentContent>
-                  <AttachmentActions>
-                    <AttachmentAction
-                      aria-label="Remove attachment"
-                      onClick={() => removeFile(f.id)}
-                    >
-                      <X className="text-muted-foreground"/>
-                    </AttachmentAction>
-                  </AttachmentActions>
-                </Attachment>
-              );
-            })}
+          // Same tile as the Content panel, so a file looks the same before
+          // you send it and after. auto-fill keeps the row count sensible from
+          // a narrow Home column to a wide window.
+          <div className="mb-2 grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-2">
+            {files.map((f) => (
+              <FilePreviewTile
+                key={f.id}
+                name={f.file.name}
+                badge={extOf(f.file.name).toUpperCase() || "FILE"}
+                meta={formatSize(f.file.size)}
+                thumbUrl={f.file.type.startsWith("image/") ? f.url : undefined}
+                onRemove={() => removeFile(f.id)}
+              />
+            ))}
           </div>
         )}
         

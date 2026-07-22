@@ -22,6 +22,7 @@ import {
   Paperclip,
   SquareArrowOutUpRight,
   Video,
+  X,
 } from "lucide-react";
 import type { ArtifactItem } from "@/lib/sessionArtifacts";
 import { useChatStore } from "@/stores/chatStore";
@@ -70,19 +71,13 @@ export function KindIcon({
   return <FileText className={`${className} shrink-0 text-muted-foreground`} />;
 }
 
-/** Image preview that falls back to re-reading the on-disk artifact when the
- * in-memory data URL is gone (chat switch / reload). */
-export function ArtifactThumb({
-  a,
-  className,
-  onClick,
-}: {
-  a: { dataUrl?: string; path?: string; name: string; mediaType: string };
-  className?: string;
-  /** Click handler. Nothing opens in the OS unless the caller asks for it —
-   * clicking a preview should open the in-app viewer, not the OS app. */
-  onClick?: () => void;
-}): JSX.Element | null {
+/** The artifact's image as a data URL, re-read from disk when the in-memory
+ * one is gone (chat switch / reload). null until/unless one is available. */
+export function useArtifactImage(a: {
+  dataUrl?: string;
+  path?: string;
+  mediaType: string;
+}): string | null {
   const [url, setUrl] = useState<string | null>(a.dataUrl ?? null);
 
   useEffect(() => {
@@ -99,6 +94,24 @@ export function ArtifactThumb({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [a.path]);
+
+  return url;
+}
+
+/** Image preview that falls back to re-reading the on-disk artifact when the
+ * in-memory data URL is gone (chat switch / reload). */
+export function ArtifactThumb({
+  a,
+  className,
+  onClick,
+}: {
+  a: { dataUrl?: string; path?: string; name: string; mediaType: string };
+  className?: string;
+  /** Click handler. Nothing opens in the OS unless the caller asks for it —
+   * clicking a preview should open the in-app viewer, not the OS app. */
+  onClick?: () => void;
+}): JSX.Element | null {
+  const url = useArtifactImage(a);
 
   if (!url) return null;
   return (
@@ -357,11 +370,123 @@ export function FileCard({
   );
 }
 
+/**
+ * The tile itself, on plain props — shared by the Content grid (artifacts on
+ * disk) and the composer (files staged but not sent), so the two cannot drift
+ * apart. A thumbnail fills the tile and the badge floats over it; without one
+ * the name sits above the badge.
+ */
+export function FilePreviewTile({
+  name,
+  badge,
+  meta,
+  thumbUrl,
+  onClick,
+  onRemove,
+}: {
+  name: string;
+  badge: string;
+  /** Small grey line under the name (size, line count). */
+  meta?: string;
+  thumbUrl?: string;
+  onClick?: () => void;
+  /** Renders a remove control that appears on hover. */
+  onRemove?: () => void;
+}): JSX.Element {
+  return (
+    <div
+      className={cn(
+        "group relative h-36 overflow-hidden rounded-xl border border-border bg-card transition-colors",
+        onClick && "hover:border-muted-foreground/40",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        title={name}
+        disabled={!onClick}
+        className="flex h-full w-full flex-col text-left"
+      >
+        {thumbUrl ? (
+          <img src={thumbUrl} alt={name} className="h-full w-full object-cover" />
+        ) : (
+          <>
+            <span
+              className={cn(
+                "min-h-0 flex-1 overflow-hidden px-3 pt-3",
+                // Keep the first line clear of the remove button.
+                onRemove && "pr-8",
+              )}
+            >
+              {/* overflow-wrap:anywhere, not break-all and not break-words.
+                  break-all splits mid-word ("технологическая карта.d/oc");
+                  break-word refuses to split "Вопросы_подготовка_экзамен_…"
+                  at all and lets it run off the tile. anywhere prefers word
+                  boundaries and still breaks a token that cannot fit. */}
+              <span className="line-clamp-3 text-xs font-medium leading-snug [overflow-wrap:anywhere]">
+                {name}
+              </span>
+              {meta && (
+                <span className="mt-1 block text-[11px] text-muted-foreground">
+                  {meta}
+                </span>
+              )}
+            </span>
+            <span className="px-3 pb-3">
+              <TypeBadge>{badge}</TypeBadge>
+            </span>
+          </>
+        )}
+      </button>
+      {thumbUrl && (
+        // Over an image the badge needs its own backing — a light page would
+        // swallow a plain muted chip.
+        <span className="pointer-events-none absolute bottom-2 left-2">
+          <TypeBadge onImage>{badge}</TypeBadge>
+        </span>
+      )}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Remove ${name}`}
+          title="Remove"
+          className="absolute right-1.5 top-1.5 rounded-full bg-background/80 p-1 text-muted-foreground opacity-0 backdrop-blur transition-opacity hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+        >
+          <X className="size-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TypeBadge({
+  children,
+  onImage,
+}: {
+  children: React.ReactNode;
+  onImage?: boolean;
+}): JSX.Element {
+  return (
+    <span
+      className={cn(
+        "inline-block rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wide",
+        onImage
+          ? "bg-black/60 text-white"
+          : "bg-muted text-muted-foreground",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 /** Square tile for the Content grid: a preview when we have one, otherwise the
  * name over a type badge. */
 export function FileTile({ a }: { a: ArtifactItem }): JSX.Element {
   const [lines, setLines] = useState<number | null>(null);
-  const isImage = a.kind === "image" && (a.dataUrl || a.path);
+  const isImage = a.kind === "image" && Boolean(a.dataUrl || a.path);
+  const thumb = useArtifactImage(a);
 
   useEffect(() => {
     // A line count is only meaningful for text, and only worth a read for a
@@ -381,34 +506,13 @@ export function FileTile({ a }: { a: ArtifactItem }): JSX.Element {
   }, [a.path, a.name, isImage]);
 
   return (
-    <button
-      type="button"
+    <FilePreviewTile
+      name={a.name}
+      badge={extOf(a.name).toUpperCase() || "FILE"}
+      meta={lines !== null ? `${lines} lines` : undefined}
+      thumbUrl={isImage && thumb ? thumb : undefined}
       onClick={() => viewArtifact(a)}
-      title={a.name}
-      className="flex h-36 w-full flex-col overflow-hidden rounded-xl border border-border bg-card text-left transition-colors hover:border-muted-foreground/40"
-    >
-      {isImage ? (
-        <ArtifactThumb a={a} className="h-full w-full object-cover" />
-      ) : (
-        <>
-          <div className="min-h-0 flex-1 overflow-hidden px-3 pt-3">
-            <span className="line-clamp-3 break-all text-xs font-medium leading-snug">
-              {a.name}
-            </span>
-            {lines !== null && (
-              <span className="mt-1 block text-[11px] text-muted-foreground">
-                {lines} lines
-              </span>
-            )}
-          </div>
-          <div className="px-3 pb-3">
-            <span className="inline-block rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-muted-foreground">
-              {extOf(a.name).toUpperCase() || "FILE"}
-            </span>
-          </div>
-        </>
-      )}
-    </button>
+    />
   );
 }
 

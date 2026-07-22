@@ -38,12 +38,12 @@ import {
   X as XIcon,
   type LucideIcon,
 } from "lucide-react";
+import { ArtifactsStrip, viewArtifact } from "@/components/ArtifactsPanel";
 import {
-  ArtifactThumb,
-  ArtifactsStrip,
-  KindIcon,
-  viewArtifact,
-} from "@/components/ArtifactsPanel";
+  extOf,
+  FilePreviewTile,
+  useArtifactImage,
+} from "@/components/FileCard";
 import {
   sandboxFilesFromOutput,
   type ArtifactItem,
@@ -106,38 +106,36 @@ function WorkingRow(): JSX.Element {
   );
 }
 
-/** Attachment chips / thumbnails shown on a user message. Image previews
- * re-read the on-disk artifact when the in-memory data URL is gone; clicking
- * anything with a saved path opens it with the OS. */
+type SentAttachment = NonNullable<ChatMessage["attachments"]>[number];
+
+/** One attachment of a sent message. Its own component because the image URL
+ * is resolved with a hook, which cannot run inside a map callback. */
+function AttachmentTile({ a }: { a: SentAttachment }): JSX.Element {
+  const thumb = useArtifactImage(a);
+  const isImage = a.kind === "image" && Boolean(a.dataUrl || a.path);
+  return (
+    <FilePreviewTile
+      name={a.name}
+      badge={extOf(a.name).toUpperCase() || "FILE"}
+      thumbUrl={isImage && thumb ? thumb : undefined}
+      onClick={a.path || a.dataUrl ? () => viewArtifact(a) : undefined}
+    />
+  );
+}
+
+/** The files a user message carried, above the bubble. Same tile as the
+ * composer and the Content panel, so attaching, sending and revisiting a file
+ * all look like the same object. */
 function AttachmentChips({
   attachments,
 }: {
   attachments: NonNullable<ChatMessage["attachments"]>;
 }): JSX.Element {
   return (
-    <div className="mb-1 flex flex-wrap justify-end gap-1.5">
-      {attachments.map((a, i) =>
-        a.kind === "image" && (a.dataUrl || a.path) ? (
-          <ArtifactThumb
-            key={`${i}-${a.name}`}
-            a={a}
-            onClick={() => viewArtifact(a)}
-            className="max-h-44 max-w-60 rounded-lg border border-border object-cover"
-          />
-        ) : (
-          <button
-            key={`${i}-${a.name}`}
-            type="button"
-            title={a.path ? `View ${a.name}` : a.name}
-            onClick={() => viewArtifact(a)}
-            disabled={!a.path}
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 text-[11px] text-muted-foreground transition-colors enabled:hover:text-foreground disabled:cursor-default"
-          >
-            <KindIcon kind={a.kind} className="size-3" />
-            <span className="max-w-44 truncate">{a.name}</span>
-          </button>
-        ),
-      )}
+    <div className="mb-1.5 grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-2">
+      {attachments.map((a, i) => (
+        <AttachmentTile key={`${i}-${a.name}`} a={a} />
+      ))}
     </div>
   );
 }

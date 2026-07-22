@@ -96,6 +96,14 @@ export interface ChatUsage {
   output_tokens: number;
 }
 
+/** A file picked in the composer and waiting to be sent. `url` is an object
+ * URL for image previews — whoever drops the entry revokes it. */
+export interface StagedAttachment {
+  id: string;
+  file: File;
+  url?: string;
+}
+
 interface SessionState {
   messages: ChatMessage[];
   isStreaming: boolean;
@@ -165,6 +173,11 @@ interface ChatStore {
    * switching chats and coming back restores what you were typing.
    * Keys: sessionId, or "new:<space>" for a fresh chat. */
   drafts: Record<string, string>;
+  /** Attachments staged in the composer but not sent yet, PER CHAT, under the
+   * same keys as `drafts`. They used to be component state, which survives a
+   * chat switch — so files picked in one chat followed you into the next and
+   * got sent there. Held in memory only (File objects don't serialise). */
+  stagedFiles: Record<string, StagedAttachment[]>;
   /** Files dropped onto the chat window, waiting for the composer to stage
    * them as attachments (consumed and cleared by MessageInput). */
   droppedFiles: File[] | null;
@@ -198,6 +211,10 @@ interface ChatStore {
   setIncognito: (v: boolean) => void;
   setComposerDraft: (v: string) => void;
   setDraft: (key: string, text: string) => void;
+  setStagedFiles: (
+    key: string,
+    update: StagedAttachment[] | ((prev: StagedAttachment[]) => StagedAttachment[]),
+  ) => void;
   setDroppedFiles: (files: File[] | null) => void;
   requestOpenFile: (path: string | null) => void;
   requestOpenChanges: () => void;
@@ -609,6 +626,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     incognito: false,
     composerDraft: "",
     drafts: {},
+    stagedFiles: {},
     droppedFiles: null,
     openFileRequest: null,
     openChangesRequest: false,
@@ -637,6 +655,20 @@ export const useChatStore = create<ChatStore>((set, get) => {
     setComposerDraft: (v) => set({ composerDraft: v }),
     setDraft: (key, text) =>
       set((s) => ({ drafts: { ...s.drafts, [key]: text } })),
+    setStagedFiles: (key, update) =>
+      set((s) => {
+        const prev = s.stagedFiles[key] ?? [];
+        const next = typeof update === "function" ? update(prev) : update;
+        // Drop the key entirely when empty so the map doesn't grow one dead
+        // entry per chat the user ever opened.
+        if (next.length === 0) {
+          if (!(key in s.stagedFiles)) return {};
+          const rest = { ...s.stagedFiles };
+          delete rest[key];
+          return { stagedFiles: rest };
+        }
+        return { stagedFiles: { ...s.stagedFiles, [key]: next } };
+      }),
     setDroppedFiles: (files) => set({ droppedFiles: files }),
     requestOpenFile: (path) => set({ openFileRequest: path }),
     requestOpenChanges: () => set({ openChangesRequest: true }),
