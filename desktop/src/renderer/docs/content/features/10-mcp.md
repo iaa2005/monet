@@ -7,6 +7,9 @@ order: 10
 MCP (Model Context Protocol) is a standard way for a program to expose tools to
 an agent. Connecting one gives the agent capabilities this app did not ship.
 
+Find servers in the **Directory**, which searches the official MCP registry, or
+add one by hand in **Settings → MCP Servers** if you already know it.
+
 ## Transports
 
 - **stdio** — the app launches a local program and talks to it over its

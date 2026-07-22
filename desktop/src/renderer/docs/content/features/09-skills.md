@@ -16,9 +16,13 @@ task matches. You can also ask for one directly.
 
 ## Managing them
 
-**Settings → Skills** lists what is installed, and the store offers ready-made
-ones. A skill is a folder with a `SKILL.md` describing what it is for and what
-to do, so writing your own is a matter of writing that file.
+**Settings → Skills** lists what is installed and lets you write, upload or
+edit one. A skill is a folder with a `SKILL.md` describing what it is for and
+what to do, so writing your own is a matter of writing that file.
+
+Ready-made ones come from the **Directory**, which reads any GitHub repository
+whose folders contain a `SKILL.md` — the default catalogue plus any repo you
+add yourself.
 
 ## In Home
 

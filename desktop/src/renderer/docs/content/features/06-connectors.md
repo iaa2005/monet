@@ -10,8 +10,10 @@ your calendar, sending a message.
 
 ## Accounts
 
-Connect an account in **Settings → Connectors**. Several accounts of the same
-service can coexist — two mailboxes, two drives — and each is independent.
+Connect an account in **Settings → Connectors**, or browse the whole catalogue
+— built-in services and community ones — in the **Directory**. Several accounts
+of the same service can coexist — two mailboxes, two drives — and each is
+independent.
 
 Credentials go through the operating system's keystore, the same as provider API
 keys. They are never written to a plain file.
