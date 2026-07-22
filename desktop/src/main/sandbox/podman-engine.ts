@@ -29,6 +29,10 @@ const IMAGE_TAG = "monet-sandbox:v2";
 const BUILD_TIMEOUT_MS = 15 * 60_000;
 // RunCommand (tectonic, npm, etc.) gets a longer leash than RunPython.
 const RUN_COMMAND_TIMEOUT_MS = 5 * 60_000;
+// `machine init` downloads a ~900 MB VM image. The old 4-minute cap killed it
+// mid-copy on an ordinary connection, and a half-written machine is worse than
+// no machine — it registers a WSL distro that later blocks a clean init.
+const INIT_TIMEOUT_MS = 20 * 60_000;
 
 const CONTAINERFILE = `
 FROM docker.io/library/python:3.12-slim
@@ -150,6 +154,95 @@ async function waitForPodmanReady(timeoutMs: number): Promise<boolean> {
     if (Date.now() >= deadline) return false;
     await new Promise((r) => setTimeout(r, 1_000));
   }
+}
+
+/** The WSL distros podman owns, as `wsl -l -q` reports them. */
+function wslPodmanDistros(): Promise<string[]> {
+  if (process.platform !== "win32") return Promise.resolve([]);
+  return new Promise((resolve) => {
+    const child = spawn("wsl.exe", ["-l", "-q"], {
+      windowsHide: true,
+      env: { ...process.env, WSL_UTF8: "1" },
+    });
+    let out = "";
+    child.stdout?.on("data", (b) => (out += b.toString()));
+    child.on("error", () => resolve([]));
+    child.on("close", () =>
+      resolve(
+        out
+          .split(/\r?\n/)
+          .map((s) => s.replace(/\0/g, "").trim())
+          .filter((s) => s.startsWith("podman-machine")),
+      ),
+    );
+  });
+}
+
+function wslUnregister(distro: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn("wsl.exe", ["--unregister", distro], {
+      windowsHide: true,
+      env: { ...process.env, WSL_UTF8: "1" },
+    });
+    child.on("error", () => resolve(false));
+    child.on("close", (code) => resolve(code === 0));
+  });
+}
+
+/**
+ * `machine init` reported "already exists" while `machine list` shows nothing:
+ * a WSL distro survived without the podman config that addresses it. Every
+ * start from here says "VM does not exist", forever.
+ *
+ * From Settings the user asked for a repair, so unregister the orphan and build
+ * a fresh machine. From a tool call, say what is wrong and what fixes it — and
+ * say plainly that retrying will not, because the alternative is an agent that
+ * runs the same doomed command a dozen times.
+ */
+async function orphanedDistroFailure(
+  canRepair: boolean,
+): Promise<PodmanReadyResult> {
+  const orphans = await wslPodmanDistros();
+
+  if (!canRepair) {
+    return {
+      ok: false,
+      log: "",
+      error:
+        "The Podman sandbox cannot start: a leftover WSL virtual machine " +
+        `(${orphans[0] ?? "podman-machine-default"}) is blocking it, and the ` +
+        "podman configuration that addressed it is gone — most likely an " +
+        "interrupted first-time setup.\n" +
+        "RETRYING THIS TOOL WILL NOT HELP. Either open Settings → Sandbox and " +
+        "press Prepare to rebuild the machine (it downloads ~1 GB, several " +
+        "minutes), or switch the sandbox engine to Pyodide or Local " +
+        "subprocess and do the work there.",
+    };
+  }
+
+  let log = "";
+  for (const distro of orphans) {
+    log += `[sandbox] unregistering orphaned WSL distro ${distro}\n`;
+    if (!(await wslUnregister(distro)))
+      return {
+        ok: false,
+        log,
+        error:
+          `Could not remove the leftover WSL machine ${distro}. Close any ` +
+          "open WSL shells and try Prepare again, or run " +
+          `\`wsl --unregister ${distro}\` yourself.`,
+      };
+  }
+
+  const init = await run(["machine", "init"], { timeoutMs: INIT_TIMEOUT_MS });
+  if (init.code !== 0)
+    return {
+      ok: false,
+      log,
+      error: `Podman machine initialization failed:\n${(init.stderr || init.stdout).slice(-600)}`,
+    };
+  log += "[sandbox] rebuilt the Podman machine\n";
+  return { ok: true, log };
 }
 
 /** Whether the WSL2 backend exists at all (Windows). ENOENT/non-zero ⇒ missing. */
@@ -308,13 +401,36 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
       .find(([name]) => name)?.[1]?.toLowerCase() === "true";
 
     if (!resolvedName) {
-      const init = await run(["machine", "init"], { timeoutMs: 240_000 });
+      const init = await run(["machine", "init"], { timeoutMs: INIT_TIMEOUT_MS });
       if (init.code !== 0) {
         const msg = (init.stderr || init.stdout).toLowerCase();
         if (msg.includes("already exists")) {
-          // Machine exists but list didn't report it (encoding/format issue). Skip init.
-          resolvedName = "podman-machine-default";
-          log += "[sandbox] Podman machine already present\n";
+          // init says the machine is there but list didn't report it. Two very
+          // different causes, so ASK rather than assume: re-list and believe
+          // that. If list now names it, the first read was an encoding/format
+          // hiccup. If list is still empty, the WSL distro outlived podman's
+          // config for it — usually a `machine init` killed partway through —
+          // and every later start will say "VM does not exist". Assuming
+          // success here is what turned that into an endless loop.
+          const recheck = await run(
+            ["machine", "list", "--format", "{{.Name}}"],
+            { timeoutMs: 30_000 },
+          );
+          const named = recheck.stdout
+            .trim()
+            .split(/\r?\n/)
+            .find((n) => n.trim());
+          if (named) {
+            resolvedName = named.trim();
+            log += "[sandbox] Podman machine already present\n";
+          } else {
+            const repair = await orphanedDistroFailure(
+              opts.resetOnBroken === true,
+            );
+            if (!repair.ok) return repair;
+            resolvedName = "podman-machine-default";
+            log += repair.log;
+          }
         } else {
           return {
             ok: false,
@@ -353,11 +469,27 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
         msg.includes("no such file") ||
         msg.includes("syntax is incorrect") ||
         msg.includes("*.json");
+      if (looksBroken && opts.resetOnBroken !== true) {
+        // Destroying the machine is a repair, not a side effect of running a
+        // command: `machine rm -f` throws away the VM, and if the `machine
+        // init` behind it doesn't finish, the sandbox is left with nothing and
+        // no way back. It only happens from Settings → Sandbox, where a person
+        // asked for it and can watch the ~1 GB image download.
+        return fail(
+          "The Podman machine is damaged and needs to be rebuilt. Open " +
+            "Settings → Sandbox and press Prepare — it removes the broken " +
+            "machine and downloads a fresh one (several minutes). Meanwhile " +
+            "switch the sandbox engine to Pyodide or Local subprocess.\n" +
+            `Podman said:\n${(start.stderr || start.stdout).slice(-400)}`,
+        );
+      }
       if (looksBroken) {
         log += "[sandbox] resetting broken Podman machine\n";
         await run(["machine", "rm", "-f"], { timeoutMs: 60_000 });
         resolvedName = undefined;
-        const init = await run(["machine", "init"], { timeoutMs: 240_000 });
+        const init = await run(["machine", "init"], {
+          timeoutMs: INIT_TIMEOUT_MS,
+        });
         if (init.code !== 0) {
           return fail(
             `Podman machine initialization failed after reset:\n${(init.stderr || init.stdout).slice(-600)}`,
@@ -383,6 +515,12 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
       await run(stopArgs, { timeoutMs: 60_000 });
       const restart = await tryStart();
       if (!(await waitForPodmanReady(60_000))) {
+        const why = (restart.stderr || restart.stdout).toLowerCase();
+        // "VM does not exist" after a start means the machine podman listed is
+        // a ghost: the config names it, the backend has nothing behind it.
+        // Echoing podman's line here is what left the agent with no next step.
+        if (why.includes("does not exist"))
+          return orphanedDistroFailure(opts.resetOnBroken === true);
         return fail(
           restart.code !== 0
             ? `Podman machine failed to start:\n${(restart.stderr || restart.stdout).slice(-600)}`

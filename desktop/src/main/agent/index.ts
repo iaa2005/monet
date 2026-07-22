@@ -164,6 +164,17 @@ const DISCIPLINE_DEFAULT = [
   "- Prefer the dedicated tool over an ad-hoc shell command when one exists.",
   "- Use the sandbox/RunCommand tools to run tests and checks before reporting",
   "  success — do not assume code works because it looks right.",
+  "## When a tool keeps failing",
+  "- READ the error. If it names a fix, do that. If it says retrying will not",
+  "  help, believe it.",
+  "- The SAME error twice means the approach is wrong, not that the call needs",
+  "  a third attempt. Change something or stop.",
+  "- Never install, reset or provision the app's own machinery (sandbox",
+  "  engines, VMs, container machines, package managers) to get around an",
+  "  error. That is the app's job and yours to report.",
+  "- If a tool you need is unavailable, finish by TELLING THE USER what is",
+  "  blocked, what you did produce, and what would unblock it. Never go quiet",
+  "  with the work half-done.",
 ].join("\n");
 
 /** The method / discipline blocks, exported so delegated runs (sub-agents)
