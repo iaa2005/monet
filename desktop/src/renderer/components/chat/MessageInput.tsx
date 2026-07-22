@@ -27,7 +27,7 @@ import {
 } from "./EffortSlider";
 import { ModalityBadges } from "@/components/providers/ModalityBadges";
 import type { Modality } from "@/stores/providerStore";
-import { extOf, FilePreviewTile } from "@/components/FileCard";
+import { StagedFileTile } from "@/components/FileCard";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -889,12 +889,11 @@ export function MessageInput({
           // a narrow Home column to a wide window.
           <div className="mb-2 grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-2">
             {files.map((f) => (
-              <FilePreviewTile
+              <StagedFileTile
                 key={f.id}
-                name={f.file.name}
-                badge={extOf(f.file.name).toUpperCase() || "FILE"}
-                meta={formatSize(f.file.size)}
-                thumbUrl={f.file.type.startsWith("image/") ? f.url : undefined}
+                id={f.id}
+                file={f.file}
+                previewUrl={f.url}
                 onRemove={() => removeFile(f.id)}
               />
             ))}

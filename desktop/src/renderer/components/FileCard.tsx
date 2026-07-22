@@ -13,7 +13,7 @@
  * bundled brand art.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AudioLines,
   Download,
@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import type { ArtifactItem } from "@/lib/sessionArtifacts";
+import { isPdf, pdfThumbnail } from "@/lib/pdfThumb";
 import { useChatStore } from "@/stores/chatStore";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
@@ -94,6 +95,39 @@ export function useArtifactImage(a: {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [a.path]);
+
+  return url;
+}
+
+function bytesFromBase64(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** Page 1 of a PDF, rendered once and cached by `key`. null key = not a PDF,
+ * or nothing to read it from. */
+export function usePdfThumb(
+  key: string | null,
+  load: () => Promise<Uint8Array | null>,
+): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  // The loader closes over props and is a new function every render; keep it
+  // out of the effect's deps or the render would restart on every tick.
+  const loadRef = useRef(load);
+  loadRef.current = load;
+
+  useEffect(() => {
+    if (!key) return;
+    let alive = true;
+    void pdfThumbnail(key, () => loadRef.current()).then((u) => {
+      if (alive) setUrl(u);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [key]);
 
   return url;
 }
@@ -487,6 +521,13 @@ export function FileTile({ a }: { a: ArtifactItem }): JSX.Element {
   const [lines, setLines] = useState<number | null>(null);
   const isImage = a.kind === "image" && Boolean(a.dataUrl || a.path);
   const thumb = useArtifactImage(a);
+  const pdf = usePdfThumb(
+    isPdf(a.name, a.mediaType) && a.path ? a.path : null,
+    async () => {
+      const r = await api()?.artifacts.readBytes(a.path!);
+      return r?.ok && r.base64 ? bytesFromBase64(r.base64) : null;
+    },
+  );
 
   useEffect(() => {
     // A line count is only meaningful for text, and only worth a read for a
@@ -510,10 +551,47 @@ export function FileTile({ a }: { a: ArtifactItem }): JSX.Element {
       name={a.name}
       badge={extOf(a.name).toUpperCase() || "FILE"}
       meta={lines !== null ? `${lines} lines` : undefined}
-      thumbUrl={isImage && thumb ? thumb : undefined}
+      thumbUrl={(isImage ? thumb : pdf) ?? undefined}
       onClick={() => viewArtifact(a)}
     />
   );
+}
+
+/** A file staged in the composer, not sent yet. Reads its bytes straight from
+ * the File — there is nothing on disk to read back. */
+export function StagedFileTile({
+  file,
+  id,
+  previewUrl,
+  onRemove,
+}: {
+  file: File;
+  /** Stable across renders — used as the thumbnail cache key. */
+  id: string;
+  /** Object URL, for images (the composer already made one). */
+  previewUrl?: string;
+  onRemove: () => void;
+}): JSX.Element {
+  const pdf = usePdfThumb(
+    isPdf(file.name, file.type) ? id : null,
+    async () => new Uint8Array(await file.arrayBuffer()),
+  );
+  const thumb = file.type.startsWith("image/") ? previewUrl : (pdf ?? undefined);
+  return (
+    <FilePreviewTile
+      name={file.name}
+      badge={extOf(file.name).toUpperCase() || "FILE"}
+      meta={formatBytes(file.size)}
+      thumbUrl={thumb}
+      onRemove={onRemove}
+    />
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 const TEXTY = new Set([

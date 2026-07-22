@@ -43,7 +43,9 @@ import {
   extOf,
   FilePreviewTile,
   useArtifactImage,
+  usePdfThumb,
 } from "@/components/FileCard";
+import { isPdf } from "@/lib/pdfThumb";
 import {
   sandboxFilesFromOutput,
   type ArtifactItem,
@@ -113,11 +115,22 @@ type SentAttachment = NonNullable<ChatMessage["attachments"]>[number];
 function AttachmentTile({ a }: { a: SentAttachment }): JSX.Element {
   const thumb = useArtifactImage(a);
   const isImage = a.kind === "image" && Boolean(a.dataUrl || a.path);
+  const pdf = usePdfThumb(
+    isPdf(a.name, a.mediaType) && a.path ? a.path : null,
+    async () => {
+      const r = await window.electronAPI?.artifacts.readBytes(a.path!);
+      if (!r?.ok || !r.base64) return null;
+      const bin = atob(r.base64);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    },
+  );
   return (
     <FilePreviewTile
       name={a.name}
       badge={extOf(a.name).toUpperCase() || "FILE"}
-      thumbUrl={isImage && thumb ? thumb : undefined}
+      thumbUrl={(isImage ? thumb : pdf) ?? undefined}
       onClick={a.path || a.dataUrl ? () => viewArtifact(a) : undefined}
     />
   );
