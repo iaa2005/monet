@@ -26,7 +26,25 @@ export const SandboxAskCallback: any = stubFn
 export type SandboxAskCallback = any
 export const SandboxDependencyCheck: any = stubFn
 export type SandboxDependencyCheck = any
-export const SandboxManager: any = stubFn
+/**
+ * SandboxManager needs one real method.
+ *
+ * BashTool passes a failing command's ENTIRE output through
+ * annotateStderrWithSandboxFailures() before putting it in the ShellError it
+ * throws. With the blanket stub returning undefined, every non-zero exit — a
+ * red pytest, a grep with no match, a diff with differences — arrived with its
+ * output erased, so the model could not tell a failing command from a broken
+ * tool. There are no sandbox violations to annotate here, so the honest
+ * behaviour is to hand the output back untouched.
+ */
+export const SandboxManager: any = new Proxy(stubFn, {
+  get: (t: any, p: any) =>
+    p === "annotateStderrWithSandboxFailures"
+      ? (_command: string, stderr: string) => stderr ?? ""
+      : p in t
+        ? t[p]
+        : stubFn,
+})
 export type SandboxManager = any
 export const SandboxRuntimeConfig: any = stubFn
 export type SandboxRuntimeConfig = any

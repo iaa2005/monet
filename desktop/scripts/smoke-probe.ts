@@ -443,18 +443,22 @@ async function main() {
   // — BashTool throws ShellError and the executor must show its output.
   {
     const failing = await run('Bash', {
-      command: 'echo out; exit 3',
+      command: 'echo on-stdout; echo on-stderr >&2; exit 3',
       description: 'non-zero exit',
     })
-    // The exit code MUST reach the model — before, a non-zero exit came back as
-    // a bare 'Shell command failed' with no code and no output, which is what
-    // left the model unable to tell a red test from a broken tool. (The command
-    // output itself is best-effort: it depends on the shell layer having read
-    // it back, which is not guaranteed in this headless harness.)
+    // Both halves matter. The exit code tells the model the command failed;
+    // the OUTPUT tells it why. The output used to be erased because BashTool
+    // routes it through SandboxManager.annotateStderrWithSandboxFailures(),
+    // and the blanket package stub returned undefined for every call.
     check(
-      'Bash: a non-zero exit reports the exit code, not a bare failure',
-      failing.isError && /exit code 3/i.test(failing.content) && !/^Error: Shell command failed$/.test(failing.content.trim()),
-      failing.content.slice(0, 80).replace(/\n/g, ' | '),
+      'Bash: a non-zero exit reports the exit code',
+      failing.isError && /exit code 3/i.test(failing.content),
+      failing.content.slice(0, 70).replace(/\n/g, ' | '),
+    )
+    check(
+      'Bash: a non-zero exit keeps the command output',
+      /on-stdout/.test(failing.content) && /on-stderr/.test(failing.content),
+      failing.content.slice(0, 90).replace(/\n/g, ' | '),
     )
   }
 

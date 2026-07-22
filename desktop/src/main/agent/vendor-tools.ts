@@ -972,17 +972,10 @@ export async function executeVendorTool(opts: {
         .map((s) => (typeof s === "string" ? s.trim() : ""))
         .find((s) => s.length > 0);
       const code = typeof e.code === "number" ? e.code : "?";
-      // When the output is missing, say what to do about it. In file mode the
-      // output lives in a temp file that BashTool has not read yet at the point
-      // it throws, so a failing command can arrive with nothing attached —
-      // without this note the model just retries the same command blind.
       return {
         content: body
           ? `${body}\n\n(Exit code ${code})`
-          : `Command failed with exit code ${code}, and its output was not captured. ` +
-            `This happens on a non-zero exit — the output is real, it just didn't come back. ` +
-            `Re-run it piped (e.g. \`<command> 2>&1 | cat\`) or use the PowerShell tool, ` +
-            `which returns output on failure.`,
+          : `Command failed with exit code ${code} (it produced no output).`,
         isError: true,
       };
     }
