@@ -1106,8 +1106,8 @@ export default function App(): JSX.Element {
           )}
         >
           {sidebarOpen && !incognito && (
-            <>
               <ResizablePanel
+                order={0}
                 defaultSize={18}
                 minSize={14}
                 maxSize={38}
@@ -1219,12 +1219,11 @@ export default function App(): JSX.Element {
                   </div>
                 </aside>
               </ResizablePanel>
-              <ResizableHandle withHandle />
-            </>
-          )}
+            )}
+            {sidebarOpen && !incognito && <ResizableHandle withHandle />}
 
           {/* Content panel group */}
-          <ResizablePanel defaultSize={sidebarOpen ? 82 : 100} minSize={30}>
+          <ResizablePanel order={1} defaultSize={sidebarOpen ? 82 : 100} minSize={30}>
             {appMode === "home" ? (
               // Home: a plain, centered chat. It CAN open the Artifacts/Files
               // panel on the right, and — when the sandbox engine has a shell
