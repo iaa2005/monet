@@ -350,12 +350,19 @@ export function DownloadAllButton({
 export function FileCard({
   a,
   action = "open",
+  older,
 }: {
   a: ArtifactItem;
   action?: "open" | "icon";
+  /** Earlier copies of this same file, newest first. */
+  older?: ArtifactItem[];
 }): JSX.Element {
+  const [showVersions, setShowVersions] = useState(false);
+  const versions = older?.length ?? 0;
+
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-3 py-2.5">
+    <div className="rounded-2xl border border-border bg-card">
+    <div className="flex items-center gap-3 px-3 py-2.5">
       <button
         type="button"
         onClick={() => viewArtifact(a)}
@@ -370,6 +377,23 @@ export function FileCard({
           </span>
         </span>
       </button>
+      {versions > 0 && (
+        // Outside the preview button — nesting one button in another is
+        // invalid and breaks keyboard activation.
+        <button
+          type="button"
+          onClick={() => setShowVersions((v) => !v)}
+          title={`${versions} earlier version${versions === 1 ? "" : "s"} of this file`}
+          className={cn(
+            "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums transition-colors",
+            showVersions
+              ? "bg-foreground text-background"
+              : "bg-muted text-muted-foreground hover:text-foreground",
+          )}
+        >
+          v{versions + 1}
+        </button>
+      )}
       {action === "open" ? (
         <button
           type="button"
@@ -400,6 +424,28 @@ export function FileCard({
           <SquareArrowOutUpRight className="size-4" />
         </button>
       )}
+    </div>
+    {showVersions && older && (
+      <div className="border-t border-border px-3 py-1.5">
+        {older.map((v, i) => (
+          <button
+            key={`${v.ts}-${i}`}
+            type="button"
+            onClick={() => viewArtifact(v)}
+            className="flex w-full items-center justify-between gap-3 rounded-md px-1 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]"
+          >
+            <span>v{older.length - i}</span>
+            <span className="tabular-nums">
+              {new Date(v.ts).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })}
+            </span>
+          </button>
+        ))}
+      </div>
+    )}
     </div>
   );
 }

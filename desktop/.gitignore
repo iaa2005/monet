@@ -8,7 +8,7 @@ out-dirprobe/
 out-measure/
 out-seed/
 out-memprobe/
-out-retry/
+out-probe/
 
 # Prompt-eval harness output
 out-eval/

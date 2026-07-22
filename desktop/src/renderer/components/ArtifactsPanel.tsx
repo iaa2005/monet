@@ -9,6 +9,7 @@
  */
 
 import {
+  groupVersions,
   useSessionArtifacts,
   type ArtifactItem,
 } from "@/lib/sessionArtifacts";
@@ -35,13 +36,23 @@ export function ArtifactsStrip({
 }: {
   items: ArtifactItem[];
 }): JSX.Element | null {
-  if (items.length === 0) return null;
+  // One card per file, not per write: a turn that writes a document, checks it
+  // and fixes it produced ONE document, and that is what belongs under the
+  // reply. The intermediate copies stay reachable behind the version chip.
+  const groups = groupVersions(items);
+  if (groups.length === 0) return null;
   return (
     <div className="space-y-2">
-      {items.map((a, i) => (
-        <FileCard key={`${a.ts}-${i}-${a.name}`} a={a} />
+      {groups.map((g, i) => (
+        <FileCard
+          key={`${g.latest.ts}-${i}-${g.latest.name}`}
+          a={g.latest}
+          older={g.older}
+        />
       ))}
-      {items.length > 1 && <DownloadAllButton items={items} />}
+      {groups.length > 1 && (
+        <DownloadAllButton items={groups.map((g) => g.latest)} />
+      )}
     </div>
   );
 }
@@ -63,7 +74,11 @@ function SectionHeader({
 
 export function ArtifactsPanel(): JSX.Element {
   const { content, output } = useSessionArtifacts();
-  const outputNewest = [...output].reverse();
+  // Artifacts collapse to one row per file (newest first, earlier copies
+  // behind the version chip). Content does not: two attachments with the same
+  // name really are two things the user sent.
+  const outputGroups = groupVersions(output);
+  const outputLatest = outputGroups.map((g) => g.latest);
   const contentNewest = [...content].reverse();
 
   if (content.length === 0 && output.length === 0) {
@@ -77,14 +92,15 @@ export function ArtifactsPanel(): JSX.Element {
 
   return (
     <div className="space-y-5 p-3">
-      {outputNewest.length > 0 && (
+      {outputGroups.length > 0 && (
         <section>
-          <SectionHeader label="Artifacts" items={outputNewest} />
+          <SectionHeader label="Artifacts" items={outputLatest} />
           <div className="space-y-2">
-            {outputNewest.map((a, i) => (
+            {outputGroups.map((g, i) => (
               <FileCard
-                key={`${a.source}-${a.ts}-${i}-${a.name}`}
-                a={a}
+                key={`${g.latest.ts}-${i}-${g.latest.name}`}
+                a={g.latest}
+                older={g.older}
                 action="icon"
               />
             ))}
