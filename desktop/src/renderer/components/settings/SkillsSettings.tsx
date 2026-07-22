@@ -652,10 +652,19 @@ export function SkillsSettings(): JSX.Element {
         </div>
       </div>
 
+      <div className="mb-3">
+        <DirectoryButton
+          section="skills"
+          title="Browse the Directory"
+          subtitle="Install skills from monet-skills or any GitHub repo whose folders hold a SKILL.md"
+          onChanged={load}
+        />
+      </div>
+
       {skills.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
-          No skills yet. Use <span className="font-medium">Add</span> to create
-          one.
+          No skills yet. Browse the Directory, or use{" "}
+          <span className="font-medium">Add</span> to write one yourself.
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-border">
@@ -708,15 +717,6 @@ export function SkillsSettings(): JSX.Element {
       {dropError && (
         <p className="mt-3 text-xs text-destructive">{dropError}</p>
       )}
-
-      <div className="mt-4">
-        <DirectoryButton
-          section="skills"
-          title="Browse the Directory"
-          subtitle="Install skills from monet-skills or any GitHub repo whose folders hold a SKILL.md"
-          onChanged={load}
-        />
-      </div>
 
       {modal === "write" && (
         <WriteSkillModal onClose={() => setModal("none")} onCreated={load} />
