@@ -313,7 +313,7 @@ const MessageRow = memo(
       return (
         <Message align="end">
           <MessageContent>
-            <div className="w-full min-w-[18rem] rounded-2xl border border-border bg-card p-2">
+            <div className="w-full min-w-[18rem] rounded-2xl border border-border bg-card p-4">
               <textarea
                 autoFocus
                 value={draft}

@@ -915,7 +915,7 @@ export function MessageInput({
           </div>
         )}
         
-        <div className="glass-panel p-3 gap-2.5 items-end rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25">
+        <div className="glass-panel p-3 rounded-2xl border border-border bg-card transition-colors focus-within:border-foreground/25">
           
           <div className="flex gap-2.5 w-full items-end">
             <textarea
@@ -971,282 +971,273 @@ export function MessageInput({
               }}
               placeholder="Type / for commands"
               rows={1}
-              className="pt-0.5 max-h-50 min-h-7 w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
+              className="pt-1 pl-1 max-h-50 min-h-7 w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
             />
   
-            {/* Send stays in the composer; the controls sit below it */}
-            <div className="flex items-center justify-end">
-              <input
-                ref={fileRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  stageFiles(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-              {isStreaming ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const sid = useChatStore.getState().currentSessionId;
-                      const text = input.trim();
-                      if (!sid || !text) return;
-                      useChatStore.getState().enqueueMessage(sid, text);
-                      setInput("");
-                    }}
-                    disabled={!input.trim()}
-                    title="Queue message (send after generation)"
-                    className={cn(
-                      "flex size-7 items-center justify-center rounded-md transition-opacity",
-                      input.trim()
-                        ? "bg-foreground text-background hover:opacity-90"
-                        : "opacity-30",
-                    )}
-                  >
-                    <ListEnd className="size-4" />
-                  </button>
-                  <div className="w-1" />
-                  <button
-                    type="button"
-                    onClick={abort}
-                    title="Stop"
-                    className="flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity hover:opacity-90"
-                  >
-                    <Square className="size-3.5 fill-current" />
-                  </button>
-                </>
-              ) : (
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                stageFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            {isStreaming ? (
+              <>
                 <button
                   type="button"
-                  onClick={send}
+                  onClick={() => {
+                    const sid = useChatStore.getState().currentSessionId;
+                    const text = input.trim();
+                    if (!sid || !text) return;
+                    useChatStore.getState().enqueueMessage(sid, text);
+                    setInput("");
+                  }}
                   disabled={!input.trim()}
-                  title="Send"
+                  title="Queue message (send after generation)"
                   className={cn(
-                    "flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity",
-                    input.trim() ? "hover:opacity-90" : "opacity-30",
+                    "flex size-7 items-center justify-center rounded-md transition-opacity",
+                    input.trim()
+                      ? "bg-foreground text-background hover:opacity-90"
+                      : "opacity-30",
                   )}
                 >
-                  <ArrowUp className="size-4" />
+                  <ListEnd className="size-4" />
                 </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Controls below the composer: actions on the left, meta on the right */}
-        <div className="mt-1.5 flex items-center justify-between gap-2 px-1 flex-wrap">
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              title="Attach files"
-              onClick={() => fileRef.current?.click()}
-              className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
-            >
-              <Plus className="size-4" />
-            </button>
-            {/* Permission mode (Home: only approve/skip — no fs/shell there) */}
-            <PermissionModeMenu
-              mode={mode}
-              onChange={pickMode}
-              home={isHomeSpace}
-            />
-            <MicButton
-              onText={(t) =>
-                setInput((prev) => (prev ? prev.trimEnd() + " " : "") + t)
-              }
-            />
-          </div>
-
-          <div className="flex min-w-0 items-center gap-1.5">
-
-            {bgRunning > 0 && (
-              <span
-                className={cn(
-                  pillBtn,
-                  "cursor-default text-amber-600 dark:text-amber-400",
-                )}
-                title={`${bgRunning} sub-agent${bgRunning > 1 ? "s" : ""} running in the background`}
-              >
-                <Loader2 className="size-3 animate-spin" />
-                {bgRunning}
-              </span>
-            )}
-
-            {/* Code: rewind checkpoint picker — jump back to any turn. */}
-            {!isHomeSpace && hasUserTurns && (
+                <div className="w-1" />
+                <button
+                  type="button"
+                  onClick={abort}
+                  title="Stop"
+                  className="flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity hover:opacity-90"
+                >
+                  <Square className="size-3.5 fill-current" />
+                </button>
+              </>
+            ) : (
               <button
                 type="button"
-                title="Rewind to a checkpoint"
-                onClick={() => setPickerOpen(true)}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
+                onClick={send}
+                disabled={!input.trim()}
+                title="Send"
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity",
+                  input.trim() ? "hover:opacity-90" : "opacity-30",
+                )}
               >
-                <History className="size-4" />
+                <ArrowUp className="size-4" />
               </button>
             )}
+          </div>
 
-            {activeModel && (
-              <ContextMeter
-                sessionId={currentSessionId ?? null}
-                space={space}
-                usedTokens={usedTokens}
-                ctxWindow={ctxWindow}
-                className={pillBtn}
+          {/* Controls inside the composer card */}
+          <div className="mt-2.5 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                title="Attach files"
+                onClick={() => fileRef.current?.click()}
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
+              >
+                <Plus className="size-4" />
+              </button>
+              <PermissionModeMenu
+                mode={mode}
+                onChange={pickMode}
+                home={isHomeSpace}
               />
-            )}
+              <MicButton
+                onText={(t) =>
+                  setInput((prev) => (prev ? prev.trimEnd() + " " : "") + t)
+                }
+              />
+            </div>
 
-            {/* Reasoning effort — only for models that expose it. Pill shows
-                the level (coloured); the slider lives inside the dropdown. */}
-            {activeModel?.supportsEffort && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(pillBtn, effortBgClass(effort))}
-                    title="Reasoning effort (Faster ↔ Smarter)"
-                  >
-                    <Sparkles className={cn("size-3", effortTextClass(effort))} />
-                    <span className={cn("font-medium", effortTextClass(effort))}>
-                      {effortLabel(effort)}
-                    </span>
-                    {/*<ChevronDown className="size-3" />*/}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="end" className="w-56">
-                  <DropdownMenuLabel>Reasoning effort</DropdownMenuLabel>
-                  <EffortSlider value={effort} onChange={setEffort} />
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+            <div className="flex min-w-0 items-center gap-1.5">
 
-            {/* Model / provider */}
-            <DropdownMenu onOpenChange={(open) => { if (open) loadProviders(); }}>
-              <DropdownMenuTrigger asChild>
-                <button type="button" className={pillBtn}>
-                  <span className="max-w-[18ch] truncate">{modelLabel}</span>
-                  {/*<ChevronDown className="size-3" />*/}
+              {bgRunning > 0 && (
+                <span
+                  className={cn(
+                    pillBtn,
+                    "cursor-default text-amber-600 dark:text-amber-400",
+                  )}
+                  title={`${bgRunning} sub-agent${bgRunning > 1 ? "s" : ""} running in the background`}
+                >
+                  <Loader2 className="size-3 animate-spin" />
+                  {bgRunning}
+                </span>
+              )}
+
+              {!isHomeSpace && hasUserTurns && (
+                <button
+                  type="button"
+                  title="Rewind to a checkpoint"
+                  onClick={() => setPickerOpen(true)}
+                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
+                >
+                  <History className="size-4" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="end" className="w-80">
-                {providers.length === 0 && (
-                  <div className="px-2.5 py-1.5 text-xs text-muted-foreground">
-                    No providers — add one in Settings.
-                  </div>
-                )}
-                {providers.map((p) => {
-                  const models: ProviderModelEntry[] = p.models?.length
-                    ? p.models
-                    : p.model
-                      ? [{ id: "__flat", name: p.model }]
-                      : [];
-                  const visible = models.filter(
-                    (m) => showHiddenModels || !m.hidden,
-                  );
-                  if (visible.length === 0) return null;
-                  const currentId = activeModelOf(p)?.id;
-                  return (
-                    <div key={p.id}>
-                      <DropdownMenuLabel className="text-xs text-muted-foreground py-0.5 px-2 bg-accent w-fit rounded-full my-0.5">
-                        {p.name}
-                      </DropdownMenuLabel>
-                      {visible.map((m) => (
-                        <DropdownMenuItem
-                          key={m.id}
-                          className={cn("group/model", m.hidden && "opacity-60")}
-                          onClick={() =>
-                            m.id === "__flat"
-                              ? void api()
-                                  ?.providers.setActive(p.id)
-                                  .then(() => {
-                                    setActiveId(p.id);
-                                    loadProviders();
-                                  })
-                              : void selectModel(p, m)
-                          }
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className="truncate">
-                                {m.label || m.name}
-                              </span>
-                              <ModalityBadges
-                                modalities={m.modalities as Modality[]}
-                              />
-                            </div>
-                            <div className="truncate text-xs text-muted-foreground">
-                              {m.label ? `${m.name} · ` : ""}
-                              {m.contextLength
-                                ? `${fmtTok(m.contextLength)} ctx`
-                                : "ctx —"}
-                            </div>
-                          </div>
-                          {m.id !== "__flat" && (
-                            <button
-                              type="button"
-                              title={
-                                m.hidden
-                                  ? "Show in this list"
-                                  : "Hide from this list"
-                              }
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void toggleModelHidden(p, m);
-                              }}
-                              className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition hover:text-foreground group-hover/model:opacity-100"
-                            >
-                              {m.hidden ? (
-                                <EyeOff className="size-3" />
-                              ) : (
-                                <Eye className="size-3" />
-                              )}
-                            </button>
-                          )}
-                          {p.id === activeId && m.id === currentId && (
-                            <Check className="size-4 shrink-0" />
-                          )}
-                        </DropdownMenuItem>
-                      ))}
-                    </div>
-                  );
-                })}
-                <DropdownMenuSeparator />
-                {(() => {
-                  const hiddenCount = providers.reduce(
-                    (n, p) =>
-                      n + (p.models?.filter((m) => m.hidden).length ?? 0),
-                    0,
-                  );
-                  return hiddenCount > 0 ? (
+              )}
+
+              {activeModel && (
+                <ContextMeter
+                  sessionId={currentSessionId ?? null}
+                  space={space}
+                  usedTokens={usedTokens}
+                  ctxWindow={ctxWindow}
+                  className={pillBtn}
+                />
+              )}
+
+              {activeModel?.supportsEffort && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      onClick={() => setShowHiddenModels((v) => !v)}
+                      className={cn(pillBtn, effortBgClass(effort))}
+                      title="Reasoning effort (Faster ↔ Smarter)"
+                    >
+                      <Sparkles className={cn("size-3", effortTextClass(effort))} />
+                      <span className={cn("font-medium", effortTextClass(effort))}>
+                        {effortLabel(effort)}
+                      </span>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="top" align="end" className="w-56">
+                    <DropdownMenuLabel>Reasoning effort</DropdownMenuLabel>
+                    <EffortSlider value={effort} onChange={setEffort} />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
+              {/* Model / provider */}
+              <DropdownMenu onOpenChange={(open) => { if (open) loadProviders(); }}>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={pillBtn}>
+                    <span className="max-w-[18ch] truncate">{modelLabel}</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="end" className="w-80">
+                  {providers.length === 0 && (
+                    <div className="px-2.5 py-1.5 text-xs text-muted-foreground">
+                      No providers — add one in Settings.
+                    </div>
+                  )}
+                  {providers.map((p) => {
+                    const models: ProviderModelEntry[] = p.models?.length
+                      ? p.models
+                      : p.model
+                        ? [{ id: "__flat", name: p.model }]
+                        : [];
+                    const visible = models.filter(
+                      (m) => showHiddenModels || !m.hidden,
+                    );
+                    if (visible.length === 0) return null;
+                    const currentId = activeModelOf(p)?.id;
+                    return (
+                      <div key={p.id}>
+                        <DropdownMenuLabel className="text-xs text-muted-foreground py-0.5 px-2 bg-accent w-fit rounded-full my-0.5">
+                          {p.name}
+                        </DropdownMenuLabel>
+                        {visible.map((m) => (
+                          <DropdownMenuItem
+                            key={m.id}
+                            className={cn("group/model", m.hidden && "opacity-60")}
+                            onClick={() =>
+                              m.id === "__flat"
+                                ? void api()
+                                    ?.providers.setActive(p.id)
+                                    .then(() => {
+                                      setActiveId(p.id);
+                                      loadProviders();
+                                    })
+                                : void selectModel(p, m)
+                            }
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="truncate">
+                                  {m.label || m.name}
+                                </span>
+                                <ModalityBadges
+                                  modalities={m.modalities as Modality[]}
+                                />
+                              </div>
+                              <div className="truncate text-xs text-muted-foreground">
+                                {m.label ? `${m.name} · ` : ""}
+                                {m.contextLength
+                                  ? `${fmtTok(m.contextLength)} ctx`
+                                  : "ctx —"}
+                              </div>
+                            </div>
+                            {m.id !== "__flat" && (
+                              <button
+                                type="button"
+                                title={
+                                  m.hidden
+                                    ? "Show in this list"
+                                    : "Hide from this list"
+                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void toggleModelHidden(p, m);
+                                }}
+                                className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition hover:text-foreground group-hover/model:opacity-100"
+                              >
+                                {m.hidden ? (
+                                  <EyeOff className="size-3" />
+                                ) : (
+                                  <Eye className="size-3" />
+                                )}
+                              </button>
+                            )}
+                            {p.id === activeId && m.id === currentId && (
+                              <Check className="size-4 shrink-0" />
+                            )}
+                          </DropdownMenuItem>
+                        ))}
+                      </div>
+                    );
+                  })}
+                  <DropdownMenuSeparator />
+                  {(() => {
+                    const hiddenCount = providers.reduce(
+                      (n, p) =>
+                        n + (p.models?.filter((m) => m.hidden).length ?? 0),
+                      0,
+                    );
+                    return hiddenCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowHiddenModels((v) => !v)}
+                        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/6"
+                      >
+                        {showHiddenModels ? (
+                          <EyeOff className="size-3" />
+                        ) : (
+                          <Eye className="size-3" />
+                        )}
+                        {showHiddenModels
+                          ? "Hide hidden models"
+                          : `Show hidden (${hiddenCount})`}
+                      </button>
+                    ) : null;
+                  })()}
+                  {onOpenProviders && (
+                    <button
+                      type="button"
+                      onClick={onOpenProviders}
                       className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/6"
                     >
-                      {showHiddenModels ? (
-                        <EyeOff className="size-3" />
-                      ) : (
-                        <Eye className="size-3" />
-                      )}
-                      {showHiddenModels
-                        ? "Hide hidden models"
-                        : `Show hidden (${hiddenCount})`}
+                      <Settings className="size-3" />
+                      Providers
                     </button>
-                  ) : null;
-                })()}
-                {onOpenProviders && (
-                  <button
-                    type="button"
-                    onClick={onOpenProviders}
-                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/6"
-                  >
-                    <Settings className="size-3" />
-                    Providers
-                  </button>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
       </div>

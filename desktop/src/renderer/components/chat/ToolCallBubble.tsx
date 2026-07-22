@@ -66,7 +66,7 @@ function SandboxOutput({
         />
       )}
       {files.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 p-2">
           {files.map((f, i) => {
             const kind = kindOfMime(f.mediaType);
             const meta = {
