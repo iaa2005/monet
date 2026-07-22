@@ -7,7 +7,7 @@
  * and messages persist the file path; thumbnails are re-read on demand.
  */
 
-import { ipcMain, shell, dialog, BrowserWindow } from "electron";
+import { app, ipcMain, shell, dialog, BrowserWindow } from "electron";
 import {
   copyFileSync,
   existsSync,
@@ -196,6 +196,88 @@ export function registerArtifactsIPC(): void {
           ok: false,
           error: err instanceof Error ? err.message : "download failed",
         };
+      }
+    },
+  );
+
+  // Save-all: copy every listed artifact into one user-chosen folder.
+  ipcMain.handle(
+    "artifacts:downloadAll",
+    async (
+      _e,
+      items: { path: string; name?: string }[],
+    ): Promise<{
+      ok: boolean;
+      savedTo?: string;
+      saved?: number;
+      error?: string;
+    }> => {
+      try {
+        if (!items?.length) return { ok: false, error: "nothing to save" };
+        const win = BrowserWindow.getFocusedWindow() ?? undefined;
+        const res = await dialog.showOpenDialog(win!, {
+          title: "Save all files to…",
+          properties: ["openDirectory", "createDirectory"],
+          buttonLabel: "Save here",
+        });
+        if (res.canceled || !res.filePaths[0]) return { ok: false };
+        const dir = res.filePaths[0];
+
+        let saved = 0;
+        // Two files can share a name (the same chart written twice, or an
+        // attachment and an output). Overwriting silently would lose one, so
+        // later duplicates get " (2)" the way a browser download does.
+        const used = new Set<string>();
+        for (const item of items) {
+          const absolute = artifactAbsolute(item.path);
+          if (!existsSync(absolute)) continue;
+          const wanted =
+            basename(item.name || absolute).replace(/[<>:"/\\|?*]/g, "_") ||
+            "file";
+          const dot = wanted.lastIndexOf(".");
+          const stem = dot > 0 ? wanted.slice(0, dot) : wanted;
+          const ext = dot > 0 ? wanted.slice(dot) : "";
+          let final = wanted;
+          for (let n = 2; used.has(final.toLowerCase()); n++)
+            final = `${stem} (${n})${ext}`;
+          used.add(final.toLowerCase());
+          copyFileSync(absolute, join(dir, final));
+          saved++;
+        }
+        return { ok: true, savedTo: dir, saved };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "save failed",
+        };
+      }
+    },
+  );
+
+  // The OS icon of whatever app owns this file type — the small Acrobat/Word/
+  // editor badge shown on a file card. Cached per extension: getFileIcon hits
+  // the shell icon cache and a chat can hold dozens of files.
+  const iconCache = new Map<string, string | null>();
+  ipcMain.handle(
+    "artifacts:appIcon",
+    async (_e, path: string): Promise<{ ok: boolean; dataUrl?: string }> => {
+      try {
+        const absolute = artifactAbsolute(path);
+        const ext = (basename(absolute).split(".").pop() || "").toLowerCase();
+        const key = ext || "_none";
+        if (iconCache.has(key)) {
+          const hit = iconCache.get(key);
+          return hit ? { ok: true, dataUrl: hit } : { ok: false };
+        }
+        if (!existsSync(absolute)) return { ok: false };
+        // "normal" is 32px on Windows/macOS — drawn at 16 CSS px it stays
+        // sharp on a HiDPI display, where the 16px "small" icon blurs.
+        const icon = await app.getFileIcon(absolute, { size: "normal" });
+        const dataUrl = icon.isEmpty() ? null : icon.toDataURL();
+        iconCache.set(key, dataUrl);
+        return dataUrl ? { ok: true, dataUrl } : { ok: false };
+      } catch {
+        return { ok: false };
       }
     },
   );

@@ -836,6 +836,16 @@ const electronAPI = {
       name?: string,
     ): Promise<{ ok: boolean; savedTo?: string; error?: string }> =>
       ipcRenderer.invoke("artifacts:download", path, name),
+    downloadAll: (
+      items: { path: string; name?: string }[],
+    ): Promise<{
+      ok: boolean;
+      savedTo?: string;
+      saved?: number;
+      error?: string;
+    }> => ipcRenderer.invoke("artifacts:downloadAll", items),
+    appIcon: (path: string): Promise<{ ok: boolean; dataUrl?: string }> =>
+      ipcRenderer.invoke("artifacts:appIcon", path),
   },
 
   git: {

@@ -824,6 +824,15 @@ export interface ElectronAPI {
       path: string,
       name?: string,
     ) => Promise<{ ok: boolean; savedTo?: string; error?: string }>;
+    downloadAll: (
+      items: { path: string; name?: string }[],
+    ) => Promise<{
+      ok: boolean;
+      savedTo?: string;
+      saved?: number;
+      error?: string;
+    }>;
+    appIcon: (path: string) => Promise<{ ok: boolean; dataUrl?: string }>;
   };
   git: {
     info: (cwd?: string) => Promise<GitInfo>;
