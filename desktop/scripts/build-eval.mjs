@@ -42,9 +42,16 @@ await build({
     outDir: 'out-eval',
     emptyOutDir: true,
     rollupOptions: {
-      input: resolve('scripts/eval-agent.ts'),
+      // The Pyodide worker is a SECOND entry (electron.vite.config.ts does the
+      // same). Without it RunPython dies with "Cannot find module
+      // pyodide-worker.js" and a Home eval measures a broken sandbox.
+      input: {
+        'eval-agent': resolve('scripts/eval-agent.ts'),
+        'pyodide-worker': resolve('src/main/sandbox/pyodide.worker.ts'),
+      },
       output: {
-        entryFileNames: 'eval-agent.mjs',
+        entryFileNames: chunk =>
+          chunk.name === 'pyodide-worker' ? 'pyodide-worker.js' : 'eval-agent.mjs',
         format: 'es',
         banner: vendorRequireBanner,
       },
@@ -55,8 +62,10 @@ await build({
   ssr: {
     // bundle everything except node builtins so the smoke sees the same
     // module graph as the electron build
-    noExternal: /^(?!node:)/,
-    external: [],
+    // pyodide must stay EXTERNAL: it loads its own .asm.mjs/.wasm next to the
+    // package, so bundling it breaks that resolution and RunPython dies.
+    noExternal: /^(?!node:|pyodide$)/,
+    external: ['pyodide'],
   },
 })
 

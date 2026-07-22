@@ -95,7 +95,13 @@ async function buildSystem(): Promise<string> {
   ]
     .map((s) => s?.trim())
     .filter(Boolean);
-  return extra.length ? `${base}\n\n${extra.join("\n\n")}` : base;
+  const body = extra.length ? `${base}\n\n${extra.join("\n\n")}` : base;
+  // The app PREPENDS the home directive on a Home run (index.ts, "directives").
+  // Without it a Home eval measures a prompt the app never sends — and the
+  // model burns turns calling Read/Bash it was never given.
+  const directive =
+    SPACE === "home" ? tunablePrompt("home-directive", "").trim() : "";
+  return directive ? `${directive}\n\n${body}` : body;
 }
 
 function blockText(content: string | LLMContentBlock[]): string {
@@ -107,12 +113,17 @@ function blockText(content: string | LLMContentBlock[]): string {
 
 async function main(): Promise<void> {
   const adapter = createAdapter(provider);
-  const apiTools = await getVendorApiTools();
+  // MUST be space-filtered: without it a Home run is advertised the Code
+  // toolset, the model calls Read/Bash, the executor refuses them, and the run
+  // measures the harness rather than the agent.
+  const apiTools = await getVendorApiTools(SPACE);
   const system = await buildSystem();
 
   writeFileSync(
     logPath,
-    `# Eval transcript\n\n- space: ${SPACE}\n- model: ${provider.model}\n- workspace: ${evalDir}\n- system prompt: ${system.length} chars\n\n## Task\n\n${TASK}\n`,
+    // The advertised tool list is logged so a run can distinguish "the harness
+    // offered the wrong toolset" from "the model invented a tool".
+    `# Eval transcript\n\n- space: ${SPACE}\n- model: ${provider.model}\n- workspace: ${evalDir}\n- system prompt: ${system.length} chars\n- tools (${apiTools.length}): ${apiTools.map((t) => t.name).join(", ")}\n\n## Task\n\n${TASK}\n`,
     "utf-8",
   );
 
