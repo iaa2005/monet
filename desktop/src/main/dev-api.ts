@@ -18,8 +18,9 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { randomBytes } from "crypto";
-import { writeFileSync, rmSync } from "fs";
+import { writeFileSync, rmSync, mkdirSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
 import { app } from "electron";
 import { getDataDir } from "./data-dir.js";
 import { getSessionStore } from "./session-store.js";
@@ -41,6 +42,10 @@ interface ChatBody {
   permissionMode?: "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions";
   providerId?: string;
   model?: string;
+  /** Working directory for a Code run. Defaults to <home>/monet-eval rather
+   * than the user's selected workspace: an eval must not touch a real project
+   * just because the picker happened to point at one. */
+  cwd?: string;
   maxTurns?: number;
   /** Seconds before the run is abandoned (default 300). */
   timeout?: number;
@@ -72,6 +77,11 @@ async function readBody(req: IncomingMessage): Promise<string> {
 
 async function handleChat(body: ChatBody): Promise<unknown> {
   const space = body.space === "home" ? "home" : "code";
+  // runAgent pins this for the prompt AND every tool call, and it also keeps
+  // the UI's workspace picker from deciding where an eval writes.
+  const cwd =
+    space === "code" ? body.cwd || join(homedir(), "monet-eval") : undefined;
+  if (cwd) mkdirSync(cwd, { recursive: true });
   const store = getSessionStore();
   const sessionId =
     body.sessionId ||
@@ -128,6 +138,7 @@ async function handleChat(body: ChatBody): Promise<unknown> {
     await runAgent(sessionId, body.message, onEvent, {
       signal: abort.signal,
       space,
+      cwd,
       permissionMode: body.permissionMode ?? "bypassPermissions",
       maxTurns: body.maxTurns ?? 24,
       providerId: body.providerId,
@@ -147,6 +158,7 @@ async function handleChat(body: ChatBody): Promise<unknown> {
   return {
     sessionId,
     space,
+    cwd,
     stopReason,
     toolCalls: steps.filter((s) => s.type === "tool").length,
     steps,
