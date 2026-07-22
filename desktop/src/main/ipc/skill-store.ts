@@ -1,7 +1,7 @@
 /**
  * Skill store IPC — browse and install skills from a GitHub repository.
  *
- * The source is `owner/repo` or `owner/repo/subdir` (default: anthropics/skills).
+ * The source is `owner/repo` or `owner/repo/subdir` (default: iaa2005/monet-skills).
  * Listing costs ONE API request (git trees, recursive) — every directory
  * containing a SKILL.md is a skill; names/descriptions come from raw SKILL.md
  * frontmatter (raw.githubusercontent.com, not rate-limited like the API).
@@ -43,7 +43,7 @@ function getSource(): string {
   } catch {
     /* default below */
   }
-  return "anthropics/skills";
+  return "iaa2005/monet-skills";
 }
 
 function parseSource(src: string): { repo: string; sub: string } {
