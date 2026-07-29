@@ -14,6 +14,7 @@
  */
 
 import {
+  Spinner,
   formatElapsed,
   runningCalls,
   workingLabel,
@@ -167,6 +168,34 @@ check("never goes negative", formatElapsed(-5_000) === "0s", formatElapsed(-5_00
     JSON.stringify(r.map((c) => c.id)),
   );
   check("an empty transcript yields nothing", runningCalls([]).length === 0);
+}
+
+// ── The spinner must never be able to stop ────────────────────────────
+{
+  // Reported live: the ring was frozen. It carried `motion-reduce:animate-none`,
+  // and Windows with "animation effects" off — an ordinary setting, confirmed
+  // via SPI_GETCLIENTAREAANIMATION=0 on the reporting machine — is reported by
+  // Chromium as prefers-reduced-motion. The one element whose whole job is to
+  // prove the app is alive became a static ring that reads as a hang.
+  const cls: string = (Spinner({}) as { props: { className: string } }).props
+    .className;
+  check("the spinner animates", cls.includes("animate-spin"), cls);
+  check(
+    "and nothing can switch that off",
+    !/animate-none/.test(cls),
+    "reduced motion must slow the spin, not stop it",
+  );
+  check(
+    "reduced motion is still honoured, by slowing it",
+    /motion-reduce:\[animation-duration:/.test(cls),
+    cls,
+  );
+  // A bare <span> is display:inline — width, height and transform all ignored.
+  check("it is not left as an inline box", cls.includes("inline-block"), cls);
+  const withClass: string = (
+    Spinner({ className: "size-3" }) as { props: { className: string } }
+  ).props.className;
+  check("a caller can resize it", withClass.includes("size-3"), withClass);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL WORKING-INDICATOR CHECKS PASSED");

@@ -152,13 +152,26 @@ export function runningCalls(messages: ChatMessage[]): ToolCall[] {
  * The ring itself. Motion is the point: a shimmer keeps sweeping even when the
  * renderer has stopped painting, so it cannot tell a live turn from a frozen
  * one. A spinner can.
+ *
+ * Which is why reduced motion SLOWS it instead of stopping it. This carried
+ * `motion-reduce:animate-none` for about an hour, and on Windows with
+ * "animation effects" switched off — a common, unremarkable setting that
+ * Chromium reports as prefers-reduced-motion — that turned the one element
+ * whose entire job is to prove liveness into a static ring that reads as a
+ * hung app. Every other spinner in this codebase animates unconditionally;
+ * a busy indicator that can freeze is worse than no indicator.
+ *
+ * `inline-block` because a bare <span> is display:inline, where width, height
+ * and transform are all ignored. It happens to work today only because both
+ * call sites are flex containers, which blockify their children.
  */
 export function Spinner({ className }: { className?: string }): JSX.Element {
   return (
     <span
       aria-hidden
       className={cn(
-        "size-3.5 shrink-0 animate-spin rounded-full border-2 border-muted-foreground/25 border-t-foreground motion-reduce:animate-none",
+        "inline-block size-3.5 shrink-0 animate-spin rounded-full border-2 border-muted-foreground/25 border-t-foreground",
+        "motion-reduce:[animation-duration:2s]",
         className,
       )}
     />
