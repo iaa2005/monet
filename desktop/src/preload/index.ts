@@ -501,6 +501,13 @@ const electronAPI = {
       error?: string;
       candidates?: string[];
     }> => ipcRenderer.invoke("skillstore:install", payload),
+    /** The next page of the registry sources alone — scrolling must not
+     * re-enumerate every github repo. */
+    registryPage: (payload: {
+      query?: string;
+      offset?: number;
+    }): Promise<{ ok: boolean; skills?: unknown[]; error?: string }> =>
+      ipcRenderer.invoke("skillstore:registryPage", payload),
     /** Curated sources published in the community repo — nothing is executed,
      * it is a list of places to look for skills. */
     suggestions: (force?: boolean): Promise<{

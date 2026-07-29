@@ -621,6 +621,11 @@ export interface ElectronAPI {
       error?: string;
       candidates?: string[];
     }>;
+    registryPage: (payload: { query?: string; offset?: number }) => Promise<{
+      ok: boolean;
+      skills?: StoreSkill[];
+      error?: string;
+    }>;
     suggestions: (force?: boolean) => Promise<{
       ok: boolean;
       sources?: SuggestedSource[];

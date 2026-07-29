@@ -9,7 +9,7 @@
  * group once the query is long enough to mean something.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Check, Globe, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import type { SkillSource, StoreSkill, SuggestedSource } from "@/types/electron";
 import {
@@ -27,6 +27,9 @@ const FILTERS = [
   { label: "Installed", value: "installed" },
   { label: "Not installed", value: "available" },
 ];
+/** Must match REGISTRY_PAGE in the main process — the offset it pages by. */
+const REGISTRY_PAGE = 100;
+
 const SORTS = [
   { label: "Name", value: "name" },
   { label: "Source", value: "source" },
@@ -46,6 +49,12 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   const [reloading, setReloading] = useState(false);
   // Curated sources from the community repo — offered, never auto-added.
   const [suggested, setSuggested] = useState<SuggestedSource[]>([]);
+  // The registry is paged, not listed — ~97 000 entries, 100 per request. The
+  // first page arrives with `load`; the rest as the user reaches the bottom.
+  const [regOffset, setRegOffset] = useState(0);
+  const [moreBusy, setMoreBusy] = useState(false);
+  const [moreDone, setMoreDone] = useState(false);
+  const sentinel = useRef<HTMLDivElement>(null);
   const load = async (q = query): Promise<void> => {
     setReloading(true);
     try {
@@ -58,6 +67,10 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
       ]);
       setSources(srcs ?? []);
       setSkills(r?.ok ? (r.skills ?? []) : []);
+      // A new listing restarts the registry paging — the pages that follow
+      // belong to this query, not the previous one.
+      setRegOffset(0);
+      setMoreDone(false);
       setErrors(r?.ok ? (r.errors ?? []) : [r?.error ?? "Failed to load"]);
     } finally {
       setReloading(false);
@@ -169,6 +182,59 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
       setBusy(null);
     }
   };
+
+  /**
+   * The next registry page, appended.
+   *
+   * De-duplicated by source+repository+name: paging by offset over a list that
+   * is still being published can hand back a row already on screen, and a
+   * duplicate card is one the user cannot tell from the original.
+   */
+  const loadMore = async (): Promise<void> => {
+    if (moreBusy || moreDone) return;
+    setMoreBusy(true);
+    try {
+      const next = regOffset + REGISTRY_PAGE;
+      const r = await api()?.skillStore.registryPage({ query, offset: next });
+      const page = r?.ok ? (r.skills ?? []) : [];
+      // A short page means the registry has no more to give for this query.
+      if (!r?.ok || page.length === 0) {
+        setMoreDone(true);
+        return;
+      }
+      setRegOffset(next);
+      setSkills((prev) => {
+        const have = new Set(
+          (prev ?? []).map((s) => `${s.source}|${s.repository ?? ""}|${s.name}`),
+        );
+        const fresh = page.filter(
+          (s) => !have.has(`${s.source}|${s.repository ?? ""}|${s.name}`),
+        );
+        // Every row was already on screen — offset is past the useful end.
+        if (fresh.length === 0) setMoreDone(true);
+        return [...(prev ?? []), ...fresh];
+      });
+    } finally {
+      setMoreBusy(false);
+    }
+  };
+
+  // Load on reaching the bottom. An observer rather than a scroll handler: the
+  // grid sits in whatever container the Directory gives it, and this does not
+  // need to know which one scrolls.
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !hasRegistry || moreDone) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) void loadMore();
+      },
+      { rootMargin: "400px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasRegistry, moreDone, moreBusy, regOffset, query, skills?.length]);
 
   const shown = useMemo(() => {
     let list = (skills ?? []).filter(

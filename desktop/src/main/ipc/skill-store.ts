@@ -241,6 +241,10 @@ async function fetchRaw(repo: string, path: string): Promise<string | null> {
   }
 }
 
+/** The API's own maximum. Was 40, which is what made the registry look like it
+ * held fifty skills — the per-repo cap only ever accounted for a handful. */
+const REGISTRY_PAGE = 100;
+
 async function listGithub(src: Extract<SkillSource, { kind: "github" }>): Promise<StoreSkill[]> {
   const paths = await fetchTree(src.id);
   const prefix = src.sub ? `${src.sub}/` : "";
@@ -278,13 +282,17 @@ async function listGithub(src: Extract<SkillSource, { kind: "github" }>): Promis
  * recent page, which is what makes the chip usable before anything is typed;
  * with one it is a search. Capped per repository so a single prolific
  * publisher cannot own the page.
+ *
+ * One page is deliberately not the whole answer: a search for "git" matches
+ * 4805 entries, and the Directory pages through with registryPage below as
+ * the user scrolls.
  */
 async function listRegistrySource(
   src: Extract<SkillSource, { kind: "registry" }>,
   query: string,
   offset: number,
 ): Promise<StoreSkill[]> {
-  const page = await listRegistry({ query, offset, limit: 40 });
+  const page = await listRegistry({ query, offset, limit: REGISTRY_PAGE });
   const local = skillsDir();
   return capPerRepo(page, 3).map((r) => ({
     // The registry never says WHERE in the repo the skill is — resolved at
@@ -431,6 +439,40 @@ export function registerSkillStoreIPC(): void {
       if (!pick.ok)
         return { ok: false, error: pick.error, candidates: pick.candidates };
       return installSkill(payload.repository, pick.dir);
+    },
+  );
+
+  /**
+   * The next page of the registry sources alone.
+   *
+   * Separate from `list` on purpose: that one enumerates every github source
+   * too, and paging through the registry must not re-fetch a repository's whole
+   * tree on every scroll — nor return its skills again as duplicates.
+   */
+  ipcMain.handle(
+    "skillstore:registryPage",
+    async (
+      _e,
+      payload: { query?: string; offset?: number },
+    ): Promise<{ ok: boolean; skills?: StoreSkill[]; error?: string }> => {
+      try {
+        const regs = getSources().filter(
+          (s): s is Extract<SkillSource, { kind: "registry" }> =>
+            s.kind === "registry",
+        );
+        if (regs.length === 0) return { ok: true, skills: [] };
+        const pages = await Promise.all(
+          regs.map((r) =>
+            listRegistrySource(r, payload?.query ?? "", payload?.offset ?? 0),
+          ),
+        );
+        return { ok: true, skills: pages.flat() };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "could not load more",
+        };
+      }
     },
   );
 
