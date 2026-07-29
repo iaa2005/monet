@@ -19,6 +19,8 @@ import { getDataDir } from "../data-dir.js";
 import { getService } from "../connectors/services/registry.js";
 import { getSecret, listAccounts } from "../connectors/store.js";
 import { ConnectorOAuthProvider } from "../connectors/lib/mcp-oauth-provider.js";
+import { mcpAuthProvider } from "./oauth/index.js";
+import { filterTools, resolveHeaders } from "./config-rules.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -31,10 +33,26 @@ export interface McpServerConfig {
   type?: "http" | "sse";
   url?: string;
   headers?: Record<string, string>;
+  /**
+   * Name of an environment variable holding a bearer token, rather than the
+   * token itself. Keeps the credential out of mcp-servers.json, which is
+   * plain text and lands in backups and screen shares.
+   */
+  bearerTokenEnvVar?: string;
   /** Optional OAuth client id for a remote server (stored for future auth). */
   oauthClientId?: string;
   /** Per-request timeout in seconds (applied to tool calls). */
   timeout?: number;
+  /** How long to wait for the server to come up. Default 30s. */
+  startupTimeoutMs?: number;
+  /**
+   * Tool allow-list. When set, ONLY these tools are exposed to the model —
+   * a server offering forty tools can be reduced to the two that are wanted,
+   * which is a context saving as much as a safety one.
+   */
+  enabledTools?: string[];
+  /** Tool block-list, applied after `enabledTools`. */
+  disabledTools?: string[];
   /** default true */
   enabled?: boolean;
   /** Internal: the connector account id backing a remote-OAuth server.
@@ -160,6 +178,25 @@ interface ServerState {
 
 const servers = new Map<string, ServerState>();
 
+/** Reject after `ms` unless the promise settles first. */
+async function withTimeout<T>(
+  p: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function sanitize(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
@@ -187,14 +224,22 @@ async function connectServer(name: string, config: McpServerConfig): Promise<voi
             ? new SSEClientTransport(url, { authProvider })
             : new StreamableHTTPClientTransport(url, { authProvider });
       } else {
-        // Hand-written remote server: forward headers (e.g. auth tokens).
-        const requestInit = config.headers
-          ? { headers: config.headers }
-          : undefined;
+        // Hand-written remote server. Remote MCP is OAuth 2.1 and rejects a
+        // pasted bearer token, so a stored OAuth grant is used when this
+        // server has one; `headers` still works for the servers that accept
+        // a static token. mcpAuthProvider returns undefined without stored
+        // tokens on purpose — handing the transport an empty provider makes
+        // it start an interactive flow from a background reconnect, which
+        // hangs instead of failing, and a plain 401 is what lets the UI
+        // offer "Sign in".
+        const authProvider = mcpAuthProvider(name, config.url);
+        const headers = resolveHeaders(config);
+        const requestInit = headers ? { headers } : undefined;
+        const opts = authProvider ? { authProvider } : { requestInit };
         transport =
           config.type === "sse"
-            ? new SSEClientTransport(url, { requestInit })
-            : new StreamableHTTPClientTransport(url, { requestInit });
+            ? new SSEClientTransport(url, opts)
+            : new StreamableHTTPClientTransport(url, opts);
       }
     } else {
       throw new Error("Server config must have a command or a url");
@@ -204,11 +249,27 @@ async function connectServer(name: string, config: McpServerConfig): Promise<voi
       { name: "monet-desktop", version: "0.1.0" },
       { capabilities: {} },
     );
-    await client.connect(transport);
+    // A server that never answers must not hold the whole connect pass open:
+    // ensureConnected() runs before a turn, so one wedged server would stall
+    // every chat rather than just being unavailable.
+    const startupMs = config.startupTimeoutMs ?? 30_000;
+    await withTimeout(
+      client.connect(transport),
+      startupMs,
+      `${name} did not respond within ${Math.round(startupMs / 1000)}s`,
+    );
 
     const listed = await client.listTools();
     const sname = sanitize(name);
-    state.tools = (listed.tools ?? []).map((t) => {
+    const offered = listed.tools ?? [];
+    const kept = filterTools(offered, config);
+    if (kept.length !== offered.length) {
+      const hidden = offered.length - kept.length;
+      console.log(
+        `[mcp] ${name}: exposing ${kept.length} of ${offered.length} tools (${hidden} filtered by config)`,
+      );
+    }
+    state.tools = kept.map((t) => {
       const schema = (t.inputSchema ?? { type: "object", properties: {} }) as {
         type?: string;
         properties?: Record<string, unknown>;
@@ -271,6 +332,14 @@ export async function ensureConnected(): Promise<void> {
       servers.delete(name);
     }
   }
+}
+
+/** Drop and re-establish ONE server (after a sign-in or a config change). */
+export async function reconnectServer(name: string): Promise<void> {
+  const existing = servers.get(name);
+  if (existing?.client) await existing.client.close().catch(() => {});
+  servers.delete(name);
+  await ensureConnected();
 }
 
 export async function reconnectAll(): Promise<void> {

@@ -22,6 +22,7 @@
     "smoke:injection": "node scripts/renderer-probe.mjs scripts/injection-probe.ts",
     "smoke:media": "node scripts/renderer-probe.mjs scripts/media-fit-probe.ts",
     "smoke:nativeimage": "electron scripts/nativeimage-probe.cjs",
+    "smoke:mcp": "node scripts/renderer-probe.mjs scripts/mcp-probe.ts",
     "smoke:memory": "node scripts/memory-probe.mjs",
     "probe:directory": "node scripts/directory-probe.mjs",
     "build:beta": "node scripts/build-beta.mjs",

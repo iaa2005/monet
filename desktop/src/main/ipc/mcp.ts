@@ -11,6 +11,7 @@ import {
   getServerStatuses,
   loadConfig,
   reconnectAll,
+  reconnectServer,
   saveConfig,
   type McpServerConfig,
   type McpServerStatus,
@@ -18,6 +19,12 @@ import {
 
 async function refresh(): Promise<McpServerStatus[]> {
   await ensureConnected();
+  return getServerStatuses();
+}
+
+/** Re-establish one server and report the fresh statuses. */
+async function reconnect(name: string): Promise<McpServerStatus[]> {
+  await reconnectServer(name);
   return getServerStatuses();
 }
 
@@ -36,6 +43,43 @@ export function registerMcpIPC(): void {
       config.mcpServers[name] = { enabled: true, ...payload.config };
       saveConfig(config);
       return refresh();
+    },
+  );
+
+  // Remote MCP is OAuth 2.1: a pasted bearer token is rejected, so a server
+  // that needs a grant can only be reached by running the browser flow.
+  ipcMain.handle(
+    "mcp:signIn",
+    async (
+      _e,
+      name: string,
+    ): Promise<{ ok: boolean; error?: string; servers?: McpServerStatus[] }> => {
+      const server = loadConfig().mcpServers[name];
+      if (!server?.url)
+        return { ok: false, error: `${name} is not a remote server.` };
+      try {
+        const { signInMcpServer } = await import("../mcp/oauth/index.js");
+        await signInMcpServer(name, server.url);
+        // Reconnect so the tools appear without the user restarting anything.
+        return { ok: true, servers: await reconnect(name) };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "mcp:signOut",
+    async (_e, name: string): Promise<McpServerStatus[]> => {
+      const server = loadConfig().mcpServers[name];
+      if (server?.url) {
+        const { signOutMcpServer } = await import("../mcp/oauth/index.js");
+        signOutMcpServer(name, server.url);
+      }
+      return reconnect(name);
     },
   );
 

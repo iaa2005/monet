@@ -600,6 +600,13 @@ export interface ElectronAPI {
       enabled: boolean;
     }) => Promise<McpServerStatus[]>;
     reconnect: () => Promise<McpServerStatus[]>;
+    /** Browser OAuth sign-in for a remote server. */
+    signIn: (name: string) => Promise<{
+      ok: boolean;
+      error?: string;
+      servers?: McpServerStatus[];
+    }>;
+    signOut: (name: string) => Promise<McpServerStatus[]>;
   };
   commands: {
     list: () => Promise<{

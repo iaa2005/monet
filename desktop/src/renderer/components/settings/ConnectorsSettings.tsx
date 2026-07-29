@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Plug, RefreshCw, Trash2, X } from "lucide-react";
+import { LogIn, Plus, Plug, RefreshCw, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { DirectoryButton } from "@/components/directory/DirectoryModal";
@@ -386,6 +386,27 @@ export function ConnectorsSettings(): JSX.Element {
   const [servers, setServers] = useState<McpServerStatus[]>([]);
   const [adding, setAdding] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [signingIn, setSigningIn] = useState<string | null>(null);
+  const [signInError, setSignInError] = useState("");
+
+  /**
+   * Remote MCP is OAuth 2.1, so a server that wants a grant answers with 401
+   * until the browser flow has run. That is what the button is for — a URL
+   * plus a pasted token cannot get past it.
+   */
+  const needsSignIn = (s: McpServerStatus): boolean =>
+    Boolean(s.config.url) &&
+    s.status === "error" &&
+    /401|unauthor|invalid_token|oauth/i.test(s.error ?? "");
+
+  const signIn = async (name: string): Promise<void> => {
+    setSigningIn(name);
+    setSignInError("");
+    const r = await api()?.mcp.signIn(name);
+    setSigningIn(null);
+    if (r?.ok && r.servers) setServers(r.servers);
+    else if (r?.error) setSignInError(`${name}: ${r.error}`);
+  };
 
   const load = (): void => {
     api()
@@ -490,6 +511,19 @@ export function ConnectorsSettings(): JSX.Element {
                     {s.error}
                   </div>
                 )}
+                {needsSignIn(s) && (
+                  <button
+                    type="button"
+                    onClick={() => void signIn(s.name)}
+                    disabled={signingIn === s.name}
+                    className="mt-1 flex w-fit items-center gap-1.5 rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    <LogIn className="size-3" />
+                    {signingIn === s.name
+                      ? "Waiting for the browser…"
+                      : "Sign in"}
+                  </button>
+                )}
               </div>
               <Switch
                 checked={s.config.enabled !== false}
@@ -506,6 +540,10 @@ export function ConnectorsSettings(): JSX.Element {
             </div>
           ))}
         </div>
+      )}
+
+      {signInError && (
+        <p className="mt-2 text-xs text-destructive">{signInError}</p>
       )}
 
       {adding && (

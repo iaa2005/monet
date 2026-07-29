@@ -532,6 +532,13 @@ const electronAPI = {
     toggle: (payload: { name: string; enabled: boolean }): Promise<unknown[]> =>
       ipcRenderer.invoke("mcp:toggle", payload),
     reconnect: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:reconnect"),
+    /** Browser OAuth sign-in for a remote server. */
+    signIn: (
+      name: string,
+    ): Promise<{ ok: boolean; error?: string; servers?: unknown[] }> =>
+      ipcRenderer.invoke("mcp:signIn", name),
+    signOut: (name: string): Promise<unknown[]> =>
+      ipcRenderer.invoke("mcp:signOut", name),
   },
 
   commands: {
