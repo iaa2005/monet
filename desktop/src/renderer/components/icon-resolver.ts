@@ -10,21 +10,23 @@ const EXT_MAP: Record<string, string> = {
   mjs: "javascript",
   cjs: "javascript",
   css: "css",
-  scss: "sass",
-  less: "less",
+  scss: "scss",
+  // No `less` icon in the set; it is a CSS preprocessor, so css reads right.
+  less: "css",
   html: "html",
   htm: "html",
   json: "json",
   jsonc: "json",
   md: "markdown",
   mdx: "markdown",
-  svg: "vector",
+  svg: "svg",
   png: "image",
   jpg: "image",
   jpeg: "image",
   gif: "image",
   webp: "image",
-  ico: "favicon",
+  // No `favicon` icon; a .ico IS an image, which is the honest fallback.
+  ico: "image",
   py: "python",
   rs: "rust",
   go: "go",
@@ -40,12 +42,12 @@ const EXT_MAP: Record<string, string> = {
   h: "c-header",
   cpp: "cpp",
   hpp: "cpp-header",
-  sh: "terminal",
-  bash: "terminal",
-  zsh: "terminal",
+  sh: "shell",
+  bash: "shell",
+  zsh: "shell",
   ps1: "powershell",
-  bat: "terminal",
-  cmd: "terminal",
+  bat: "shell",
+  cmd: "shell",
   sql: "database",
   yaml: "yaml",
   yml: "yaml",
@@ -58,15 +60,15 @@ const EXT_MAP: Record<string, string> = {
   dockerfile: "docker",
   dockerignore: "docker",
   eslint: "eslint",
-  prettier: "prettier",
+  prettier: "config",
   lock: "lock",
-  "package.json": "nodejs",
+  "package.json": "node",
   "tsconfig.json": "typescript-config",
   "vite.config": "vite",
-  readme: "info",
+  readme: "readme",
   license: "license",
   changelog: "changelog",
-  makefile: "terminal",
+  makefile: "shell",
 };
 
 const FOLDER_MAP: Record<string, string> = {
@@ -211,4 +213,30 @@ export function resolveIcon(
   const base = iconName(name, isDir, open);
   const theme = dark ? "light" : "base";
   return `./icons/${theme}/${base}.svg`;
+}
+
+/** The generic icon, for when a mapped name has no file behind it. */
+export function fallbackIcon(
+  isDir: boolean,
+  open: boolean,
+  dark: boolean,
+): string {
+  const theme = dark ? "light" : "base";
+  const base = isDir ? (open ? "_folder_open" : "_folder") : "_file";
+  return `./icons/${theme}/${base}.svg`;
+}
+
+/** Every icon name the maps can produce — for the check that they all exist. */
+export function allMappedIconNames(): string[] {
+  const names = new Set<string>([
+    "_file",
+    "_folder",
+    "_folder_open",
+    ...Object.values(EXT_MAP),
+  ]);
+  for (const folder of Object.values(FOLDER_MAP)) {
+    names.add(folder);
+    names.add(`${folder}_open`);
+  }
+  return [...names];
 }

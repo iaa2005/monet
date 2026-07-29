@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsDark } from "@/components/chat/highlight";
-import { resolveIcon } from "@/components/icon-resolver";
+import { fallbackIcon, resolveIcon } from "@/components/icon-resolver";
 import type { ElectronAPI } from "@/types/electron";
 
 const LARGE_FILE_THRESHOLD = 5 * 1024 * 1024; // 5 MB
@@ -233,7 +233,21 @@ function TreeNode({
         ) : (
           <span className="w-3.5 shrink-0" />
         )}
-        <img src={iconSrc} className="size-4 shrink-0" alt="" />
+        {/* A name that has no icon file must fall back to the generic one.
+            Without this a mapping typo renders the browser's broken-image
+            glyph — which is how `.svg` and `.ico` (and six other types) sat
+            broken: the map pointed at "vector" and "favicon", names that were
+            never in the icon set. */}
+        <img
+          src={iconSrc}
+          className="size-4 shrink-0"
+          alt=""
+          onError={(e) => {
+            const img = e.currentTarget;
+            const fallback = fallbackIcon(entry.isDirectory, expanded, dark);
+            if (!img.src.endsWith(fallback)) img.src = fallback;
+          }}
+        />
         <span className="truncate">{entry.name}</span>
       </div>
 
