@@ -886,25 +886,41 @@ export async function executeVendorTool(opts: {
  * and be back to guessing. Already-revealed tools are omitted (they are in the
  * schema), and in Home only connector-backed servers are eligible at all.
  */
+export function deferredToolsPending(
+  space?: string,
+  sessionId?: string,
+): { serverName: string; fullName: string }[] {
+  if (!getToolSearchConfig().enabled) return [];
+  try {
+    const revealed = getRevealedTools(sessionId ?? "default");
+    const allowed = space === "home" ? connectorServerNames() : null;
+    return getMcpTools()
+      .filter((t) => !revealed.has(t.fullName))
+      .filter((t) => !allowed || allowed.has(t.serverName))
+      .map((t) => ({ serverName: t.serverName, fullName: t.fullName }));
+  } catch {
+    // Never block a run on the inventory — a missing announcement degrades to
+    // the old behaviour, a thrown one loses the turn.
+    return [];
+  }
+}
+
+/** Label a server the way the rest of the UI does: the connector's own name
+ * when one supplies it, the raw server name otherwise. */
+export function deferredServerLabel(server: string): string {
+  try {
+    return getConnectorService(server)?.name ?? server;
+  } catch {
+    return server;
+  }
+}
+
 export function deferredToolsDirective(
   space?: string,
   sessionId?: string,
 ): string {
-  if (!getToolSearchConfig().enabled) return "";
-  try {
-    const revealed = getRevealedTools(sessionId ?? "default");
-    const allowed = space === "home" ? connectorServerNames() : null;
-    const pending = getMcpTools()
-      .filter((t) => !revealed.has(t.fullName))
-      .filter((t) => !allowed || allowed.has(t.serverName))
-      .map((t) => ({ serverName: t.serverName, fullName: t.fullName }));
-    return renderDeferredDirective(
-      pending,
-      (s) => getConnectorService(s)?.name ?? s,
-    );
-  } catch {
-    // Never block a run on the inventory — a missing announcement degrades to
-    // the old behaviour, a thrown one loses the turn.
-    return "";
-  }
+  return renderDeferredDirective(
+    deferredToolsPending(space, sessionId),
+    deferredServerLabel,
+  );
 }

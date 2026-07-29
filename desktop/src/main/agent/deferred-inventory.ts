@@ -51,21 +51,27 @@ function byServer(tools: DeferredTool[]): Map<string, string[]> {
  * tool list in a probe — the wording is the part that has to be right, and it
  * is the part that cannot be checked by types.
  */
-export function renderDeferredDirective(
+export function deferredLines(
   tools: DeferredTool[],
   label: (serverName: string) => string,
-): string {
-  if (tools.length === 0) return "";
-  const groups = byServer(tools);
-  const lines = [...groups].map(([server, names]) => {
+): { server: string; line: string }[] {
+  return [...byServer(tools)].map(([server, names]) => {
     const shown =
       names.length > SAMPLE_AFTER
         ? `${names.slice(0, SAMPLE_AFTER).join(", ")} … and ${names.length - SAMPLE_AFTER} more`
         : names.join(", ");
     const name = label(server);
     const title = name === server ? server : `${name} (${server})`;
-    return `- ${title}: ${shown}`;
+    return { server, line: `- ${title}: ${shown}` };
   });
+}
+
+export function renderDeferredDirective(
+  tools: DeferredTool[],
+  label: (serverName: string) => string,
+): string {
+  if (tools.length === 0) return "";
+  const lines = deferredLines(tools, label).map((l) => l.line);
   return [
     "# Tools not yet loaded",
     "",

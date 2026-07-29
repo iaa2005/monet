@@ -30,6 +30,8 @@ import {
   getVendorTools,
   getVendorToolsForSpace,
   deferredToolsDirective,
+  deferredToolsPending,
+  deferredServerLabel,
   toolConcurrencyLookup,
   clearSessionGrants,
   type RequestPermission,
@@ -55,6 +57,7 @@ import {
   CAVEMAN_TURN_REMINDER,
 } from "./caveman.js";
 import { clearRevealedTools } from "./revealed-tools.js";
+import { deferredLines } from "./deferred-inventory.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import {
   loadTranscriptWithMeta,
@@ -744,11 +747,35 @@ export async function computeContextBreakdown(
     const systemPrompt = [...directives, basePrompt]
       .filter(Boolean)
       .join("\n\n");
-    const systemTotal = Math.ceil(systemPrompt.length / 4);
+    let systemTotal = Math.ceil(systemPrompt.length / 4);
 
     const connectorServers = connectorServerNames();
     const connectorLabel = (id: string): string =>
       getService(id)?.name ?? id;
+
+    // Deferred MCP tools cost nothing in the tool schema — that is the point —
+    // so a connector whose tools are all deferred used to vanish from this
+    // breakdown entirely, reading as "not attached" next to an MCP tools row of
+    // 0. What it actually costs is its line in the deferred directive, which
+    // lives inside the system prompt. Carve those lines out and bill each to
+    // its own server, the same way skills and memory are carved out below, so
+    // the categories stay mutually exclusive and an attached connector is
+    // visible at its true (small) price.
+    for (const { server, line } of deferredLines(
+      deferredToolsPending(space, sessionId),
+      deferredServerLabel,
+    )) {
+      const size = Math.ceil((line.length + 1) / 4);
+      systemTotal -= size;
+      if (connectorServers.has(server)) {
+        connectorTokens += size;
+        const label = connectorLabel(server);
+        connectorByName.set(label, (connectorByName.get(label) ?? 0) + size);
+      } else {
+        mcpToolTokens += size;
+        mcpByServer.set(server, (mcpByServer.get(server) ?? 0) + size);
+      }
+    }
     for (const t of apiTools) {
       const size = Math.ceil(JSON.stringify(t).length / 4);
       if (t.name.startsWith("mcp__")) {

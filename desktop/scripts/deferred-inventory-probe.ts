@@ -19,6 +19,7 @@
 import { readFileSync } from "fs";
 import {
   SAMPLE_AFTER,
+  deferredLines,
   renderDeferredDirective,
   type DeferredTool,
 } from "../src/main/agent/deferred-inventory";
@@ -128,7 +129,44 @@ const labelled = (s: string): string =>
   check("but is still identified", text.includes("some-server"));
 }
 
-// ── 6. Home must be able to REACH what it defers ──────────────────────
+// ── 6. The meter's carve-out must match the text it bills ─────────────
+{
+  // The context meter subtracts each server's line from the system-prompt
+  // total and bills it to that connector instead — otherwise a connector whose
+  // tools are ALL deferred costs nothing in the tool schema, disappears from
+  // the breakdown, and reads as "not attached". That only stays honest while
+  // the line the meter measures is the exact line the directive prints; if the
+  // two drifted, the meter would subtract text that was never sent.
+  const tools = [
+    tool("dropbox", "upload"),
+    tool("dropbox", "search"),
+    tool("alphaxiv", "search"),
+  ];
+  const text = renderDeferredDirective(tools, labelled);
+  const lines = deferredLines(tools, labelled);
+
+  check("one billable line per server", lines.length === 2, JSON.stringify(lines.map((l) => l.server)));
+  check(
+    "every billed line appears verbatim in the directive",
+    lines.every((l) => text.includes(l.line)),
+    JSON.stringify(lines.find((l) => !text.includes(l.line))),
+  );
+  check(
+    "the server key is the raw name, not the display label",
+    lines.every((l) => /^[a-z0-9-]+$/.test(l.server)),
+    JSON.stringify(lines.map((l) => l.server)),
+  );
+  // The carve-out must never exceed the whole, or the system row goes negative.
+  const billed = lines.reduce((n, l) => n + Math.ceil((l.line.length + 1) / 4), 0);
+  check(
+    "the carve-out is smaller than the directive itself",
+    billed < Math.ceil(text.length / 4),
+    `${billed} vs ${Math.ceil(text.length / 4)}`,
+  );
+  check("nothing is billed when nothing is deferred", deferredLines([], plain).length === 0);
+}
+
+// ── 7. Home must be able to REACH what it defers ──────────────────────
 {
   // The deeper half of the same bug, and the reason the announcement alone
   // would not have fixed it: vendor-tools deferred MCP tools in EVERY space,
