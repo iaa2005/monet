@@ -139,8 +139,20 @@ export function CatalogBrowser({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6">
-      <div className="flex h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
+    // z-[60], above the provider editor that opened this — at the editor's own
+    // z-50 the stacking order is whatever the DOM order happens to be.
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-6"
+      onClick={onClose}
+    >
+      <div
+        className="flex h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
+        // Without this every click inside reached the provider editor's own
+        // backdrop — which closes on any bubbled click — so clicking anything
+        // in the catalog shut the whole editor. The editor now also ignores
+        // bubbled clicks, but a modal should stop its own regardless.
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <div>
             <h3 className="text-base font-semibold">Model catalog</h3>

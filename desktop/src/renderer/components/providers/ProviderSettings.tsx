@@ -232,7 +232,14 @@ function ProviderModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
-      onClick={onClose}
+      // Only a click on the backdrop ITSELF closes. It used to close on any
+      // click that bubbled up here, which meant a child modal rendered inside
+      // this element — the catalog browser is — dismissed the whole editor on
+      // every click unless it remembered to stop propagation. That is a trap
+      // for the next one too, so the check lives here rather than in each child.
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         className="flex max-h-[88vh] w-full max-w-2xl flex-col rounded-2xl border border-border bg-card shadow-xl"
