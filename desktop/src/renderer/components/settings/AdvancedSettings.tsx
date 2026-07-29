@@ -140,7 +140,7 @@ export function AdvancedSettings(): JSX.Element {
         <div className="mt-4 space-y-2">
           <ToggleRow
             title="ToolSearch (defer MCP tools)"
-            desc="Don't advertise connector (MCP) tools upfront — the model searches for and loads them on demand. Saves context when many connectors are attached. Code only."
+            desc="Don't advertise connector (MCP) tools upfront — the model is told which ones exist and loads the ones it needs on demand. Saves context when many connectors are attached. Works in Code and Home; in Home only connector-backed servers are reachable."
             checked={toolSearch}
             onChange={toggleToolSearch}
           />
