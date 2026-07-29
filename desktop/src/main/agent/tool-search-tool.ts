@@ -12,7 +12,7 @@ import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
-import { getMcpTools } from "../mcp/manager.js";
+import { getMcpTools, connectorServerNames } from "../mcp/manager.js";
 import { revealTools } from "./revealed-tools.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import { tunablePrompt } from "../prompts/index.js";
@@ -32,18 +32,30 @@ const mapResult = (
   is_error: content.isError || undefined,
 });
 
-/** The deferred catalog: MCP tools (everything advertised upfront is already
- * available, so it needn't be searched). */
-function deferredCatalog(): {
+/**
+ * The deferred catalog: MCP tools (everything advertised upfront is already
+ * available, so it needn't be searched).
+ *
+ * Filtered by space, matching the tool list's own rule. In Home only
+ * connector-backed servers are ever advertised — a hand-written server could be
+ * a filesystem or shell server, which is the machine Home exists to keep out —
+ * so without this filter ToolSearch would report loading a tool that Home then
+ * refuses to advertise, and the model would be left calling a name that never
+ * appears.
+ */
+function deferredCatalog(space?: string): {
   name: string;
   description: string;
   params: string[];
 }[] {
-  return getMcpTools().map((t) => ({
-    name: t.fullName,
-    description: t.description,
-    params: Object.keys(t.inputSchema.properties ?? {}),
-  }));
+  const allowed = space === "home" ? connectorServerNames() : null;
+  return getMcpTools()
+    .filter((t) => !allowed || allowed.has(t.serverName))
+    .map((t) => ({
+      name: t.fullName,
+      description: t.description,
+      params: Object.keys(t.inputSchema.properties ?? {}),
+    }));
 }
 
 const inputSchema = lazySchema(() =>
@@ -94,7 +106,8 @@ export const ToolSearchTool = buildTool({
     if (!getToolSearchConfig().enabled)
       return { data: { text: "ToolSearch is disabled.", isError: true } };
     const sessionId = (context as { sessionId?: string }).sessionId || "default";
-    const catalog = deferredCatalog();
+    const space = (context as { space?: string }).space;
+    const catalog = deferredCatalog(space);
     if (catalog.length === 0)
       return {
         data: {

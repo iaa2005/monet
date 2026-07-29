@@ -29,6 +29,7 @@ import {
   getVendorApiTools,
   getVendorTools,
   getVendorToolsForSpace,
+  deferredToolsDirective,
   toolConcurrencyLookup,
   clearSessionGrants,
   type RequestPermission,
@@ -735,7 +736,11 @@ export async function computeContextBreakdown(
         ? buildSystemPrompt(provider.model, space, sessionId)
         : Promise.resolve(""),
     ]);
-    const directives = space === "home" ? [homeDirective()] : [];
+    // Same directives the run builds, so the meter bills what is actually sent.
+    const directives = [
+      ...(space === "home" ? [homeDirective()] : []),
+      deferredToolsDirective(space, sessionId),
+    ].filter(Boolean);
     const systemPrompt = [...directives, basePrompt]
       .filter(Boolean)
       .join("\n\n");
@@ -1003,7 +1008,10 @@ async function runAgentScoped(
   const directives = [
     ...(space === "home" ? [homeDirective()] : []),
     ...(modeDirective ? [modeDirective] : []),
-  ];
+    // What ToolSearch is holding back. Without this the model cannot tell a
+    // deferred capability from an absent one, and answers as if it were absent.
+    deferredToolsDirective(space, sessionId),
+  ].filter(Boolean);
   const systemPrompt =
     directives.length > 0
       ? `${directives.join("\n\n")}\n\n${basePrompt}`

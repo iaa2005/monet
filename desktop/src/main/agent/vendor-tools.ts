@@ -45,6 +45,8 @@ import { AskUserQuestionTool } from "./ask-user-tool.js";
 import { ToolSearchTool } from "./tool-search-tool.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import { getRevealedTools } from "./revealed-tools.js";
+import { renderDeferredDirective } from "./deferred-inventory.js";
+import { getService as getConnectorService } from "../connectors/services/registry.js";
 import { LSPTool } from "./lsp-tool.js";
 import { getLspConfig } from "./lsp/config.js";
 import type { AskUserFn } from "../ipc/ask-user.js";
@@ -362,10 +364,13 @@ export function isSpaceToolAllowed(
   // when the user actually has connectors configured.
   if (name === "ListMcpResources" || name === "ReadMcpResource")
     return space !== "home" && hasMcpServers();
-  // ToolSearch (opt-in) reveals deferred MCP tools; Code-only, and only useful
-  // when there are connectors whose tools can be deferred.
+  // ToolSearch (opt-in) reveals deferred MCP tools. It used to be Code-only,
+  // while the deferral below applied in EVERY space — so in Home a connector's
+  // MCP tools were held back with no way left to reveal them. Home does get
+  // connector-backed MCP (see spaceAllowed in the tool list), so the tool
+  // belongs here too; its catalog is filtered by the same rule.
   if (name === "ToolSearch")
-    return space !== "home" && getToolSearchConfig().enabled && hasMcpServers();
+    return getToolSearchConfig().enabled && hasMcpServers();
   // LSP (opt-in) needs the real workspace + installed language servers; Code-only.
   if (name === "LSP") return space !== "home" && getLspConfig().enabled;
   if (BROWSER_TOOL_NAMES.has(name)) return getBrowserConfig().enabled;
@@ -869,5 +874,37 @@ export async function executeVendorTool(opts: {
     }
     const message = err instanceof Error ? err.message : String(err);
     return { content: `Error: ${message}`, isError: true };
+  }
+}
+
+/**
+ * The deferred-tool announcement for a run, or "" when nothing is held back.
+ *
+ * Lives here rather than beside the renderer because it has to mirror the tool
+ * filtering above EXACTLY: announcing a tool this run would refuse to load is
+ * worse than announcing nothing — the model would call ToolSearch, get nothing,
+ * and be back to guessing. Already-revealed tools are omitted (they are in the
+ * schema), and in Home only connector-backed servers are eligible at all.
+ */
+export function deferredToolsDirective(
+  space?: string,
+  sessionId?: string,
+): string {
+  if (!getToolSearchConfig().enabled) return "";
+  try {
+    const revealed = getRevealedTools(sessionId ?? "default");
+    const allowed = space === "home" ? connectorServerNames() : null;
+    const pending = getMcpTools()
+      .filter((t) => !revealed.has(t.fullName))
+      .filter((t) => !allowed || allowed.has(t.serverName))
+      .map((t) => ({ serverName: t.serverName, fullName: t.fullName }));
+    return renderDeferredDirective(
+      pending,
+      (s) => getConnectorService(s)?.name ?? s,
+    );
+  } catch {
+    // Never block a run on the inventory — a missing announcement degrades to
+    // the old behaviour, a thrown one loses the turn.
+    return "";
   }
 }

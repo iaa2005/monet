@@ -36,7 +36,8 @@
     "measure:prompt": "node scripts/measure-prompt.mjs",
     "smoke:podman": "node scripts/renderer-probe.mjs scripts/podman-orphan-probe.ts",
     "smoke:working": "node scripts/renderer-probe.mjs scripts/working-indicator-probe.ts",
-    "smoke:interrupt": "node scripts/renderer-probe.mjs scripts/interrupt-probe.ts"
+    "smoke:interrupt": "node scripts/renderer-probe.mjs scripts/interrupt-probe.ts",
+    "smoke:deferred": "node scripts/renderer-probe.mjs scripts/deferred-inventory-probe.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",
