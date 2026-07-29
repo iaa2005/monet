@@ -26,7 +26,11 @@ export function WorkspacePicker(): JSX.Element {
     try {
       const dir = await api()?.files.pickDirectory();
       if (dir) {
-        await api()?.workspace.set(dir);
+        // set() reports a missing directory instead of throwing, so check it:
+        // showing the folder as current when it was refused would be a lie the
+        // next tool call exposes.
+        const r = await api()?.workspace.set(dir);
+        if (r && r.ok === false) return;
         setWorkspace(dir);
         // The folder choice belongs to THIS chat — remember it on the session
         // so reopening the chat restores it.

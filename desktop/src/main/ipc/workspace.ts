@@ -60,7 +60,13 @@ export function registerWorkspaceIPC(): void {
 
   ipcMain.handle("workspace:set", (_event, path: string) => {
     if (!existsSync(path)) {
-      throw new Error(`Directory not found: ${path}`);
+      // Reported, not thrown. Most calls here are the automatic restore of a
+      // chat's saved folder, and a folder that has moved is an ordinary state,
+      // not a fault: the project gets relocated, a share is offline, a drive
+      // is unplugged. Throwing logged "Error occurred in handler for
+      // 'workspace:set'" with a stack on every such chat open — noise that
+      // reads like a crash while the renderer was already handling it fine.
+      return { ok: false, path, error: `Directory not found: ${path}` };
     }
     applyWorkspace(path);
     saveWorkspace(path);

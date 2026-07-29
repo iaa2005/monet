@@ -401,9 +401,16 @@ export interface ElectronAPI {
   };
   workspace: {
     get: () => Promise<string>;
+    /** `ok: false` when the directory is gone — a moved project or an offline
+     * share is an ordinary state here, not a thrown error. */
     set: (
       path: string,
-    ) => Promise<{ ok: boolean; path: string; claudeMd: string | null }>;
+    ) => Promise<{
+      ok: boolean;
+      path: string;
+      claudeMd?: string | null;
+      error?: string;
+    }>;
     getClaudeMd: () => Promise<string | null>;
   };
   /** Durable log of tool executions (Background tasks). Rows are written by
