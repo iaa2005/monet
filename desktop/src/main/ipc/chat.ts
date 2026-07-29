@@ -22,6 +22,7 @@ import { abortAllBgAgents, abortBgAgents } from "../agent/bg-agents.js";
 import { getSessionStore } from "../session-store.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
+import { inferModalities } from "../provider/types.js";
 import type { EffortLevel } from "../provider/types.js";
 import { requestPermissionFromRenderer } from "./permissions.js";
 import { askUserFromRenderer } from "./ask-user.js";
@@ -54,14 +55,23 @@ interface ChatSendPayload {
   effort?: EffortLevel;
 }
 
-/** Input modalities of the ACTIVE MODEL (Settings → Providers → model).
- * Legacy configs without flags fall back to the old vision heuristic. */
+/**
+ * Input modalities of the ACTIVE MODEL (Settings → Providers → model).
+ *
+ * resolveProvider() fills these in from the model's own `modalities`, falling
+ * back to what its id implies (inferModalities). The old fallback here keyed
+ * off the provider's Base URL — `/anthropic\.com/` — which had nothing to do
+ * with what the model could actually accept: the same GPT-4o was "blind"
+ * behind a self-hosted gateway and sighted behind OpenRouter.
+ *
+ * A provider with no models[] at all (a config predating that field) still
+ * needs an answer, and the model id is the only thing left to read.
+ */
 function activeModalities(): Set<string> {
   const p = getProviderManager().getActive();
   if (!p) return new Set(["text"]);
   if (p.modalities) return new Set(p.modalities);
-  const vision = /anthropic\.com/i.test(p.baseURL) || p.kind === "openrouter";
-  return new Set(vision ? ["text", "image"] : ["text"]);
+  return new Set(inferModalities(p.kind, p.model ?? ""));
 }
 
 /**

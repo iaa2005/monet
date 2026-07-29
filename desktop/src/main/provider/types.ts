@@ -35,6 +35,66 @@ export function inferEffortSupport(kind: ProviderKind, model: string): boolean {
   return false
 }
 
+/**
+ * Best-effort input modalities for a model, used as the default when a model
+ * carries no explicit `modalities` list.
+ *
+ * Why this exists: only the OpenRouter browser fills `modalities` in (from
+ * `architecture.input_modalities`). Every model added by hand — which is every
+ * model on a self-hosted gateway, a direct Anthropic key, or any OpenAI-
+ * compatible endpoint — was created as `{ id, name }` and fell back to
+ * `['text']`. The failure was silent in the worst way: the user attaches a
+ * screenshot to GPT-4o, the app decides the model cannot see, and quietly
+ * diverts the image to `stashUnsupported()`. No error, just a model answering
+ * about a picture it was never shown.
+ *
+ * Kimi Code solves this with a per-model capability catalog (models.dev). This
+ * is the same idea at the size that fits here: match on the model id, which is
+ * the part that identifies what the model can do regardless of who serves it.
+ *
+ * Bias: when unsure, claim the modality. Over-claiming produces a loud API
+ * error the user can act on; under-claiming produces the silent diversion
+ * above. An explicit `modalities` on the model always wins over this guess.
+ */
+export function inferModalities(kind: ProviderKind, model: string): Modality[] {
+  const m = model.toLowerCase()
+  const mods: Modality[] = ['text']
+  const add = (...xs: Modality[]): void => {
+    for (const x of xs) if (!mods.includes(x)) mods.push(x)
+  }
+
+  // Anthropic: vision since Claude 3; PDF documents since 3.5. Claude 2 and
+  // the instant models are text-only.
+  const claude3Plus = /claude-(3|4|5|opus|sonnet|haiku)/.test(m)
+  if (claude3Plus) {
+    add('image')
+    if (!/claude-3-(opus|sonnet|haiku)/.test(m)) add('file')
+  }
+
+  // OpenAI: 4o / 4-turbo / 4.1 / 5 and the o-series reasoning models see
+  // images. gpt-3.5 and the base gpt-4 (0314/0613) do not.
+  if (/gpt-4o|gpt-4\.1|gpt-4-turbo|gpt-4-vision|gpt-5|o1\b|o3\b|o4\b/.test(m))
+    add('image')
+  if (/gpt-4o-audio|gpt-audio/.test(m)) add('audio')
+
+  // Google Gemini takes the widest set.
+  if (/gemini/.test(m)) add('image', 'audio', 'video')
+
+  // Moonshot Kimi — k2/k3 accept video, which is the point of the model.
+  if (/\bkimi\b|moonshot|\bk2\b|\bk3\b/.test(m)) add('image', 'video')
+
+  // Open-weight and other vision models, by the marker in their id.
+  if (/-vl\b|\bvl-|vision|llava|pixtral|internvl|minicpm-v|moondream|molmo|\b4v\b|-v\d*b?\b.*vision/.test(m))
+    add('image')
+  if (/qwen.*(audio|omni)|-omni\b/.test(m)) add('image', 'audio')
+
+  // A provider whose whole catalogue is one family: an Anthropic-kind endpoint
+  // serving an unrecognised id is far more likely to be a Claude than not.
+  if (kind === 'anthropic' && mods.length === 1) add('image')
+
+  return mods
+}
+
 export interface ProviderModel {
   /** Internal id (uuid). */
   id: string
@@ -112,7 +172,9 @@ export function resolveProvider(p: LLMProvider): LLMProvider {
     temperature: m.temperature ?? p.temperature,
     contextLimit: m.contextLength ?? p.contextLimit ?? 200_000,
     inputLimit: m.maxInputTokens,
-    modalities: m.modalities ?? ['text'],
+    // Fall back to what the model id implies, not to text-only: a
+    // hand-added vision model used to have its images silently diverted.
+    modalities: m.modalities ?? inferModalities(p.kind, m.name),
     supportsEffort: m.supportsEffort ?? inferEffortSupport(p.kind, m.name),
     routing: m.routing,
   }
