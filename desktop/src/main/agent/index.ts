@@ -33,7 +33,12 @@ import {
   type RequestPermission,
   type UiPermissionMode,
 } from "./vendor-tools.js";
-import { dropSessionContext, initVendorRuntime } from "./vendor-context.js";
+import {
+  dropSessionContext,
+  initVendorRuntime,
+  setAppState,
+} from "./vendor-context.js";
+import { clearSessionMode } from "./session-mode.js";
 import { drainBgResults } from "./bg-agents.js";
 import { buildMemoryPrompt } from "../memory/store.js";
 import { getProfilePrompt } from "../profile.js";
@@ -549,6 +554,70 @@ export async function rewindTranscriptToUserTurn(
   dropSessionContext(sessionId);
   clearRevealedTools(sessionId);
   return { fidelity: "full", removed };
+}
+
+/**
+ * How many prompts can still be taken back.
+ *
+ * The visible user turns in the CURRENT context — which is the honest number.
+ * Compaction replaces the history with a summary plus a recent tail, so turns
+ * from before it are already gone from the model's view even though their
+ * bubbles are still on screen. Kimi Code states the same limit ("prompts
+ * before the last compaction cannot be undone"); here it falls out of counting
+ * what is actually there rather than needing a special case.
+ */
+export async function undoableTurnCount(sessionId: string): Promise<number> {
+  await ensureTranscriptLoaded(sessionId);
+  const msgs = conversations.get(sessionId);
+  if (!msgs) return 0;
+  return msgs.filter(isUserTurnBoundary).length;
+}
+
+/**
+ * Drop the last `count` prompts from the model's context.
+ *
+ * Deliberately NOT a rewind: files are left exactly as they are. The two
+ * operations answer different questions — "undo what the agent DID" is the
+ * checkpoint rewind, this is "forget that we discussed it", for when a
+ * detour has filled the window with material that turned out to be noise.
+ *
+ * The todo list and any plan-mode override go with them, because both were
+ * produced by the turns being removed and would otherwise describe work the
+ * model can no longer see.
+ */
+export async function undoPrompts(
+  sessionId: string,
+  count = 1,
+): Promise<{ removed: number; turnsLeft: number; messagesDropped: number }> {
+  const available = await undoableTurnCount(sessionId);
+  const removed = Math.max(0, Math.min(count, available));
+  if (removed === 0) return { removed: 0, turnsLeft: available, messagesDropped: 0 };
+
+  const keep = available - removed;
+  const before = conversations.get(sessionId)?.length ?? 0;
+  const result = await rewindTranscriptToUserTurn(sessionId, keep, available);
+  const after = conversations.get(sessionId)?.length ?? 0;
+
+  // State those turns produced. A todo list describing work the model can no
+  // longer see is worse than no list, and a plan-mode override outliving the
+  // plan it approved is how a "just planning" session starts editing files.
+  try {
+    setAppState((prev) => ({
+      ...prev,
+      todos: { ...prev.todos, [sessionId]: [] },
+    }));
+  } catch {
+    /* no vendor state yet — nothing to clear */
+  }
+  clearSessionMode(sessionId);
+
+  recordContextEvent(sessionId, "rewind", {
+    undo: true,
+    removedTurns: removed,
+    fidelity: result.fidelity,
+  });
+
+  return { removed, turnsLeft: keep, messagesDropped: Math.max(0, before - after) };
 }
 
 export async function undoCompaction(

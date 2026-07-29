@@ -86,6 +86,10 @@ export function ContextMeter({
     { id: string; at: string; beforeTokens: number | null; afterTokens: number | null }[]
   >([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  /** Prompts still in the model's context (not bubbles on screen). */
+  const [undoable, setUndoable] = useState(0);
+  /** How many this session's user has taken back, for the confirmation line. */
+  const [undone, setUndone] = useState(0);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   // Collapse all categories by default when new breakdown data arrives.
@@ -100,7 +104,23 @@ export function ContextMeter({
     setData(null);
     setCompactions([]);
     setCollapsed(new Set());
+    setUndone(0);
+    setUndoable(0);
   }, [sessionId]);
+
+  // How many prompts are still IN the model's context — not how many bubbles
+  // are on screen. After a compaction those differ, and the honest number is
+  // the one that can actually be undone.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const n = await api()?.chat.undoableTurns(sessionId ?? "default");
+      if (!cancelled && typeof n === "number") setUndoable(n);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, msgTokens, refreshKey]);
 
   // Compaction history for this chat — powers "rewind through compact".
   useEffect(() => {
@@ -126,6 +146,22 @@ export function ContextMeter({
 
   const undoCompact = async (id: string): Promise<void> => {
     await api()?.chat.undoCompact(sessionId ?? "default", id);
+    setRefreshKey((k) => k + 1);
+  };
+
+  /**
+   * Take the last prompt back out of the model's context.
+   *
+   * Note what this does NOT do: revert files. That is the checkpoint rewind,
+   * and conflating the two would be the worst kind of surprise — the tooltip
+   * says so, and the count shown is what is actually still in context, which
+   * is smaller than the number of bubbles on screen once a compaction has
+   * folded the earlier ones into a summary.
+   */
+  const undoPrompt = async (): Promise<void> => {
+    const r = await api()?.chat.undoPrompts(sessionId ?? "default", 1);
+    if (!r) return;
+    setUndone((n) => n + r.removed);
     setRefreshKey((k) => k + 1);
   };
 
@@ -257,6 +293,26 @@ export function ContextMeter({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {undoable > 0 && (
+          <div className="mt-2.5 border-t border-border pt-2">
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="flex-1 text-muted-foreground">
+                {undone
+                  ? `Removed ${undone} prompt${undone === 1 ? "" : "s"} from context`
+                  : `${undoable} prompt${undoable === 1 ? "" : "s"} in context`}
+              </span>
+              <button
+                type="button"
+                onClick={() => void undoPrompt()}
+                className="shrink-0 rounded border border-border px-1.5 py-0.5 font-medium text-foreground transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                title="Drop the last prompt and its reply from the model's context. Files are NOT reverted — use Rewind for that."
+              >
+                Undo last prompt
+              </button>
+            </div>
           </div>
         )}
 

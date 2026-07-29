@@ -43,6 +43,17 @@ const electronAPI = {
     /** Hand text to a turn already in flight. ok:false = session is idle. */
     inject: (sessionId: string, text: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:inject", sessionId, text),
+    /** Drop the last N prompts from the model's context (files untouched). */
+    undoPrompts: (
+      sessionId: string,
+      count?: number,
+    ): Promise<{
+      removed: number;
+      turnsLeft: number;
+      messagesDropped: number;
+    }> => ipcRenderer.invoke("chat:undoPrompts", sessionId, count),
+    undoableTurns: (sessionId: string): Promise<number> =>
+      ipcRenderer.invoke("chat:undoableTurns", sessionId),
     reset: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:reset", sessionId),
     rewindTranscript: (

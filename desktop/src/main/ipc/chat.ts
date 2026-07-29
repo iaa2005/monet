@@ -16,6 +16,8 @@ import {
   rewindTranscriptToUserTurn,
   estimateSessionTokens,
   computeContextBreakdown,
+  undoPrompts,
+  undoableTurnCount,
 } from "../agent/index.js";
 import { injectMessage } from "../agent/injection.js";
 import { expandSlashCommand } from "../agent/skill-tool.js";
@@ -379,6 +381,18 @@ export function registerChatIPC(): void {
     (_e, sessionId: string, text: string): { ok: boolean } => ({
       ok: injectMessage(sessionId, text),
     }),
+  );
+
+  // Drop the last N prompts from the model's context. Files are untouched —
+  // that is the checkpoint rewind, a different question.
+  ipcMain.handle(
+    "chat:undoPrompts",
+    async (_e, sessionId: string, count?: number) =>
+      undoPrompts(sessionId || "default", count ?? 1),
+  );
+
+  ipcMain.handle("chat:undoableTurns", async (_e, sessionId?: string) =>
+    undoableTurnCount(sessionId || "default"),
   );
 
   ipcMain.handle("chat:reset", (_event, sessionId?: string) => {

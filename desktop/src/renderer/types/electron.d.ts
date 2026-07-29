@@ -240,6 +240,12 @@ export interface ElectronAPI {
     abort: (sessionId?: string) => Promise<{ ok: boolean }>;
     /** Hand text to a turn already in flight. ok:false = session is idle. */
     inject: (sessionId: string, text: string) => Promise<{ ok: boolean }>;
+    /** Drop the last N prompts from the model's context (files untouched). */
+    undoPrompts: (
+      sessionId: string,
+      count?: number,
+    ) => Promise<{ removed: number; turnsLeft: number; messagesDropped: number }>;
+    undoableTurns: (sessionId: string) => Promise<number>;
     reset: (sessionId?: string) => Promise<{ ok: boolean }>;
     rewindTranscript: (
       sessionId: string,

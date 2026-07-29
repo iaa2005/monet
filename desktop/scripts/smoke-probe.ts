@@ -1119,6 +1119,43 @@ async function main() {
     }
   }
 
+  // ── Context undo ───────────────────────────────────────────────────────
+  // Dropping the last prompts from the model's context, WITHOUT reverting
+  // files. Lives here rather than in a renderer probe because it operates on
+  // the agent's real conversation state, which needs the vendor runtime.
+  {
+    const { seedConversation, undoPrompts, undoableTurnCount, resetConversation } =
+      await import('../src/main/agent/index.js')
+    const sid = 'undo-probe'
+    resetConversation(sid)
+    seedConversation(sid, [
+      { role: 'user', content: 'first question' },
+      { role: 'assistant', content: 'first answer' },
+      { role: 'user', content: 'second question' },
+      { role: 'assistant', content: 'second answer' },
+      { role: 'user', content: 'third question' },
+      { role: 'assistant', content: 'third answer' },
+    ])
+
+    check('undo counts the prompts in context', (await undoableTurnCount(sid)) === 3)
+
+    const one = await undoPrompts(sid, 1)
+    check('undoing one removes one', one.removed === 1)
+    check('and reports what is left', one.turnsLeft === 2)
+    check('the context really shrank', (await undoableTurnCount(sid)) === 2)
+
+    const two = await undoPrompts(sid, 2)
+    check('undoing two removes two', two.removed === 2)
+    check('the context is now empty of prompts', (await undoableTurnCount(sid)) === 0)
+
+    // Asking for more than exists must clamp, not throw or wrap around.
+    const over = await undoPrompts(sid, 99)
+    check('undoing past the start removes nothing', over.removed === 0)
+
+    resetConversation(sid)
+    check('undo on an empty session is a no-op', (await undoPrompts(sid, 1)).removed === 0)
+  }
+
   rmSync(dir, { recursive: true, force: true })
   console.log(failures ? `\n${failures} FAILURES` : '\nALL SMOKE CHECKS PASSED')
   process.exit(failures ? 1 : 0)
