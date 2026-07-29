@@ -4,6 +4,11 @@ directories:
   output: release
 files:
   - out/**/*
+  # The tray reads this at runtime, so it has to be INSIDE the app — the
+  # `icon:` entries below only tell the builder what to stamp on the installer
+  # and the .exe. Without this line the tray icon works in dev and is blank in
+  # every shipped build.
+  - build/icon.png
 # Native binaries can't be spawned from inside app.asar — keep them on disk
 # (spawn paths swap app.asar → app.asar.unpacked at runtime).
 asarUnpack:
