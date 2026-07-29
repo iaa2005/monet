@@ -90,6 +90,58 @@ export function pickSkillDir(dirs: string[], name: string): PickResult {
   };
 }
 
+/**
+ * At most `n` entries per repository.
+ *
+ * Without this one repo owns the page. `sort=stars` is the worst case — the
+ * top three results are all `affaan-m/ECC`, which reports 193 429 stars for
+ * every one of its skills, because the figure is the REPO's stars and says
+ * nothing about the skill. `recent` behaves, but a prolific publisher would
+ * still crowd out everyone else.
+ */
+export function capPerRepo<T extends { repository: string }>(
+  list: T[],
+  n = 3,
+): T[] {
+  const seen = new Map<string, number>();
+  const out: T[] = [];
+  for (const s of list) {
+    const c = seen.get(s.repository) ?? 0;
+    if (c >= n) continue;
+    seen.set(s.repository, c + 1);
+    out.push(s);
+  }
+  return out;
+}
+
+/**
+ * One page of the registry — searched when there is a query, browsed when
+ * there isn't.
+ *
+ * Default sort is `recent`, not the API's own `votes`. Checked against the
+ * live endpoint: `votes` puts a 0-star `ucoz-landing-skill` first because
+ * almost nothing has votes, so the order is effectively arbitrary; `stars`
+ * clumps by repo. `recent` returns genuinely different, current entries.
+ */
+export async function listRegistry(opts: {
+  query?: string;
+  limit?: number;
+  offset?: number;
+  sort?: "recent" | "votes" | "stars";
+}): Promise<RegistrySkill[]> {
+  const query = opts.query?.trim() ?? "";
+  const url = new URL(BASE);
+  if (query) url.searchParams.set("q", query);
+  // A query orders by relevance on their side; browsing needs an explicit one.
+  else url.searchParams.set("sort", opts.sort ?? "recent");
+  if (opts.offset) url.searchParams.set("offset", String(opts.offset));
+  url.searchParams.set(
+    "limit",
+    String(Math.min(Math.max(opts.limit ?? 30, 1), 100)),
+  );
+  return fetchPage(url);
+}
+
 /** One page of registry results. Errors are thrown with a message meant for
  * the user — the Directory shows it next to the search box. */
 export async function searchRegistry(
@@ -99,6 +151,10 @@ export async function searchRegistry(
   const url = new URL(BASE);
   if (query.trim()) url.searchParams.set("q", query.trim());
   url.searchParams.set("limit", String(Math.min(Math.max(limit, 1), 100)));
+  return fetchPage(url);
+}
+
+async function fetchPage(url: URL): Promise<RegistrySkill[]> {
   const res = await fetch(url, { headers: UA });
   if (!res.ok)
     throw new Error(

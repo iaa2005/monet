@@ -17,6 +17,7 @@
  */
 
 import {
+  capPerRepo,
   normalizeName,
   pickSkillDir,
 } from "../src/main/skills-registry";
@@ -135,6 +136,35 @@ const SEO_REPO = [
     r.ok && r.dir === "cross-cutting/memory-management",
     r.ok ? r.dir : r.error,
   );
+}
+
+// -- 8. One publisher must not own the page ---------------------------
+{
+  // Checked against the live endpoint while building this: sort=stars returns
+  // three consecutive entries from affaan-m/ECC, each reporting the SAME
+  // 193,429 stars — the figure belongs to the repository, not the skill. So
+  // browsing without a cap shows one project and calls it a directory.
+  const flood = [
+    { repository: "affaan-m/ECC", name: "Uncloud" },
+    { repository: "affaan-m/ECC", name: "Social Publisher" },
+    { repository: "affaan-m/ECC", name: "Recursive Decision Ledger" },
+    { repository: "affaan-m/ECC", name: "Fourth" },
+    { repository: "affaan-m/ECC", name: "Fifth" },
+    { repository: "other/repo", name: "Something Else" },
+  ];
+  const capped = capPerRepo(flood, 3);
+  check("a flooding repo is capped", capped.filter((x) => x.repository === "affaan-m/ECC").length === 3, capped.length);
+  check(
+    "and everyone else survives it",
+    capped.some((x) => x.repository === "other/repo"),
+    JSON.stringify(capped.map((x) => x.name)),
+  );
+  check(
+    "order is preserved, not shuffled",
+    capped[0]!.name === "Uncloud" && capped[3]!.name === "Something Else",
+    JSON.stringify(capped.map((x) => x.name)),
+  );
+  check("a varied page is untouched", capPerRepo([{ repository: "a/b", name: "x" }], 3).length === 1);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL SKILLS-REGISTRY CHECKS PASSED");

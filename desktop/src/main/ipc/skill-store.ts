@@ -16,6 +16,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { getDataDir } from "../data-dir.js";
 import {
+  capPerRepo,
+  listRegistry,
   pickSkillDir,
   searchRegistry,
   type RegistrySkill as BaseRegistrySkill,
@@ -28,10 +30,16 @@ export interface RegistrySkill extends BaseRegistrySkill {
 }
 
 export interface StoreSkill {
-  /** Repo-relative dir of the skill. Unique only WITHIN a source. */
+  /** Repo-relative dir of the skill. Empty for a registry card: the registry
+   * does not say where in the repo the skill lives, so it is resolved at
+   * install time against the repo's own tree. */
   path: string;
-  /** The `owner/repo[/sub]` this came from — the card's provenance line. */
+  /** The source's id — `owner/repo[/sub]`, or a registry id. The card's
+   * provenance line, and what the source chips filter on. */
   source: string;
+  kind: SourceKind;
+  /** Registry cards only: `owner/repo` where the files actually are. */
+  repository?: string;
   name: string;
   description: string;
   installed: boolean;
@@ -39,9 +47,71 @@ export interface StoreSkill {
   slug: string;
 }
 
+export type SourceKind = "github" | "registry";
+
+/**
+ * A skill source.
+ *
+ * `github` is enumerable: one tree request lists every folder holding a
+ * SKILL.md. `registry` is not — skillsdirectory.com indexes ~97 000 entries
+ * and returns them a page at a time, so it contributes a page rather than a
+ * complete listing, and its cards resolve to a folder only on install.
+ */
+export type SkillSource =
+  | { kind: "github"; id: string; repo: string; sub: string }
+  | { kind: "registry"; id: string; api: string; name: string; homepage?: string };
+
+const SKILLSDIRECTORY: Extract<SkillSource, { kind: "registry" }> = {
+  kind: "registry",
+  id: "skillsdirectory",
+  api: "https://www.skillsdirectory.com/api/registry",
+  name: "Skills Directory",
+  homepage: "https://www.skillsdirectory.com",
+};
+
+/** Config rows are either a bare string (a GitHub repo — the original format,
+ * still what most entries are) or an object for anything else. */
+type StoredSource = string | { kind?: string; id?: string; repo?: string; api?: string; name?: string; homepage?: string };
+
+export function parseStoredSource(raw: StoredSource): SkillSource | null {
+  if (typeof raw === "string") {
+    const norm = normalizeSource(raw);
+    if (norm.split("/").length < 2) return null;
+    const parts = norm.split("/");
+    return {
+      kind: "github",
+      id: norm,
+      repo: parts.slice(0, 2).join("/"),
+      sub: parts.slice(2).join("/"),
+    };
+  }
+  if (raw?.kind === "registry") {
+    // Only the one registry is understood; an unknown api is not something to
+    // guess a protocol for.
+    const api = typeof raw.api === "string" ? raw.api : "";
+    if (raw.id === SKILLSDIRECTORY.id || api === SKILLSDIRECTORY.api)
+      return SKILLSDIRECTORY;
+    return null;
+  }
+  if (typeof raw?.repo === "string") return parseStoredSource(raw.repo);
+  return null;
+}
+
+/** Back to what goes in the config file — strings stay strings so a
+ * hand-edited skill-store.json keeps reading the way it always did. */
+function toStored(s: SkillSource): StoredSource {
+  return s.kind === "github" ? s.id : { kind: "registry", id: s.id };
+}
+
 const UA = { "User-Agent": "monet-desktop" };
 const CACHE_MS = 10 * 60 * 1000;
-const DEFAULT_SOURCES = ["iaa2005/monet-skills"];
+/** Out of the box: the project's own skills, plus the directory — which is
+ * where "not just a search" comes from. It is a source like any other now, so
+ * its chip is there before anything is typed. */
+const DEFAULT_SOURCES: SkillSource[] = [
+  parseStoredSource("iaa2005/monet-skills")!,
+  SKILLSDIRECTORY,
+];
 
 function skillsDir(): string {
   const dir = join(getDataDir(), "claude", "skills");
@@ -63,7 +133,7 @@ export function normalizeSource(raw: string): string {
     .replace(/^\/+|\/+$/g, "");
 }
 
-function getSources(): string[] {
+function getSources(): SkillSource[] {
   try {
     const j = JSON.parse(readFileSync(configFile(), "utf-8")) as {
       sources?: unknown;
@@ -75,26 +145,27 @@ function getSources(): string[] {
       : typeof j.source === "string"
         ? [j.source]
         : [];
-    const clean = list
-      .filter((s): s is string => typeof s === "string")
-      .map(normalizeSource)
-      .filter((s) => s.split("/").length >= 2);
-    if (clean.length) return [...new Set(clean)];
+    const parsed = list
+      .map((x) => parseStoredSource(x as StoredSource))
+      .filter((x): x is SkillSource => x !== null);
+    const seen = new Set<string>();
+    const clean = parsed.filter((x) => !seen.has(x.id) && seen.add(x.id));
+    if (clean.length) return clean;
   } catch {
     /* default below */
   }
   return DEFAULT_SOURCES;
 }
 
-function setSources(list: string[]): string[] {
-  const clean = [
-    ...new Set(
-      list.map(normalizeSource).filter((s) => s.split("/").length >= 2),
-    ),
-  ];
+function setSources(list: StoredSource[]): SkillSource[] {
+  const parsed = list
+    .map((x) => parseStoredSource(x))
+    .filter((x): x is SkillSource => x !== null);
+  const seen = new Set<string>();
+  const clean = parsed.filter((x) => !seen.has(x.id) && seen.add(x.id));
   writeFileSync(
     configFile(),
-    JSON.stringify({ sources: clean }, null, 2),
+    JSON.stringify({ sources: clean.map(toStored) }, null, 2),
     "utf-8",
   );
   return clean.length ? clean : DEFAULT_SOURCES;
@@ -166,10 +237,9 @@ async function fetchRaw(repo: string, path: string): Promise<string | null> {
   }
 }
 
-async function listOne(source: string): Promise<StoreSkill[]> {
-  const { repo, sub } = parseSource(source);
-  const paths = await fetchTree(source);
-  const prefix = sub ? `${sub}/` : "";
+async function listGithub(src: Extract<SkillSource, { kind: "github" }>): Promise<StoreSkill[]> {
+  const paths = await fetchTree(src.id);
+  const prefix = src.sub ? `${src.sub}/` : "";
   const dirs = paths
     .filter((p) => p.startsWith(prefix) && p.endsWith("/SKILL.md"))
     .map((p) => p.slice(0, -"/SKILL.md".length))
@@ -177,13 +247,14 @@ async function listOne(source: string): Promise<StoreSkill[]> {
   const local = skillsDir();
   const metas = await Promise.allSettled(
     dirs.map(async (dir) => {
-      const md = await fetchRaw(repo, `${dir}/SKILL.md`);
+      const md = await fetchRaw(src.repo, `${dir}/SKILL.md`);
       const fm = md ? parseFrontmatter(md) : {};
       const base = dir.split("/").pop() ?? dir;
       const slug = slugify(base);
       return {
         path: dir,
-        source,
+        source: src.id,
+        kind: "github" as const,
         name: fm.name || base,
         description: (fm.description ?? "").slice(0, 400),
         installed: existsSync(join(local, slug)),
@@ -192,23 +263,66 @@ async function listOne(source: string): Promise<StoreSkill[]> {
     }),
   );
   return metas
-    .filter((r): r is PromiseFulfilledResult<StoreSkill> => r.status === "fulfilled")
-    .map((r) => r.value);
+    .filter((r) => r.status === "fulfilled")
+    .map((r) => (r as PromiseFulfilledResult<StoreSkill>).value);
+}
+
+/**
+ * A page of the registry, as cards.
+ *
+ * Not a listing — there are ~97 000 entries. Without a query this is the most
+ * recent page, which is what makes the chip usable before anything is typed;
+ * with one it is a search. Capped per repository so a single prolific
+ * publisher cannot own the page.
+ */
+async function listRegistrySource(
+  src: Extract<SkillSource, { kind: "registry" }>,
+  query: string,
+  offset: number,
+): Promise<StoreSkill[]> {
+  const page = await listRegistry({ query, offset, limit: 40 });
+  const local = skillsDir();
+  return capPerRepo(page, 3).map((r) => ({
+    // The registry never says WHERE in the repo the skill is — resolved at
+    // install against the repo's tree, so there is nothing to put here.
+    path: "",
+    source: src.id,
+    kind: "registry" as const,
+    repository: r.repository,
+    name: r.name,
+    description: r.description,
+    installed: existsSync(join(local, slugify(r.name))),
+    slug: slugify(r.name),
+  }));
+}
+
+function listOne(
+  src: SkillSource,
+  query: string,
+  offset: number,
+): Promise<StoreSkill[]> {
+  return src.kind === "github"
+    ? listGithub(src)
+    : listRegistrySource(src, query, offset);
 }
 
 /** Every source, merged. One unreachable repo must not blank the whole
  * Directory, so failures come back as `errors` alongside whatever loaded. */
 async function listAll(
-  sources: string[],
+  sources: SkillSource[],
+  query = "",
+  offset = 0,
 ): Promise<{ skills: StoreSkill[]; errors: string[] }> {
-  const results = await Promise.allSettled(sources.map(listOne));
+  const results = await Promise.allSettled(
+    sources.map((s) => listOne(s, query, offset)),
+  );
   const skills: StoreSkill[] = [];
   const errors: string[] = [];
   results.forEach((r, i) => {
     if (r.status === "fulfilled") skills.push(...r.value);
     else
       errors.push(
-        `${sources[i]}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`,
+        `${sources[i]!.id}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`,
       );
   });
   skills.sort((a, b) => a.name.localeCompare(b.name));
@@ -254,20 +368,29 @@ async function installSkill(
 }
 
 export function registerSkillStoreIPC(): void {
-  ipcMain.handle("skillstore:getSources", (): string[] => getSources());
-  ipcMain.handle("skillstore:setSources", (_e, list: string[]): string[] =>
-    setSources(Array.isArray(list) ? list : []),
+  ipcMain.handle("skillstore:getSources", (): SkillSource[] => getSources());
+  ipcMain.handle(
+    "skillstore:setSources",
+    (_e, list: StoredSource[]): SkillSource[] =>
+      setSources(Array.isArray(list) ? list : []),
   );
   ipcMain.handle(
     "skillstore:list",
-    async (): Promise<{
+    async (
+      _e,
+      opts?: { query?: string; offset?: number },
+    ): Promise<{
       ok: boolean;
       skills?: StoreSkill[];
       errors?: string[];
       error?: string;
     }> => {
       try {
-        const { skills, errors } = await listAll(getSources());
+        const { skills, errors } = await listAll(
+          getSources(),
+          opts?.query ?? "",
+          opts?.offset ?? 0,
+        );
         return { ok: true, skills, errors };
       } catch (err) {
         return {
@@ -277,10 +400,34 @@ export function registerSkillStoreIPC(): void {
       }
     },
   );
+  // One install entry point. A github card knows its folder; a registry card
+  // knows only its repo, so the folder is resolved first — and refused rather
+  // than guessed when the repo holds several candidates.
   ipcMain.handle(
     "skillstore:install",
-    (_e, payload: { source: string; path: string }) =>
-      installSkill(payload.source, payload.path),
+    async (
+      _e,
+      payload: {
+        source: string;
+        path: string;
+        kind?: SourceKind;
+        repository?: string;
+        name?: string;
+      },
+    ) => {
+      if (payload.kind !== "registry")
+        return installSkill(payload.source, payload.path);
+      if (!payload.repository)
+        return { ok: false, error: "That directory entry has no repository." };
+      const paths = await fetchTree(payload.repository);
+      const dirs = paths
+        .filter((p) => p.endsWith("/SKILL.md"))
+        .map((p) => p.slice(0, -"/SKILL.md".length));
+      const pick = pickSkillDir(dirs, payload.name ?? "");
+      if (!pick.ok)
+        return { ok: false, error: pick.error, candidates: pick.candidates };
+      return installSkill(payload.repository, pick.dir);
+    },
   );
 
   // ── skillsdirectory.com ────────────────────────────────────────────

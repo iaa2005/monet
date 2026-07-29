@@ -156,10 +156,27 @@ export interface RegistrySkill {
   installed?: boolean;
 }
 
+/** A configured skill source. `github` is enumerated; `registry`
+ * (skillsdirectory.com, ~97k entries) contributes a page at a time. */
+export interface SkillSource {
+  kind: "github" | "registry";
+  id: string;
+  repo?: string;
+  sub?: string;
+  api?: string;
+  name?: string;
+  homepage?: string;
+}
+
 export interface StoreSkill {
+  /** Empty for a registry card — the directory does not say where in the repo
+   * the skill lives, so it is resolved at install time. */
   path: string;
-  /** The `owner/repo[/sub]` this skill came from. */
+  /** The source's id: `owner/repo[/sub]`, or a registry id. */
   source: string;
+  kind?: "github" | "registry";
+  /** Registry cards only: `owner/repo` where the files actually are. */
+  repository?: string;
   name: string;
   description: string;
   installed: boolean;
@@ -572,9 +589,9 @@ export interface ElectronAPI {
     ) => Promise<{ ok: boolean; digest?: ReflectDigest; error?: string }>;
   };
   skillStore: {
-    getSources: () => Promise<string[]>;
-    setSources: (list: string[]) => Promise<string[]>;
-    list: () => Promise<{
+    getSources: () => Promise<SkillSource[]>;
+    setSources: (list: unknown[]) => Promise<SkillSource[]>;
+    list: (opts?: { query?: string; offset?: number }) => Promise<{
       ok: boolean;
       skills?: StoreSkill[];
       errors?: string[];
@@ -583,7 +600,15 @@ export interface ElectronAPI {
     install: (payload: {
       source: string;
       path: string;
-    }) => Promise<{ ok: boolean; slug?: string; error?: string }>;
+      kind?: "github" | "registry";
+      repository?: string;
+      name?: string;
+    }) => Promise<{
+      ok: boolean;
+      slug?: string;
+      error?: string;
+      candidates?: string[];
+    }>;
     searchRegistry: (payload: { query?: string; limit?: number }) => Promise<{
       ok: boolean;
       skills?: unknown[];
