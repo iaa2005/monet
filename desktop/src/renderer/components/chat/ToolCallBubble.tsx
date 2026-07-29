@@ -14,6 +14,7 @@ import { useChatStore } from "@/stores/chatStore";
 import { CodeBlock } from "./CodeBlock";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { diffStats, langFromPath } from "./diff-core";
+import { Spinner } from "./WorkingIndicator";
 import {
   ArtifactThumb,
   KindIcon,
@@ -602,8 +603,15 @@ export function SubAgentTranscript({
         ) : null,
       )}
       {messages.length === 0 && (
-        <div className="text-xs text-muted-foreground">
-          {running ? "Working…" : "No output."}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {running ? (
+            <>
+              <Spinner className="size-3" />
+              <span>Working…</span>
+            </>
+          ) : (
+            "No output."
+          )}
         </div>
       )}
     </div>

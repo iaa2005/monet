@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/message-scroller";
 import { Message, MessageContent } from "@/components/ui/message";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import { Shimmer } from "@/components/ui/shimmer";
+import { WorkingIndicator } from "./WorkingIndicator";
 import { StatsDashboard } from "@/components/StatsDashboard";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import {
@@ -94,13 +94,19 @@ const IDEAS: { icon: LucideIcon; label: string; prompt: string }[] = [
   },
 ];
 
-function WorkingRow(): JSX.Element {
+function WorkingRow({
+  messages,
+  startedAt,
+}: {
+  messages: ChatMessage[];
+  startedAt: number;
+}): JSX.Element {
   return (
     <Message align="start">
       <MessageContent>
         <Bubble variant="ghost">
           <BubbleContent>
-            <Shimmer>Working…</Shimmer>
+            <WorkingIndicator messages={messages} startedAt={startedAt} />
           </BubbleContent>
         </Bubble>
       </MessageContent>
@@ -885,6 +891,31 @@ export function ChatView({
     last?.role === "assistant" && last.isStreaming && !!last.content;
   const showWorking = isStreaming && !activeText;
 
+  // When the current run began, for the elapsed clock on the working row.
+  //
+  // It lives HERE rather than in WorkingIndicator because that component
+  // unmounts every time the model emits a chunk of text and remounts when it
+  // goes back to tools — a clock owned by it would restart at 0s repeatedly on
+  // exactly the long turns the number is meant to describe.
+  //
+  // Keyed by session, and only stamped the first time a session is seen
+  // streaming: chats run independently, so leaving a long turn to read another
+  // chat and coming back must not restart its clock at zero. The entry is
+  // dropped when the run ends, so the next turn gets a fresh stamp.
+  const [turnStarts, setTurnStarts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!sessionId) return;
+    setTurnStarts((prev) => {
+      if (isStreaming)
+        return prev[sessionId] ? prev : { ...prev, [sessionId]: Date.now() };
+      if (!(sessionId in prev)) return prev;
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
+  }, [isStreaming, sessionId]);
+  const turnStartedAt = (sessionId && turnStarts[sessionId]) || Date.now();
+
   // Drag-and-drop anywhere over the chat stages the files as attachments.
   // Counter-based tracking: enter/leave fire for every child crossed.
   const [dragOver, setDragOver] = useState(false);
@@ -1085,7 +1116,7 @@ export function ChatView({
 
                   {showWorking && (
                     <MessageScrollerItem messageId="__working" scrollAnchor>
-                      <WorkingRow />
+                      <WorkingRow messages={messages} startedAt={turnStartedAt} />
                     </MessageScrollerItem>
                   )}
 
