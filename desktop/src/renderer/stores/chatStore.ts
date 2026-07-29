@@ -19,6 +19,7 @@ import type {
 } from "@/types/chat";
 import type { ElectronAPI } from "@/types/electron";
 import { mergeForSave } from "./merge-for-save";
+import { useTaskStore } from "./taskStore";
 
 function electron(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -1113,6 +1114,22 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // within the session is preserved (tool rows, stops, errors).
       flushPendingFor(sessionId);
       mutate(sessionId, (p) => reduce(p, event));
+
+      // Mirror tool activity into the task registry (Background tasks panel).
+      // Same ordered stream, so an entry opens on the call and closes on its
+      // result; a run that ends with calls still open settles them rather than
+      // leaving them spinning.
+      const tasks = useTaskStore.getState();
+      if (event.type === "tool_use")
+        tasks.startTask(sessionId, event.id, event.name, event.input ?? {});
+      else if (event.type === "tool_result")
+        tasks.finishTask(
+          event.toolUseID,
+          event.content ?? "",
+          /^(error|Error:)/.test(event.content ?? ""),
+        );
+      else if (event.type === "message_stop" || event.type === "error")
+        tasks.settleSession(sessionId);
 
       // A background sub-agent finishing while its chat is open and idle
       // auto-continues the turn so the model receives its report.
