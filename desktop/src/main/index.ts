@@ -12,6 +12,7 @@ import { initBetaGuard } from "./beta.js";
 import { applyLeanEnv } from "./agent/lean-context.js";
 import { initNightlyConsolidation } from "./memory/nightly.js";
 import { initDevApi } from "./dev-api.js";
+import { isAcpLaunch, runAcpMode } from "./acp/index.js";
 
 // The main bundle is ESM ("type": "module"), where __dirname is not defined.
 // Derive it from import.meta.url so preload/renderer paths resolve.
@@ -20,6 +21,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Redirect vendored Claude Code config/memory into our data dir before anything
 // touches the filesystem.
 applyDataDirEnv();
+
+// `--acp`: an editor spawned us to speak the Agent Client Protocol over
+// stdio. Same engine, no window. Taken before any window or tray code runs —
+// and before anything can log, since stdout IS the protocol stream there.
+if (isAcpLaunch(process.argv)) {
+  void runAcpMode().catch((err) => {
+    process.stderr.write(`[acp] ${err instanceof Error ? err.stack : String(err)}\n`);
+    app.exit(1);
+  });
+}
 
 // Lean context: the vendor memoises its auto-memory prompt section on first
 // build, so the opt-out has to be set now — before any prompt exists.
@@ -213,6 +224,10 @@ function openSecondaryWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // ACP mode owns the process: no window, no tray, no menu. runAcpMode has
+  // its own whenReady and drives everything from stdio.
+  if (isAcpLaunch(process.argv)) return;
+
   // In packaged builds, replace the default menu (which exposes
   // "Toggle Developer Tools" and "Reload") with an empty one so users
   // can't open devtools via the menu bar.
