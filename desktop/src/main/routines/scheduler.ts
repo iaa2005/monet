@@ -26,6 +26,7 @@ import {
   type Routine,
   type RoutineRun,
 } from "./store.js";
+import { catchUpDecision, catchUpNote, stableJitterMs } from "./timing.js";
 
 const timers = new Map<string, NodeJS.Timeout>();
 // setTimeout caps at ~24.8 days; re-arm for anything further out.
@@ -277,11 +278,38 @@ export function scheduleRoutine(r: Routine): void {
   if (r.trigger.kind !== "schedule" || !r.trigger.cron) return;
   const fields = parseCronExpression(r.trigger.cron);
   if (!fields) return;
-  const next = computeNextCronRun(fields, new Date());
+  const now = new Date();
+  const next = computeNextCronRun(fields, now);
   if (!next) return;
-  updateRoutine(r.id, { nextRun: next.toISOString() });
 
-  const delay = next.getTime() - Date.now();
+  // The cron's own period, measured from the next two occurrences. Both the
+  // jitter cap and the missed-run count are relative to it: 10% of a minute
+  // and 10% of a week should not be the same offset.
+  const after = computeNextCronRun(fields, new Date(next.getTime() + 1000));
+  const periodMs = after ? after.getTime() - next.getTime() : 0;
+
+  // A run that came due while the app was closed. Fire it once — before
+  // arming the next timer, so the timer below is always in the future.
+  const missedRun = catchUpDecision(r.nextRun, r.lastRun, now, periodMs);
+  if (missedRun.fire) {
+    const dueAt = r.nextRun!;
+    void executeRoutine(r, {
+      source: "catchup",
+      body: catchUpNote(missedRun.missed, dueAt),
+    }).catch(() => {});
+  } else if (missedRun.reason === "too-old") {
+    console.log(
+      `[routines] ${r.id}: skipping ${missedRun.missed} missed run(s), oldest due ${r.nextRun} — past the catch-up window`,
+    );
+  }
+
+  const jitter = stableJitterMs(r.id, periodMs);
+  const target = new Date(next.getTime() + jitter);
+  // Store the JITTERED time: it is what the UI shows as "next run", and it is
+  // when the routine will actually fire.
+  updateRoutine(r.id, { nextRun: target.toISOString() });
+
+  const delay = target.getTime() - Date.now();
   const capped = Math.min(Math.max(delay, 1000), MAX_DELAY);
   timers.set(
     r.id,

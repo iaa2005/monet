@@ -16,6 +16,7 @@
     "smoke:artifacts": "node scripts/renderer-probe.mjs scripts/artifacts-probe.ts",
     "smoke:secrets": "node scripts/renderer-probe.mjs scripts/secret-filter-probe.ts",
     "smoke:modalities": "node scripts/renderer-probe.mjs scripts/modalities-probe.ts",
+    "smoke:routines": "node scripts/renderer-probe.mjs scripts/routine-timing-probe.ts",
     "smoke:memory": "node scripts/memory-probe.mjs",
     "probe:directory": "node scripts/directory-probe.mjs",
     "build:beta": "node scripts/build-beta.mjs",
