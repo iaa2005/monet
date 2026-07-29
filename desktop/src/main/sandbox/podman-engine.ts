@@ -190,28 +190,94 @@ function wslUnregister(distro: string): Promise<boolean> {
 }
 
 /**
- * `machine init` reported "already exists" while `machine list` shows nothing:
- * a WSL distro survived without the podman config that addresses it. Every
- * start from here says "VM does not exist", forever.
+ * The names in podman's *system connection* registry (a json file under
+ * AppData, separate from the machines themselves).
  *
- * From Settings the user asked for a repair, so unregister the orphan and build
- * a fresh machine. From a tool call, say what is wrong and what fixes it — and
- * say plainly that retrying will not, because the alternative is an agent that
- * runs the same doomed command a dozen times.
+ * These outlive the machine they point at. `machine init` refuses to reuse a
+ * name that still has a connection — "system connection ... already exists" —
+ * so a machine that is gone from `machine list` can still block its own
+ * recreation, with no VM and no distro anywhere to explain why.
  */
-async function orphanedDistroFailure(
+async function podmanConnections(): Promise<string[]> {
+  const r = await run(["system", "connection", "ls", "--format", "{{.Name}}"], {
+    timeoutMs: 30_000,
+  });
+  if (r.code !== 0) return [];
+  return r.stdout
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter((s) => s && s.toLowerCase() !== "name");
+}
+
+async function removeConnection(name: string): Promise<boolean> {
+  const r = await run(["system", "connection", "rm", name], {
+    timeoutMs: 30_000,
+  });
+  return r.code === 0;
+}
+
+/**
+ * `machine init` reported "already exists" while `machine list` shows nothing.
+ * Something from a previous machine outlived the machine itself, and every
+ * start from here fails identically, forever.
+ *
+ * There are TWO independent leftovers, and either one alone is enough to block
+ * init — an interrupted first-time setup can leave one, the other, or both:
+ *
+ *   - a WSL distro with no podman config addressing it, and
+ *   - an entry in podman's system connection registry, which lives in a
+ *     separate file under AppData and is NOT touched by `wsl --unregister`.
+ *
+ * Clearing only the distro was this function's original bug: on a machine whose
+ * distro was already gone the loop below did nothing, init failed with the very
+ * same "system connection ... already exists", and the repair reported that
+ * error as if it had tried something. Clear both.
+ *
+ * From Settings the user asked for a repair, so clear and rebuild. From a tool
+ * call, say what is wrong and what fixes it — and say plainly that retrying
+ * will not, because the alternative is an agent that runs the same doomed
+ * command a dozen times.
+ */
+/** The four commands the repair issues, injectable so the probe can drive the
+ * whole sequence without a podman install (and assert the ORDER — clearing the
+ * connection after `machine init` would be useless). */
+export type OrphanRepairDeps = {
+  listDistros: () => Promise<string[]>;
+  unregister: (distro: string) => Promise<boolean>;
+  listConnections: () => Promise<string[]>;
+  removeConnection: (name: string) => Promise<boolean>;
+  init: () => Promise<{ code: number | null; stdout: string; stderr: string }>;
+};
+
+const liveRepairDeps: OrphanRepairDeps = {
+  listDistros: wslPodmanDistros,
+  unregister: wslUnregister,
+  listConnections: podmanConnections,
+  removeConnection,
+  init: () => run(["machine", "init"], { timeoutMs: INIT_TIMEOUT_MS }),
+};
+
+export async function orphanedMachineFailure(
   canRepair: boolean,
+  deps: OrphanRepairDeps = liveRepairDeps,
 ): Promise<PodmanReadyResult> {
-  const orphans = await wslPodmanDistros();
+  const distros = await deps.listDistros();
+  const connections = await deps.listConnections();
 
   if (!canRepair) {
+    const leftovers = [
+      distros.length ? `a leftover WSL virtual machine (${distros[0]})` : "",
+      connections.length
+        ? `a stale podman connection (${connections[0]})`
+        : "",
+    ].filter(Boolean);
     return {
       ok: false,
       log: "",
       error:
-        "The Podman sandbox cannot start: a leftover WSL virtual machine " +
-        `(${orphans[0] ?? "podman-machine-default"}) is blocking it, and the ` +
-        "podman configuration that addressed it is gone — most likely an " +
+        "The Podman sandbox cannot start: " +
+        (leftovers.join(" and ") || "leftover state from a previous machine") +
+        " is blocking it, while the machine itself is gone — most likely an " +
         "interrupted first-time setup.\n" +
         "RETRYING THIS TOOL WILL NOT HELP. Either open Settings → Sandbox and " +
         "press Prepare to rebuild the machine (it downloads ~1 GB, several " +
@@ -221,9 +287,9 @@ async function orphanedDistroFailure(
   }
 
   let log = "";
-  for (const distro of orphans) {
+  for (const distro of distros) {
     log += `[sandbox] unregistering orphaned WSL distro ${distro}\n`;
-    if (!(await wslUnregister(distro)))
+    if (!(await deps.unregister(distro)))
       return {
         ok: false,
         log,
@@ -234,7 +300,23 @@ async function orphanedDistroFailure(
       };
   }
 
-  const init = await run(["machine", "init"], { timeoutMs: INIT_TIMEOUT_MS });
+  // Safe to drop unconditionally: we only get here with `machine list` empty,
+  // so every one of these addresses a machine that no longer exists. `machine
+  // init` recreates the pair it needs.
+  for (const name of connections) {
+    log += `[sandbox] removing stale podman connection ${name}\n`;
+    if (!(await deps.removeConnection(name)))
+      return {
+        ok: false,
+        log,
+        error:
+          `Could not remove the stale podman connection ${name}. Run ` +
+          `\`podman system connection rm ${name}\` yourself, then press ` +
+          "Prepare again.",
+      };
+  }
+
+  const init = await deps.init();
   if (init.code !== 0)
     return {
       ok: false,
@@ -424,7 +506,7 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
             resolvedName = named.trim();
             log += "[sandbox] Podman machine already present\n";
           } else {
-            const repair = await orphanedDistroFailure(
+            const repair = await orphanedMachineFailure(
               opts.resetOnBroken === true,
             );
             if (!repair.ok) return repair;
@@ -491,11 +573,24 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
           timeoutMs: INIT_TIMEOUT_MS,
         });
         if (init.code !== 0) {
-          return fail(
-            `Podman machine initialization failed after reset:\n${(init.stderr || init.stdout).slice(-600)}`,
-          );
+          // `machine rm -f` removes the machine, but a machine that was already
+          // half-gone leaves its system connection behind, and init then refuses
+          // the name. Same orphan state as below — repair it rather than
+          // reporting podman's line and stopping. We are inside resetOnBroken,
+          // so the repair is already authorised.
+          if ((init.stderr || init.stdout).toLowerCase().includes("already exists")) {
+            const repair = await orphanedMachineFailure(true);
+            if (!repair.ok) return { ...repair, log: log + repair.log };
+            log += repair.log;
+          } else {
+            return fail(
+              `Podman machine initialization failed after reset:\n${(init.stderr || init.stdout).slice(-600)}`,
+            );
+          }
+        } else {
+          log += "[sandbox] re-initialized Podman machine\n";
         }
-        log += "[sandbox] re-initialized Podman machine\n";
+        resolvedName = "podman-machine-default";
         start = await tryStart();
       } else {
         log += "[sandbox] machine start reported an error; verifying readiness\n";
@@ -520,7 +615,7 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
         // a ghost: the config names it, the backend has nothing behind it.
         // Echoing podman's line here is what left the agent with no next step.
         if (why.includes("does not exist"))
-          return orphanedDistroFailure(opts.resetOnBroken === true);
+          return orphanedMachineFailure(opts.resetOnBroken === true);
         return fail(
           restart.code !== 0
             ? `Podman machine failed to start:\n${(restart.stderr || restart.stdout).slice(-600)}`

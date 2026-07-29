@@ -33,7 +33,8 @@
     "smoke:memory": "node scripts/memory-probe.mjs",
     "probe:directory": "node scripts/directory-probe.mjs",
     "build:beta": "node scripts/build-beta.mjs",
-    "measure:prompt": "node scripts/measure-prompt.mjs"
+    "measure:prompt": "node scripts/measure-prompt.mjs",
+    "smoke:podman": "node scripts/renderer-probe.mjs scripts/podman-orphan-probe.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",
