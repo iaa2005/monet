@@ -391,6 +391,12 @@ export interface ElectronAPI {
     ) => Promise<{ ok: boolean; path: string; claudeMd: string | null }>;
     getClaudeMd: () => Promise<string | null>;
   };
+  /** Durable log of tool executions (Background tasks). Rows are written by
+   * the agent loop; the renderer only reads and clears. */
+  tasks: {
+    list: (limit?: number) => Promise<unknown[]>;
+    clear: () => Promise<boolean>;
+  };
   sessions: {
     create: (title?: string, space?: string) => Promise<unknown>;
     getById: (id: string) => Promise<unknown>;

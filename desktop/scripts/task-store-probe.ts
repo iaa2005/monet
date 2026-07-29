@@ -14,6 +14,7 @@
 
 import {
   MAX_TASKS,
+  mergeTasks,
   taskDetail,
   taskTitle,
   toolLabel,
@@ -174,6 +175,37 @@ const reset = (): void => useTaskStore.setState({ tasks: [] });
   store().finishTask("old-live", "built");
   check("and can still be closed by its result",
     store().tasks.find((t) => t.id === "old-live")?.status === "done");
+}
+
+// -- 9. Hydrating from the durable log --------------------------------
+{
+  // History now outlives the window: the log is written in the main process,
+  // so a reload reads back what already ran. The merge has to survive a live
+  // run in progress — a row the DB still holds as "running" must not overwrite
+  // the same row this window has already seen finish.
+  const stored = [
+    { id: "old", sessionId: "s0", tool: "Bash", title: "yesterday", status: "done" as const, startedAt: 100 },
+    { id: "live", sessionId: "s1", tool: "Bash", title: "stale copy", status: "running" as const, startedAt: 200 },
+  ];
+  const live = [
+    { id: "live", sessionId: "s1", tool: "Bash", title: "fresh copy", status: "done" as const, startedAt: 200, output: "done!" },
+  ];
+  const merged = mergeTasks(live, stored);
+
+  check("history from before the restart appears", merged.some((t) => t.id === "old"));
+  check("a row is not duplicated by hydration", merged.filter((t) => t.id === "live").length === 1);
+  check(
+    "and the live copy wins over the stored one",
+    merged.find((t) => t.id === "live")?.status === "done",
+    merged.find((t) => t.id === "live")?.status,
+  );
+  check(
+    "the merged list is newest-first",
+    merged.map((t) => t.startedAt).every((v, i, a) => i === 0 || a[i - 1]! >= v),
+    JSON.stringify(merged.map((t) => t.startedAt)),
+  );
+  check("nothing stored, nothing changes", mergeTasks(live, []).length === 1);
+  check("nothing live, everything stored shows", mergeTasks([], stored).length === 2);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL TASK-STORE CHECKS PASSED");

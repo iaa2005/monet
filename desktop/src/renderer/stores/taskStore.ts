@@ -15,6 +15,9 @@
  */
 
 import { create } from "zustand";
+import { taskDetail, taskTitle } from "@shared/task-title";
+
+export { toolLabel, taskDetail, taskTitle } from "@shared/task-title";
 
 /** Ring cap. High enough that a long session keeps its history (the reference
  * UI happily shows 119), low enough that nothing grows without bound. */
@@ -38,87 +41,6 @@ export interface TaskEntry {
   output?: string;
 }
 
-/** Tools whose display name differs from the raw one. Past tense: by the time
- * you read the list, it happened. */
-const TOOL_LABELS: Record<string, string> = {
-  Bash: "Bash",
-  PowerShell: "PowerShell",
-  Read: "Read",
-  Write: "Write",
-  Edit: "Edit",
-  MultiEdit: "Edit",
-  Grep: "Search",
-  Glob: "Find files",
-  TodoWrite: "Plan",
-  Task: "Sub-agent",
-  RunPython: "Python",
-  RunCommand: "Command",
-};
-
-export function toolLabel(tool: string): string {
-  if (TOOL_LABELS[tool]) return TOOL_LABELS[tool]!;
-  // mcp__<server>__<tool> reads as "server · tool"; the raw form is unreadable.
-  const m = /^mcp__([^_]+(?:_[^_]+)*)__(.+)$/.exec(tool);
-  return m ? `${m[1]} · ${m[2]}` : tool;
-}
-
-function str(input: Record<string, unknown>, key: string): string | undefined {
-  const v = input[key];
-  return typeof v === "string" && v.trim() ? v : undefined;
-}
-
-function basename(p: string): string {
-  const parts = p.split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] ?? p;
-}
-
-/**
- * The primary argument, on one line.
- *
- * Commands keep their full text (that IS the interesting part, and the panel
- * shows it in its own block); paths are reduced to a basename, since the
- * directory is rarely what distinguishes one run from the next.
- */
-export function taskDetail(
-  tool: string,
-  input: Record<string, unknown>,
-): string | undefined {
-  if (tool === "Bash" || tool === "PowerShell" || tool === "RunCommand")
-    return str(input, "command");
-  if (tool === "RunPython") return str(input, "code");
-  const path = str(input, "file_path") ?? str(input, "path");
-  if (path) return basename(path);
-  return (
-    str(input, "pattern") ??
-    str(input, "query") ??
-    str(input, "url") ??
-    str(input, "description")
-  );
-}
-
-/**
- * What to call this execution.
- *
- * Prefers the model's own `description` — Bash asks for one ("Clear, concise
- * description of what this command does in active voice"), and it is far more
- * use than the command itself: "Register probe, build and smoke" beats
- * `npm pkg set scripts... && npm run build > /tmp/b8.log`. Everything else
- * falls back to the tool plus its argument.
- */
-export function taskTitle(
-  tool: string,
-  input: Record<string, unknown>,
-): string {
-  const authored = str(input, "description");
-  if (authored) return authored.replace(/\s+/g, " ").trim();
-  const detail = taskDetail(tool, input);
-  const label = toolLabel(tool);
-  if (!detail) return label;
-  const one = detail.replace(/\s+/g, " ").trim();
-  const short = one.length > 60 ? `${one.slice(0, 59)}…` : one;
-  return `${label} · ${short}`;
-}
-
 interface TaskStore {
   tasks: TaskEntry[];
   /** A tool call started. */
@@ -132,7 +54,25 @@ interface TaskStore {
   finishTask: (id: string, output: string, isError?: boolean) => void;
   /** A run ended — anything still marked running never reported back. */
   settleSession: (sessionId: string) => void;
+  /** Load history from the durable log (on startup, and after a reload). */
+  hydrate: () => Promise<void>;
   clear: () => void;
+}
+
+/**
+ * Merge the stored rows into whatever this window already has.
+ *
+ * Live entries win on conflict: an event that arrived a moment ago is fresher
+ * than a row read from disk, and a running entry must not be overwritten by the
+ * pre-result copy of itself.
+ */
+export function mergeTasks(
+  live: TaskEntry[],
+  stored: TaskEntry[],
+): TaskEntry[] {
+  const seen = new Set(live.map((t) => t.id));
+  const extra = stored.filter((t) => !seen.has(t.id));
+  return [...live, ...extra].sort((a, b) => b.startedAt - a.startedAt);
 }
 
 /** Newest first, capped. Running entries are never trimmed — dropping one
@@ -191,6 +131,34 @@ export const useTaskStore = create<TaskStore>((set) => ({
       ),
     })),
 
-  clear: () =>
-    set((s) => ({ tasks: s.tasks.filter((t) => t.status === "running") })),
+  hydrate: async () => {
+    try {
+      const api = (
+        window as unknown as {
+          electronAPI?: { tasks?: { list: (n?: number) => Promise<unknown[]> } };
+        }
+      ).electronAPI;
+      const rows = (await api?.tasks?.list(MAX_TASKS)) as
+        | TaskEntry[]
+        | undefined;
+      if (!rows?.length) return;
+      set((s) => ({ tasks: trim(mergeTasks(s.tasks, rows)) }));
+    } catch {
+      /* no history is better than a broken panel */
+    }
+  },
+
+  clear: () => {
+    set((s) => ({ tasks: s.tasks.filter((t) => t.status === "running") }));
+    // Clear the durable copy too, or the next hydrate brings it all back.
+    try {
+      (
+        window as unknown as {
+          electronAPI?: { tasks?: { clear: () => Promise<boolean> } };
+        }
+      ).electronAPI?.tasks?.clear();
+    } catch {
+      /* the in-memory clear already happened */
+    }
+  },
 }));

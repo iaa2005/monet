@@ -44,7 +44,12 @@ const pkgStubAliases = Object.entries(
 // Note: the Bun-style 'vscode-jsonrpc/node.js' subpath is corrected to the
 // valid './node' export by vendorRequirePlugin (a file alias wouldn't apply —
 // externalizeDepsPlugin keeps the package external).
+// Code both processes must agree on (e.g. how a tool execution is named for
+// the task log, which main writes and the renderer renders).
+const sharedAlias = { find: '@shared', replacement: resolve('src/shared') }
+
 const vendorAliases = [
+  sharedAlias,
   { find: 'bun:bundle', replacement: resolve('src/main/shims/bun-bundle.ts') },
   ...pkgStubAliases,
   { find: '@vendor', replacement: resolve('src/vendor/leaked') },
@@ -85,6 +90,7 @@ export default defineConfig({
   },
   preload: {
     plugins: [externalizeDepsPlugin()],
+    resolve: { alias: [sharedAlias] },
   },
   renderer: {
     // NOT the default 5173: Windows' WinNAT/Hyper-V (here: the Podman WSL2

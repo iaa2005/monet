@@ -138,6 +138,13 @@ export function BackgroundTasks({
   const sessions = useChatStore((s) => s.sessions);
   const tasks = useTaskStore((s) => s.tasks);
   const clearTasks = useTaskStore((s) => s.clear);
+  const hydrate = useTaskStore((s) => s.hydrate);
+
+  // History outlives the window: the log is written in the main process, so a
+  // reload (or a restart) reads back what already ran instead of starting blank.
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
   const [open, setOpen] = useState(false);
   const [showFinished, setShowFinished] = useState(true);
   const rootRef = useRef<HTMLDivElement>(null);

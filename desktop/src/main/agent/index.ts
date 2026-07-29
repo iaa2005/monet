@@ -68,6 +68,7 @@ import {
 import type { AskUserFn } from "../ipc/ask-user.js";
 import type { AskPlanApprovalFn } from "../ipc/plan.js";
 import { resolveModel } from "../provider/routing.js";
+import { recordFinish, recordStart, settleSession } from "../task-log.js";
 
 /** Prepend finished background-agent reports to the user turn as context. */
 function mergeBackgroundResults(
@@ -977,6 +978,11 @@ export async function runAgent(
     );
   } finally {
     markStopped(sessionId);
+    // Whatever ended this run — done, aborted, threw — any tool row still open
+    // will never get a result. Settling here rather than at each of the five
+    // message_stop sites means a new exit path cannot forget to do it, and a
+    // thrown error settles too.
+    settleSession(sessionId);
   }
 }
 
@@ -1197,6 +1203,17 @@ async function runAgentScoped(
             lastStopReason = event.stop_reason;
             return;
           }
+          // Durable task log. Recorded HERE rather than in the renderer store:
+          // a tool call happens whether or not a window is listening, and the
+          // agent keeps running across a renderer reload — a renderer-owned log
+          // would lose exactly the executions worth looking up afterwards.
+          if (event.type === "tool_use")
+            recordStart({
+              id: event.id,
+              sessionId,
+              tool: event.name,
+              input: event.input ?? {},
+            });
           onEvent(event);
         },
         signal,
@@ -1353,6 +1370,11 @@ async function runAgentScoped(
         toolName: tc.name,
         content: result.content,
       });
+      // Closes the log row. Deliberately here and not on every tool_result
+      // event: the placeholder before execution and each onProgress update are
+      // the same event type, and closing on one of those would stamp a row
+      // "Completed" with the word "Running..." as its output.
+      recordFinish(tc.id, result.content, result.isError === true);
       return {
         tool_use_id: tc.id,
         content: result.content,

@@ -272,6 +272,14 @@ const electronAPI = {
       ipcRenderer.invoke("workspace:getClaudeMd"),
   },
 
+  // Durable log of tool executions — the Background tasks panel. Read-only
+  // from here: rows are written by the agent loop, which is the only thing
+  // that knows a tool actually ran.
+  tasks: {
+    list: (limit?: number): Promise<unknown[]> =>
+      ipcRenderer.invoke("tasks:list", limit),
+    clear: (): Promise<boolean> => ipcRenderer.invoke("tasks:clear"),
+  },
   sessions: {
     create: (title?: string, space?: string): Promise<unknown> =>
       ipcRenderer.invoke("sessions:create", title, space),

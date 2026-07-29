@@ -2,6 +2,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
+      "@shared/*": ["./src/shared/*"],
       // bun:bundle is a Bun-only virtual module — shim provides feature().
       "bun:bundle": ["./src/main/shims/bun-bundle.ts"],
       // Vendor imports the Bun-style 'vscode-jsonrpc/node.js' subpath; the

@@ -19,7 +19,12 @@ await build({
   configFile: false,
   logLevel: 'warn',
   resolve: {
-    alias: [{ find: '@', replacement: resolve('src/renderer') }],
+    alias: [
+      { find: '@', replacement: resolve('src/renderer') },
+      // Code both processes share (e.g. how a tool execution is named) —
+      // kept in sync with electron.vite.config.ts and tsconfig paths.
+      { find: '@shared', replacement: resolve('src/shared') },
+    ],
   },
   build: {
     ssr: true,
