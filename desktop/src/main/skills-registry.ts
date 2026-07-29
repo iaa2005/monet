@@ -19,6 +19,34 @@
 const BASE = "https://www.skillsdirectory.com/api/registry";
 const UA = { "User-Agent": "monet-desktop" };
 
+/**
+ * The category slugs the directory publishes, read off its own /categories
+ * page — there is no API endpoint for them (both /api/categories and
+ * /api/registry/categories are 404).
+ *
+ * Used only to SEED the filter. Whatever categories actually appear in results
+ * are unioned in, so one added upstream shows up without a release here, and
+ * one retired upstream simply stops appearing in the data.
+ */
+export const CATEGORY_SLUGS = [
+  "ai-agents",
+  "blockchain",
+  "business",
+  "code-quality",
+  "content-marketing",
+  "data",
+  "databases",
+  "design",
+  "development",
+  "devops",
+  "documentation",
+  "education",
+  "research",
+  "security",
+  "testing",
+  "tools",
+] as const;
+
 export interface RegistrySkill {
   name: string;
   /** The registry's own id — `<author>-<skill>`, not a repo path. */
@@ -125,6 +153,7 @@ export function capPerRepo<T extends { repository: string }>(
  */
 export async function listRegistry(opts: {
   query?: string;
+  category?: string;
   limit?: number;
   offset?: number;
   sort?: "recent" | "votes" | "stars";
@@ -132,6 +161,9 @@ export async function listRegistry(opts: {
   const query = opts.query?.trim() ?? "";
   const url = new URL(BASE);
   if (query) url.searchParams.set("q", query);
+  // Server-side: `development` alone matches 22 389 entries, so filtering the
+  // hundred already fetched would be filtering the wrong hundred.
+  if (opts.category) url.searchParams.set("category", opts.category);
   // A query orders by relevance on their side; browsing needs an explicit one.
   else url.searchParams.set("sort", opts.sort ?? "recent");
   if (opts.offset) url.searchParams.set("offset", String(opts.offset));

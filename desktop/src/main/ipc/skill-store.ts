@@ -21,6 +21,7 @@ import {
 } from "../skill-source-catalog.js";
 import {
   capPerRepo,
+  CATEGORY_SLUGS,
   listRegistry,
   pickSkillDir,
   searchRegistry,
@@ -47,6 +48,8 @@ export interface StoreSkill {
   name: string;
   description: string;
   installed: boolean;
+  /** Registry cards only — what the category filter offers. */
+  category?: string;
   /** Local folder name once installed — what removal needs. */
   slug: string;
 }
@@ -291,8 +294,14 @@ async function listRegistrySource(
   src: Extract<SkillSource, { kind: "registry" }>,
   query: string,
   offset: number,
+  category?: string,
 ): Promise<StoreSkill[]> {
-  const page = await listRegistry({ query, offset, limit: REGISTRY_PAGE });
+  const page = await listRegistry({
+    query,
+    category,
+    offset,
+    limit: REGISTRY_PAGE,
+  });
   const local = skillsDir();
   return capPerRepo(page, 3).map((r) => ({
     // The registry never says WHERE in the repo the skill is — resolved at
@@ -303,6 +312,7 @@ async function listRegistrySource(
     repository: r.repository,
     name: r.name,
     description: r.description,
+    category: r.category,
     installed: existsSync(join(local, slugify(r.name))),
     slug: slugify(r.name),
   }));
@@ -312,10 +322,11 @@ function listOne(
   src: SkillSource,
   query: string,
   offset: number,
+  category?: string,
 ): Promise<StoreSkill[]> {
   return src.kind === "github"
     ? listGithub(src)
-    : listRegistrySource(src, query, offset);
+    : listRegistrySource(src, query, offset, category);
 }
 
 /** Every source, merged. One unreachable repo must not blank the whole
@@ -324,9 +335,10 @@ async function listAll(
   sources: SkillSource[],
   query = "",
   offset = 0,
+  category?: string,
 ): Promise<{ skills: StoreSkill[]; errors: string[] }> {
   const results = await Promise.allSettled(
-    sources.map((s) => listOne(s, query, offset)),
+    sources.map((s) => listOne(s, query, offset, category)),
   );
   const skills: StoreSkill[] = [];
   const errors: string[] = [];
@@ -380,6 +392,9 @@ async function installSkill(
 }
 
 export function registerSkillStoreIPC(): void {
+  // The filter's starting list. Seeded from the directory's own categories
+  // page; the UI unions in whatever it actually sees.
+  ipcMain.handle("skillstore:categories", (): string[] => [...CATEGORY_SLUGS]);
   ipcMain.handle("skillstore:getSources", (): SkillSource[] => getSources());
   ipcMain.handle(
     "skillstore:setSources",
@@ -390,7 +405,7 @@ export function registerSkillStoreIPC(): void {
     "skillstore:list",
     async (
       _e,
-      opts?: { query?: string; offset?: number },
+      opts?: { query?: string; offset?: number; category?: string },
     ): Promise<{
       ok: boolean;
       skills?: StoreSkill[];
@@ -402,6 +417,7 @@ export function registerSkillStoreIPC(): void {
           getSources(),
           opts?.query ?? "",
           opts?.offset ?? 0,
+          opts?.category || undefined,
         );
         return { ok: true, skills, errors };
       } catch (err) {
@@ -453,7 +469,7 @@ export function registerSkillStoreIPC(): void {
     "skillstore:registryPage",
     async (
       _e,
-      payload: { query?: string; offset?: number },
+      payload: { query?: string; offset?: number; category?: string },
     ): Promise<{ ok: boolean; skills?: StoreSkill[]; error?: string }> => {
       try {
         const regs = getSources().filter(
@@ -463,7 +479,12 @@ export function registerSkillStoreIPC(): void {
         if (regs.length === 0) return { ok: true, skills: [] };
         const pages = await Promise.all(
           regs.map((r) =>
-            listRegistrySource(r, payload?.query ?? "", payload?.offset ?? 0),
+            listRegistrySource(
+              r,
+              payload?.query ?? "",
+              payload?.offset ?? 0,
+              payload?.category || undefined,
+            ),
           ),
         );
         return { ok: true, skills: pages.flat() };

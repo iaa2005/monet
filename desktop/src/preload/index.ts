@@ -483,7 +483,13 @@ const electronAPI = {
       ipcRenderer.invoke("skillstore:getSources"),
     setSources: (list: unknown[]): Promise<unknown[]> =>
       ipcRenderer.invoke("skillstore:setSources", list),
-    list: (opts?: { query?: string; offset?: number }): Promise<{
+    categories: (): Promise<string[]> =>
+      ipcRenderer.invoke("skillstore:categories"),
+    list: (opts?: {
+      query?: string;
+      offset?: number;
+      category?: string;
+    }): Promise<{
       ok: boolean;
       skills?: unknown[];
       errors?: string[];
@@ -506,6 +512,7 @@ const electronAPI = {
     registryPage: (payload: {
       query?: string;
       offset?: number;
+      category?: string;
     }): Promise<{ ok: boolean; skills?: unknown[]; error?: string }> =>
       ipcRenderer.invoke("skillstore:registryPage", payload),
     /** Curated sources published in the community repo — nothing is executed,

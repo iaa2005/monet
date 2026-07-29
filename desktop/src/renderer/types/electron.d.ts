@@ -189,6 +189,8 @@ export interface StoreSkill {
   kind?: "github" | "registry";
   /** Registry cards only: `owner/repo` where the files actually are. */
   repository?: string;
+  /** Registry cards only — what the category filter offers. */
+  category?: string;
   name: string;
   description: string;
   installed: boolean;
@@ -603,7 +605,12 @@ export interface ElectronAPI {
   skillStore: {
     getSources: () => Promise<SkillSource[]>;
     setSources: (list: unknown[]) => Promise<SkillSource[]>;
-    list: (opts?: { query?: string; offset?: number }) => Promise<{
+    categories: () => Promise<string[]>;
+    list: (opts?: {
+      query?: string;
+      offset?: number;
+      category?: string;
+    }) => Promise<{
       ok: boolean;
       skills?: StoreSkill[];
       errors?: string[];
@@ -621,7 +628,11 @@ export interface ElectronAPI {
       error?: string;
       candidates?: string[];
     }>;
-    registryPage: (payload: { query?: string; offset?: number }) => Promise<{
+    registryPage: (payload: {
+      query?: string;
+      offset?: number;
+      category?: string;
+    }) => Promise<{
       ok: boolean;
       skills?: StoreSkill[];
       error?: string;

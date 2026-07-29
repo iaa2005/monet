@@ -21,6 +21,7 @@ import {
   matches,
   Picker,
 } from "./shared";
+import { sourceChipLabels } from "./source-labels";
 
 const FILTERS = [
   { label: "All", value: "all" },
@@ -55,6 +56,8 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   const [moreBusy, setMoreBusy] = useState(false);
   const [moreDone, setMoreDone] = useState(false);
   const sentinel = useRef<HTMLDivElement>(null);
+  const [category, setCategory] = useState("all");
+  const [catSlugs, setCatSlugs] = useState<string[]>([]);
   const load = async (q = query): Promise<void> => {
     setReloading(true);
     try {
@@ -63,7 +66,10 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
         // The query goes to the MAIN process too: a registry source is paged,
         // not enumerated, so it must search server-side rather than be
         // filtered client-side like a repo's listing.
-        api()?.skillStore.list({ query: q }),
+        api()?.skillStore.list({
+          query: q,
+          category: category === "all" ? undefined : category,
+        }),
       ]);
       setSources(srcs ?? []);
       setSkills(r?.ok ? (r.skills ?? []) : []);
@@ -80,6 +86,10 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   useEffect(() => {
     void load();
     void api()
+      ?.skillStore.categories()
+      .then((c) => setCatSlugs(c ?? []))
+      .catch(() => {});
+    void api()
       ?.skillStore.suggestions()
       .then((r) => setSuggested(r?.sources ?? []))
       .catch(() => {});
@@ -95,6 +105,19 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, hasRegistry]);
+
+  // The category is a SERVER-side filter: "development" alone matches 22 389
+  // entries, so narrowing the hundred already on screen would narrow the wrong
+  // hundred. Changing it therefore re-queries rather than re-filters.
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    void load(query);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category]);
 
   const addSource = async (): Promise<void> => {
     const v = newSource.trim();
@@ -195,7 +218,11 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
     setMoreBusy(true);
     try {
       const next = regOffset + REGISTRY_PAGE;
-      const r = await api()?.skillStore.registryPage({ query, offset: next });
+      const r = await api()?.skillStore.registryPage({
+        query,
+        offset: next,
+        category: category === "all" ? undefined : category,
+      });
       const page = r?.ok ? (r.skills ?? []) : [];
       // A short page means the registry has no more to give for this query.
       if (!r?.ok || page.length === 0) {
@@ -236,6 +263,24 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasRegistry, moreDone, moreBusy, regOffset, query, skills?.length]);
 
+  /** Seeded from the directory's published list, unioned with whatever the
+   * loaded cards actually carry — a category added upstream shows up as soon
+   * as it appears in results, without waiting for a release here. */
+  const categories = useMemo(() => {
+    const seen = new Set<string>(catSlugs);
+    for (const s of skills ?? []) if (s.category) seen.add(s.category);
+    return [
+      { label: "All categories", value: "all" },
+      ...[...seen].sort().map((c) => ({
+        label: c.replace(/-/g, " ").replace(/^./, (m) => m.toUpperCase()),
+        value: c,
+      })),
+    ];
+  }, [catSlugs, skills]);
+
+  /** See source-labels.ts — the rule is there so it can be tested. */
+  const sourceLabels = useMemo(() => sourceChipLabels(sources), [sources]);
+
   const shown = useMemo(() => {
     let list = (skills ?? []).filter(
       (s) =>
@@ -264,9 +309,13 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
       <Toolbar
         chips={
           <>
+            <span className="mr-0.5 shrink-0 self-center text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Source
+            </span>
             {sources.length > 1 && (
               <Chip
                 label="All"
+                title="Show skills from every source"
                 active={source === "all"}
                 onClick={() => setSource("all")}
               />
@@ -274,8 +323,8 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
             {sources.map((s) => (
               <Chip
                 key={s.id}
-                label={s.kind === "registry" ? (s.name ?? s.id) : (s.id.split("/")[1] ?? s.id)}
-                title={s.kind === "registry" ? (s.homepage ?? s.id) : s.id}
+                label={sourceLabels.get(s.id) ?? s.id}
+                title={`Show only skills from ${s.kind === "registry" ? (s.homepage ?? s.name ?? s.id) : s.id} — click again to show all`}
                 active={source === s.id}
                 onClick={() => setSource(source === s.id ? "all" : s.id)}
                 onRemove={() => void removeSource(s.id)}
@@ -325,6 +374,14 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
                 className={reloading ? "size-4 animate-spin" : "size-4"}
               />
             </button>
+            {hasRegistry && (
+              <Picker
+                label="Category"
+                value={category}
+                options={categories}
+                onChange={setCategory}
+              />
+            )}
             <Picker
               label="Filter by"
               value={filter}
