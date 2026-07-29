@@ -18,6 +18,7 @@ import {
   computeContextBreakdown,
   undoPrompts,
   undoableTurnCount,
+  lastTurnTokens,
 } from "../agent/index.js";
 import { injectMessage } from "../agent/injection.js";
 import { expandSlashCommand } from "../agent/skill-tool.js";
@@ -300,10 +301,47 @@ export function registerChatIPC(): void {
     // Slash commands expand client-side, like the CLI: "/name args" becomes
     // the command's prompt. Unknown commands go through as plain text.
     let message = payload.message;
-    if (message.trimStart().startsWith("/")) {
+
+    // `/goal <objective>` starts an autonomous goal. Handled before the
+    // ordinary expansion because it is not a prompt template: it writes a
+    // record, and THIS send becomes the goal's first turn.
+    const goalMatch = message.trim().match(/^\/goal\s+([\s\S]+)$/i);
+    if (goalMatch) {
+      const { registerGoalFromChat } = await import("./goal.js");
+      const started = registerGoalFromChat(sessionId, goalMatch[1]!);
+      if (!started.ok) {
+        win.webContents.send("chat:token", {
+          sessionId,
+          event: { type: "error", error: started.error },
+        });
+        return { ok: false };
+      }
+      message = goalMatch[1]!;
+    } else if (message.trimStart().startsWith("/")) {
       const expanded = await expandSlashCommand(message.trim());
       if (expanded) message = expanded;
     }
+
+    const emit = (event: unknown): void => {
+      // Tag every event with its session so the renderer routes it to the
+      // right chat even after the user switched away.
+      win.webContents.send("chat:token", { sessionId, event });
+    };
+
+    const runOptions = {
+      signal: abort.signal,
+      modeDirective: modeDirectiveFor(mode),
+      permissionMode: mode,
+      requestPermission: (ask: Parameters<typeof requestPermissionFromRenderer>[1]) =>
+        requestPermissionFromRenderer(win, ask),
+      askUser: (questions: Parameters<typeof askUserFromRenderer>[1]) =>
+        askUserFromRenderer(win, questions),
+      askPlanApproval: (plan: Parameters<typeof askPlanApprovalFromRenderer>[1]) =>
+        askPlanApprovalFromRenderer(win, plan),
+      space: payload.space,
+      cwd,
+      effort: payload.effort,
+    };
 
     try {
       await runAgent(
@@ -314,23 +352,27 @@ export function registerChatIPC(): void {
           payload.space,
           sessionId,
         ),
-        (event) => {
-          // Tag every event with its session so the renderer routes it to the
-          // right chat even after the user switched away.
-          win.webContents.send("chat:token", { sessionId, event });
-        },
-        {
-          signal: abort.signal,
-          modeDirective: modeDirectiveFor(mode),
-          permissionMode: mode,
-          requestPermission: (ask) => requestPermissionFromRenderer(win, ask),
-          askUser: (questions) => askUserFromRenderer(win, questions),
-          askPlanApproval: (plan) => askPlanApprovalFromRenderer(win, plan),
-          space: payload.space,
-          cwd,
-          effort: payload.effort,
-        },
+        emit,
+        runOptions,
       );
+
+      // Goal mode: while the session's objective is still active, keep taking
+      // turns. The driver owns every exit — see agent/goal/driver.ts. Sits
+      // HERE rather than inside runAgent so a goal turn is an ordinary turn,
+      // with the same permissions, checkpoints and transcript handling.
+      const { driveGoal } = await import("../agent/goal/driver.js");
+      const { loadGoal } = await import("../agent/goal/store.js");
+      if (loadGoal(sessionId)?.status === "active") {
+        await driveGoal(
+          (prompt) => runAgent(sessionId, prompt, emit, runOptions),
+          {
+            sessionId,
+            tokensForLastTurn: () => lastTurnTokens(sessionId),
+            isAborted: () => abort.signal.aborted,
+            onGoalEvent: emit,
+          },
+        );
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       win.webContents.send("chat:token", {

@@ -63,6 +63,17 @@ export type LLMEvent =
   | { type: 'error'; error: string }
   | { type: 'tool_result'; toolUseID: string; toolName: string; content: string }
   | { type: 'checkpoint'; sha: string }
+  /** Goal mode state, emitted on every change (see agent/goal/driver.ts). */
+  | {
+      type: 'goal'
+      status: 'active' | 'paused' | 'blocked' | 'complete'
+      objective: string
+      turns: number
+      maxTurns: number
+      tokens: number
+      maxTokens?: number
+      detail?: string
+    }
   | {
       type: 'subagent'
       toolUseID: string

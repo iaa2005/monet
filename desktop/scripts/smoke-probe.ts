@@ -1156,6 +1156,178 @@ async function main() {
     check('undo on an empty session is a no-op', (await undoPrompts(sid, 1)).removed === 0)
   }
 
+  // ── Goal driver ────────────────────────────────────────────────────────
+  // The driver is the loop that keeps taking turns on its own, so every test
+  // here is about it STOPPING. A bug is not a wrong answer — it is turns being
+  // paid for until someone notices.
+  {
+    const { driveGoal } = await import('../src/main/agent/goal/driver.js')
+    const { createGoal } = await import('../src/main/agent/goal/state.js')
+    const { loadGoal, saveGoal, clearGoal, dropGoalCache } = await import(
+      '../src/main/agent/goal/store.js'
+    )
+
+    const seed = (sid: string, maxTurns: number) => {
+      clearGoal(sid)
+      dropGoalCache(sid)
+      const r = createGoal(null, { objective: 'do the thing', maxTurns }, new Date(), 'g')
+      if (!r.ok) throw new Error(r.error)
+      saveGoal(sid, r.goal)
+    }
+
+    // Budget: the driver must stop itself with no help from the model.
+    {
+      const sid = 'goal-budget'
+      seed(sid, 3)
+      let turns = 0
+      await driveGoal(
+        async () => {
+          turns++
+          if (turns > 20) throw new Error('RUNAWAY: the driver did not stop')
+        },
+        { sessionId: sid, tokensForLastTurn: () => 0, isAborted: () => false },
+      )
+      // The first turn already happened before driveGoal is called, so a
+      // budget of 3 leaves exactly 2 more.
+      check('goal: the turn budget stops the driver', turns === 2, `turns=${turns}`)
+      check('goal: an exhausted budget BLOCKS, not pauses', loadGoal(sid)?.status === 'blocked')
+      check(
+        'goal: and says the budget did it',
+        loadGoal(sid)?.stopReason === 'turn-budget',
+        loadGoal(sid)?.stopReason,
+      )
+      clearGoal(sid)
+    }
+
+    // The model finishing: UpdateGoal clears the record, so the driver returns.
+    {
+      const sid = 'goal-complete'
+      seed(sid, 50)
+      let turns = 0
+      await driveGoal(
+        async () => {
+          turns++
+          if (turns >= 2) clearGoal(sid) // what UpdateGoal(complete) does
+          if (turns > 20) throw new Error('RUNAWAY')
+        },
+        { sessionId: sid, tokensForLastTurn: () => 0, isAborted: () => false },
+      )
+      check('goal: a cleared goal ends the driver', turns === 2, `turns=${turns}`)
+      check('goal: and nothing is left behind', loadGoal(sid) === null)
+    }
+
+    // Abort, already set when the driver is entered: no turn at all.
+    {
+      const sid = 'goal-abort-before'
+      seed(sid, 50)
+      let turns = 0
+      await driveGoal(
+        async () => {
+          turns++
+        },
+        { sessionId: sid, tokensForLastTurn: () => 0, isAborted: () => true },
+      )
+      check('goal: an already-aborted run takes no turns', turns === 0, `turns=${turns}`)
+      check('goal: and pauses rather than blocks', loadGoal(sid)?.status === 'paused')
+      clearGoal(sid)
+    }
+
+    // Abort raised DURING a turn: that turn finishes (its tools have side
+    // effects), and then nothing further starts.
+    {
+      const sid = 'goal-abort-during'
+      seed(sid, 50)
+      let turns = 0
+      let stopped = false
+      await driveGoal(
+        async () => {
+          turns++
+          stopped = true
+          if (turns > 20) throw new Error('RUNAWAY')
+        },
+        { sessionId: sid, tokensForLastTurn: () => 0, isAborted: () => stopped },
+      )
+      check(
+        'goal: aborting mid-turn stops after exactly that turn',
+        turns === 1,
+        `turns=${turns}`,
+      )
+      check('goal: interrupted is recorded', loadGoal(sid)?.stopReason === 'interrupted')
+      clearGoal(sid)
+    }
+
+    // A failing turn must pause, not retry forever.
+    {
+      const sid = 'goal-error'
+      seed(sid, 50)
+      let turns = 0
+      await driveGoal(
+        async () => {
+          turns++
+          throw new Error('provider exploded')
+        },
+        { sessionId: sid, tokensForLastTurn: () => 0, isAborted: () => false },
+      )
+      check('goal: a throwing turn does not retry', turns === 1, `turns=${turns}`)
+      check('goal: it pauses (the objective is not at fault)', loadGoal(sid)?.status === 'paused')
+      check(
+        'goal: and keeps the error',
+        loadGoal(sid)?.stopDetail?.includes('exploded') === true,
+        loadGoal(sid)?.stopDetail,
+      )
+      clearGoal(sid)
+    }
+
+    // The token budget, independent of turns.
+    {
+      const sid = 'goal-tokens'
+      clearGoal(sid)
+      dropGoalCache(sid)
+      const r = createGoal(
+        null,
+        { objective: 'x', maxTurns: 99, maxTokens: 250 },
+        new Date(),
+        'g',
+      )
+      if (!r.ok) throw new Error(r.error)
+      saveGoal(sid, r.goal)
+      let turns = 0
+      await driveGoal(
+        async () => {
+          turns++
+          if (turns > 20) throw new Error('RUNAWAY')
+        },
+        { sessionId: sid, tokensForLastTurn: () => 100, isAborted: () => false },
+      )
+      check('goal: the token budget also stops it', turns < 20 && turns >= 1, `turns=${turns}`)
+      check(
+        'goal: blamed on tokens, not turns',
+        loadGoal(sid)?.stopReason === 'token-budget',
+        loadGoal(sid)?.stopReason,
+      )
+      clearGoal(sid)
+    }
+
+    // A goal found on disk after a restart must never be active: nothing is
+    // driving it, and the next message must not silently resume autonomy.
+    {
+      const sid = 'goal-restart'
+      clearGoal(sid)
+      dropGoalCache(sid)
+      const r = createGoal(null, { objective: 'x' }, new Date(), 'g')
+      if (!r.ok) throw new Error(r.error)
+      saveGoal(sid, r.goal)
+      check('goal: it was active when saved', loadGoal(sid)?.status === 'active')
+      dropGoalCache(sid) // simulate a fresh process reading the file
+      check(
+        'goal: but a restored goal is PAUSED, never active',
+        loadGoal(sid)?.status === 'paused',
+        loadGoal(sid)?.status,
+      )
+      clearGoal(sid)
+    }
+  }
+
   rmSync(dir, { recursive: true, force: true })
   console.log(failures ? `\n${failures} FAILURES` : '\nALL SMOKE CHECKS PASSED')
   process.exit(failures ? 1 : 0)

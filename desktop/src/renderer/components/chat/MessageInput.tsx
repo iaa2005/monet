@@ -29,6 +29,7 @@ import {
 import { ModalityBadges } from "@/components/providers/ModalityBadges";
 import type { Modality } from "@/stores/providerStore";
 import { StagedFileTile } from "@/components/FileCard";
+import { GoalStrip } from "./GoalStrip";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -915,6 +916,10 @@ export function MessageInput({
           </div>
         )}
         
+        {/* Autonomy needs a visible handle: what is running, how far in, and
+            pause/cancel one click away. */}
+        <GoalStrip />
+
         {files.length > 0 && (
           // Same tile as the Content panel, so a file looks the same before
           // you send it and after. auto-fill keeps the row count sensible from

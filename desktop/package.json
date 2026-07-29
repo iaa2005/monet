@@ -25,6 +25,7 @@
     "smoke:mcp": "node scripts/renderer-probe.mjs scripts/mcp-probe.ts",
     "smoke:batching": "node scripts/renderer-probe.mjs scripts/batching-probe.ts",
     "smoke:swarm": "node scripts/renderer-probe.mjs scripts/swarm-probe.ts",
+    "smoke:goal": "node scripts/renderer-probe.mjs scripts/goal-probe.ts",
     "smoke:memory": "node scripts/memory-probe.mjs",
     "probe:directory": "node scripts/directory-probe.mjs",
     "build:beta": "node scripts/build-beta.mjs",

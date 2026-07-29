@@ -97,6 +97,19 @@ export type LLMEvent =
   | { type: "message_stop"; stop_reason: string; usage?: LLMUsage }
   | { type: "error"; error: string }
   | { type: "checkpoint"; sha: string }
+  // Goal mode: the state of the session's standing objective, emitted on every
+  // change so the UI strip follows a run it did not start.
+  | {
+      type: "goal";
+      status: "active" | "paused" | "blocked" | "complete";
+      objective: string;
+      turns: number;
+      maxTurns: number;
+      tokens: number;
+      maxTokens?: number;
+      /** Why it stopped, when it did. */
+      detail?: string;
+    }
   | {
       type: "tool_result";
       toolUseID: string;

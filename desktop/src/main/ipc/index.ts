@@ -18,6 +18,7 @@ import { registerMemoryIPC } from "./memory.js";
 import { registerReflectIPC } from "./reflect.js";
 import { registerProfileIPC } from "./profile.js";
 import { registerMcpIPC } from "./mcp.js";
+import { registerGoalIPC } from "./goal.js";
 import { registerMcpRegistryIPC } from "./mcp-registry.js";
 import { registerSttIPC } from "./stt.js";
 import { registerGitIPC } from "./git.js";
@@ -49,6 +50,7 @@ export function registerAllIPC(): void {
   registerReflectIPC();
   registerProfileIPC();
   registerMcpIPC();
+  registerGoalIPC();
   registerMcpRegistryIPC();
   registerSttIPC();
   registerGitIPC();

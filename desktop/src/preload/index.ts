@@ -536,6 +536,28 @@ const electronAPI = {
       ipcRenderer.invoke("stt:transcribe", payload),
   },
 
+  goal: {
+    get: (sessionId: string): Promise<unknown> =>
+      ipcRenderer.invoke("goal:get", sessionId),
+    start: (
+      sessionId: string,
+      input: {
+        objective: string;
+        completionCriterion?: string;
+        connectorGrants?: string[];
+        maxTurns?: number;
+        maxTokens?: number;
+      },
+    ): Promise<{ ok: boolean; goal?: unknown; error?: string }> =>
+      ipcRenderer.invoke("goal:start", sessionId, input),
+    pause: (sessionId: string): Promise<unknown> =>
+      ipcRenderer.invoke("goal:pause", sessionId),
+    resume: (sessionId: string): Promise<unknown> =>
+      ipcRenderer.invoke("goal:resume", sessionId),
+    cancel: (sessionId: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("goal:cancel", sessionId),
+  },
+
   mcp: {
     list: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:list"),
     add: (payload: { name: string; config: unknown }): Promise<unknown[]> =>

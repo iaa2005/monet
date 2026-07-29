@@ -20,6 +20,7 @@ import type {
 export type { Routine, RoutineInput, RoutineRun };
 export type { UiConnectorService };
 export type { CatalogModelInfo, CatalogProviderInfo };
+export type { Goal as GoalRecord } from "../main/agent/goal/state.js";
 import type {
   PermissionRequest,
   PermissionDecision,
@@ -594,6 +595,22 @@ export interface ElectronAPI {
       model?: string;
       language?: string;
     }) => Promise<{ ok: boolean; text?: string; error?: string }>;
+  };
+  goal: {
+    get: (sessionId: string) => Promise<GoalRecord | null>;
+    start: (
+      sessionId: string,
+      input: {
+        objective: string;
+        completionCriterion?: string;
+        connectorGrants?: string[];
+        maxTurns?: number;
+        maxTokens?: number;
+      },
+    ) => Promise<{ ok: boolean; goal?: GoalRecord; error?: string }>;
+    pause: (sessionId: string) => Promise<GoalRecord | null>;
+    resume: (sessionId: string) => Promise<GoalRecord | null>;
+    cancel: (sessionId: string) => Promise<{ ok: boolean }>;
   };
   mcp: {
     list: () => Promise<McpServerStatus[]>;

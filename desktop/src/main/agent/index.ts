@@ -35,6 +35,8 @@ import {
   type UiPermissionMode,
 } from "./vendor-tools.js";
 import { planBatches, runBatches } from "./tool-batching.js";
+import { activeGoalReminder, idleGoalNote } from "./goal/inject.js";
+import { loadGoal } from "./goal/store.js";
 import {
   dropSessionContext,
   initVendorRuntime,
@@ -678,6 +680,22 @@ export interface ContextBreakdown {
 const lastUsageBySession = new Map<string, LLMUsage>();
 
 /**
+ * Input+output tokens the session's last turn actually cost, for the goal
+ * budget. Zero when no turn has run in this process — a budget that counted
+ * unknown usage as a large number would stop a goal that had spent nothing.
+ */
+export function lastTurnTokens(sessionId: string): number {
+  const u = lastUsageBySession.get(sessionId);
+  if (!u) return 0;
+  return (
+    u.input_tokens +
+    (u.cache_read_input_tokens ?? 0) +
+    (u.cache_creation_input_tokens ?? 0) +
+    u.output_tokens
+  );
+}
+
+/**
  * Estimate what currently fills the model's context window, by category — the
  * same pieces runAgent sends (system prompt, tool schemas, conversation). Token
  * counts are rough (chars/4), matching estimateTokens; the point is the mix,
@@ -1006,10 +1024,24 @@ async function runAgentScoped(
   // A turn that carries ONLY a background report (no user prompt/attachments)
   // has no display bubble — mark it hidden so rewind's turn count stays aligned.
   const hiddenTurn = bgResults.length > 0 && isEmptyUserContent(userContent);
-  const turnContent =
+  let turnContent =
     bgResults.length > 0
       ? mergeBackgroundResults(bgResults, userContent)
       : userContent;
+
+  // Goal mode: restate the objective at every turn boundary. Once, at the
+  // start, is not enough — twenty turns later it would be the oldest thing in
+  // the context and the first casualty of a compaction. The objective travels
+  // inside an <untrusted_objective> envelope; see goal/inject.ts for why.
+  const activeGoal = loadGoal(sessionId);
+  if (activeGoal) {
+    const note =
+      activeGoal.status === "active"
+        ? activeGoalReminder(activeGoal)
+        : idleGoalNote(activeGoal);
+    turnContent = mergeBackgroundResults([note], turnContent);
+  }
+
   const userMsg: LLMMessage = { role: "user", content: turnContent };
   messages.push(userMsg);
   if (hiddenTurn) hiddenTurns.add(userMsg);
@@ -1243,7 +1275,16 @@ async function runAgentScoped(
         signal,
         space,
         unattended,
-        connectorGrants: options.connectorGrants,
+        // A goal's grants are added to the run's own. This is the whole
+        // connector story for goal mode: the user decides ONCE, when starting
+        // the goal, which outward actions it may take on its own. Anything
+        // else still reaches them as a question, however autonomous the rest
+        // of the run is — a goal that keeps working for twenty turns must not
+        // acquire the right to send mail along the way.
+        connectorGrants: [
+          ...(options.connectorGrants ?? []),
+          ...(activeGoal?.status === "active" ? activeGoal.connectorGrants : []),
+        ],
         onProgress: (text) => {
           onEvent({
             type: "tool_result",

@@ -30,6 +30,7 @@ import { zodToJsonSchema } from "@vendor/utils/zodToJsonSchema.js";
 import { InlineSkillTool } from "./skill-tool.js";
 import { AgentTaskTool } from "./agent-tool.js";
 import { AgentSwarmTool } from "./swarm-tool.js";
+import { UpdateGoalTool } from "./goal/tool.js";
 import { SearchPastChatsTool } from "./memory-tools.js";
 import { getMemoryConfig } from "../memory/store.js";
 import type { SubAgentUpdate } from "./subagent.js";
@@ -250,6 +251,7 @@ const ALL_TOOLS = [
   LSPTool,
   AgentTaskTool,
   AgentSwarmTool,
+  UpdateGoalTool,
   SearchPastChatsTool,
   WebFetchTool,
   WebSearchTool,
