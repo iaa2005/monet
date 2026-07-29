@@ -220,28 +220,57 @@ const EMPTY: SessionState = {
 
 export const INTERRUPT_MARK = "\n\n⏹️ Generation interrupted.";
 
-/** Finalize all messages and stamp a visible "interrupted" note at the end —
- * a stopped chat should say so instead of looking like a finished answer. */
-function markInterrupted(msgs: ChatMessage[]): ChatMessage[] {
+/**
+ * Finalize all messages and stamp a visible "Stopped" badge on the turn that
+ * was actually interrupted.
+ *
+ * The badge used to land on the PREVIOUS answer. Stopping a turn before it had
+ * emitted any text leaves an empty assistant message; the filter below removes
+ * it, and the old search for "the last assistant message anywhere" then walked
+ * straight past the user's prompt into the turn before it — so a reply that had
+ * finished normally, sometimes minutes earlier and above the user's own new
+ * message, was the one wearing "Stopped".
+ *
+ * The search now stops at the prompt that opened this turn. If this turn
+ * produced nothing, the note stands on its own instead of defacing an older
+ * answer.
+ */
+export function markInterrupted(msgs: ChatMessage[]): ChatMessage[] {
   const out = msgs
     .filter((m) => !(m.role === "assistant" && !m.content))
     .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m));
-  const last = [...out].reverse().find((m) => m.role === "assistant");
-  if (last?.content && !last.content.endsWith(INTERRUPT_MARK)) {
-    return out.map((m) =>
-      m === last ? { ...m, content: m.content + INTERRUPT_MARK } : m,
+
+  let idx = -1;
+  for (let i = out.length - 1; i >= 0; i--) {
+    // The prompt that opened this turn. Anything above it belongs to a turn
+    // that already ended, and must not be touched.
+    if (out[i]!.role === "user") break;
+    if (out[i]!.role === "assistant" && out[i]!.content) {
+      idx = i;
+      break;
+    }
+  }
+
+  if (idx >= 0) {
+    if (out[idx]!.content.endsWith(INTERRUPT_MARK)) return out;
+    return out.map((m, i) =>
+      i === idx ? { ...m, content: m.content + INTERRUPT_MARK } : m,
     );
   }
-  if (!last) {
-    // Aborted before any text (e.g. mid-tools) — add a standalone note.
-    out.push({
+
+  // Stopped before this turn said anything — mid-tools, or right away. The note
+  // carries INTERRUPT_MARK itself so it renders as the same "Stopped" badge:
+  // spelled out as plain prose it was missing the marker's leading blank line,
+  // so the badge check never matched and it showed as literal text.
+  return [
+    ...out,
+    {
       id: generateId(),
-      role: "assistant",
-      content: "⏹️ Generation interrupted.",
+      role: "assistant" as const,
+      content: INTERRUPT_MARK,
       timestamp: Date.now(),
-    });
-  }
-  return out;
+    },
+  ];
 }
 
 interface ChatStore {
