@@ -29,6 +29,7 @@ import { TodoWriteTool } from "@vendor/tools/TodoWriteTool/TodoWriteTool.js";
 import { zodToJsonSchema } from "@vendor/utils/zodToJsonSchema.js";
 import { InlineSkillTool } from "./skill-tool.js";
 import { AgentTaskTool } from "./agent-tool.js";
+import { AgentSwarmTool } from "./swarm-tool.js";
 import { SearchPastChatsTool } from "./memory-tools.js";
 import { getMemoryConfig } from "../memory/store.js";
 import type { SubAgentUpdate } from "./subagent.js";
@@ -248,6 +249,7 @@ const ALL_TOOLS = [
   ToolSearchTool,
   LSPTool,
   AgentTaskTool,
+  AgentSwarmTool,
   SearchPastChatsTool,
   WebFetchTool,
   WebSearchTool,
