@@ -1,0 +1,24 @@
+[
+  {
+    "id": "iaa2005/monet-skills",
+    "kind": "github",
+    "name": "Monet Skills",
+    "repo": "iaa2005/monet-skills",
+    "description": "The project's own set of skills."
+  },
+  {
+    "id": "anthropics/skills",
+    "kind": "github",
+    "name": "Anthropic Skills",
+    "repo": "anthropics/skills",
+    "description": "The official skills repository."
+  },
+  {
+    "id": "skillsdirectory",
+    "kind": "registry",
+    "name": "Skills Directory",
+    "api": "https://www.skillsdirectory.com/api/registry",
+    "homepage": "https://www.skillsdirectory.com",
+    "description": "~97,000 community skills. Indexes GitHub — the files live in each entry's own repository."
+  }
+]

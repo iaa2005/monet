@@ -501,6 +501,12 @@ const electronAPI = {
       error?: string;
       candidates?: string[];
     }> => ipcRenderer.invoke("skillstore:install", payload),
+    /** Curated sources published in the community repo — nothing is executed,
+     * it is a list of places to look for skills. */
+    suggestions: (force?: boolean): Promise<{
+      ok: boolean;
+      sources?: unknown[];
+    }> => ipcRenderer.invoke("skillstore:suggestions", force),
     // skillsdirectory.com — a search source (~97k entries), not a browsable
     // one. It indexes GitHub, so installing is the ordinary repo download.
     searchRegistry: (payload: {

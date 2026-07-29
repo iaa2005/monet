@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, Check, Globe, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
-import type { SkillSource, StoreSkill } from "@/types/electron";
+import type { SkillSource, StoreSkill, SuggestedSource } from "@/types/electron";
 import {
   api,
   CardAction,
@@ -44,6 +44,8 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   const [adding, setAdding] = useState(false);
   const [newSource, setNewSource] = useState("");
   const [reloading, setReloading] = useState(false);
+  // Curated sources from the community repo — offered, never auto-added.
+  const [suggested, setSuggested] = useState<SuggestedSource[]>([]);
   const load = async (q = query): Promise<void> => {
     setReloading(true);
     try {
@@ -64,6 +66,10 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
 
   useEffect(() => {
     void load();
+    void api()
+      ?.skillStore.suggestions()
+      .then((r) => setSuggested(r?.sources ?? []))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -89,6 +95,20 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
     setSources(next ?? sources);
     setNewSource("");
     setAdding(false);
+    await load();
+  };
+
+  /** Add a curated source. It is a place to look for skills, not code — the
+   * install path is unchanged, so nothing runs until the user installs. */
+  const addSuggested = async (s: SuggestedSource): Promise<void> => {
+    const next = await api()?.skillStore.setSources([
+      ...sources.map((x) => (x.kind === "github" ? x.id : { kind: x.kind, id: x.id })),
+      s.kind === "github" ? (s.repo ?? s.id) : { kind: s.kind, id: s.id, api: s.api },
+    ]);
+    setSources(next ?? sources);
+    setSuggested((prev) =>
+      prev.map((x) => (x.id === s.id ? { ...x, added: true } : x)),
+    );
     await load();
   };
 
@@ -263,6 +283,37 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
               <span className="break-words">{e}</span>
             </p>
           ))}
+        </div>
+      )}
+
+      {/* Curated in the community repo (skill-sources.json), so a new source
+          reaches everyone with a push rather than an app release. Offered, not
+          added: a source is somewhere to look, and the user chooses. */}
+      {suggested.some((x) => !x.added) && (
+        <div className="mb-4">
+          <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Suggested sources
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {suggested
+              .filter((x) => !x.added)
+              .map((x) => (
+                <button
+                  key={x.id}
+                  type="button"
+                  title={x.description ?? x.homepage ?? x.repo ?? x.id}
+                  onClick={() => void addSuggested(x)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                >
+                  {x.kind === "registry" ? (
+                    <Globe className="size-3.5 text-muted-foreground" />
+                  ) : (
+                    <Plus className="size-3.5 text-muted-foreground" />
+                  )}
+                  <span>{x.name}</span>
+                </button>
+              ))}
+          </div>
         </div>
       )}
 

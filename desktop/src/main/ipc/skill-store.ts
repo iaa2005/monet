@@ -16,6 +16,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { getDataDir } from "../data-dir.js";
 import {
+  fetchSuggestedSources,
+  type SuggestedSource,
+} from "../skill-source-catalog.js";
+import {
   capPerRepo,
   listRegistry,
   pickSkillDir,
@@ -427,6 +431,25 @@ export function registerSkillStoreIPC(): void {
       if (!pick.ok)
         return { ok: false, error: pick.error, candidates: pick.candidates };
       return installSkill(payload.repository, pick.dir);
+    },
+  );
+
+  // Suggested sources, curated in the community repo — the same mechanism the
+  // connector store uses, so adding a source for everyone is a JSON edit and a
+  // push rather than an app release. Already-configured ones are marked so the
+  // UI can grey them out instead of offering a duplicate.
+  ipcMain.handle(
+    "skillstore:suggestions",
+    async (
+      _e,
+      force?: boolean,
+    ): Promise<{ ok: boolean; sources?: (SuggestedSource & { added: boolean })[] }> => {
+      const list = await fetchSuggestedSources(force === true);
+      const have = new Set(getSources().map((s) => s.id));
+      return {
+        ok: true,
+        sources: list.map((s) => ({ ...s, added: have.has(s.id) || have.has(s.repo ?? "") })),
+      };
     },
   );
 

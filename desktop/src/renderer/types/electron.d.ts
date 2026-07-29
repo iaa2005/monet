@@ -158,6 +158,18 @@ export interface RegistrySkill {
 
 /** A configured skill source. `github` is enumerated; `registry`
  * (skillsdirectory.com, ~97k entries) contributes a page at a time. */
+/** A curated source from the community repo's skill-sources.json. */
+export interface SuggestedSource {
+  id: string;
+  kind: "github" | "registry";
+  name: string;
+  description?: string;
+  repo?: string;
+  api?: string;
+  homepage?: string;
+  added: boolean;
+}
+
 export interface SkillSource {
   kind: "github" | "registry";
   id: string;
@@ -608,6 +620,10 @@ export interface ElectronAPI {
       slug?: string;
       error?: string;
       candidates?: string[];
+    }>;
+    suggestions: (force?: boolean) => Promise<{
+      ok: boolean;
+      sources?: SuggestedSource[];
     }>;
     searchRegistry: (payload: { query?: string; limit?: number }) => Promise<{
       ok: boolean;
