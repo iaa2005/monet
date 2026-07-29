@@ -17,6 +17,7 @@ import {
   estimateSessionTokens,
   computeContextBreakdown,
 } from "../agent/index.js";
+import { injectMessage } from "../agent/injection.js";
 import { expandSlashCommand } from "../agent/skill-tool.js";
 import { abortAllBgAgents, abortBgAgents } from "../agent/bg-agents.js";
 import { getSessionStore } from "../session-store.js";
@@ -369,6 +370,16 @@ export function registerChatIPC(): void {
     aborts.clear();
     return { ok: true };
   });
+
+  // Hand text to a turn that is already running. Returns ok:false when the
+  // session is idle so the renderer sends it normally instead — the user
+  // pressed a key and something has to happen either way.
+  ipcMain.handle(
+    "chat:inject",
+    (_e, sessionId: string, text: string): { ok: boolean } => ({
+      ok: injectMessage(sessionId, text),
+    }),
+  );
 
   ipcMain.handle("chat:reset", (_event, sessionId?: string) => {
     abortBgAgents(sessionId || "default");

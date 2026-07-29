@@ -71,6 +71,12 @@ import {
   compactionThreshold,
   estimateTokens,
 } from "./compaction.js";
+import {
+  drainInjections,
+  formatInjection,
+  markRunning,
+  markStopped,
+} from "./injection.js";
 
 // ─── System prompt ──────────────────────────────────────────────────────
 
@@ -840,9 +846,17 @@ export async function runAgent(
     lastPromptCwd = runCwd;
   }
 
-  return runWithCwdOverride(runCwd, () =>
-    runAgentScoped(sessionId, userContent, onEvent, options),
-  );
+  // Only a running session can take a mid-turn injection, and anything still
+  // undelivered when this returns is dropped rather than carried into the
+  // next turn — see injection.ts.
+  markRunning(sessionId);
+  try {
+    return await runWithCwdOverride(runCwd, () =>
+      runAgentScoped(sessionId, userContent, onEvent, options),
+    );
+  } finally {
+    markStopped(sessionId);
+  }
 }
 
 async function runAgentScoped(
@@ -1083,6 +1097,20 @@ async function runAgentScoped(
       });
 
     if (toolCalls.length === 0) {
+      // The model is done — unless the user said something while it worked.
+      // Deliver that as a new user message and keep going, rather than ending
+      // the turn and making them press send on a correction they already
+      // typed. This is the ONLY natural end of a run, so it is also the last
+      // chance to deliver.
+      const lateNotes = drainInjections(sessionId);
+      if (lateNotes.length > 0) {
+        const text = formatInjection(lateNotes);
+        messages.push({ role: "user", content: text });
+        for (const note of lateNotes)
+          onEvent({ type: "user_message", content: note });
+        persistTranscript(sessionId);
+        continue;
+      }
       // Durable, full-fidelity history for a clean reopen / continuation.
       persistTranscript(sessionId);
       onEvent({
@@ -1182,6 +1210,13 @@ async function runAgentScoped(
       });
     }
 
+    // Anything the user typed while these tools ran. It rides along with the
+    // results because that user message is the only legal slot for text
+    // between an assistant's tool_use blocks and its next step.
+    const injected = drainInjections(sessionId);
+    for (const note of injected)
+      onEvent({ type: "user_message", content: note });
+
     messages.push({
       role: "user",
       content: results.map((r) => ({
@@ -1204,6 +1239,11 @@ async function runAgentScoped(
         is_error: r.is_error,
       })),
     });
+    if (injected.length > 0) {
+      const last = messages[messages.length - 1]!;
+      if (Array.isArray(last.content))
+        last.content.push({ type: "text", text: formatInjection(injected) });
+    }
     persistTranscript(sessionId);
   }
 

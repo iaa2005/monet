@@ -40,6 +40,9 @@ const electronAPI = {
     }): Promise<{ ok: boolean }> => ipcRenderer.invoke("chat:send", payload),
     abort: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:abort", sessionId),
+    /** Hand text to a turn already in flight. ok:false = session is idle. */
+    inject: (sessionId: string, text: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("chat:inject", sessionId, text),
     reset: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:reset", sessionId),
     rewindTranscript: (

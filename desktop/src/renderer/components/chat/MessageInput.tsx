@@ -13,6 +13,7 @@ import {
   Loader2,
   Sparkles,
   ListEnd,
+  CornerDownLeft,
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import { MicButton } from "./MicButton";
@@ -491,6 +492,22 @@ export function MessageInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [droppedFiles]);
 
+  /**
+   * Hand the composer's text to the turn already running.
+   *
+   * Falls back to queueing when main says the session is idle — the run can
+   * finish between the keypress and the IPC round trip, and losing what
+   * someone just typed is the one outcome worth avoiding.
+   */
+  const injectNow = async (): Promise<void> => {
+    const sid = useChatStore.getState().currentSessionId;
+    const text = input.trim();
+    if (!sid || !text) return;
+    setInput("");
+    const r = await api()?.chat.inject(sid, text);
+    if (!r?.ok) useChatStore.getState().enqueueMessage(sid, text);
+  };
+
   const removeFile = (id: string): void => {
     setFiles((prev) => {
       const t = prev.find((f) => f.id === id);
@@ -954,6 +971,19 @@ export function MessageInput({
                     return;
                   }
                 }
+                // Ctrl/Cmd+S while streaming: hand the text to the RUNNING
+                // turn instead of queueing it behind the whole reply. The
+                // point of typing mid-run is usually "stop, not like that".
+                if (
+                  e.key === "s" &&
+                  (e.ctrlKey || e.metaKey) &&
+                  isStreaming &&
+                  input.trim()
+                ) {
+                  e.preventDefault();
+                  void injectNow();
+                  return;
+                }
                 // Enter inserts a newline; Ctrl/Cmd+Enter sends or queues.
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
@@ -986,6 +1016,21 @@ export function MessageInput({
             />
             {isStreaming ? (
               <>
+                <button
+                  type="button"
+                  onClick={() => void injectNow()}
+                  disabled={!input.trim()}
+                  title="Send into the running turn (Ctrl+S) — the model sees it before its next step"
+                  className={cn(
+                    "flex size-7 items-center justify-center rounded-md transition-opacity",
+                    input.trim()
+                      ? "bg-foreground text-background hover:opacity-90"
+                      : "opacity-30",
+                  )}
+                >
+                  <CornerDownLeft className="size-4" />
+                </button>
+                <div className="w-1" />
                 <button
                   type="button"
                   onClick={() => {

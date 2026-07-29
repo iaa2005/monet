@@ -238,6 +238,8 @@ export interface ElectronAPI {
       }[];
     }) => Promise<{ ok: boolean }>;
     abort: (sessionId?: string) => Promise<{ ok: boolean }>;
+    /** Hand text to a turn already in flight. ok:false = session is idle. */
+    inject: (sessionId: string, text: string) => Promise<{ ok: boolean }>;
     reset: (sessionId?: string) => Promise<{ ok: boolean }>;
     rewindTranscript: (
       sessionId: string,
