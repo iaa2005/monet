@@ -1,13 +1,13 @@
 [
   {
-    "id": "iaa2005/monet-skills",
+    "id": "monet-skills",
     "kind": "github",
     "name": "Monet Skills",
     "repo": "iaa2005/monet-skills",
     "description": "The project's own set of skills."
   },
   {
-    "id": "anthropics/skills",
+    "id": "anthropic-skills",
     "kind": "github",
     "name": "Anthropic Skills",
     "repo": "anthropics/skills",
