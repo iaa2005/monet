@@ -18,6 +18,7 @@ import type {
   ToolCall,
 } from "@/types/chat";
 import type { ElectronAPI } from "@/types/electron";
+import { mergeForSave } from "./merge-for-save";
 
 function electron(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -208,6 +209,18 @@ interface SessionState {
   error: string | null;
   /** Messages queued while streaming — sent automatically when the run ends. */
   queue: ChatMessage[];
+  /**
+   * True once this buffer is known to hold the session's WHOLE history — it
+   * was loaded from the DB, or the chat was started in this renderer.
+   *
+   * Saving replaces every row for the session, so a buffer that only holds
+   * part of the history would delete the rest. That is not hypothetical: the
+   * agent runs in the main process and keeps streaming across a renderer
+   * reload, so after one the store is empty while `chat:token` events are
+   * still arriving. Without this flag the reducer builds a fresh buffer out of
+   * those events alone and the next save wipes everything that came before.
+   */
+  hydrated: boolean;
 }
 
 const EMPTY: SessionState = {
@@ -216,6 +229,7 @@ const EMPTY: SessionState = {
   usage: null,
   error: null,
   queue: [],
+  hydrated: false,
 };
 
 export const INTERRUPT_MARK = "\n\n⏹️ Generation interrupted.";
@@ -426,7 +440,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // Keep a user-chosen title (Rename); auto-title fresh sessions from the
       // first user message.
       const existing = (await api.getById(sessionId)) as
-        | { title?: string; space?: string }
+        | { title?: string; space?: string; messages?: ChatMessage[] }
         | null
         | undefined;
       // If the row is gone the session was deleted (e.g. skipped routine) — a
@@ -445,8 +459,19 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // screen (background run) from being reclassified.
       const space = existing.space ?? get().space;
       // Re-read the buffer AFTER the awaits — more deltas may have landed.
-      const latest = get().sessions[sessionId]?.messages ?? msgs;
-      await api.save({ id: sessionId, title, messages: latest, space });
+      const live = get().sessions[sessionId];
+      const latest = live?.messages ?? msgs;
+
+      // save() replaces every row, so a buffer holding only part of the chat
+      // would delete the rest — see mergeForSave for the reload that did it.
+      const toSave = mergeForSave(
+        latest,
+        live?.hydrated === true,
+        existing?.messages,
+      );
+      mutate(sessionId, (p) => ({ ...p, messages: toSave, hydrated: true }));
+
+      await api.save({ id: sessionId, title, messages: toSave, space });
       get().bumpSessions();
     } catch {
       /* offline / DB unavailable — keep the in-memory buffer */
@@ -825,7 +850,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
         return;
       }
       pendingText.delete(id);
-      mutate(id, () => ({ ...EMPTY, messages }));
+      // The DB copy IS the whole history, so this buffer is now safe to save
+      // wholesale — see SessionState.hydrated.
+      mutate(id, () => ({ ...EMPTY, messages, hydrated: true }));
     },
 
     addUserMessage: (content, attachments) => {
