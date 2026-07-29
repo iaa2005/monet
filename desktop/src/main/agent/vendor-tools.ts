@@ -10,6 +10,7 @@
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { leanToolDescription } from "./lean-context.js";
 import { globWithSecretFilter, grepWithSecretFilter } from "./secret-filter.js";
+import { ReadMediaFileTool } from "./media-tool.js";
 import { decidePermission } from "./permission-policies.js";
 import type {
   RequestPermission,
@@ -79,6 +80,7 @@ import { getBrowserConfig } from "../browser/config.js";
 import { ComputerTool } from "./computer-tools.js";
 import { getComputerConfig } from "../computer/config.js";
 import { getProviderManager } from "../provider/manager.js";
+import { inferModalities, type Modality } from "../provider/types.js";
 
 /** Tools advertised to Home (isolated space): no host filesystem/shell —
  * file access is scoped to the CHAT's sandbox via the Sandbox* tools. */
@@ -89,6 +91,9 @@ const HOME_TOOL_NAMES = new Set([
   "SandboxRead",
   "SandboxWrite",
   "SandboxEdit",
+  // Looking at a picture the sandbox produced crosses no boundary — the path
+  // is resolved inside this chat's own folder.
+  "ReadMediaFile",
   "TodoWrite",
   "Skill",
   "AskUserQuestion",
@@ -232,6 +237,7 @@ const ALL_TOOLS = [
   FileReadTool,
   FileWriteTool,
   FileEditTool,
+  ReadMediaFileTool,
   // Wrapped so `.env` and private keys never reach the model through a
   // search — see secret-filter.ts.
   globWithSecretFilter(GlobTool as unknown as Tool),
@@ -299,12 +305,19 @@ export function resetVendorTools(): void {
  * the API tool list and the system prompt, so the model never even hears
  * about Bash/FileEdit while in Home.
  */
-function activeModelSeesImages(): boolean {
+/** Whether the active model accepts a given input modality. The fallback for
+ * a config with no resolved modalities reads the MODEL id, not the provider's
+ * Base URL — see inferModalities(). */
+export function activeModelAccepts(modality: Modality): boolean {
   const active = getProviderManager().getActive();
-  return active?.modalities
-    ? active.modalities.includes("image")
-    : /anthropic\.com/i.test(active?.baseURL ?? "") ||
-        active?.kind === "openrouter";
+  if (!active) return false;
+  const mods =
+    active.modalities ?? inferModalities(active.kind, active.model ?? "");
+  return mods.includes(modality);
+}
+
+function activeModelSeesImages(): boolean {
+  return activeModelAccepts("image");
 }
 
 /**

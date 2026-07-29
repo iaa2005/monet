@@ -39,6 +39,16 @@ function toPosix(rel: string): string {
  * Resolve a sandbox-relative path to an absolute path INSIDE the work dir.
  * Rejects absolute paths and any traversal that escapes the sandbox.
  */
+/** A sandbox-relative path resolved to an absolute one, or null when it would
+ * escape the sandbox. Exported for tools that need the real path (media
+ * reads) rather than the file's bytes. */
+export function resolveSandboxPath(
+  sessionId: string,
+  rel: string,
+): string | null {
+  return resolveInWorkDir(sessionId, rel);
+}
+
 function resolveInWorkDir(sessionId: string, rel: string): string | null {
   if (!rel || isAbsolute(rel)) return null;
   const root = sandboxWorkDir(sessionId);
