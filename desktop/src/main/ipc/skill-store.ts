@@ -15,6 +15,17 @@ import { ipcMain } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { getDataDir } from "../data-dir.js";
+import {
+  pickSkillDir,
+  searchRegistry,
+  type RegistrySkill as BaseRegistrySkill,
+} from "../skills-registry.js";
+
+/** A registry entry as the Directory shows it — plus whether it is already
+ * installed locally, which only this side can know. */
+export interface RegistrySkill extends BaseRegistrySkill {
+  installed?: boolean;
+}
 
 export interface StoreSkill {
   /** Repo-relative dir of the skill. Unique only WITHIN a source. */
@@ -270,5 +281,65 @@ export function registerSkillStoreIPC(): void {
     "skillstore:install",
     (_e, payload: { source: string; path: string }) =>
       installSkill(payload.source, payload.path),
+  );
+
+  // ── skillsdirectory.com ────────────────────────────────────────────
+  // A SEARCH source, not a browsable one: ~97 000 entries. It indexes GitHub
+  // rather than hosting anything, so an install is the ordinary repo download
+  // once the entry's folder has been resolved.
+  ipcMain.handle(
+    "skillstore:searchRegistry",
+    async (
+      _e,
+      payload: { query?: string; limit?: number },
+    ): Promise<{ ok: boolean; skills?: RegistrySkill[]; error?: string }> => {
+      try {
+        const skills = await searchRegistry(payload?.query ?? "", payload?.limit);
+        // Mark what is already here, so the card can say so like repo cards do.
+        const local = skillsDir();
+        return {
+          ok: true,
+          skills: skills.map((s) => ({
+            ...s,
+            installed: existsSync(join(local, slugify(s.name))),
+          })) as RegistrySkill[],
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "registry search failed",
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "skillstore:installRegistry",
+    async (
+      _e,
+      payload: { repository: string; name: string },
+    ): Promise<{
+      ok: boolean;
+      slug?: string;
+      error?: string;
+      candidates?: string[];
+    }> => {
+      try {
+        // The registry says which repo, never which folder — resolve against
+        // the repo's own tree.
+        const paths = await fetchTree(payload.repository);
+        const dirs = paths
+          .filter((p) => p.endsWith("/SKILL.md"))
+          .map((p) => p.slice(0, -"/SKILL.md".length));
+        const pick = pickSkillDir(dirs, payload.name);
+        if (!pick.ok) return { ok: false, error: pick.error, candidates: pick.candidates };
+        return await installSkill(payload.repository, pick.dir);
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "install failed",
+        };
+      }
+    },
   );
 }

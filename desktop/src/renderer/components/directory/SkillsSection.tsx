@@ -1,12 +1,17 @@
 /**
- * Directory → Skills. Any GitHub repo whose folders contain a SKILL.md is a
- * source; the user keeps a list of them and this merges the lot, labelling
- * each card with the repo it came from.
+ * Directory → Skills.
+ *
+ * Two kinds of source. A GitHub repo whose folders contain a SKILL.md is
+ * enumerated and merged into the grid, each card labelled with its repo.
+ *
+ * skillsdirectory.com is the other kind: an INDEX of such repos, ~97 000
+ * entries, so it cannot be listed — it is searched, and appears as its own
+ * group once the query is long enough to mean something.
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Check, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
-import type { StoreSkill } from "@/types/electron";
+import { AlertCircle, Check, Globe, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
+import type { RegistrySkill, StoreSkill } from "@/types/electron";
 import {
   api,
   CardAction,
@@ -39,6 +44,12 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   const [adding, setAdding] = useState(false);
   const [newSource, setNewSource] = useState("");
   const [reloading, setReloading] = useState(false);
+  // skillsdirectory.com results for the current query — a separate list, since
+  // it is a different kind of source: an index of GitHub repos rather than one
+  // repo whose contents we enumerate.
+  const [reg, setReg] = useState<RegistrySkill[] | null>(null);
+  const [regBusy, setRegBusy] = useState(false);
+  const [regError, setRegError] = useState("");
 
   const load = async (): Promise<void> => {
     setReloading(true);
@@ -112,6 +123,79 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
               : x,
           ) ?? null,
       );
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Debounced: the Directory search box fires on every keystroke, and each one
+  // would otherwise be a request to someone else's server.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setReg(null);
+      setRegError("");
+      return;
+    }
+    let alive = true;
+    setRegBusy(true);
+    const timer = setTimeout(() => {
+      void api()
+        ?.skillStore.searchRegistry({ query: q, limit: 24 })
+        .then((r) => {
+          if (!alive) return;
+          setRegBusy(false);
+          if (r?.ok) {
+            setReg((r.skills ?? []) as RegistrySkill[]);
+            setRegError("");
+          } else {
+            setReg([]);
+            setRegError(r?.error ?? "Could not reach skillsdirectory.com");
+          }
+        })
+        .catch(() => {
+          if (!alive) return;
+          setRegBusy(false);
+          setRegError("Could not reach skillsdirectory.com");
+        });
+    }, 400);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [query]);
+
+  /**
+   * Install a registry hit.
+   *
+   * The registry names the REPO but never the folder inside it, so the main
+   * process resolves that against the repo's tree. When it cannot tell — two
+   * folders with the same name, or none matching — it says so with the
+   * candidates rather than installing a guess: the wrong skill is instructions
+   * the user never asked for, handed to the model.
+   */
+  const installFromRegistry = async (
+    s: RegistrySkill,
+    key: string,
+  ): Promise<void> => {
+    setBusy(key);
+    try {
+      const r = await api()?.skillStore.installRegistry({
+        repository: s.repository,
+        name: s.name,
+      });
+      if (r?.ok) {
+        setReg((prev) =>
+          prev?.map((x) => (x === s ? { ...x, installed: true } : x)) ?? null,
+        );
+        void load();
+      } else {
+        setErrors([
+          r?.candidates?.length
+            ? `${r.error} Add ${s.repository} as a source to pick one: ${r.candidates.slice(0, 5).join(", ")}`
+            : (r?.error ?? "Install failed"),
+        ]);
+      }
     } finally {
       setBusy(null);
     }
@@ -285,6 +369,56 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
           })
         )}
       </div>
+
+      {/* skillsdirectory.com. Nearly 97 000 entries, so it is searched rather
+          than listed — it appears only once you have typed something. */}
+      {query.trim().length >= 2 && (
+        <div className="mt-5">
+          <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <Globe className="size-3.5" />
+            skillsdirectory.com
+            {regBusy && <Loader2 className="size-3 animate-spin" />}
+            {!regBusy && reg && <span>· {reg.length} found</span>}
+          </div>
+          {regError ? (
+            <Empty>{regError}</Empty>
+          ) : reg && reg.length === 0 && !regBusy ? (
+            <Empty>{`Nothing in the directory matches “${query}”.`}</Empty>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {(reg ?? []).map((s) => {
+                const key = `reg:${s.slug || s.repository + s.name}`;
+                return (
+                  <DirCard
+                    key={key}
+                    title={`/${s.name}`}
+                    meta={
+                      <>
+                        <span className="truncate">{s.repository}</span>
+                        {typeof s.stars === "number" && s.stars > 0 && (
+                          <span>· ★ {s.stars.toLocaleString()}</span>
+                        )}
+                        {s.installed && (
+                          <span className="text-green-text">· installed</span>
+                        )}
+                      </>
+                    }
+                    description={s.description}
+                    action={
+                      <CardAction
+                        icon={Plus}
+                        title="Install from skillsdirectory.com"
+                        busy={busy === key}
+                        onClick={() => void installFromRegistry(s, key)}
+                      />
+                    }
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }

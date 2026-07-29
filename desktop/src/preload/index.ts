@@ -494,6 +494,22 @@ const electronAPI = {
       path: string;
     }): Promise<{ ok: boolean; slug?: string; error?: string }> =>
       ipcRenderer.invoke("skillstore:install", payload),
+    // skillsdirectory.com — a search source (~97k entries), not a browsable
+    // one. It indexes GitHub, so installing is the ordinary repo download.
+    searchRegistry: (payload: {
+      query?: string;
+      limit?: number;
+    }): Promise<{ ok: boolean; skills?: unknown[]; error?: string }> =>
+      ipcRenderer.invoke("skillstore:searchRegistry", payload),
+    installRegistry: (payload: {
+      repository: string;
+      name: string;
+    }): Promise<{
+      ok: boolean;
+      slug?: string;
+      error?: string;
+      candidates?: string[];
+    }> => ipcRenderer.invoke("skillstore:installRegistry", payload),
   },
 
   mcpRegistry: {

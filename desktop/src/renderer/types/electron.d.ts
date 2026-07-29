@@ -141,6 +141,21 @@ export interface PaintingInfo {
   faces: { file: string; bbox: { x: number; y: number; w: number; h: number } }[];
 }
 
+/** A skillsdirectory.com entry. `repository` is where the files actually are —
+ * the directory indexes GitHub rather than hosting anything. */
+export interface RegistrySkill {
+  name: string;
+  slug: string;
+  description: string;
+  repository: string;
+  category?: string;
+  author?: string;
+  stars?: number;
+  verified?: boolean;
+  tags?: string[];
+  installed?: boolean;
+}
+
 export interface StoreSkill {
   path: string;
   /** The `owner/repo[/sub]` this skill came from. */
@@ -562,6 +577,17 @@ export interface ElectronAPI {
       source: string;
       path: string;
     }) => Promise<{ ok: boolean; slug?: string; error?: string }>;
+    searchRegistry: (payload: { query?: string; limit?: number }) => Promise<{
+      ok: boolean;
+      skills?: unknown[];
+      error?: string;
+    }>;
+    installRegistry: (payload: { repository: string; name: string }) => Promise<{
+      ok: boolean;
+      slug?: string;
+      error?: string;
+      candidates?: string[];
+    }>;
   };
   mcpRegistry: {
     search: (payload: { query?: string; limit?: number }) => Promise<{

@@ -40,7 +40,8 @@
     "smoke:deferred": "node scripts/renderer-probe.mjs scripts/deferred-inventory-probe.ts",
     "smoke:reload": "node scripts/renderer-probe.mjs scripts/reload-persistence-probe.ts",
     "smoke:tasks": "node scripts/renderer-probe.mjs scripts/task-store-probe.ts",
-    "smoke:tasklog": "electron scripts/task-log-probe.cjs"
+    "smoke:tasklog": "electron scripts/task-log-probe.cjs",
+    "smoke:skillreg": "node scripts/renderer-probe.mjs scripts/skills-registry-probe.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",
