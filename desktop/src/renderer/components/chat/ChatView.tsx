@@ -1162,29 +1162,45 @@ export function ChatView({
   );
 }
 
+/**
+ * Shows approval requests one at a time.
+ *
+ * A QUEUE, not a slot. This used to hold a single request in state, so a
+ * second one replaced the first: its dialog vanished from the screen while
+ * main still waited on it, and five minutes later that tool was denied for a
+ * question nobody was ever shown. Concurrent chats and concurrency-safe tools
+ * in one turn both produce overlapping requests, so this is the normal case,
+ * not an edge one.
+ */
 export function PermissionHost(): JSX.Element | null {
-  const [request, setRequest] = useState<PermissionRequest | null>(null);
+  const [queue, setQueue] = useState<PermissionRequest[]>([]);
 
   useEffect(() => {
     const bridge = (window as unknown as { electronAPI?: ElectronAPI })
       .electronAPI;
     if (!bridge?.permissions) return;
     return bridge.permissions.onRequest((req: PermissionRequest) =>
-      setRequest(req),
+      setQueue((prev) =>
+        // Main can re-send on a reconnect; answering the same id twice would
+        // apply one decision to a request that is already gone.
+        prev.some((r) => r.id === req.id) ? prev : [...prev, req],
+      ),
     );
   }, []);
 
+  const request = queue[0];
   if (!request) return null;
 
   return (
     <PermissionDialog
       key={request.id}
       request={request}
+      pendingCount={queue.length - 1}
       onDecision={(decision) => {
         const bridge = (window as unknown as { electronAPI?: ElectronAPI })
           .electronAPI;
-        bridge?.permissions.respond(decision);
-        setRequest(null);
+        bridge?.permissions.respond(request.id, decision);
+        setQueue((prev) => prev.filter((r) => r.id !== request.id));
       }}
     />
   );

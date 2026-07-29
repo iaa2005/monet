@@ -371,6 +371,29 @@ export function isSpaceToolAllowed(
   return !SANDBOX_ONLY_NAMES.has(name);
 }
 
+/**
+ * Look a tool up by the name the MODEL used, for the batching planner.
+ *
+ * Only needs `isConcurrencySafe`. An MCP tool resolves to undefined here and
+ * the planner treats that as "not safe" — those are network calls to somebody
+ * else's server, and guessing on their behalf is not ours to do.
+ */
+export function toolConcurrencyLookup(
+  space?: string,
+  sessionId?: string,
+): (name: string) => { name: string; isConcurrencySafe(input: unknown): boolean } | undefined {
+  const tools = getVendorToolsForSpace(space, sessionId);
+  return (name: string) => {
+    const t = findToolByName(tools, name);
+    if (!t) return undefined;
+    return {
+      name: t.name,
+      isConcurrencySafe: (input: unknown) =>
+        t.isConcurrencySafe(input as never) === true,
+    };
+  };
+}
+
 export function getVendorToolsForSpace(space?: string, sessionId?: string): Tools {
   return getVendorTools().filter((t) => isSpaceToolAllowed(t.name, space, sessionId));
 }

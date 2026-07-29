@@ -221,8 +221,10 @@ const electronAPI = {
       ipcRenderer.on("permissions:request", handler);
       return () => ipcRenderer.removeListener("permissions:request", handler);
     },
-    respond: (decision: PermissionDecision): void => {
-      ipcRenderer.send("permissions:response", decision);
+    /** The id is required: several requests can be outstanding at once, and
+     * an unlabelled answer would resolve all of them. */
+    respond: (id: string, decision: PermissionDecision): void => {
+      ipcRenderer.send("permissions:response", { id, decision });
     },
   },
 

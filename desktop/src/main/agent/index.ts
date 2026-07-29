@@ -29,10 +29,12 @@ import {
   getVendorApiTools,
   getVendorTools,
   getVendorToolsForSpace,
+  toolConcurrencyLookup,
   clearSessionGrants,
   type RequestPermission,
   type UiPermissionMode,
 } from "./vendor-tools.js";
+import { planBatches, runBatches } from "./tool-batching.js";
 import {
   dropSessionContext,
   initVendorRuntime,
@@ -1206,18 +1208,22 @@ async function runAgentScoped(
     }
 
     // Execute tools through the vendor pipeline with progress events.
+    //
+    // Calls the tools themselves declare concurrency-safe run together; an
+    // unsafe one runs alone and acts as a barrier, so `Edit` after `Write` on
+    // the same file still sees the write. See tool-batching.ts.
     const results: {
       tool_use_id: string;
       content: string;
       is_error?: boolean;
       image?: { base64: string; mediaType: string };
     }[] = [];
-    for (const tc of toolCalls) {
-      if (signal?.aborted) {
-        onEvent({ type: "error", error: "Aborted" });
-        onEvent({ type: "message_stop", stop_reason: "abort" });
-        return;
-      }
+
+    const runOne = async (tc: {
+      id: string;
+      name: string;
+      input: Record<string, unknown>;
+    }): Promise<(typeof results)[number]> => {
       onEvent({
         type: "tool_result",
         toolUseID: tc.id,
@@ -1271,12 +1277,21 @@ async function runAgentScoped(
         toolName: tc.name,
         content: result.content,
       });
-      results.push({
+      return {
         tool_use_id: tc.id,
         content: result.content,
         is_error: result.isError || undefined,
         image: result.image,
-      });
+      };
+    };
+
+    const batches = planBatches(toolCalls, toolConcurrencyLookup(space, sessionId));
+    const batchRun = await runBatches(batches, runOne, () => signal?.aborted === true);
+    results.push(...batchRun.results);
+    if (batchRun.aborted) {
+      onEvent({ type: "error", error: "Aborted" });
+      onEvent({ type: "message_stop", stop_reason: "abort" });
+      return;
     }
 
     // Anything the user typed while these tools ran. It rides along with the

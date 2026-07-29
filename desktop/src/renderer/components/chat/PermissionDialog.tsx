@@ -5,9 +5,15 @@ import type { PermissionRequest as PermRequest, PermissionDecision } from '@/typ
 interface PermissionDialogProps {
   request: PermRequest
   onDecision: (decision: PermissionDecision) => void
+  /** How many more are waiting behind this one. */
+  pendingCount?: number
 }
 
-export function PermissionDialog({ request, onDecision }: PermissionDialogProps): JSX.Element {
+export function PermissionDialog({
+  request,
+  onDecision,
+  pendingCount = 0,
+}: PermissionDialogProps): JSX.Element {
   const [visible, setVisible] = useState(true)
 
   const handleDecision = (decision: PermissionDecision): void => {
@@ -20,7 +26,14 @@ export function PermissionDialog({ request, onDecision }: PermissionDialogProps)
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
-        <h3 className="text-lg font-semibold">Permission Required</h3>
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-lg font-semibold">Permission Required</h3>
+          {pendingCount > 0 && (
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {pendingCount} more waiting
+            </span>
+          )}
+        </div>
         <p className="mt-2 text-sm text-muted-foreground">
           <strong>{request.toolName}</strong> wants to:
         </p>

@@ -362,7 +362,8 @@ export interface ElectronAPI {
   };
   permissions: {
     onRequest: (callback: (request: PermissionRequest) => void) => () => void;
-    respond: (decision: PermissionDecision) => void;
+    /** The id is required — several requests can be outstanding at once. */
+    respond: (id: string, decision: PermissionDecision) => void;
   };
   plan: {
     onRequest: (
