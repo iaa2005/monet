@@ -33,6 +33,7 @@ import {
 } from "@/stores/providerStore";
 import { ModalityBadges, ModalityToggles } from "./ModalityBadges";
 import { OpenRouterBrowser } from "./OpenRouterBrowser";
+import { CatalogBrowser } from "./CatalogBrowser";
 import type { ORKeyInfo } from "@/types/electron";
 
 const KIND_LABELS: Record<ProviderKind, string> = {
@@ -182,6 +183,7 @@ function ProviderModal({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
   // OpenRouter rows keep routing behind a per-model "Advanced" disclosure —
   // the default experience is "added it, done", no extra inputs.
   const [advancedModels, setAdvancedModels] = useState<Set<string>>(new Set());
@@ -559,6 +561,16 @@ function ProviderModal({
             {kind !== "openrouter" && (
               <button
                 type="button"
+                onClick={() => setShowCatalog(true)}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.04]"
+              >
+                <Search className="size-4" />
+                Browse the model catalog
+              </button>
+            )}
+            {kind !== "openrouter" && (
+              <button
+                type="button"
                 disabled={discovering || !baseURL.trim()}
                 onClick={() => void discoverModels()}
                 className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:bg-black/[0.03] hover:text-foreground disabled:opacity-50 dark:hover:bg-white/[0.04]"
@@ -605,6 +617,16 @@ function ProviderModal({
           </button>
         </div>
       </div>
+
+      {showCatalog && (
+        <CatalogBrowser
+          kind={kind}
+          baseURL={baseURL}
+          existingNames={new Set(models.map((m) => m.name))}
+          onAdd={(m) => setModels((prev) => [...prev, m])}
+          onClose={() => setShowCatalog(false)}
+        />
+      )}
 
       {showBrowser && kind === "openrouter" && (
         <OpenRouterBrowser

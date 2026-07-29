@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { LLMEvent } from "../main/llm/adapter.js";
 import type { LLMProvider, LLMProviderInput } from "../main/provider/types.js";
 import type {
+  CatalogModelInfo,
+  CatalogProviderInfo,
+} from "../main/llm/models-dev.js";
+import type {
   PermissionRequest,
   PermissionDecision,
 } from "../main/ipc/permissions.js";
@@ -173,6 +177,18 @@ const electronAPI = {
       apiKey: string,
     ): Promise<{ ok: boolean; models?: { name: string }[]; error?: string }> =>
       ipcRenderer.invoke("providers:fetchModels", baseURL, apiKey),
+    catalogProviders: (
+      force?: boolean,
+    ): Promise<{
+      ok: boolean;
+      providers?: CatalogProviderInfo[];
+      ageMs?: number | null;
+      error?: string;
+    }> => ipcRenderer.invoke("providers:catalogProviders", force),
+    catalogModels: (
+      catalogProviderId: string,
+    ): Promise<{ ok: boolean; models?: CatalogModelInfo[]; error?: string }> =>
+      ipcRenderer.invoke("providers:catalogModels", catalogProviderId),
     routingGet: (): Promise<{ backgroundProviderId: string; backgroundModel: string }> =>
       ipcRenderer.invoke("routing:get"),
     routingSet: (patch: {

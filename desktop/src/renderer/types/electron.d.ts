@@ -4,6 +4,10 @@
 
 import type { LLMEvent, LLMRequest } from "../main/llm/adapter.js";
 import type { LLMProvider, LLMProviderInput } from "../main/provider/types.js";
+import type {
+  CatalogModelInfo,
+  CatalogProviderInfo,
+} from "../main/llm/models-dev.js";
 import type { ConnectorAccount } from "../main/connectors/types.js";
 import type { UiConnectorService } from "../main/connectors/services/types.js";
 import type { ChatMessage } from "./chat";
@@ -15,6 +19,7 @@ import type {
 
 export type { Routine, RoutineInput, RoutineRun };
 export type { UiConnectorService };
+export type { CatalogModelInfo, CatalogProviderInfo };
 import type {
   PermissionRequest,
   PermissionDecision,
@@ -329,6 +334,15 @@ export interface ElectronAPI {
       baseURL: string,
       apiKey: string,
     ) => Promise<{ ok: boolean; models?: { name: string }[]; error?: string }>;
+    catalogProviders: (force?: boolean) => Promise<{
+      ok: boolean;
+      providers?: CatalogProviderInfo[];
+      ageMs?: number | null;
+      error?: string;
+    }>;
+    catalogModels: (
+      catalogProviderId: string,
+    ) => Promise<{ ok: boolean; models?: CatalogModelInfo[]; error?: string }>;
     routingGet: () => Promise<{
       backgroundProviderId: string;
       backgroundModel: string;

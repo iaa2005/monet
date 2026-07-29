@@ -8,6 +8,12 @@ import type { LLMProviderInput } from '../provider/types.js'
 import { fetchORModels, fetchORBalance } from '../llm/openrouter-api.js'
 import { fetchProviderModels } from '../llm/fetch-models.js'
 import {
+  catalogAge,
+  getCatalog,
+  listCatalogProviders,
+  providerModels,
+} from '../llm/models-dev.js'
+import {
   getModelRouting,
   setModelRouting,
   type ModelRouting,
@@ -49,6 +55,34 @@ export function registerProvidersIPC(): void {
       try {
         const info = await fetchORBalance(apiKey)
         return { ok: true, info }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+
+  // ── models.dev catalog ─────────────────────────────────────────────────
+  // Public metadata for ~5800 models, so adding one does not mean typing its
+  // context window and modalities from memory. Fetched on demand and cached
+  // for a day; a stale cache is served when the network is down.
+  ipcMain.handle('providers:catalogProviders', async (_e, force?: boolean) => {
+    try {
+      const catalog = await getCatalog(force === true)
+      return {
+        ok: true,
+        providers: listCatalogProviders(catalog),
+        ageMs: catalogAge(),
+      }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  ipcMain.handle(
+    'providers:catalogModels',
+    async (_e, catalogProviderId: string) => {
+      try {
+        const catalog = await getCatalog()
+        return { ok: true, models: providerModels(catalog, catalogProviderId) }
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }
