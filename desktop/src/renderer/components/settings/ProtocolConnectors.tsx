@@ -373,7 +373,7 @@ export function ProtocolConnectors(): JSX.Element {
   );
 }
 
-// ─── Store: builtins + manifests from github.com/iaa2005/monet-connectors ───
+// ─── Store: builtins + manifests from github.com/iaa2005/monet-directory ───
 // Lives in the Directory now — directory/ConnectorsSection.tsx, reached by the
 // DirectoryButton above. It reuses ConnectForm below, hence the export.
 

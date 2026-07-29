@@ -656,7 +656,7 @@ export function SkillsSettings(): JSX.Element {
         <DirectoryButton
           section="skills"
           title="Browse the Directory"
-          subtitle="Install skills from monet-skills or any GitHub repo whose folders hold a SKILL.md"
+          subtitle="Install skills from monet-directory or any GitHub repo whose folders hold a SKILL.md"
           onChanged={load}
         />
       </div>

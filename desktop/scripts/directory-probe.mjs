@@ -35,6 +35,10 @@ await build({
   resolve: {
     alias: [
       { find: 'electron', replacement: resolve('scripts/smoke-electron-stub.ts') },
+      // Code both processes share. This is the FIFTH place the alias has to
+      // be repeated (electron.vite.config, tsconfig, renderer-probe,
+      // smoke-agent, here) — every one of them a separate bundler config.
+      { find: '@shared', replacement: resolve('src/shared') },
       { find: 'bun:bundle', replacement: resolve('src/main/shims/bun-bundle.ts') },
       ...pkgStubAliases,
       { find: '@vendor', replacement: resolve('src/vendor/leaked') },

@@ -322,7 +322,7 @@ separately; the registry/README update travels with Phase 1.
 ## 8b. The store (shipped alongside phase 4)
 
 Connectors installable **without an app update**, from
-[iaa2005/monet-connectors](https://github.com/iaa2005/monet-connectors):
+[iaa2005/monet-directory](https://github.com/iaa2005/monet-directory):
 
 - A store connector is a **manifest — data, never code** (services/manifest.ts,
   schema 1). Capabilities map onto the SAME protocol factories builtins use:

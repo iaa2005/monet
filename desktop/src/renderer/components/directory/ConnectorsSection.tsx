@@ -1,6 +1,6 @@
 /**
  * Directory → Connectors. Built-in services (compiled into the app) and
- * community manifests from github.com/iaa2005/monet-connectors, in one grid.
+ * community manifests from github.com/iaa2005/monet-directory, in one grid.
  *
  * Installing a community connector still goes through the endpoint
  * confirmation dialog: a manifest decides where your credential is sent, so
@@ -24,7 +24,7 @@ import {
 } from "./shared";
 import { Toolbar } from "./SkillsSection";
 
-const STORE_REPO = "iaa2005/monet-connectors";
+const STORE_REPO = "iaa2005/monet-directory";
 
 interface StoreEntry {
   id: string;

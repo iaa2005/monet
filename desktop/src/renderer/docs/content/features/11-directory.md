@@ -18,7 +18,7 @@ A skill is any folder in a GitHub repository that contains a `SKILL.md`. The
 Directory reads the frontmatter of each one for its name and description.
 
 **Sources** are the repositories it reads. The default is
-`iaa2005/monet-skills`. Add your own with **Add repo** in the chips row:
+`iaa2005/monet-directory/skills`. Add your own with **Add repo** in the chips row:
 
 | You type | It becomes |
 | --- | --- |
@@ -48,13 +48,13 @@ chip and the reload button next to the filters both help.
 
 ## Connectors
 
-Two kinds share the grid, and the **Built-in** / **monet-connectors** chips
+Two kinds share the grid, and the **Built-in** / **monet-directory** chips
 separate them:
 
 - **Built-in** services are compiled into the app. There is nothing to install
   — *Connect* opens the sign-in form directly.
 - **Community** connectors are manifests from
-  `github.com/iaa2005/monet-connectors`. Those need installing first.
+  `github.com/iaa2005/monet-directory`. Those need installing first.
 
 Installing a community connector always shows a confirmation listing **every
 endpoint the manifest may talk to** before anything is written. Read it: the

@@ -4,7 +4,7 @@
  * to add a connector; no code is ever downloaded, only manifests (see
  * services/manifest.ts for the security model).
  *
- * Repo layout (github.com/iaa2005/monet-connectors):
+ * Repo layout (github.com/iaa2005/monet-directory):
  *   index.json                     — the catalog (array of entries)
  *   connectors/<id>/manifest.json  — the full manifest
  *   connectors/<id>/icon.svg       — optional inline-able icon
@@ -30,7 +30,7 @@ import { BUILTIN_IDS, setInstalledServices } from "./services/registry.js";
 import type { ConnectorService } from "./services/types.js";
 
 const REPO_RAW =
-  "https://raw.githubusercontent.com/iaa2005/monet-connectors/main";
+  "https://raw.githubusercontent.com/iaa2005/monet-directory/main";
 
 /** One row of index.json — enough for the store list without N fetches. */
 export interface CatalogEntry {

@@ -7,7 +7,7 @@
  * for skills, and installing from one still goes through the ordinary
  * download-and-inspect path.
  *
- * Repo layout (github.com/iaa2005/monet-connectors):
+ * Repo layout (github.com/iaa2005/monet-directory):
  *   skill-sources.json — an array of the entries below
  *
  * A missing or malformed file is not an error worth surfacing: the Directory
@@ -17,7 +17,7 @@
 import { fetchRetry } from "./net-fetch.js";
 
 const CATALOG_URL =
-  "https://raw.githubusercontent.com/iaa2005/monet-connectors/main/skill-sources.json";
+  "https://raw.githubusercontent.com/iaa2005/monet-directory/main/skill-sources.json";
 
 const CACHE_MS = 30 * 60_000;
 

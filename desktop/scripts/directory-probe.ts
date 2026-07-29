@@ -41,20 +41,28 @@ const check = (label: string, ok: boolean, detail = ""): void => {
 
 // ── Sources ────────────────────────────────────────────────────────────────
 console.log("\n# sources");
-const def = call("skillstore:getSources");
-check("default source", JSON.stringify(def) === '["iaa2005/monet-skills"]', JSON.stringify(def));
+const def = call("skillstore:getSources") as { kind: string; id: string }[];
+// Sources are typed now: a github source enumerated from a repo, plus the
+// registry, which is in the defaults so its chip is there before anything is
+// typed rather than only answering a search.
+check(
+  "default sources are the project's skills and the registry",
+  JSON.stringify(def.map((s) => `${s.kind}:${s.id}`)) ===
+    JSON.stringify(["github:iaa2005/monet-directory/skills", "registry:skillsdirectory"]),
+  JSON.stringify(def),
+);
 
-const normalized = call("skillstore:setSources", [
-  "https://github.com/iaa2005/monet-skills",
+const normalized = (call("skillstore:setSources", [
+  "https://github.com/iaa2005/monet-directory",
   "  anthropics/skills  ",
   "garbage",
-  "iaa2005/monet-skills",
+  "iaa2005/monet-directory",
   "https://github.com/foo/bar/tree/main/skills",
-]);
+]) as { id: string }[]).map((s) => s.id);
 check(
   "URL forms normalized, junk dropped, duplicates collapsed",
   JSON.stringify(normalized) ===
-    JSON.stringify(["iaa2005/monet-skills", "anthropics/skills", "foo/bar/skills"]),
+    JSON.stringify(["iaa2005/monet-directory", "anthropics/skills", "foo/bar/skills"]),
   JSON.stringify(normalized),
 );
 check(
@@ -68,7 +76,7 @@ check(
 // ── Listing (real GitHub) ──────────────────────────────────────────────────
 console.log("\n# listing two real repos + one that does not exist");
 call("skillstore:setSources", [
-  "iaa2005/monet-skills",
+  "iaa2005/monet-directory/skills",
   "anthropics/skills",
   "iaa2005/definitely-not-a-repo",
 ]);
@@ -78,7 +86,7 @@ const bySource = new Map<string, number>();
 for (const s of listed.skills ?? [])
   bySource.set(s.source, (bySource.get(s.source) ?? 0) + 1);
 console.log("      counts:", JSON.stringify([...bySource]));
-check("monet-skills present", (bySource.get("iaa2005/monet-skills") ?? 0) >= 10);
+check("monet-skills present", (bySource.get("iaa2005/monet-directory/skills") ?? 0) >= 10);
 check("anthropics/skills present", (bySource.get("anthropics/skills") ?? 0) > 0);
 check(
   "the broken repo is reported, not swallowed",
@@ -102,7 +110,7 @@ check("no duplicate keys", new Set(names).size === names.length);
 // ── Install (real download into the sandbox) ───────────────────────────────
 console.log("\n# install");
 const inst = await call("skillstore:install", {
-  source: "iaa2005/monet-skills",
+  source: "iaa2005/monet-directory/skills",
   path: "skills/pptx",
 });
 check("install ok", inst.ok === true, inst.error ?? "");
@@ -117,7 +125,7 @@ check(
 const relisted = await call("skillstore:list");
 check(
   "re-listing marks it installed",
-  relisted.skills?.find((s: any) => s.path === "skills/pptx" && s.source === "iaa2005/monet-skills")
+  relisted.skills?.find((s: any) => s.path === "skills/pptx" && s.source === "iaa2005/monet-directory/skills")
     ?.installed === true,
 );
 

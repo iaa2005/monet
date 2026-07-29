@@ -2,7 +2,7 @@
  * Skill store IPC — browse and install skills from GitHub repositories.
  *
  * A source is `owner/repo` or `owner/repo/subdir`; the user keeps a LIST of
- * them (default: iaa2005/monet-skills) and the Directory shows them merged,
+ * them (default: iaa2005/monet-directory/skills) and the Directory shows them merged,
  * each card labelled with the repo it came from.
  *
  * Listing one repo costs ONE API request (git trees, recursive) — every
@@ -113,7 +113,7 @@ const CACHE_MS = 10 * 60 * 1000;
  * where "not just a search" comes from. It is a source like any other now, so
  * its chip is there before anything is typed. */
 const DEFAULT_SOURCES: SkillSource[] = [
-  parseStoredSource("iaa2005/monet-skills")!,
+  parseStoredSource("iaa2005/monet-directory/skills")!,
   SKILLSDIRECTORY,
 ];
 

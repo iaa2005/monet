@@ -152,7 +152,7 @@ export function registerConnectorsIPC(): void {
     },
   );
 
-  // ─── Store (manifests from iaa2005/monet-connectors) ─────────────────────
+  // ─── Store (manifests from iaa2005/monet-directory) ─────────────────────
   ipcMain.handle(
     "connectors:storeCatalog",
     async (): Promise<{ entries: CatalogEntry[]; error?: string }> => {
