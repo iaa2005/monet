@@ -94,28 +94,52 @@ const labelled = (s: string): string =>
   check("the other server keeps its own line", lines[1]!.includes("alphaxiv"), JSON.stringify(lines[1]));
 }
 
-// ── 4. A big server is sampled, not dumped ────────────────────────────
+// ── 4. Truncation must be loud, and must not bite a real connector ────
 {
-  const many = Array.from({ length: 40 }, (_, i) => tool("big", `tool_${i}`));
+  // The cap was 12. A 20-tool connector got cut at 12, and the model reported
+  // the truncated line as "the complete list of Dropbox MCP tools" and reasoned
+  // from it that no upload tool existed. Two lessons, both checked here: the cap
+  // must sit above any realistic connector, and when it does bite it has to say
+  // so in words a model cannot skim past.
+  check("the cap clears a realistic connector", SAMPLE_AFTER >= 25, SAMPLE_AFTER);
+  const typical = Array.from({ length: 20 }, (_, i) => tool("dropbox", `t${i}`));
+  const full = renderDeferredDirective(typical, labelled);
+  check(
+    "a 20-tool server is listed in full",
+    (full.match(/mcp__dropbox__/g) ?? []).length === 20,
+    (full.match(/mcp__dropbox__/g) ?? []).length,
+  );
+  check("with no truncation notice at all", !/PARTIAL/.test(full));
+
+  const many = Array.from({ length: SAMPLE_AFTER + 9 }, (_, i) => tool("big", `tool_${i}`));
   const text = renderDeferredDirective(many, plain);
   const listed = (text.match(/mcp__big__/g) ?? []).length;
-  check("a huge server is truncated", listed === SAMPLE_AFTER, `${listed} listed of 40`);
+  check("a pathological server is still capped", listed === SAMPLE_AFTER, `${listed} listed`);
   check(
-    "and says how many it left out",
-    text.includes(`and ${40 - SAMPLE_AFTER} more`),
-    JSON.stringify(text.slice(-200)),
+    "and the cut is announced in capitals, not a trailing aside",
+    text.includes("PARTIAL LIST"),
+    JSON.stringify(
+      text
+        .split("\n")
+        .find((l) => l.includes("PARTIAL"))
+        ?.slice(-120),
+    ),
   );
-  // Truncating silently would leave the model believing it had seen everything.
-  check("the count is not silently dropped", /\d+ more/.test(text));
+  check(
+    "with both numbers, so the model knows the scale of what it cannot see",
+    text.includes(`9 of ${SAMPLE_AFTER + 9} tools not shown`),
+  );
+  // The exact reasoning that went wrong: a partial list read as proof of absence.
+  check(
+    "and an explicit warning against concluding absence",
+    /before concluding anything is missing/i.test(text),
+  );
 }
 {
   const exact = Array.from({ length: SAMPLE_AFTER }, (_, i) => tool("edge", `t${i}`));
-  const listed = (renderDeferredDirective(exact, plain).match(/mcp__edge__/g) ?? []).length;
-  check("exactly at the cap, nothing is truncated", listed === SAMPLE_AFTER, listed);
-  check(
-    "and no bogus 'more' is claimed",
-    !/more/.test(renderDeferredDirective(exact, plain)),
-  );
+  const at = renderDeferredDirective(exact, plain);
+  check("exactly at the cap, nothing is truncated", (at.match(/mcp__edge__/g) ?? []).length === SAMPLE_AFTER);
+  check("and no bogus truncation notice is claimed", !/PARTIAL/.test(at));
 }
 
 // ── 5. A server with no friendly label still reads sanely ─────────────

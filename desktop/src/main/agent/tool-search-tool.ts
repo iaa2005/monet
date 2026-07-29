@@ -69,7 +69,14 @@ const inputSchema = lazySchema(() =>
 );
 type InputSchema = ReturnType<typeof inputSchema>;
 
-const MAX_MATCHES = 8;
+/**
+ * Keyword-search results are capped, but the cap used to be invisible: eight
+ * matches came back looking like the whole answer. A model that asked what a
+ * connector could do, got a silently-truncated list, and concluded the missing
+ * tools did not exist is the failure this guards. Raised, and the reply below
+ * states when it is partial.
+ */
+const MAX_MATCHES = 25;
 
 export const ToolSearchTool = buildTool({
   name: "ToolSearch",
@@ -160,9 +167,15 @@ export const ToolSearchTool = buildTool({
       (t) =>
         `- ${t.name}: ${t.description}${t.params.length ? ` (params: ${t.params.join(", ")})` : ""}`,
     );
+    // Say when the list is cut. Silently truncating is how a model ends up
+    // reporting a partial result as a connector's complete capabilities.
+    const partial =
+      !sel && matches.length === MAX_MATCHES && catalog.length > MAX_MATCHES
+        ? `\n\nPARTIAL: ${MAX_MATCHES} of ${catalog.length} searchable tools shown. Narrow the query, or use "select:" for exact names — do NOT treat this as the full tool list.`
+        : "";
     return {
       data: {
-        text: `Loaded ${matches.length} tool(s) — callable now:\n${lines.join("\n")}`,
+        text: `Loaded ${matches.length} tool(s) — callable now:\n${lines.join("\n")}${partial}`,
         isError: false,
       },
     };

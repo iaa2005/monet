@@ -24,9 +24,20 @@
  * dragging in the connector registry (and its icon imports) behind it. The live
  * lookups live in vendor-tools.ts, which already holds all four of them. */
 
-/** Past this many tools on one server, list a sample and the count instead of
- * every name — the point is discoverability, not a full manifest. */
-export const SAMPLE_AFTER = 12;
+/**
+ * Past this many tools on one server, list a sample instead of every name.
+ *
+ * It was 12, and that was too low to be safe. A connector with 20 tools got cut
+ * at 12, and the model — asked whether Dropbox could upload a file — read the
+ * truncated line, reported it as "the complete list of Dropbox MCP tools", and
+ * concluded from it that no upload tool existed. A quiet "… and 8 more" is not
+ * enough to stop that: the list LOOKS complete.
+ *
+ * So the cap now sits above any realistic connector (names cost ~6 tokens each;
+ * 40 of them is ~250) and exists only to bound a pathological server, and the
+ * truncation notice says outright that the list is partial.
+ */
+export const SAMPLE_AFTER = 40;
 
 export interface DeferredTool {
   serverName: string;
@@ -58,7 +69,7 @@ export function deferredLines(
   return [...byServer(tools)].map(([server, names]) => {
     const shown =
       names.length > SAMPLE_AFTER
-        ? `${names.slice(0, SAMPLE_AFTER).join(", ")} … and ${names.length - SAMPLE_AFTER} more`
+        ? `${names.slice(0, SAMPLE_AFTER).join(", ")} — PARTIAL LIST, ${names.length - SAMPLE_AFTER} of ${names.length} tools not shown; search this server with ToolSearch before concluding anything is missing`
         : names.join(", ");
     const name = label(server);
     const title = name === server ? server : `${name} (${server})`;
