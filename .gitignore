@@ -11,3 +11,7 @@ test_*
 .monet
 .monet-prod
 .monet-dev
+
+# Reference clone of MoonshotAI/kimi-code — read-only, has its own .git.
+# See info/kimi-code-audit.md.
+kimi-code/

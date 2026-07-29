@@ -9,10 +9,12 @@
  * and reduce them to the few decisions the executor actually needs: block,
  * rewrite the input, pre-decide the permission, or add context for the model.
  *
- * Hook definitions come from the settings snapshot captured in
- * initVendorRuntime() — the standard Claude Code layout, so
- * `<workspace>/.claude/settings.json` and `~/.claude/settings.json` work
- * unchanged.
+ * Hook definitions come from ONE place: `<dataDir>/hooks.json`, registered
+ * programmatically (see reloadHooks below). Deliberately NOT the Claude Code
+ * settings layout — neither `~/.claude/settings.json` nor a repo's
+ * `<workspace>/.claude/settings.json` is read, because a cloned project could
+ * otherwise name arbitrary shell commands that a PreToolUse hook runs before
+ * the user sees anything.
  */
 
 import { readFileSync } from "fs";

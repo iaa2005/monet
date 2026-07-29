@@ -9,6 +9,7 @@
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { leanToolDescription } from "./lean-context.js";
+import { globWithSecretFilter, grepWithSecretFilter } from "./secret-filter.js";
 import type { Tool, Tools, ToolUseContext } from "@vendor/Tool.js";
 import { findToolByName } from "@vendor/Tool.js";
 import { BashTool } from "@vendor/tools/BashTool/BashTool.js";
@@ -386,8 +387,10 @@ const ALL_TOOLS = [
   FileReadTool,
   FileWriteTool,
   FileEditTool,
-  GlobTool,
-  GrepTool,
+  // Wrapped so `.env` and private keys never reach the model through a
+  // search — see secret-filter.ts.
+  globWithSecretFilter(GlobTool as unknown as Tool),
+  grepWithSecretFilter(GrepTool as unknown as Tool),
   TodoWriteTool,
   InlineSkillTool,
   AskUserQuestionTool,
