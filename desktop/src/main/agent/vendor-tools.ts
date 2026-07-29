@@ -10,6 +10,11 @@
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { leanToolDescription } from "./lean-context.js";
 import { globWithSecretFilter, grepWithSecretFilter } from "./secret-filter.js";
+import { decidePermission } from "./permission-policies.js";
+import type {
+  RequestPermission,
+  UiPermissionMode,
+} from "./permission-types.js";
 import type { Tool, Tools, ToolUseContext } from "@vendor/Tool.js";
 import { findToolByName } from "@vendor/Tool.js";
 import { BashTool } from "@vendor/tools/BashTool/BashTool.js";
@@ -138,21 +143,12 @@ import { hooksAvailable, runPreToolHooks, runPostToolHooks } from "./tool-hooks.
 
 // ─── Permission modes ─────────────────────────────────────────────────────
 
-/** The 5 UI permission levels. Map to the vendor PermissionMode the tools'
- * checkPermissions() run against — 'auto' has no vendor equivalent (needs the
- * Anthropic classifier we can't run), so it uses 'default' + a local heuristic. */
-export type UiPermissionMode =
-  "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions";
-
-export type PermissionAsk = {
-  toolName: string;
-  description: string;
-  detail?: string;
-};
-export type PermissionDecision = "allow" | "allow-once" | "deny";
-export type RequestPermission = (
-  ask: PermissionAsk,
-) => Promise<PermissionDecision>;
+export type {
+  UiPermissionMode,
+  PermissionAsk,
+  PermissionDecision,
+  RequestPermission,
+} from "./permission-types.js";
 
 const VENDOR_MODE_FOR: Record<
   UiPermissionMode,
@@ -165,114 +161,17 @@ const VENDOR_MODE_FOR: Record<
   bypassPermissions: "bypassPermissions",
 };
 
-// Tools "Auto" mode runs without asking (read/search + file mutations). Shell
-// tools and anything else still prompt.
-/**
- * Tools "Auto" runs without asking, mirroring the vendor's SAFE_YOLO allowlist
- * (utils/permissions/classifierDecision.ts) narrowed to the tools this app
- * actually ships. Everything here is read-only, a UI affordance, or touches
- * only this session's own bookkeeping.
- *
- * Edit/Write/MultiEdit are deliberately NOT here: allowing them by NAME meant
- * auto mode would write anywhere on disk, since checkPermissions only returns
- * "deny" for hard rule violations and "ask" for everything else — including a
- * path outside the workspace. They now go through the acceptEdits fast-path
- * below, which is scoped to the working directory the way the vendor scopes it.
- */
-const AUTO_ALLOW_TOOLS = new Set([
-  // Read-only file operations and search
-  "Read",
-  "Grep",
-  "Glob",
-  "LSP",
-  "ToolSearch",
-  // MCP resource reads
-  "ListMcpResources",
-  "ReadMcpResource",
-  // Session bookkeeping (metadata only)
-  "TodoWrite",
-  // UI affordances — these exist to involve the user, so gating them on a
-  // permission prompt is pure friction.
-  "AskUserQuestion",
-]);
+// The permission gate lives in permission-policies.ts as an ordered list of
+// named stages. It used to be a single 60-line conditional here, where the
+// order of the `if`s WAS the policy and nothing said so.
 
-// Per-session "Allow always" grants (keyed by sessionId:toolName) so a tool the
-// user approved with "Allow always" won't prompt again this session.
+// Per-session grants ("Allow always", and per-path approval of a sensitive
+// file), keyed `sessionId:...` — see permission-policies.ts.
 const sessionAllowAlways = new Set<string>();
-
-function baseName(p: string): string {
-  return p.split(/[/\\]/).pop() || p;
-}
-
-function describeAsk(
-  tool: Tool,
-  input: Record<string, unknown>,
-): { description: string; detail?: string } {
-  const str = (k: string): string | undefined =>
-    typeof input[k] === "string" ? (input[k] as string) : undefined;
-  const name = tool.name;
-  if (name === "Bash" || name === "PowerShell") {
-    return { description: `Run a ${name} command`, detail: str("command") };
-  }
-  const path = str("file_path") ?? str("path");
-  if (name === "Write")
-    return {
-      description: `Create or overwrite ${path ? baseName(path) : "a file"}`,
-      detail: path,
-    };
-  if (name === "Edit" || name === "MultiEdit")
-    return {
-      description: `Edit ${path ? baseName(path) : "a file"}`,
-      detail: path,
-    };
-  if (name === "Read")
-    return {
-      description: `Read ${path ? baseName(path) : "a file"}`,
-      detail: path,
-    };
-  const first =
-    str("command") ?? str("pattern") ?? str("query") ?? str("url") ?? path;
-  return { description: `Run ${name}`, detail: first };
-}
 
 type GateResult =
   | { behavior: "allow"; input: Record<string, unknown> }
   | { behavior: "deny"; message: string };
-
-/**
- * Would acceptEdits mode allow this call? Returns the (possibly rewritten)
- * input when yes, null otherwise.
- *
- * The mode is supplied through a shim context rather than by flipping the
- * global vendor mode: concurrency-safe tools can be in flight at the same
- * time, and a global flip across an await would leak acceptEdits into an
- * unrelated check.
- */
-async function acceptEditsWouldAllow(
-  tool: Tool,
-  input: Record<string, unknown>,
-  context: ToolUseContext,
-): Promise<Record<string, unknown> | null> {
-  try {
-    const state = context.getAppState();
-    const perm = state.toolPermissionContext;
-    if (perm.mode === "acceptEdits") return null; // already covered above
-    const scopedContext = {
-      ...context,
-      getAppState: () => ({
-        ...state,
-        toolPermissionContext: { ...perm, mode: "acceptEdits" as const },
-      }),
-    } as ToolUseContext;
-    const r = await tool.checkPermissions(input, scopedContext);
-    return r.behavior === "allow"
-      ? ((r.updatedInput as Record<string, unknown>) ?? input)
-      : null;
-  } catch {
-    // A failing probe must never widen permissions — fall through and ask.
-    return null;
-  }
-}
 
 async function gatePermission(args: {
   tool: Tool;
@@ -282,65 +181,11 @@ async function gatePermission(args: {
   requestPermission?: RequestPermission;
   sessionId: string;
 }): Promise<GateResult> {
-  const { tool, input, context, permissionMode, requestPermission, sessionId } =
-    args;
-
-  if (permissionMode === "bypassPermissions")
-    return { behavior: "allow", input };
-
-  // Plan mode: only read-only tools may run until the user approves the plan.
-  if (permissionMode === "plan") {
-    if (tool.isReadOnly(input)) return { behavior: "allow", input };
-    return {
-      behavior: "deny",
-      message: `Plan mode is active — ${tool.name} is blocked. Present the plan and let the user switch modes before making changes.`,
-    };
-  }
-
-  const allowKey = `${sessionId}:${tool.name}`;
-  if (sessionAllowAlways.has(allowKey)) return { behavior: "allow", input };
-
-  const perm = await tool.checkPermissions(input, context);
-  if (perm.behavior === "deny") {
-    return { behavior: "deny", message: `Permission denied: ${perm.message}` };
-  }
-  const nextInput = (perm.behavior === "allow" && perm.updatedInput) || input;
-  if (perm.behavior === "allow") return { behavior: "allow", input: nextInput };
-
-  // perm.behavior is 'ask' (or 'passthrough') — needs a decision.
-  if (permissionMode === "auto") {
-    if (tool.isReadOnly(input) || AUTO_ALLOW_TOOLS.has(tool.name)) {
-      return { behavior: "allow", input: nextInput };
-    }
-    // acceptEdits fast-path (the vendor's layer 4): re-ask the tool's own
-    // permission check as if the user were in acceptEdits. That mode allows
-    // writes inside the working directory and only there, so a file edit in
-    // the workspace runs silently while one outside it still prompts — the
-    // path scoping comes from the vendor's rules, not from a name list.
-    const scoped = await acceptEditsWouldAllow(tool, input, context);
-    if (scoped) return { behavior: "allow", input: scoped };
-  }
-
-  if (!requestPermission) {
-    return {
-      behavior: "deny",
-      message: `${tool.name} needs permission but no prompt channel is available.`,
-    };
-  }
-  const { description, detail } = describeAsk(tool, input);
-  const decision = await requestPermission({
-    toolName: tool.userFacingName(input) || tool.name,
-    description,
-    detail,
+  const { decision } = await decidePermission({
+    ...args,
+    grants: sessionAllowAlways,
   });
-  if (decision === "deny") {
-    return {
-      behavior: "deny",
-      message: `The user declined to run ${tool.name}.`,
-    };
-  }
-  if (decision === "allow") sessionAllowAlways.add(allowKey);
-  return { behavior: "allow", input: nextInput };
+  return decision;
 }
 
 /** Clear a session's "Allow always" grants (on New session / reset). */
