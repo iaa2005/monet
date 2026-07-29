@@ -42,7 +42,8 @@
     "smoke:tasks": "node scripts/renderer-probe.mjs scripts/task-store-probe.ts",
     "smoke:tasklog": "electron scripts/task-log-probe.cjs",
     "smoke:skillreg": "node scripts/renderer-probe.mjs scripts/skills-registry-probe.ts",
-    "smoke:skillcat": "node scripts/renderer-probe.mjs scripts/skill-catalog-probe.ts"
+    "smoke:skillcat": "node scripts/renderer-probe.mjs scripts/skill-catalog-probe.ts",
+    "smoke:mcpcat": "node scripts/renderer-probe.mjs scripts/mcp-catalog-probe.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",

@@ -1,9 +1,11 @@
 /**
  * MCP registry IPC — search the official Model Context Protocol registry.
  *
- * https://registry.modelcontextprotocol.io/v0/servers — public, no auth, and
- * `version=latest` collapses the one-row-per-release listing. Verified against
- * the live API, not inferred from docs.
+ * Registries come from mcp-source-catalog.ts, so more can be added without an
+ * app release; the official one is always among them. They all speak the
+ * `/v0/servers` schema — public, no auth, `version=latest` collapsing the
+ * one-row-per-release listing. Verified against the live API, not inferred
+ * from docs.
  *
  * We only ever RETURN a suggested config here. Nothing is installed from this
  * module: the Directory hands the suggestion to the normal "Add connector"
@@ -12,8 +14,12 @@
  */
 
 import { ipcMain } from "electron";
+import {
+  mcpSources,
+  OFFICIAL_MCP_SOURCE,
+  type McpSource,
+} from "../mcp-source-catalog.js";
 
-const BASE = "https://registry.modelcontextprotocol.io/v0/servers";
 const UA = { "User-Agent": "monet-desktop" };
 
 /** An env var or header the user must supply before the server will run. */
@@ -47,6 +53,8 @@ export interface RegistryServer {
   placeholders?: string[];
   /** Set when the entry lists neither a package nor a remote we can run. */
   unsupported?: string;
+  /** Which registry it came from — several can be configured. */
+  source?: string;
 }
 
 interface ApiArgument {
@@ -228,11 +236,13 @@ function normalize(s: ApiServer): RegistryServer | null {
   };
 }
 
-async function search(
+/** One registry, `mcp-registry-v0` schema. */
+async function searchOne(
+  src: McpSource,
   query: string,
   limit: number,
 ): Promise<RegistryServer[]> {
-  const url = new URL(BASE);
+  const url = new URL(src.api);
   url.searchParams.set("version", "latest");
   url.searchParams.set("limit", String(Math.min(Math.max(limit, 1), 100)));
   if (query.trim()) url.searchParams.set("search", query.trim());
@@ -240,19 +250,53 @@ async function search(
   const res = await fetch(url, {
     headers: { ...UA, Accept: "application/json" },
   });
-  if (!res.ok) throw new Error(`Registry error ${res.status}`);
+  if (!res.ok) throw new Error(`${src.name}: registry error ${res.status}`);
   const json = (await res.json()) as { servers?: { server?: ApiServer }[] };
   const out: RegistryServer[] = [];
-  const seen = new Set<string>();
   for (const row of json.servers ?? []) {
     const e = row.server ? normalize(row.server) : null;
-    // `version=latest` still repeats a name across publishers' re-uploads.
-    if (e && !seen.has(e.id)) {
-      seen.add(e.id);
-      out.push(e);
-    }
+    if (e) out.push({ ...e, source: src.id });
   }
   return out;
+}
+
+/**
+ * Every configured registry, merged.
+ *
+ * One unreachable registry must not blank the list — the others are still
+ * useful, and a search that returns nothing because a source the user has
+ * never heard of is down is worse than a partial answer. Failures come back
+ * alongside the results.
+ *
+ * De-duplication is by registry id, first source winning: `version=latest`
+ * already repeats a name across a publisher's re-uploads, and two registries
+ * mirroring the same server would repeat it again.
+ */
+async function search(
+  query: string,
+  limit: number,
+): Promise<{ servers: RegistryServer[]; errors: string[] }> {
+  const sources = await mcpSources();
+  const results = await Promise.allSettled(
+    sources.map((s) => searchOne(s, query, limit)),
+  );
+  const servers: RegistryServer[] = [];
+  const errors: string[] = [];
+  const seen = new Set<string>();
+  results.forEach((r, i) => {
+    if (r.status === "rejected") {
+      errors.push(
+        `${sources[i]!.name}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`,
+      );
+      return;
+    }
+    for (const e of r.value) {
+      if (seen.has(e.id)) continue;
+      seen.add(e.id);
+      servers.push(e);
+    }
+  });
+  return { servers, errors };
 }
 
 export function registerMcpRegistryIPC(): void {
@@ -261,12 +305,18 @@ export function registerMcpRegistryIPC(): void {
     async (
       _e,
       payload: { query?: string; limit?: number },
-    ): Promise<{ ok: boolean; servers?: RegistryServer[]; error?: string }> => {
+    ): Promise<{
+      ok: boolean;
+      servers?: RegistryServer[];
+      errors?: string[];
+      error?: string;
+    }> => {
       try {
-        return {
-          ok: true,
-          servers: await search(payload?.query ?? "", payload?.limit ?? 60),
-        };
+        const { servers, errors } = await search(
+          payload?.query ?? "",
+          payload?.limit ?? 60,
+        );
+        return { ok: true, servers, errors };
       } catch (err) {
         return {
           ok: false,
