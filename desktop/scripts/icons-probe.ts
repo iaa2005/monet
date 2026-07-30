@@ -146,12 +146,12 @@ check(
     ['Inter.woff2', 'font'],
     ['theme.mp3', 'audio'],
     ['clip.mp4', 'video'],
-    ['app.exe', 'binary'],
+    ['app.exe', 'exe'],
     ['module.wasm', 'webassembly'],
     ['server.pem', 'key'],
     ['Makefile', 'makefile'],
     ['justfile', 'just'],
-    ['go.mod', 'go-mod'],
+    ['go.mod', 'go_mod'],
     ['Cargo.toml', 'cargo'],
     ['package.json', 'nodejs'],
     ['yarn.lock', 'yarn_lock'],
@@ -165,14 +165,14 @@ check(
     ['Button.test.ts', 'test_ts'],
     ['guide.mdx', 'mdx'],
     ['App.tsx', 'react_ts'],
-    ['level.tscn', 'godot'],
+    ['level.tscn', 'godot_assets'],
     // Keys that existed all along and were unreachable, because the bare
     // extension was tried before the whole name and before the stem.
     ['tsconfig.json', 'tsconfig'],
     ['README.md', 'readme'],
     ['LICENSE', 'license'],
     ['vite.config.ts', 'vite'],
-    ['.nvmrc', 'nodejs'],
+    ['.nvmrc', 'nodejs_alt'],
   ]
   for (const [file, want] of cases) {
     const got = resolveIcon(file, false, false, false)
@@ -214,19 +214,26 @@ check(
   }
 
   // And the standing check, so the next icon added to the set cannot quietly
-  // become unreachable. These five are inert on purpose: nothing in a FILENAME
-  // can honestly select them — `workflow` wants a path, `test-teal` and
-  // `test-yellow` are colour variants with no signal to choose between, `css3` is
-  // an alternative spelling of `css`, and `roblox-lock` has no filename.
-  // Inert on purpose: nothing in a FILENAME can honestly select these. Frameworks
-  // and services want a project, not a file (django, laravel, circleci); the
-  // `_alt`/`_misc` variants are second drawings of something already mapped; and
-  // `prolog` would want `.pl`, which Perl already has a better claim to.
+  // become unreachable.
+  //
+  // The allowance is mostly a rule now rather than a list. flow ships second
+  // and third drawings of things it already maps (`_alt`, `_alt_2`, `_misc`)
+  // and per-framework file kinds (`nest_service`, `next_ts_layout`,
+  // `angular_pipe`) that its own theme selects from a project's shape, not from
+  // a filename. We resolve by filename alone, so none of those can ever be
+  // chosen — that is a property of the approach, not a mistake to catalogue.
+  const inertByRule = (n: string): boolean =>
+    /_(alt|alt_2|misc)$/.test(n) ||
+    /^(nest|angular|next_js|next_ts|next_jsx)_/.test(n)
+  // What is left is named for a project, a service or a product rather than for
+  // anything a file is called.
   const INERT = new Set([
-    'architecture', 'circleci', 'django', 'file', 'godot_alt', 'godot_assets_alt',
-    'i18n', 'image_alt_2', 'image_alt_3', 'image_alt_4', 'image_alt_5', 'issues',
-    'java_misc', 'javascript_other', 'laravel', 'opa', 'opam', 'prolog',
-    'python_misc', 'red', 'support', 'table', 'template', 'tree', 'tune', 'twine',
+    'adobe_illustrator', 'architecture', 'bashly_hook', 'circleci', 'controller',
+    'django', 'file', 'godot_alt', 'gtk', 'i18n', 'issues', 'java_misc',
+    'javascript_other', 'kemal', 'laravel', 'minecraft_mus', 'obsidian', 'opa',
+    'opam', 'openai', 'poetry', 'prolog', 'python_misc', 'qt', 'qwik', 'red',
+    'rojo', 'solid', 'support', 'table', 'template', 'tree', 'tune', 'twine',
+    'vs_codium', 'vuex_store',
   ])
   const mapped = new Set(allMappedIconNames())
   const unreachable = [...present.base!]
@@ -235,8 +242,8 @@ check(
     .sort()
   check(
     'every file icon in the set is reachable, bar the known-inert ones',
-    unreachable.every((n) => INERT.has(n)),
-    unreachable.filter((n) => !INERT.has(n)).join(', ') || 'none',
+    unreachable.every((n) => INERT.has(n) || inertByRule(n)),
+    unreachable.filter((n) => !INERT.has(n) && !inertByRule(n)).join(', ') || 'none',
   )
   console.log(`      ${present.base!.size} icons, ${mapped.size} reachable, ${unreachable.length} inert`)
 }

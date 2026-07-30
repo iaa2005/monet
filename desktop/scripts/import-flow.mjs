@@ -85,8 +85,16 @@ const ext = new Map();
 const names = new Map();
 const folders = new Map();
 const clashes = [];
+const blanks = [];
 const put = (m, key, icon) => {
-  const k = key.toLowerCase();
+  const k = String(key ?? "").trim().toLowerCase();
+  // flow's own icons.json carries a blank filename in opentofu's list. Left in,
+  // it becomes the answer for every extensionless file in the tree, because a
+  // file with no extension looks up the empty string.
+  if (!k) {
+    blanks.push(icon);
+    return;
+  }
   if (m.has(k) && m.get(k) !== icon) clashes.push(`${k}: ${m.get(k)} vs ${icon}`);
   else m.set(k, icon);
 };
@@ -169,6 +177,8 @@ console.log(`${n(names.size)}  whole filenames`);
 console.log(`${n(folders.size)}  folder names`);
 if (clashes.length)
   console.log(`${n(clashes.length)}  clashes, first: ${clashes.slice(0, 3).join("; ")}`);
+if (blanks.length)
+  console.log(`${n(blanks.length)}  blank keys dropped (${[...new Set(blanks)].join(", ")})`);
 
 console.log(`\nART`);
 console.log(`${n(plan.svg.length)}  from SVG   (vector, preferred)`);
