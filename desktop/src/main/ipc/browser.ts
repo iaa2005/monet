@@ -23,6 +23,9 @@ import {
   setActiveTab,
   unregisterTab,
 } from "../browser/registry.js";
+import { getTransport } from "../browser/transport.js";
+import { setDesignMode } from "../browser/inspect.js";
+import { onInspectMessage } from "../browser/selection.js";
 import { getWorkspacePath } from "./workspace.js";
 
 export function registerBrowserIPC(): void {
@@ -81,5 +84,25 @@ export function registerBrowserIPC(): void {
   );
   ipcMain.handle("browser:activateTab", (_e, tabId: string): void =>
     setActiveTab(tabId),
+  );
+
+  // Design mode. The overlay is injected through CDP rather than a webview
+  // preload because it must run in the page's MAIN world — React's fibre is an
+  // expando on the DOM node, and expandos are invisible across worlds.
+  ipcMain.handle(
+    "browser:setDesignMode",
+    async (_e, on: boolean): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        await setDesignMode(await getTransport(), on, (msg) => {
+          void onInspectMessage(msg);
+        });
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
   );
 }

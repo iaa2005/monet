@@ -15,6 +15,7 @@ import type { ConnectorAccount } from "../main/connectors/types.js";
 import type { UiConnectorService } from "../main/connectors/services/types.js";
 import type { BrowserConfig } from "../main/browser/config.js";
 import type { DevServer } from "../main/browser/dev-servers.js";
+import type { BrowserSelection } from "../main/browser/selection.js";
 
 const electronAPI = {
   platform: process.platform,
@@ -729,6 +730,20 @@ const electronAPI = {
       const handler = (_e: unknown, url: string): void => cb(url);
       ipcRenderer.on("browser:openTab", handler);
       return () => ipcRenderer.off("browser:openTab", handler);
+    },
+    setDesignMode: (on: boolean): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("browser:setDesignMode", on),
+    /** The user picked an element (or marked a region) in design mode. */
+    onSelection: (cb: (sel: BrowserSelection) => void): (() => void) => {
+      const handler = (_e: unknown, sel: BrowserSelection): void => cb(sel);
+      ipcRenderer.on("browser:selection", handler);
+      return () => ipcRenderer.off("browser:selection", handler);
+    },
+    /** The page turned design mode off itself (Escape). */
+    onDesignMode: (cb: (on: boolean) => void): (() => void) => {
+      const handler = (_e: unknown, on: boolean): void => cb(on);
+      ipcRenderer.on("browser:designMode", handler);
+      return () => ipcRenderer.off("browser:designMode", handler);
     },
   },
 

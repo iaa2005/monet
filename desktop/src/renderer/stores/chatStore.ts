@@ -17,7 +17,7 @@ import type {
   SubAgentState,
   ToolCall,
 } from "@/types/chat";
-import type { ElectronAPI } from "@/types/electron";
+import type { BrowserSelection, ElectronAPI } from "@/types/electron";
 import { mergeForSave } from "./merge-for-save";
 import { useTaskStore } from "./taskStore";
 
@@ -319,6 +319,10 @@ interface ChatStore {
    * chat switch — so files picked in one chat followed you into the next and
    * got sent there. Held in memory only (File objects don't serialise). */
   stagedFiles: Record<string, StagedAttachment[]>;
+  /** Elements picked in the Browser panel's design mode, waiting to be sent.
+   * Not per-chat like drafts: you point at something and then decide which
+   * chat to ask in, and losing the selection on that switch is infuriating. */
+  pendingContext: BrowserSelection[];
   /** Files dropped onto the chat window, waiting for the composer to stage
    * them as attachments (consumed and cleared by MessageInput). */
   droppedFiles: File[] | null;
@@ -357,6 +361,9 @@ interface ChatStore {
     update: StagedAttachment[] | ((prev: StagedAttachment[]) => StagedAttachment[]),
   ) => void;
   setDroppedFiles: (files: File[] | null) => void;
+  addPendingContext: (sel: BrowserSelection) => void;
+  removePendingContext: (id: string) => void;
+  clearPendingContext: () => void;
   requestOpenFile: (path: string | null) => void;
   requestOpenChanges: () => void;
   openViewer: (
@@ -779,6 +786,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     composerDraft: "",
     drafts: {},
     stagedFiles: {},
+    pendingContext: [],
     droppedFiles: null,
     openFileRequest: null,
     openChangesRequest: false,
@@ -822,6 +830,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
         return { stagedFiles: { ...s.stagedFiles, [key]: next } };
       }),
     setDroppedFiles: (files) => set({ droppedFiles: files }),
+    addPendingContext: (sel) =>
+      set((s) => ({ pendingContext: [...s.pendingContext, sel] })),
+    removePendingContext: (id) =>
+      set((s) => ({
+        pendingContext: s.pendingContext.filter((c) => c.id !== id),
+      })),
+    clearPendingContext: () => set({ pendingContext: [] }),
     requestOpenFile: (path) => set({ openFileRequest: path }),
     requestOpenChanges: () => set({ openChangesRequest: true }),
     openViewer: (item) =>

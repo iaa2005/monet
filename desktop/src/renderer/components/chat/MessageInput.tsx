@@ -14,6 +14,8 @@ import {
   Sparkles,
   ListEnd,
   CornerDownLeft,
+  MousePointerClick,
+  X,
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import { MicButton } from "./MicButton";
@@ -208,6 +210,25 @@ function textToBase64(text: string): string {
   return btoa(binary);
 }
 
+/**
+ * A data: URL back into a File, so a design-mode crop travels the same road as
+ * a file the user dragged in — thumbnail, artifact on disk, image block.
+ */
+function fileFromDataUrl(dataUrl: string | undefined, name: string): File | null {
+  if (!dataUrl?.startsWith("data:")) return null;
+  try {
+    const [head, b64] = dataUrl.split(",", 2);
+    if (!b64) return null;
+    const mime = /^data:([^;]+)/.exec(head ?? "")?.[1] ?? "image/png";
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new File([bytes], name, { type: mime });
+  } catch {
+    return null;
+  }
+}
+
 export function MessageInput({
   flush = false,
   onOpenProviders,
@@ -236,6 +257,9 @@ export function MessageInput({
   // text draft. As component state they outlived a chat switch, so files you
   // picked in one chat were still attached — and got sent — in the next.
   const files = useChatStore((s) => s.stagedFiles[draftKey] ?? EMPTY_STAGED);
+  // Browser-panel selections are NOT keyed per chat: you point at a thing on
+  // the page and then decide where to ask about it.
+  const pendingContext = useChatStore((s) => s.pendingContext);
   const setFiles = useCallback(
     (update: StagedFile[] | ((prev: StagedFile[]) => StagedFile[])): void => {
       const st = useChatStore.getState();
@@ -701,7 +725,24 @@ export function MessageInput({
       }
     }
 
-    const staged = files;
+    // Elements picked in the Browser panel ride along: the description as text
+    // the model reads, the crop as an image it sees. Both, because either alone
+    // is guesswork — a selector without a picture says nothing about how it
+    // looks, and a picture without a selector says nothing about where it is.
+    const selections = useChatStore.getState().pendingContext;
+    const cropFiles: StagedFile[] = [];
+    if (selections.length > 0) {
+      text = [text, ...selections.map((s) => s.context)]
+        .filter(Boolean)
+        .join("\n\n");
+      selections.forEach((s, i) => {
+        const file = fileFromDataUrl(s.imageDataUrl, `selected-${i + 1}.png`);
+        if (file) cropFiles.push({ id: `${s.id}-img`, file });
+      });
+      useChatStore.getState().clearPendingContext();
+    }
+
+    const staged = [...files, ...cropFiles];
     setInput("");
     setFiles([]);
 
@@ -931,6 +972,46 @@ export function MessageInput({
         {/* Autonomy needs a visible handle: what is running, how far in, and
             pause/cancel one click away. */}
         <GoalStrip />
+
+        {pendingContext.length > 0 && (
+          // Chips rather than the file tiles below: these are not files the
+          // user chose, they are places on a page, and they read as one line.
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {pendingContext.map((c) => (
+              <span
+                key={c.id}
+                title={`${c.url}\n\n${c.context.slice(0, 600)}`}
+                className="flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-card py-1 pl-1 pr-1.5 text-[12px]"
+              >
+                {c.imageDataUrl ? (
+                  <img
+                    src={c.imageDataUrl}
+                    alt=""
+                    className="size-5 shrink-0 rounded object-cover"
+                  />
+                ) : (
+                  <MousePointerClick className="ml-1 size-3.5 shrink-0 text-muted-foreground" />
+                )}
+                <span className="truncate font-mono">{c.label}</span>
+                {c.count > 1 && (
+                  <span className="shrink-0 text-muted-foreground">
+                    +{c.count - 1}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  aria-label="Remove"
+                  onClick={() =>
+                    useChatStore.getState().removePendingContext(c.id)
+                  }
+                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-black/10 hover:text-destructive dark:hover:bg-white/10"
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
 
         {files.length > 0 && (
           // Same tile as the Content panel, so a file looks the same before

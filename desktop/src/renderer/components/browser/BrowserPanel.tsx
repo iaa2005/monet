@@ -19,6 +19,7 @@ import {
   Maximize2,
   Minimize2,
   MoreVertical,
+  MousePointerClick,
   Plus,
   RotateCw,
   X,
@@ -60,7 +61,9 @@ export function BrowserPanel(): JSX.Element {
   // Address bar: null means "show whatever the page is on"; a string means the
   // user is mid-edit and we must not yank the text out from under them.
   const [draft, setDraft] = useState<string | null>(null);
+  const [designError, setDesignError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const designMode = useBrowserStore((s) => s.designMode);
 
   const openTab = useCallback((url?: string): void => {
     useBrowserStore.getState().openTab(url);
@@ -84,6 +87,30 @@ export function BrowserPanel(): JSX.Element {
       cancelled = true;
     };
   }, [workspaceVersion]);
+
+  // Design mode is a property of the PAGE, not of the panel: it lives in an
+  // overlay injected into whatever document is loaded. So arming it again is
+  // part of switching tabs, not something the store can remember for us.
+  useEffect(() => {
+    if (!designMode || !activeId) return;
+    void api()
+      .browser.setDesignMode(true)
+      .then((r) => {
+        if (!r.ok) {
+          useBrowserStore.getState().setDesignMode(false);
+          setDesignError(r.error ?? "Could not start design mode.");
+        }
+      });
+  }, [designMode, activeId]);
+
+  const toggleDesign = (): void => {
+    const next = !designMode;
+    setDesignError(null);
+    useBrowserStore.getState().setDesignMode(next);
+    // Turning it ON is left to the effect above, which also covers tab
+    // switches. Turning it OFF has no such second trigger.
+    if (!next) void api().browser.setDesignMode(false);
+  };
 
   const navigate = (raw: string): void => {
     const url = normalizeUrl(raw);
@@ -233,6 +260,23 @@ export function BrowserPanel(): JSX.Element {
 
         <button
           type="button"
+          onClick={toggleDesign}
+          disabled={!active}
+          title="Select elements on the page (Ctrl+Shift+D)"
+          aria-label="Design mode"
+          aria-pressed={designMode}
+          className={cn(
+            "flex size-6 items-center justify-center rounded-md transition-colors disabled:opacity-30",
+            designMode
+              ? "bg-link/15 text-link"
+              : "text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]",
+          )}
+        >
+          <MousePointerClick className="size-3.5" />
+        </button>
+
+        <button
+          type="button"
           onClick={() => useBrowserStore.getState().toggleLayout()}
           aria-label={layout === "panel" ? "Expand" : "Collapse"}
           className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
@@ -314,6 +358,11 @@ export function BrowserPanel(): JSX.Element {
             />
           ))}
         {tabs.length === 0 && <BrowserEmptyState onOpen={(u) => openTab(u)} />}
+        {designError && (
+          <div className="absolute inset-x-0 top-0 border-b border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+            {designError}
+          </div>
+        )}
         {active?.error && (
           <div className="absolute inset-x-0 bottom-0 border-t border-border bg-background px-3 py-2 text-xs text-muted-foreground">
             {active.error}

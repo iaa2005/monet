@@ -370,6 +370,42 @@ export default function App(): JSX.Element {
     });
   }, []);
 
+  // Design mode. Subscribed here rather than in the panel: a selection made
+  // just before the user switched to Files would otherwise land nowhere, and
+  // the chip belongs to the composer anyway.
+  useEffect(() => {
+    const bridge = api();
+    if (!bridge) return;
+    const offSel = bridge.browser.onSelection((sel) =>
+      useChatStore.getState().addPendingContext(sel),
+    );
+    // The page turns design mode off itself when you press Escape in it.
+    const offMode = bridge.browser.onDesignMode((on) =>
+      useBrowserStore.getState().setDesignMode(on),
+    );
+    return () => {
+      offSel();
+      offMode();
+    };
+  }, []);
+
+  // Ctrl+Shift+D, the same shortcut Cursor uses, so the habit transfers.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!(e.ctrlKey || e.metaKey) || !e.shiftKey) return;
+      if (e.key !== "D" && e.key !== "d") return;
+      e.preventDefault();
+      setBrowserUsed(true);
+      setRightTab("browser");
+      const store = useBrowserStore.getState();
+      const next = !store.designMode;
+      store.setDesignMode(next);
+      if (!next) void api()?.browser.setDesignMode(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // The Browser panel's expand button. A page rendered at 30% of the window is
   // unusable, but permanently widening the right panel would squeeze the chat
   // for every other tab — so the width follows the browser's own layout state,
