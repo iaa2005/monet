@@ -46,6 +46,13 @@ import { fetchAuditRules } from "../audit-rules-catalog.js";
 import { agentOfPath } from "../agent-folders.js";
 import { loadAgentFolders } from "../agent-folder-catalog.js";
 import {
+  cacheTree,
+  cachedTree,
+  githubHeaders,
+  MISSING,
+  treeViaArchive,
+} from "../github-budget.js";
+import {
   capPerRepo,
   usefulDescription,
   listRegistry,
@@ -285,37 +292,66 @@ function slugify(name: string): string {
 // One tree cache per repo (not per source — a subdir shares its repo's tree).
 const treeCache = new Map<string, { at: number; paths: string[] }>();
 
+/**
+ * Every file in a repository.
+ *
+ * Three ways to get it, and the reason is a limit the user hit hard: anonymous
+ * api.github.com allows 60 calls an HOUR, and one listing spends one. See
+ * github-budget.ts — the token, the cache that survives restart, and the archive
+ * that the limit does not apply to.
+ */
 async function fetchTree(source: string): Promise<string[]> {
   const { repo } = parseSource(source);
   const hit = treeCache.get(repo);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.paths;
+  // Yesterday's listing beats a request today. A repo's skills do not move often
+  // and this is what stops a restart re-spending the whole budget.
+  const saved = cachedTree(repo);
+  if (saved) {
+    treeCache.set(repo, { at: Date.now(), paths: saved });
+    return saved;
+  }
+  const keep = (paths: string[]): string[] => {
+    treeCache.set(repo, { at: Date.now(), paths });
+    cacheTree(repo, paths);
+    return paths;
+  };
   const res = await fetch(
     `https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`,
-    { headers: { ...UA, Accept: "application/vnd.github+json" } },
+    // The user's own token, when the GitHub connector holds one: the same call,
+    // 5 000 an hour instead of 60.
+    { headers: await githubHeaders({ ...UA, Accept: "application/vnd.github+json" }) },
   );
   if (!res.ok) {
-    // Unauthenticated GitHub allows 60 calls an hour, and browsing the Directory
-    // spends them. "A few minutes" was a guess; the reset time is in the headers,
-    // so say the real number rather than send the user back to try again at once.
-    const reset = Number(res.headers.get("x-ratelimit-reset") ?? 0) * 1000;
-    const mins = reset > Date.now() ? Math.ceil((reset - Date.now()) / 60_000) : 0;
-    throw new Error(
-      res.status === 404
-        ? `Repository "${repo}" not found (private repos aren't supported).`
-        : res.status === 403 || res.status === 429
-          ? `GitHub rate limit reached${mins ? ` — it resets in ${mins} minute${mins === 1 ? "" : "s"}.` : " — try again later."}`
-          : `GitHub API error ${res.status} — try again later.`,
-    );
+    if (res.status === 404)
+      throw new Error(
+        `Repository "${repo}" not found (private repos aren't supported).`,
+      );
+    if (res.status === 403 || res.status === 429) {
+      // Out of budget is not out of options: the archive host answers while the
+      // API is refusing, and costs nothing against the limit. Slower, so it is
+      // the fallback rather than the route.
+      try {
+        return keep(await treeViaArchive(repo));
+      } catch (err) {
+        if (err instanceof Error && err.message === MISSING)
+          throw new Error(
+            `Repository "${repo}" not found (private repos aren't supported).`,
+          );
+        const reset = Number(res.headers.get("x-ratelimit-reset") ?? 0) * 1000;
+        const mins = reset > Date.now() ? Math.ceil((reset - Date.now()) / 60_000) : 0;
+        throw new Error(
+          `GitHub rate limit reached${mins ? `, and the archive could not be read either — it resets in ${mins} minute${mins === 1 ? "" : "s"}.` : " — try again later."} Connecting GitHub in Settings raises the limit from 60 an hour to 5000.`,
+        );
+      }
+    }
+    throw new Error(`GitHub API error ${res.status} — try again later.`);
   }
   const json = (await res.json()) as {
     tree?: { path: string; type: string }[];
     truncated?: boolean;
   };
-  const paths = (json.tree ?? [])
-    .filter((e) => e.type === "blob")
-    .map((e) => e.path);
-  treeCache.set(repo, { at: Date.now(), paths });
-  return paths;
+  return keep((json.tree ?? []).filter((e) => e.type === "blob").map((e) => e.path));
 }
 
 async function fetchRaw(repo: string, path: string): Promise<string | null> {

@@ -568,9 +568,9 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
         </div>
       )}
 
-      {/* One column. Two put the description in a 30-character column and
-            still left the card half empty; full width, a skill reads as a row. */}
-        <div className="flex flex-col gap-2">
+      {/* One column. Two columns put the description in a 30-character strip and
+          still left the card half empty; full width, a skill reads as a row. */}
+      <div className="flex flex-col gap-2">
         {skills === null ? (
           <Empty>
             <Loader2 className="mx-auto size-5 animate-spin" />
