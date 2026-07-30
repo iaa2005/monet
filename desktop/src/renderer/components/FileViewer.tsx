@@ -433,7 +433,7 @@ export function FileViewer({
   return (
     <div className="glass-panel flex h-full flex-col rounded-xl border border-border bg-background">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-1.5">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-1">
         <span className="flex min-w-0 items-center gap-1.5">
           <FileText className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate text-xs font-medium" title={filePath ?? ""}>
