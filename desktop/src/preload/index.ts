@@ -13,6 +13,8 @@ import type { AskUserRequest, AskUserAnswer } from "../main/ipc/ask-user.js";
 import type { PlanApprovalRequest, PlanDecision } from "../main/ipc/plan.js";
 import type { ConnectorAccount } from "../main/connectors/types.js";
 import type { UiConnectorService } from "../main/connectors/services/types.js";
+import type { BrowserConfig } from "../main/browser/config.js";
+import type { DevServer } from "../main/browser/dev-servers.js";
 
 const electronAPI = {
   platform: process.platform,
@@ -704,10 +706,23 @@ const electronAPI = {
   },
 
   browser: {
-    getConfig: (): Promise<{ enabled: boolean }> =>
+    getConfig: (): Promise<BrowserConfig> =>
       ipcRenderer.invoke("browser:getConfig"),
-    setConfig: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
+    setConfig: (patch: Partial<BrowserConfig>): Promise<BrowserConfig> =>
       ipcRenderer.invoke("browser:setConfig", patch),
+    /** Chromium partition for the panel's webview (cookies, localStorage). */
+    partition: (sessionId?: string): Promise<string> =>
+      ipcRenderer.invoke("browser:partition", sessionId),
+    clearData: (partition: string): Promise<void> =>
+      ipcRenderer.invoke("browser:clearData", partition),
+    devServers: (): Promise<DevServer[]> =>
+      ipcRenderer.invoke("browser:devServers"),
+    /** A page asked for target=_blank; main routed it back for a new tab. */
+    onOpenTab: (cb: (url: string) => void): (() => void) => {
+      const handler = (_e: unknown, url: string): void => cb(url);
+      ipcRenderer.on("browser:openTab", handler);
+      return () => ipcRenderer.off("browser:openTab", handler);
+    },
   },
 
   computer: {

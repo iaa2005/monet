@@ -10,7 +10,16 @@ import type {
 } from "../main/llm/models-dev.js";
 import type { ConnectorAccount } from "../main/connectors/types.js";
 import type { UiConnectorService } from "../main/connectors/services/types.js";
+import type { BrowserConfig } from "../main/browser/config.js";
+import type { DevServer } from "../main/browser/dev-servers.js";
 import type { ChatMessage } from "./chat";
+
+export type { BrowserConfig, DevServer };
+export type {
+  BrowserEngine,
+  BrowserApproval,
+  BrowserPersist,
+} from "../main/browser/config.js";
 import type {
   Routine,
   RoutineInput,
@@ -834,8 +843,12 @@ export interface ElectronAPI {
     purge: (sessionId: string) => Promise<{ ok: boolean }>;
   };
   browser: {
-    getConfig: () => Promise<{ enabled: boolean }>;
-    setConfig: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
+    getConfig: () => Promise<BrowserConfig>;
+    setConfig: (patch: Partial<BrowserConfig>) => Promise<BrowserConfig>;
+    partition: (sessionId?: string) => Promise<string>;
+    clearData: (partition: string) => Promise<void>;
+    devServers: () => Promise<DevServer[]>;
+    onOpenTab: (cb: (url: string) => void) => () => void;
   };
   computer: {
     getConfig: () => Promise<{ enabled: boolean; deniedApps: string[] }>;

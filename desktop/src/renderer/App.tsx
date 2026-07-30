@@ -43,6 +43,7 @@ import {
   ChevronRight,
   Cpu,
   Check,
+  Globe,
   type LucideIcon,
 } from "lucide-react";
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
@@ -58,6 +59,8 @@ import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { FilterDropdown } from "@/components/FilterDropdown";
 import { SkillsPanel } from "@/components/SkillsPanel";
 import { FileTree } from "@/components/FileTree";
+import { BrowserPanel } from "@/components/browser/BrowserPanel";
+import { useBrowserStore } from "@/components/browser/browser-store";
 import { FileViewer } from "@/components/FileViewer";
 import { SubAgentTranscript } from "@/components/chat/ToolCallBubble";
 import { WindowControls } from "@/components/WindowControls";
@@ -85,6 +88,7 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from "@/components/ui/resizable";
+import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useChatStore } from "@/stores/chatStore";
 import { cn } from "@/lib/utils";
 import { RoutinesList } from "@/components/RoutinesList";
@@ -96,7 +100,7 @@ const Terminal = lazy(() =>
 );
 
 type View = "chat" | "skills" | "routines";
-type RightTab = "files" | "artifacts" | "tasks" | "changes" | null;
+type RightTab = "files" | "artifacts" | "tasks" | "changes" | "browser" | null;
 type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
 function api(): ElectronAPI | undefined {
@@ -306,6 +310,12 @@ export default function App(): JSX.Element {
     useState<"pyodide" | "subprocess" | "docker">("pyodide");
   const [homeShellSupported, setHomeShellSupported] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>(null);
+  // The Browser panel is mounted from the first time it is opened and never
+  // unmounted while the right panel is up: a <webview> is a running page, and
+  // remounting it reloads whatever the user (or the agent) was looking at.
+  const [browserUsed, setBrowserUsed] = useState(false);
+  const browserLayout = useBrowserStore((s) => s.layout);
+  const rightPanelRef = useRef<ImperativePanelHandle>(null);
   const taskBadge = useTaskBadge();
   const [filters, setFilters] = useState({
     status: "all",
@@ -345,6 +355,15 @@ export default function App(): JSX.Element {
       useChatStore.getState().requestOpenFile(null);
     }
   }, [openFileRequest]);
+
+  // The Browser panel's expand button. A page rendered at 30% of the window is
+  // unusable, but permanently widening the right panel would squeeze the chat
+  // for every other tab — so the width follows the browser's own layout state,
+  // and only while the browser is the tab on screen.
+  useEffect(() => {
+    if (rightTab !== "browser") return;
+    rightPanelRef.current?.resize(browserLayout === "expanded" ? 68 : 34);
+  }, [browserLayout, rightTab]);
 
   // GitCard's "+N −M" button asks to open the Changes tab.
   useEffect(() => {
@@ -949,6 +968,18 @@ export default function App(): JSX.Element {
           >
             <Blocks className="size-4" />
           </IconBtn>
+          {/* Browser: a real page beside the chat, so "check the app" doesn't
+              mean alt-tabbing to another window the agent can't see. */}
+          <IconBtn
+            title="Browser"
+            active={rightTab === "browser"}
+            onClick={() => {
+              setBrowserUsed(true);
+              toggleRight("browser");
+            }}
+          >
+            <Globe className="size-4" />
+          </IconBtn>
           {/* Opens in the right panel beside Files and Artifacts, not as its own
               popover: all three answer "what is this chat doing / what came out
               of it", so they share one surface you can resize and keep open. */}
@@ -1367,9 +1398,10 @@ export default function App(): JSX.Element {
                   <>
                     <ResizableHandle withHandle />
                     <ResizablePanel
+                      ref={rightPanelRef}
                       defaultSize={30}
                       minSize={18}
-                      maxSize={55}
+                      maxSize={rightTab === "browser" ? 78 : 55}
                     >
                       <div className="glass-panel flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
                         <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
@@ -1396,6 +1428,21 @@ export default function App(): JSX.Element {
                             )}
                           >
                             Artifacts
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBrowserUsed(true);
+                              setRightTab("browser");
+                            }}
+                            className={cn(
+                              "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                              rightTab === "browser"
+                                ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            Browser
                           </button>
                           {!incognito && (
                             <button
@@ -1426,7 +1473,7 @@ export default function App(): JSX.Element {
                             <X className="size-4" />
                           </button>
                         </div>
-                        <div className="min-h-0 flex-1 overflow-auto">
+                        <div className="relative min-h-0 flex-1 overflow-auto">
                           {rightTab === "files" && <SandboxFilesPanel />}
                           {rightTab === "artifacts" && <ArtifactsPanel />}
                           {rightTab === "tasks" && (
@@ -1434,6 +1481,18 @@ export default function App(): JSX.Element {
                               onOpen={openBackgroundTask}
                               currentSessionId={currentSessionId}
                             />
+                          )}
+                          {browserUsed && (
+                            <div
+                              className={cn(
+                                "absolute inset-0 overflow-hidden",
+                                rightTab === "browser"
+                                  ? ""
+                                  : "pointer-events-none -translate-x-[200%]",
+                              )}
+                            >
+                              <BrowserPanel />
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1555,9 +1614,10 @@ export default function App(): JSX.Element {
                     <ResizableHandle withHandle />
                     <ResizablePanel
                       key="right-panel"
+                      ref={rightPanelRef}
                       defaultSize={30}
                       minSize={18}
-                      maxSize={48}
+                      maxSize={rightTab === "browser" ? 78 : 48}
                     >
                       <Panel>
                         <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
@@ -1594,6 +1654,20 @@ export default function App(): JSX.Element {
                           >
                             Changes
                           </button>
+                          <button
+                            onClick={() => {
+                              setBrowserUsed(true);
+                              setRightTab("browser");
+                            }}
+                            className={cn(
+                              "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                              rightTab === "browser"
+                                ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            Browser
+                          </button>
                           {!incognito && (
                             <button
                               onClick={() => setRightTab("tasks")}
@@ -1622,7 +1696,7 @@ export default function App(): JSX.Element {
                             <X className="size-4" />
                           </button>
                         </div>
-                        <div className="min-h-0 flex-1 overflow-auto">
+                        <div className="relative min-h-0 flex-1 overflow-auto">
                           <div className={rightTab === "files" ? "" : "hidden"}>
                             <FileTree
                               onSelectFile={(p) => {
@@ -1641,6 +1715,18 @@ export default function App(): JSX.Element {
                           >
                             <ArtifactsPanel />
                           </div>
+                          {browserUsed && (
+                            <div
+                              className={cn(
+                                "absolute inset-0 overflow-hidden",
+                                rightTab === "browser"
+                                  ? ""
+                                  : "pointer-events-none -translate-x-[200%]",
+                              )}
+                            >
+                              <BrowserPanel />
+                            </div>
+                          )}
                           {rightTab === "changes" && <ChangesPanel />}
                           {rightTab === "tasks" && (
                             <BackgroundTasksPanel

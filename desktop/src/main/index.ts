@@ -107,6 +107,42 @@ function installWindowProcessHandlers(win: BrowserWindow, label: string): void {
   );
 }
 
+/**
+ * Everything a <webview> guest is allowed to be.
+ *
+ * The renderer sets the guest's attributes, so a bug (or injected page content
+ * that reaches our own DOM) could ask for a preload script or Node. Main has
+ * the last word here, and takes it: the panel needs no preload at all — the
+ * design-mode overlay is injected through CDP, because React's fibre expandos
+ * live on the main world and a preload could not read them anyway.
+ */
+function installWebviewGuards(win: BrowserWindow): void {
+  win.webContents.on("will-attach-webview", (_event, webPreferences, params) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.nodeIntegrationInSubFrames = false;
+    webPreferences.webSecurity = true;
+
+    const src = String(params.src ?? "");
+    if (src && !/^(https?:|file:|about:blank$|data:text\/html)/i.test(src)) {
+      console.error(`[browser] refused to attach a webview to ${src}`);
+      _event.preventDefault();
+    }
+  });
+
+  // target=_blank / window.open inside a page. Opening a real OS window would
+  // put a page outside every control this app has over it; the panel's own tab
+  // strip is where it belongs.
+  win.webContents.on("did-attach-webview", (_event, guest) => {
+    guest.setWindowOpenHandler(({ url }) => {
+      if (/^https?:/i.test(url) && !win.isDestroyed())
+        win.webContents.send("browser:openTab", url);
+      return { action: "deny" };
+    });
+  });
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -125,10 +161,14 @@ function createWindow(): void {
       nodeIntegration: false,
       contextIsolation: true,
       devTools: isDev,
+      // The Browser panel embeds pages as <webview>. Guests are hardened in
+      // installWebviewGuards — enabling the tag alone grants nothing.
+      webviewTag: true,
     },
   });
 
   installWindowProcessHandlers(mainWindow, "main");
+  installWebviewGuards(mainWindow);
 
   // Open DevTools in dev mode for debugging
   // DevTools only with CLAUDE_DEVTOOLS=1
@@ -196,9 +236,13 @@ function openSecondaryWindow(): void {
       nodeIntegration: false,
       contextIsolation: true,
       devTools: isDev,
+      // The Browser panel embeds pages as <webview>. Guests are hardened in
+      // installWebviewGuards — enabling the tag alone grants nothing.
+      webviewTag: true,
     },
   });
   installWindowProcessHandlers(win, "secondary");
+  installWebviewGuards(win);
 
   if (!isDev) {
     win.webContents.on("before-input-event", (event, input) => {

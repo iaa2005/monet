@@ -59,7 +59,8 @@
     "smoke:skillnew": "node scripts/renderer-probe.mjs scripts/skill-authoring-probe.ts",
     "smoke:home": "node scripts/renderer-probe.mjs scripts/home-toolset-probe.ts",
     "smoke:filesearch": "node scripts/renderer-probe.mjs scripts/file-search-probe.ts",
-    "smoke:treerows": "node scripts/renderer-probe.mjs scripts/tree-rows-probe.ts"
+    "smoke:treerows": "node scripts/renderer-probe.mjs scripts/tree-rows-probe.ts",
+    "smoke:browserurl": "node scripts/renderer-probe.mjs scripts/browser-url-probe.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",
