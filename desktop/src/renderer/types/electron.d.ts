@@ -671,6 +671,8 @@ export interface ElectronAPI {
       hint?: string;
       repository?: string;
       name?: string;
+      /** The folder the user picked among a repo's per-agent copies. */
+      dir?: string;
     }) => Promise<{
       ok: boolean;
       slug?: string;
@@ -684,10 +686,15 @@ export interface ElectronAPI {
       repository?: string;
       hint?: string;
       name?: string;
+      /** Read this folder instead of the resolved one — the agent picker. */
+      dir?: string;
     }) => Promise<{
       ok: boolean;
       repo?: string;
       dir?: string;
+      /** Folders holding this skill, best-first, when a repo ships one copy per
+       * agent. Absent when there is nothing to choose between. */
+      variants?: string[];
       files?: string[];
       content?: string;
       /** The text of every file that was read, so the viewer can show them all

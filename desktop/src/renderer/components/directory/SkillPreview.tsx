@@ -16,6 +16,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  Boxes,
   ChevronDown,
   ClipboardCheck,
   ExternalLink,
@@ -31,6 +32,7 @@ import { MarkdownViewer } from "@/components/chat/MarkdownViewer";
 import type { AuditFinding, SkillAudit, StoreSkill } from "@/types/electron";
 import { api } from "./shared";
 import { OwnerAvatar, ownerOf } from "./OwnerAvatar";
+import { AgentIcon } from "./AgentIcon";
 
 /** The scanners, in the order the user named them. Each takes a pasted URL. */
 const SCANNERS = [
@@ -71,9 +73,57 @@ const TONE = {
 /** How many findings to show before folding the rest away. */
 const SHOWN = 6;
 
+/**
+ * Which agent a folder belongs to, and what to call it.
+ *
+ * Mirrors AGENT_FOLDERS in src/main/agent-folders.ts. Kept as a small map rather
+ * than an import because the renderer does not reach into main — and the labels
+ * are the only part the UI needs.
+ */
+const AGENT_BY_DIR: Record<string, { id: string; label: string }> = {
+  ".monet": { id: "monet", label: "Code Monet" },
+  ".claude": { id: "claude-code", label: "Claude Code" },
+  ".agents": { id: "agents", label: "Any agent" },
+  ".cursor": { id: "cursor", label: "Cursor" },
+  ".codex": { id: "codex", label: "Codex" },
+  ".github": { id: "github-copilot", label: "GitHub Copilot" },
+  ".gemini": { id: "gemini", label: "Gemini" },
+  ".antigravity": { id: "antigravity", label: "Antigravity" },
+  ".windsurf": { id: "windsurf", label: "Windsurf" },
+  ".cline": { id: "cline", label: "Cline" },
+  ".amp": { id: "amp", label: "AMP" },
+  ".clawdbot": { id: "clawdbot", label: "ClawdBot" },
+  ".droid": { id: "droid", label: "Droid" },
+  ".goose": { id: "goose", label: "Goose" },
+  ".grok": { id: "grok", label: "Grok" },
+  ".kilo": { id: "kilo", label: "Kilo" },
+  ".kiro": { id: "kiro-cli", label: "Kiro CLI" },
+  ".opencode": { id: "opencode", label: "OpenCode" },
+  ".pi": { id: "pi", label: "Pi" },
+  ".qoder": { id: "qoder", label: "Qoder" },
+  ".roo": { id: "roo", label: "Roo" },
+  ".rovodev": { id: "rovodev", label: "Rovo Dev" },
+  ".trae": { id: "trae", label: "Trae" },
+  ".trae-cn": { id: "trae-cn", label: "Trae CN" },
+  ".vibe": { id: "vibe", label: "Vibe" },
+  ".vscode": { id: "vscode", label: "VS Code" },
+  ".zed": { id: "zed", label: "Zed" },
+};
+
+/** The agent a variant folder is for, or a plain label for a neutral one. */
+function variantAgent(dir: string): { id: string; label: string } {
+  const known = AGENT_BY_DIR[dir.split("/")[0] ?? ""];
+  if (known) return known;
+  // Not an agent folder: `skills/x`, `plugin/skills/x`. Name it by its root so
+  // two neutral variants are still told apart.
+  const root = dir.split("/")[0] ?? dir;
+  return { id: `dir:${root}`, label: root };
+}
+
 interface Preview {
   repo?: string;
   dir?: string;
+  variants?: string[];
   files?: string[];
   content?: string;
   texts?: Record<string, string>;
@@ -91,7 +141,8 @@ export function SkillPreview({
 }: {
   skill: StoreSkill;
   installing: boolean;
-  onInstall: () => void;
+  /** Carries the picked variant folder, when the user chose one. */
+  onInstall: (dir?: string) => void;
   onClose: () => void;
 }): JSX.Element {
   const [data, setData] = useState<Preview | null>(null);
@@ -100,11 +151,21 @@ export function SkillPreview({
   const [showAll, setShowAll] = useState(false);
   /** A high finding costs one extra click, so Install is never a reflex. */
   const [ack, setAck] = useState(false);
+  /**
+   * The variant the user chose, when a repo ships one copy per agent.
+   *
+   * null means "whatever the resolver picked" — which is our own folder if the
+   * repo has one, then Claude's, then a neutral one. Choosing re-reads the
+   * preview, because the copies are NOT identical: measured on
+   * pbakaus/impeccable, fifteen folders held fourteen different files.
+   */
+  const [chosen, setChosen] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    // A different skill starts over: showing the previous one's verdict, or
-    // carrying its acknowledgement across, would be the worst kind of bug here.
+    // A different skill — or a different agent's copy of it — starts over:
+    // showing the previous verdict, or carrying its acknowledgement across,
+    // would be the worst kind of bug here.
     setData(null);
     setFile("SKILL.md");
     setShowAll(false);
@@ -117,6 +178,7 @@ export function SkillPreview({
         repository: skill.repository,
         hint: skill.hint,
         name: skill.name,
+        ...(chosen ? { dir: chosen } : {}),
       })
       .then((r) => {
         if (!alive) return;
@@ -130,7 +192,7 @@ export function SkillPreview({
     return () => {
       alive = false;
     };
-  }, [skill.uid]);
+  }, [skill.uid, chosen]);
 
   /** The address a scanner wants pasted, and the one the link opens. */
   const target = data?.url ?? skill.url ?? "";
@@ -199,7 +261,7 @@ export function SkillPreview({
             <button
               type="button"
               disabled={installing}
-              onClick={() => (gated ? setAck(true) : onInstall())}
+              onClick={() => (gated ? setAck(true) : onInstall(chosen ?? undefined))}
               title={risky ? "The audit found something rated high — see below" : undefined}
               className={cn(
                 "flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium disabled:opacity-60",
@@ -219,6 +281,48 @@ export function SkillPreview({
             </button>
           )}
         </div>
+
+        {/* One skill per agent, so which one are we installing?
+            Above the audit deliberately: the copies differ, so choosing changes
+            what the audit is about. */}
+        {(data?.variants?.length ?? 0) > 1 && (
+          <div className="border-b border-border px-5 py-3">
+            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <Boxes className="size-3.5" />
+              This repository ships {data!.variants!.length} copies, one per agent
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {data!.variants!.map((v) => {
+                const a = variantAgent(v);
+                const active = v === (data!.dir ?? "");
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setChosen(v)}
+                    title={v}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] transition-colors",
+                      active
+                        ? "border-foreground/30 bg-black/[0.06] font-medium text-foreground dark:bg-white/[0.08]"
+                        : "border-border text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <AgentIcon id={a.id} label={a.label} size={13} />
+                    {a.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+              {/* Said plainly, because it is the reason this row exists at all:
+                  the copies are not duplicates. */}
+              These copies are not identical — each writes its own folder into the
+              instructions, so another agent&apos;s copy points at a directory this
+              app does not have.
+            </p>
+          </div>
+        )}
 
         {/* The audit, before install rather than after. */}
         <div className="border-b border-border px-5 py-3">

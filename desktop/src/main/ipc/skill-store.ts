@@ -580,11 +580,16 @@ export function registerSkillStoreIPC(): void {
         repository?: string;
         hint?: string;
         name?: string;
+        /** Show this folder instead of the resolved one — the agent picker. */
+        dir?: string;
       },
     ): Promise<{
       ok: boolean;
       repo?: string;
       dir?: string;
+      /** Every folder in the repo holding a skill of this name, best-first.
+       * Present only when there is more than one, i.e. a choice to offer. */
+      variants?: string[];
       files?: string[];
       content?: string;
       texts?: Record<string, string>;
@@ -596,6 +601,7 @@ export function registerSkillStoreIPC(): void {
       try {
         let repo = payload.source;
         let dir = payload.path;
+        let variants: string[] | undefined;
         if (payload.kind === "registry") {
           if (!payload.repository)
             return { ok: false, error: "That entry has no repository." };
@@ -612,7 +618,10 @@ export function registerSkillStoreIPC(): void {
             : pickSkillDir(dirs, payload.name ?? "");
           if (!pick.ok)
             return { ok: false, error: pick.error, candidates: pick.candidates };
-          dir = pick.dir;
+          variants = pick.variants;
+          // The user's pick wins over the resolver's, but only if the repo has it.
+          dir =
+            payload.dir && dirs.includes(payload.dir) ? payload.dir : pick.dir;
         } else {
           repo = parseSource(payload.source).repo;
         }
@@ -643,6 +652,8 @@ export function registerSkillStoreIPC(): void {
           ok: true,
           repo,
           dir,
+          // Only when there is an actual choice — one folder is not a variant.
+          variants: variants && variants.length > 1 ? variants : undefined,
           files,
           content,
           texts,
@@ -735,6 +746,12 @@ export function registerSkillStoreIPC(): void {
         repository?: string;
         hint?: string;
         name?: string;
+        /**
+         * The folder the user picked in the preview, when a repo ships one copy
+         * per agent. Checked against the repo's own tree below — a path from the
+         * renderer decides what gets downloaded, so it is not taken on trust.
+         */
+        dir?: string;
       },
     ) => {
       if (payload.kind !== "registry")
@@ -745,6 +762,11 @@ export function registerSkillStoreIPC(): void {
       const dirs = paths
         .filter((p) => p.endsWith("/SKILL.md"))
         .map((p) => p.slice(0, -"/SKILL.md".length));
+      if (payload.dir) {
+        if (!dirs.includes(payload.dir))
+          return { ok: false, error: "That folder is not in this repository." };
+        return installSkill(payload.repository, payload.dir, payload.uid);
+      }
       // The hint first — a folder basename beats a display name. Falling back to
       // the name covers skillsdirectory, which publishes nothing better.
       const pick = payload.hint

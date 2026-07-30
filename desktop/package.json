@@ -50,7 +50,8 @@
     "smoke:catalogschema": "node scripts/catalog-schema-probe.mjs",
     "smoke:dircfg": "node scripts/renderer-probe.mjs scripts/directory-config-probe.ts",
     "smoke:groups": "node scripts/renderer-probe.mjs scripts/group-by-repo-probe.ts",
-    "smoke:audit": "node scripts/renderer-probe.mjs scripts/skill-audit-probe.ts"
+    "smoke:audit": "node scripts/renderer-probe.mjs scripts/skill-audit-probe.ts",
+    "smoke:agentdirs": "node scripts/renderer-probe.mjs scripts/agent-folders-probe.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",

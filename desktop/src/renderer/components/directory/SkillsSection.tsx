@@ -207,7 +207,8 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
     await save(sources.filter((x) => x.id !== id).map(stored));
   };
 
-  const install = async (s: StoreSkill): Promise<void> => {
+  /** `dir` is set when the preview offered a choice of agent copies. */
+  const install = async (s: StoreSkill, dir?: string): Promise<void> => {
     setBusy(s.uid);
     try {
       const r = await api()?.skillStore.install({
@@ -218,6 +219,7 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
         repository: s.repository,
         hint: s.hint,
         name: s.name,
+        ...(dir ? { dir } : {}),
       });
       // Matched on uid. source+path marked every registry card at once — they
       // all have an empty path — and marked a same-named skill from another
@@ -601,7 +603,7 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
           key={previewing.uid}
           skill={previewing}
           installing={busy === previewing.uid}
-          onInstall={() => void install(previewing)}
+          onInstall={(dir) => void install(previewing, dir)}
           onClose={() => setPreviewing(null)}
         />
       )}

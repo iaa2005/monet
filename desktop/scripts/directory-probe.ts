@@ -260,5 +260,73 @@ check(
   JSON.stringify(nonsense).slice(0, 120),
 );
 
+// ── The two installs that were reported as broken ──────────────────────────
+//
+// Both came back as "matches N folders" and could not be installed at all. The
+// ranking that fixes it is unit-tested in agent-folders-probe; this runs it
+// against the real repositories through the real handler, because the folder
+// lists come from GitHub and a rule that only holds for my fixtures is no rule.
+console.log("\n# the reported installs, against the real repos");
+{
+  const imp = await call("skillstore:preview", {
+    source: "claudemarketplaces",
+    path: "",
+    kind: "registry",
+    repository: "pbakaus/impeccable",
+    name: "impeccable",
+  });
+  check("impeccable resolves instead of failing", imp.ok === true, imp.error);
+  check(
+    "and to the Claude copy — the one whose paths work here",
+    imp.dir === ".claude/skills/impeccable",
+    imp.dir,
+  );
+  check(
+    "with every agent copy offered",
+    (imp.variants ?? []).length >= 10,
+    (imp.variants ?? []).length,
+  );
+  // Reading another agent's copy must actually read THAT copy, or the picker is
+  // decoration.
+  const cursor = await call("skillstore:preview", {
+    source: "claudemarketplaces",
+    path: "",
+    kind: "registry",
+    repository: "pbakaus/impeccable",
+    name: "impeccable",
+    dir: ".cursor/skills/impeccable",
+  });
+  check("picking another agent reads that folder", cursor.dir === ".cursor/skills/impeccable", cursor.dir);
+  check(
+    "and the file really differs from the Claude one",
+    !!cursor.content && !!imp.content && cursor.content !== imp.content,
+    `${imp.content?.length} vs ${cursor.content?.length} bytes`,
+  );
+  // A folder that is not in the repo must be refused, not fetched.
+  const bogus = await call("skillstore:install", {
+    source: "claudemarketplaces",
+    path: "",
+    kind: "registry",
+    repository: "pbakaus/impeccable",
+    name: "impeccable",
+    dir: "../../etc/passwd",
+  });
+  check("a folder outside the repo is refused", bogus.ok === false, JSON.stringify(bogus).slice(0, 90));
+
+  const foundry = await call("skillstore:preview", {
+    source: "claudemarketplaces",
+    path: "",
+    kind: "registry",
+    repository: "microsoft/azure-skills",
+    name: "microsoft-foundry",
+  });
+  check("microsoft-foundry resolves instead of failing", foundry.ok === true, foundry.error);
+  check(
+    "and prefers the plain folder over Copilot's",
+    foundry.dir === "skills/microsoft-foundry",
+    foundry.dir,
+  );
+}
+
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILURE(S)`}`);
 process.exit(failures === 0 ? 0 : 1);

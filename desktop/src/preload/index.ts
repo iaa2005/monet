@@ -505,6 +505,8 @@ const electronAPI = {
       hint?: string;
       repository?: string;
       name?: string;
+      /** The folder the user picked among a repo's per-agent copies. */
+      dir?: string;
     }): Promise<{
       ok: boolean;
       slug?: string;
@@ -519,10 +521,14 @@ const electronAPI = {
       repository?: string;
       hint?: string;
       name?: string;
+      /** Read this folder instead of the resolved one — the agent picker. */
+      dir?: string;
     }): Promise<{
       ok: boolean;
       repo?: string;
       dir?: string;
+      /** Folders holding this skill, best-first, when a repo ships one per agent. */
+      variants?: string[];
       files?: string[];
       content?: string;
       /** Every text file that was read, so the viewer shows the scripts too. */

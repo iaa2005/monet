@@ -16,6 +16,8 @@
  * not a thing anyone wants, and the Directory queries it by keyword instead.
  */
 
+import { bestFirst, ties } from "./agent-folders.js";
+
 const BASE = "https://www.skillsdirectory.com/api/registry";
 const UA = { "User-Agent": "monet-desktop" };
 
@@ -52,7 +54,19 @@ export function normalizeName(s: string): string {
 }
 
 export type PickResult =
-  | { ok: true; dir: string }
+  | {
+      ok: true;
+      dir: string;
+      /**
+       * The other folders holding a skill of this name, best-first, when the repo
+       * ships one copy per agent. The picked `dir` is the first of them.
+       *
+       * Carried so the preview can say which variant it is about to install and
+       * offer the rest — with fifteen copies in pbakaus/impeccable, silently
+       * taking one and saying nothing would be the wrong kind of quiet.
+       */
+      variants?: string[];
+    }
   | { ok: false; error: string; candidates?: string[] };
 
 /**
@@ -70,22 +84,33 @@ export type PickResult =
  * Ambiguity is reported, never guessed: two folders with the same basename in
  * different parents are a real possibility, and installing the wrong one puts
  * unexpected instructions in front of the model.
+ *
+ * But most of what LOOKED ambiguous was not. Reported from the app: `impeccable`
+ * matched fifteen folders and `microsoft-foundry` two, and neither was a
+ * genuine question — the fifteen are one copy per agent, and the two are
+ * byte-identical. Both are settled by preferring our own folder, then a neutral
+ * one, then another agent's; see agent-folders.ts, where that order is measured
+ * rather than assumed. A tie between two neutral folders at the same depth is
+ * still a real question and still reported.
  */
 export function pickSkillDir(dirs: string[], name: string): PickResult {
   if (dirs.length === 0)
     return { ok: false, error: "That repository has no SKILL.md anywhere." };
 
   const want = normalizeName(name);
-  const exact = dirs.filter(
-    (d) => normalizeName(d.split("/").pop() ?? d) === want,
+  const exact = bestFirst(
+    dirs.filter((d) => normalizeName(d.split("/").pop() ?? d) === want),
   );
   if (exact.length === 1) return { ok: true, dir: exact[0]! };
-  if (exact.length > 1)
-    return {
-      ok: false,
-      error: `"${name}" matches ${exact.length} folders in that repository.`,
-      candidates: exact,
-    };
+  if (exact.length > 1) {
+    if (ties(exact[0]!, exact[1]!))
+      return {
+        ok: false,
+        error: `"${name}" matches ${exact.length} folders in that repository.`,
+        candidates: exact,
+      };
+    return { ok: true, dir: exact[0]!, variants: exact };
+  }
 
   // No name match. One skill in the repo is unambiguous regardless of naming.
   if (dirs.length === 1) return { ok: true, dir: dirs[0]! };
