@@ -3,10 +3,16 @@
  *
  * A source is a place to look for skills, and the chips are its on/off switch —
  * nothing more. Off means not listed and not fetched. What ships with the app
- * can be switched off but not deleted; what the user added can be both.
+ * can be switched off but not deleted; everything else can be both.
  *
- * That replaced a "filter the grid by source" reading of the same chips, which
- * nothing on screen explained and which shared the row with a delete button.
+ * ONE row. Sources curated in the community repo appear among the switches
+ * rather than in a separate "Suggested sources" strip you added them from —
+ * that was two concepts (a source you have, a source you could have) for one
+ * thing. Adding one for everybody is still a JSON edit and a push.
+ *
+ * The row also replaced a "filter the grid by source" reading of the same
+ * chips, which nothing on screen explained and which shared its space with a
+ * delete button.
  *
  * Two kinds of source. A GitHub repo whose folders hold a SKILL.md is
  * enumerated — one tree request, complete listing. skillsdirectory.com is an
@@ -15,9 +21,12 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 import {
   AlertCircle,
   Check,
+  ChevronDown,
+  ChevronRight,
   ExternalLink,
   Globe,
   Loader2,
@@ -25,7 +34,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import type { SkillSource, StoreSkill, SuggestedSource } from "@/types/electron";
+import type { SkillSource, StoreSkill } from "@/types/electron";
 import {
   api,
   CardAction,
@@ -35,7 +44,9 @@ import {
   matches,
   Picker,
 } from "./shared";
-import { offeredSuggestions, sourceChipLabels } from "./source-labels";
+import { sourceChipLabels } from "./source-labels";
+import { OwnerAvatar, ownerOf } from "./OwnerAvatar";
+import { groupByRepo, type RepoGroup } from "./group-by-repo";
 
 const FILTERS = [
   { label: "All", value: "all" },
@@ -85,8 +96,6 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   const [adding, setAdding] = useState(false);
   const [newSource, setNewSource] = useState("");
   const [reloading, setReloading] = useState(false);
-  // Curated sources from the community repo — offered, never auto-added.
-  const [suggested, setSuggested] = useState<SuggestedSource[]>([]);
   // The registry is paged, not listed — ~97 000 entries, 100 per request. The
   // first page arrives with `load`; the rest as the user reaches the bottom.
   const [regOffset, setRegOffset] = useState(0);
@@ -95,6 +104,9 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   const sentinel = useRef<HTMLDivElement>(null);
   const [category, setCategory] = useState("all");
   const [catSlugs, setCatSlugs] = useState<string[]>([]);
+  /** Which repository groups are expanded. Collapsed by default: a repo with
+   * thirty skills should cost one row until it is asked for. */
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   /**
    * The only place a listing is fetched.
    *
@@ -148,10 +160,6 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
       ?.skillStore.categories()
       .then((c) => setCatSlugs(c ?? []))
       .catch(() => {});
-    void api()
-      ?.skillStore.suggestions()
-      .then((r) => setSuggested(r?.sources ?? []))
-      .catch(() => {});
   }, []);
 
   const hasRegistry = sources.some((s) => s.kind === "registry" && s.enabled);
@@ -188,15 +196,6 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
     await save(
       sources.map((x) => (x.id === id ? stored({ ...x, enabled: !x.enabled }) : stored(x))),
     );
-  };
-
-  /** Add a curated source. It is a place to look for skills, not code — the
-   * install path is unchanged, so nothing runs until the user installs. */
-  const addSuggested = async (s: SuggestedSource): Promise<void> => {
-    await save([
-      ...sources.map(stored),
-      s.kind === "github" ? (s.repo ?? s.id) : { kind: s.kind, id: s.id, api: s.api },
-    ]);
   };
 
   /** Only a source the user added. A built-in can be switched off; deleting it
@@ -317,19 +316,6 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasRegistry, moreDone, moreBusy, regOffset, query, skills?.length]);
 
-  /**
-   * Which suggestions are still on offer.
-   *
-   * `added` arrives on the catalog rows too, but it is a snapshot taken when
-   * they were fetched — so removing a source left it missing from the
-   * suggestions until the page was re-entered. Derived from the live source
-   * list instead, which is correct without a refetch.
-   */
-  const offered = useMemo(
-    () => offeredSuggestions(suggested, sources),
-    [suggested, sources],
-  );
-
   /** Seeded from the directory's published list, unioned with whatever the
    * loaded cards actually carry — a category added upstream shows up as soon
    * as it appears in results, without waiting for a release here. */
@@ -383,6 +369,88 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
       );
     return list;
   }, [skills, filter, sort, query]);
+
+  /** One card. Shared by loose cards and the ones inside a group, so the two
+   * cannot drift apart. */
+  const renderCard = (s: StoreSkill): JSX.Element => {
+    const key = s.uid;
+    return (
+              <DirCard
+                key={key}
+                title={`/${s.name}`}
+                meta={
+                  <>
+                    {/* The REPOSITORY, not the source id. There are nineteen
+                        skills called `docx` in the directory, each in a
+                        different repo — "claudemarketplaces" on all of them
+                        told you nothing about which one you were looking at. */}
+                    <span className="truncate">
+                      {s.repository ?? s.source}
+                      {s.hint && s.hint !== s.name ? `/${s.hint}` : ""}
+                    </span>
+                    {typeof s.installs === "number" && s.installs > 0 && (
+                      <span className="shrink-0">
+                        · {fmtCount(s.installs)} installs
+                      </span>
+                    )}
+                    {typeof s.stars === "number" && s.stars > 0 && (
+                      // The repo's stars, said so: nineteen `docx` skills
+                      // inherit their repos' figures and none of it is about
+                      // the skill.
+                      <span className="shrink-0" title="Stars on the repository, not the skill">
+                        · ★ {fmtCount(s.stars)}
+                      </span>
+                    )}
+                    {s.installed && (
+                      <span className="shrink-0 text-green-text">· installed</span>
+                    )}
+                  </>
+                }
+                description={s.description}
+                action={
+                  <>
+                    {/* Read it first. A skill is instructions the model will
+                        follow, and these come from strangers' repositories. */}
+                    {s.url && (
+                      <CardAction
+                        icon={ExternalLink}
+                        title={`Open ${s.url.replace(/^https:\/\//, "")}`}
+                        onClick={() => void api()?.shell.openExternal(s.url!)}
+                      />
+                    )}
+                    {s.installed ? (
+                    <CardAction
+                      icon={Trash2}
+                      title="Remove this skill"
+                      variant="danger"
+                      busy={busy === key}
+                      onClick={() => void remove(s)}
+                    />
+                  ) : (
+                    <CardAction
+                      icon={Plus}
+                      title="Install this skill"
+                      busy={busy === key}
+                      onClick={() => void install(s)}
+                    />
+                  )}
+                  </>
+                }
+              />
+    );
+  };
+
+  /** The sorted list with each repository's run collapsed into one row. The
+   * order is the picker's — a group sits where its first member did. */
+  const rows = useMemo(() => groupByRepo(shown), [shown]);
+
+  const toggleGroup = (key: string): void =>
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   return (
     <>
@@ -487,35 +555,6 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
         </div>
       )}
 
-      {/* Curated in the community repo (skill-sources.json), so a new source
-          reaches everyone with a push rather than an app release. Offered, not
-          added: a source is somewhere to look, and the user chooses. */}
-      {offered.length > 0 && (
-        <div className="mb-4">
-          <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Suggested sources
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {offered.map((x) => (
-                <button
-                  key={x.id}
-                  type="button"
-                  title={x.description ?? x.homepage ?? x.repo ?? x.id}
-                  onClick={() => void addSuggested(x)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
-                >
-                  {x.kind === "registry" ? (
-                    <Globe className="size-3.5 text-muted-foreground" />
-                  ) : (
-                    <Plus className="size-3.5 text-muted-foreground" />
-                  )}
-                  <span>{x.name}</span>
-                </button>
-              ))}
-          </div>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {skills === null ? (
           <Empty>
@@ -530,77 +569,96 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
                 : "No skills here."}
           </Empty>
         ) : (
-          shown.map((s) => {
-            const key = s.uid;
-            return (
-              <DirCard
-                key={key}
-                title={`/${s.name}`}
-                meta={
-                  <>
-                    {/* The REPOSITORY, not the source id. There are nineteen
-                        skills called `docx` in the directory, each in a
-                        different repo — "claudemarketplaces" on all of them
-                        told you nothing about which one you were looking at. */}
-                    <span className="truncate">
-                      {s.repository ?? s.source}
-                      {s.hint && s.hint !== s.name ? `/${s.hint}` : ""}
-                    </span>
-                    {typeof s.installs === "number" && s.installs > 0 && (
-                      <span className="shrink-0">
-                        · {fmtCount(s.installs)} installs
-                      </span>
-                    )}
-                    {typeof s.stars === "number" && s.stars > 0 && (
-                      // The repo's stars, said so: nineteen `docx` skills
-                      // inherit their repos' figures and none of it is about
-                      // the skill.
-                      <span className="shrink-0" title="Stars on the repository, not the skill">
-                        · ★ {fmtCount(s.stars)}
-                      </span>
-                    )}
-                    {s.installed && (
-                      <span className="shrink-0 text-green-text">· installed</span>
-                    )}
-                  </>
-                }
-                description={s.description}
-                action={
-                  <>
-                    {/* Read it first. A skill is instructions the model will
-                        follow, and these come from strangers' repositories. */}
-                    {s.url && (
-                      <CardAction
-                        icon={ExternalLink}
-                        title={`Open ${s.url.replace(/^https:\/\//, "")}`}
-                        onClick={() => void api()?.shell.openExternal(s.url!)}
-                      />
-                    )}
-                    {s.installed ? (
-                    <CardAction
-                      icon={Trash2}
-                      title="Remove this skill"
-                      variant="danger"
-                      busy={busy === key}
-                      onClick={() => void remove(s)}
-                    />
-                  ) : (
-                    <CardAction
-                      icon={Plus}
-                      title="Install this skill"
-                      busy={busy === key}
-                      onClick={() => void install(s)}
-                    />
-                  )}
-                  </>
-                }
+          rows.map((row) =>
+            row.kind === "one" ? (
+              renderCard(row.item)
+            ) : (
+              <RepoGroupCard
+                key={`g:${row.group.key}`}
+                group={row.group}
+                open={openGroups.has(row.group.key)}
+                onToggle={() => toggleGroup(row.group.key)}
+                renderCard={renderCard}
               />
-            );
-          })
+            ),
+          )
         )}
       </div>
 
     </>
+  );
+}
+
+/**
+ * One repository, collapsed.
+ *
+ * microsoft/azure-skills publishes dozens of skills. Flat, they filled the grid
+ * with the same repository, the same 448k installs and the same star count over
+ * and over, pushing everyone else's work off screen. Collapsed, the repo costs
+ * one row and hides nothing — a click opens it.
+ *
+ * Open, it spans both columns, so its skills read as a list belonging to it
+ * rather than cards that happen to sit nearby.
+ */
+function RepoGroupCard({
+  group,
+  open,
+  onToggle,
+  renderCard,
+}: {
+  group: RepoGroup<StoreSkill>;
+  open: boolean;
+  onToggle: () => void;
+  renderCard: (s: StoreSkill) => JSX.Element;
+}): JSX.Element {
+  return (
+    <div className={cn("rounded-xl border border-border", open && "lg:col-span-2")}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-start gap-2.5 p-4 text-left"
+      >
+        <OwnerAvatar owner={ownerOf(group.key)} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[15px] font-medium leading-tight">
+            {group.key}
+          </span>
+          <span className="mt-1 flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
+            <span>{group.items.length} skills</span>
+            {group.installedCount > 0 && (
+              <span className="text-green-text">
+                · {group.installedCount} installed
+              </span>
+            )}
+            {typeof group.installs === "number" && group.installs > 0 && (
+              <span className="shrink-0">
+                · {fmtCount(group.installs)} installs
+              </span>
+            )}
+            {typeof group.stars === "number" && group.stars > 0 && (
+              <span
+                className="shrink-0"
+                title="Stars on the repository, not the skill"
+              >
+                · ★ {fmtCount(group.stars)}
+              </span>
+            )}
+          </span>
+        </span>
+        <span className="mt-0.5 shrink-0 text-muted-foreground">
+          {open ? (
+            <ChevronDown className="size-4" />
+          ) : (
+            <ChevronRight className="size-4" />
+          )}
+        </span>
+      </button>
+      {open && (
+        <div className="grid grid-cols-1 gap-3 border-t border-border p-3 lg:grid-cols-2">
+          {group.items.map(renderCard)}
+        </div>
+      )}
+    </div>
   );
 }
 

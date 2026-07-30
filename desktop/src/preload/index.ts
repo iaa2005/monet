@@ -479,8 +479,9 @@ const electronAPI = {
   },
 
   skillStore: {
+    /** Config + community catalog, in one list — see skillstore:sources. */
     getSources: (): Promise<unknown[]> =>
-      ipcRenderer.invoke("skillstore:getSources"),
+      ipcRenderer.invoke("skillstore:sources"),
     setSources: (list: unknown[]): Promise<unknown[]> =>
       ipcRenderer.invoke("skillstore:setSources", list),
     categories: (): Promise<string[]> =>

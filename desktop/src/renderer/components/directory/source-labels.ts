@@ -72,3 +72,17 @@ export function offeredSuggestions<
   const have = new Set(sources.flatMap((s) => [s.id, s.repo ?? ""]));
   return suggested.filter((x) => !have.has(x.id) && !have.has(x.repo ?? ""));
 }
+
+/**
+ * `owner/repo[/sub]` → `owner`, for the avatar at github.com/<owner>.png.
+ *
+ * Returns "" for anything that is not a GitHub login. A registry card falls
+ * back to its SOURCE id when it has no repository, and "claudemarketplaces" is
+ * not an owner — asking GitHub for its avatar is a guaranteed 404 and a torn
+ * image in the grid.
+ */
+export function ownerOf(repoOrId: string | undefined): string {
+  const first = (repoOrId ?? "").split("/")[0]?.trim() ?? "";
+  // GitHub logins are alphanumeric with hyphens, and never start with one.
+  return /^[A-Za-z0-9][A-Za-z0-9-]*$/.test(first) ? first : "";
+}

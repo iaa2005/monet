@@ -16,6 +16,7 @@
 
 import {
   offeredSuggestions,
+  ownerOf,
   sourceChipLabels,
   type LabelableSource,
 } from "../src/renderer/components/directory/source-labels";
@@ -136,6 +137,29 @@ const reg = (id: string, name: string): LabelableSource => ({
     "a source that is merely switched off is not re-offered",
     offeredSuggestions(catalog, off).every((x) => x.id !== "anthropic-skills"),
   );
+}
+
+// -- 5. Owner avatars ------------------------------------------------
+{
+  // github.com/<owner>.png needs no API call and no token — verified: microsoft,
+  // anthropics, vercel-labs and k-dense-ai all 302 to a PNG. An owner that does
+  // not exist returns 404, so what is asked for matters.
+  check("an owner/repo yields the owner", ownerOf("anthropics/skills") === "anthropics");
+  check("a subfolder source too", ownerOf("iaa2005/monet-directory/skills") === "iaa2005");
+  check("hyphens are valid in a login", ownerOf("vercel-labs/skills") === "vercel-labs");
+  check("a bare owner passes through", ownerOf("microsoft") === "microsoft");
+
+  // A registry card with no repository falls back to its SOURCE id, and
+  // "claudemarketplaces" is not a GitHub account — asking for its avatar is a
+  // guaranteed 404 and a torn image in a grid of a hundred cards.
+  // A registry id looks like a login and cannot be told apart here, so the
+  // caller decides: a registry card passes its repository or nothing. What this
+  // function must guarantee is that it never invents an owner from a shape that
+  // could not be one.
+  check("a plausible login is returned as such", ownerOf("claudemarketplaces") === "claudemarketplaces");
+  check("but nothing is invented from junk", ownerOf("") === "" && ownerOf(undefined) === "");
+  check("a leading hyphen is refused", ownerOf("-bad/repo") === "");
+  check("so is a name with a dot or space", ownerOf("bad.name/repo") === "" && ownerOf("bad name/repo") === "");
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL SOURCE-LABEL CHECKS PASSED");

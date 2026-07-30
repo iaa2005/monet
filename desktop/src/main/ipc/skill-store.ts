@@ -203,6 +203,37 @@ function getSources(): SkillSource[] {
   return DEFAULT_SOURCES;
 }
 
+/**
+ * Config + catalog, merged. See the `skillstore:sources` handler.
+ *
+ * A catalog failure is not an error worth surfacing: the configured sources are
+ * unaffected and the row simply has fewer switches in it.
+ */
+async function allSources(): Promise<SkillSource[]> {
+  const stored = getSources();
+  const have = new Set(stored.map((s) => s.id));
+  let extra: SkillSource[] = [];
+  try {
+    const catalog = await fetchSuggestedSources();
+    extra = catalog
+      .filter((c) => !have.has(c.id) && !have.has(c.repo ?? ""))
+      .map((c) =>
+        parseStoredSource(
+          c.kind === "github"
+            ? (c.repo ?? c.id)
+            : { kind: c.kind, id: c.id, api: c.api },
+        ),
+      )
+      .filter((x): x is SkillSource => x !== null)
+      // Not builtin: the user may delete a curated source, unlike one that
+      // ships in the binary and has nowhere to come back from.
+      .map((x) => ({ ...x, builtin: false }));
+  } catch {
+    /* no catalog — the configured sources stand on their own */
+  }
+  return [...stored, ...extra];
+}
+
 function setSources(list: StoredSource[]): SkillSource[] {
   const parsed = list
     .map((x) => parseStoredSource(x))
@@ -510,6 +541,23 @@ async function installSkill(
 }
 
 export function registerSkillStoreIPC(): void {
+  /**
+   * Every source, in one list.
+   *
+   * The community catalog used to be a separate "Suggested sources" row the user
+   * added from. Two concepts for one thing: a source you have and a source you
+   * could have. Now a catalog entry simply appears among the switches, on by
+   * default, and switching it off is recorded like any other. Adding one for
+   * everybody is still a JSON edit and a push.
+   *
+   * The user's stored decision always wins — a curated source switched off stays
+   * off, or the switch would flip itself back on at every launch.
+   */
+  ipcMain.handle(
+    "skillstore:sources",
+    async (): Promise<SkillSource[]> => allSources(),
+  );
+
   // The filter's starting list. Seeded from the directory's own categories
   // page; the UI unions in whatever it actually sees.
   ipcMain.handle(
