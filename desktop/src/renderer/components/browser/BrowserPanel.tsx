@@ -85,10 +85,6 @@ export function BrowserPanel(): JSX.Element {
     };
   }, [workspaceVersion]);
 
-  // A page called window.open; main refused to give it an OS window and sent
-  // the URL back here instead.
-  useEffect(() => api().browser.onOpenTab((url) => openTab(url)), [openTab]);
-
   const navigate = (raw: string): void => {
     const url = normalizeUrl(raw);
     if (!url) return;

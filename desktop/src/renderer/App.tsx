@@ -356,6 +356,20 @@ export default function App(): JSX.Element {
     }
   }, [openFileRequest]);
 
+  // Something asked for a tab: the agent's BrowserNavigate with nothing open,
+  // or a page calling window.open. Bring the panel up rather than opening it
+  // invisibly — a tool driving a browser nobody can see is how you end up
+  // trusting a screenshot of the wrong page.
+  useEffect(() => {
+    const bridge = api();
+    if (!bridge) return;
+    return bridge.browser.onOpenTab((url) => {
+      setBrowserUsed(true);
+      setRightTab("browser");
+      useBrowserStore.getState().openTab(url);
+    });
+  }, []);
+
   // The Browser panel's expand button. A page rendered at 30% of the window is
   // unusable, but permanently widening the right panel would squeeze the chat
   // for every other tab — so the width follows the browser's own layout state,

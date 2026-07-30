@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, Globe, MonitorSmartphone, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
-import type { ElectronAPI } from "@/types/electron";
+import type { BrowserEngine, ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -17,6 +17,7 @@ function api(): ElectronAPI | undefined {
 
 export function AutomationSettings(): JSX.Element {
   const [browserOn, setBrowserOn] = useState(false);
+  const [engine, setEngine] = useState<BrowserEngine>("embedded");
   const [computerOn, setComputerOn] = useState(false);
   const [deniedApps, setDeniedApps] = useState<string[]>([]);
   const [newApp, setNewApp] = useState("");
@@ -24,7 +25,10 @@ export function AutomationSettings(): JSX.Element {
   useEffect(() => {
     api()
       ?.browser.getConfig()
-      .then((c) => setBrowserOn(!!c.enabled))
+      .then((c) => {
+        setBrowserOn(!!c.enabled);
+        setEngine(c.engine);
+      })
       .catch(() => {});
     api()
       ?.computer.getConfig()
@@ -38,6 +42,11 @@ export function AutomationSettings(): JSX.Element {
   const toggleBrowser = (v: boolean): void => {
     setBrowserOn(v);
     void api()?.browser.setConfig({ enabled: v });
+  };
+
+  const changeEngine = (v: BrowserEngine): void => {
+    setEngine(v);
+    void api()?.browser.setConfig({ engine: v });
   };
 
   const toggleComputer = (v: boolean): void => {
@@ -72,25 +81,71 @@ export function AutomationSettings(): JSX.Element {
           <Globe className="mt-0.5 size-5 shrink-0 text-sky-500" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm font-medium">Browser Use</span>
+              <span className="text-sm font-medium">Browser tools</span>
               <Switch checked={browserOn} onChange={toggleBrowser} />
             </div>
             <p className="mt-1 text-[13px] text-muted-foreground">
-              The agent can open and drive a separate Chrome/Edge window
-              (navigate, read the page, click, type) via the browser tools. It
-              uses its OWN profile under the app data folder — your real
-              browser and its logins are never touched. The window launches on
-              first use.
+              The agent can open pages, read them, click and type. The Browser
+              panel itself is always available — this switch is about whether
+              the AGENT gets the tools for it.
             </p>
           </div>
         </div>
+
+        {browserOn && (
+          <div className="mt-4">
+            <div className="text-[13px] font-medium">Which browser</div>
+            <div className="mt-2 space-y-1.5">
+              {(
+                [
+                  [
+                    "embedded",
+                    "The Browser panel",
+                    "The tabs beside your chat. You watch what it does, and design mode works here.",
+                  ],
+                  [
+                    "external",
+                    "A separate Chrome window",
+                    "Its own profile under the app data folder — your real browser is never touched. For sites that refuse an embedded view, or when you need extensions.",
+                  ],
+                ] as const
+              ).map(([value, label, hint]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => changeEngine(value)}
+                  className={cn(
+                    "flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
+                    engine === value
+                      ? "border-link bg-link/[0.06]"
+                      : "border-border hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "mt-1 size-2 shrink-0 rounded-full",
+                      engine === value ? "bg-link" : "bg-border",
+                    )}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-medium">{label}</span>
+                    <span className="block text-[12px] text-muted-foreground">
+                      {hint}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {browserOn && (
           <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px]">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
             <span>
               A page the agent visits could contain instructions that try to
               redirect it. Only enable this for tasks you trust, and watch the
-              browser window while it works.
+              panel while it works.
             </span>
           </div>
         )}

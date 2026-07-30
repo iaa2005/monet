@@ -10,6 +10,18 @@ export const BrowserWindow = {
   getFocusedWindow: () => null,
   getAllWindows: () => [],
 }
+// The browser tab registry looks a guest up by id. Nothing is registered in a
+// smoke run, so "no such page" is the honest answer for every id.
+export const webContents = {
+  fromId: (_id: number) => null,
+  getAllWebContents: () => [],
+}
+export const session = {
+  fromPartition: (_p: string) => ({
+    clearStorageData: async () => undefined,
+    clearCache: async () => undefined,
+  }),
+}
 export const shell = {
   openPath: async (..._args: unknown[]) => "",
   showItemInFolder: (..._args: unknown[]) => undefined,
@@ -80,6 +92,8 @@ export const safeStorage = {
 export default {
   ipcMain,
   BrowserWindow,
+  webContents,
+  session,
   shell,
   dialog,
   screen,

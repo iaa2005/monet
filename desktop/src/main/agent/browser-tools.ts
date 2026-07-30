@@ -23,7 +23,7 @@ import {
   pageScreenshot,
   pageScrollWheel,
   pageTypeText,
-} from "../browser/cdp.js";
+} from "../browser/page.js";
 
 /** Element viewport rect (post scroll-into-view), or null when unresolvable. */
 async function refRect(

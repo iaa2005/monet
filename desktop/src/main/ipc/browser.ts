@@ -17,7 +17,12 @@ import { partitionFor } from "../browser/session.js";
 import { detectDevServers, type DevServer } from "../browser/dev-servers.js";
 import { resetVendorTools } from "../agent/vendor-tools.js";
 import { shutdownBrowser } from "../browser/chrome.js";
-import { disconnectCdp } from "../browser/cdp.js";
+import { disconnectCdp } from "../browser/page.js";
+import {
+  registerTab,
+  setActiveTab,
+  unregisterTab,
+} from "../browser/registry.js";
 import { getWorkspacePath } from "./workspace.js";
 
 export function registerBrowserIPC(): void {
@@ -25,10 +30,16 @@ export function registerBrowserIPC(): void {
   ipcMain.handle(
     "browser:setConfig",
     (_e, patch: Partial<BrowserConfig>): BrowserConfig => {
+      const before = getBrowserConfig();
       const next = setBrowserConfig(patch);
       resetVendorTools();
-      if (!next.enabled || next.engine !== "external") {
+      // Turning the tools off tears down both engines. Switching AWAY from the
+      // external one closes its window — leaving a Chrome nobody is driving
+      // running in the background is how users end up force-quitting it.
+      if (!next.enabled) {
         disconnectCdp();
+        shutdownBrowser();
+      } else if (before.engine === "external" && next.engine === "embedded") {
         shutdownBrowser();
       }
       return next;
@@ -56,5 +67,19 @@ export function registerBrowserIPC(): void {
 
   ipcMain.handle("browser:devServers", (): Promise<DevServer[]> =>
     detectDevServers(getWorkspacePath()),
+  );
+
+  // The tab registry. The renderer reports ids because it is the only side
+  // that knows which guest belongs to which tab, and which tab is on screen.
+  ipcMain.handle(
+    "browser:registerTab",
+    (_e, tabId: string, webContentsId: number): void =>
+      registerTab(tabId, webContentsId),
+  );
+  ipcMain.handle("browser:unregisterTab", (_e, tabId: string): void =>
+    unregisterTab(tabId),
+  );
+  ipcMain.handle("browser:activateTab", (_e, tabId: string): void =>
+    setActiveTab(tabId),
   );
 }

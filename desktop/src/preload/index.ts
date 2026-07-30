@@ -717,6 +717,13 @@ const electronAPI = {
       ipcRenderer.invoke("browser:clearData", partition),
     devServers: (): Promise<DevServer[]> =>
       ipcRenderer.invoke("browser:devServers"),
+    /** Tell main which guest belongs to this tab (after dom-ready). */
+    registerTab: (tabId: string, webContentsId: number): Promise<void> =>
+      ipcRenderer.invoke("browser:registerTab", tabId, webContentsId),
+    unregisterTab: (tabId: string): Promise<void> =>
+      ipcRenderer.invoke("browser:unregisterTab", tabId),
+    activateTab: (tabId: string): Promise<void> =>
+      ipcRenderer.invoke("browser:activateTab", tabId),
     /** A page asked for target=_blank; main routed it back for a new tab. */
     onOpenTab: (cb: (url: string) => void): (() => void) => {
       const handler = (_e: unknown, url: string): void => cb(url);

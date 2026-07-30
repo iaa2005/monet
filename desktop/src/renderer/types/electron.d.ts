@@ -848,6 +848,9 @@ export interface ElectronAPI {
     partition: (sessionId?: string) => Promise<string>;
     clearData: (partition: string) => Promise<void>;
     devServers: () => Promise<DevServer[]>;
+    registerTab: (tabId: string, webContentsId: number) => Promise<void>;
+    unregisterTab: (tabId: string) => Promise<void>;
+    activateTab: (tabId: string) => Promise<void>;
     onOpenTab: (cb: (url: string) => void) => () => void;
   };
   computer: {

@@ -18,8 +18,12 @@
 
 import { useEffect, useRef } from "react";
 import type { WebviewTag } from "electron";
+import type { ElectronAPI } from "@/types/electron";
 import { useBrowserStore, type BrowserTab } from "./browser-store";
 import { registerView } from "./webview-registry";
+
+const api = (): ElectronAPI =>
+  (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
 
 interface BrowserViewProps {
   tab: BrowserTab;
@@ -81,7 +85,17 @@ export function BrowserView({
         error: e.errorDescription || `Load failed (${e.errorCode})`,
       });
     };
-    const onDomReady = (): void => patch(history());
+    // The guest's webContents id is what lets main's tools drive this page.
+    // Reported on every dom-ready, not just the first: a crashed guest comes
+    // back with a new id, and a stale one is a tool acting on nothing.
+    const onDomReady = (): void => {
+      patch(history());
+      try {
+        void api().browser.registerTab(tab.id, el.getWebContentsId());
+      } catch {
+        /* guest went away between the event and the call */
+      }
+    };
 
     el.addEventListener("did-start-loading", onStartLoading);
     el.addEventListener("did-stop-loading", onStopLoading);
@@ -102,8 +116,14 @@ export function BrowserView({
       el.removeEventListener("did-fail-load", onFail);
       el.removeEventListener("dom-ready", onDomReady);
       registerView(tab.id, null);
+      void api().browser.unregisterTab(tab.id);
     };
   }, [tab.id]);
+
+  // Which tab the tools act on follows which tab the user is looking at.
+  useEffect(() => {
+    if (active) void api().browser.activateTab(tab.id);
+  }, [active, tab.id]);
 
   return (
     <div
