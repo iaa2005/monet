@@ -15,7 +15,7 @@
  * rather than turned into a card that fails on click.
  */
 
-import { pickSkillDir } from "../src/main/skills-registry";
+import { pickSkillDir, usefulDescription } from "../src/main/skills-registry";
 import {
   matchMarketplace,
   sortMarketplace,
@@ -129,6 +129,27 @@ const SAMPLE: MarketplaceSkill[] = [
     !["skills/find-skills"].includes("find-skills"),
     "installing it verbatim downloads nothing",
   );
+}
+
+// -- 5. A description that only repeats the name is not a description --
+{
+  // Measured over the whole snapshot: 20 617 of 23 472 rows — 88% — set
+  // `description` to the skill's own name. Nineteen entries are called `docx`
+  // and fourteen of them describe themselves as "docx". A card reading `/docx`
+  // above the word `docx` spends the useful line saying nothing, so the line is
+  // dropped and the meta row (repository, installs, stars) carries the weight.
+  // Their site shows a real summary; there is no API for it — every
+  // /api/skills/<id> shape returns 404.
+  check("a name repeated as description is dropped", usefulDescription("docx", "docx") === "");
+  check("case and punctuation do not save it", usefulDescription("Docx.", "docx") === "");
+  check("nor does spacing", usefulDescription("find skills", "find-skills") === "");
+  check(
+    "a real description survives",
+    usefulDescription("Create, read and edit Word documents.", "docx") ===
+      "Create, read and edit Word documents.",
+  );
+  check("a description that merely contains the name survives", usefulDescription("docx tools for reports", "docx").length > 0);
+  check("an empty description stays empty", usefulDescription("", "docx") === "");
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL MARKETPLACE CHECKS PASSED");

@@ -201,6 +201,9 @@ export interface StoreSkill {
   hint?: string;
   /** Where to read this skill before installing it. */
   url?: string;
+  /** Registry cards: install count, and the REPO's stars. */
+  installs?: number;
+  stars?: number;
   /** Registry cards only — what the category filter offers. */
   category?: string;
   name: string;

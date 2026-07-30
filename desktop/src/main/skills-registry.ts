@@ -33,6 +33,18 @@ export interface RegistrySkill {
   tags?: string[];
 }
 
+/**
+ * Their list API often sets `description` to the skill's own name — 19 `docx`
+ * entries and most of them say "docx". A card reading `/docx` above the word
+ * `docx` is worse than one with no description: it takes the space where the
+ * useful line would be and says nothing. Their site shows a real summary, but
+ * there is no API for it (every /api/skills/<id> shape returns 404).
+ */
+export function usefulDescription(desc: string, name: string): string {
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return norm(desc) === norm(name) ? "" : desc;
+}
+
 /** Strip everything that differs between a display name and a folder name:
  * "Competitor Analysis" and "competitor-analysis" must compare equal. */
 export function normalizeName(s: string): string {

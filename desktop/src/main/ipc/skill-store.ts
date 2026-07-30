@@ -38,6 +38,7 @@ import {
 import { DEFAULT_CONFIG, directoryConfig } from "../directory-config.js";
 import {
   capPerRepo,
+  usefulDescription,
   listRegistry,
   pickSkillDir,
   searchRegistry,
@@ -88,6 +89,14 @@ export interface StoreSkill {
   category?: string;
   /** Local folder name once installed — what removal needs. */
   slug: string;
+  /**
+   * Registry cards: how many people installed this skill, and the REPOSITORY's
+   * star count. Kept apart because they measure different things — nineteen
+   * skills called `docx` each inherit their own repo's stars, and none of that
+   * figure is about the skill.
+   */
+  installs?: number;
+  stars?: number;
   /**
    * Where to go and read this before installing it. A skill is instructions the
    * model will follow, so the source should be one click away.
@@ -362,7 +371,9 @@ async function listMarketplaceSource(
       repository: r.repo,
       hint: r.path,
       name: r.name,
-      description: r.description,
+      description: usefulDescription(r.description, r.name),
+      installs: r.installs,
+      stars: r.stars,
       ...resolve(uid, r.name),
     } satisfies StoreSkill;
   });
@@ -398,7 +409,8 @@ async function listRegistrySource(
     kind: "registry" as const,
     repository: r.repository,
     name: r.name,
-    description: r.description,
+    description: usefulDescription(r.description, r.name),
+    stars: r.stars,
     category: r.category,
     ...resolve(`${src.id}|${r.repository}|${r.name}`, r.name),
   }));

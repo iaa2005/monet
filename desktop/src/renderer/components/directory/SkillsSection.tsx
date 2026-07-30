@@ -55,6 +55,13 @@ const SORTS = [
  * switches, so an empty grid should say which switch to flip. */
 const ALL_OFF = "Every source is switched off — turn one on above.";
 
+/** 150400 → 150k. Exact counts in a meta line are noise. */
+function fmtCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 ? 1 : 0)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1000)}k`;
+  return String(n);
+}
+
 export function SkillsSection({ query }: { query: string }): JSX.Element {
   const [sources, setSources] = useState<SkillSource[]>([]);
   const [skills, setSkills] = useState<StoreSkill[] | null>(null);
@@ -503,9 +510,29 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
                 title={`/${s.name}`}
                 meta={
                   <>
-                    <span className="truncate">{s.source}</span>
+                    {/* The REPOSITORY, not the source id. There are nineteen
+                        skills called `docx` in the directory, each in a
+                        different repo — "claudemarketplaces" on all of them
+                        told you nothing about which one you were looking at. */}
+                    <span className="truncate">
+                      {s.repository ?? s.source}
+                      {s.hint && s.hint !== s.name ? `/${s.hint}` : ""}
+                    </span>
+                    {typeof s.installs === "number" && s.installs > 0 && (
+                      <span className="shrink-0">
+                        · {fmtCount(s.installs)} installs
+                      </span>
+                    )}
+                    {typeof s.stars === "number" && s.stars > 0 && (
+                      // The repo's stars, said so: nineteen `docx` skills
+                      // inherit their repos' figures and none of it is about
+                      // the skill.
+                      <span className="shrink-0" title="Stars on the repository, not the skill">
+                        · ★ {fmtCount(s.stars)}
+                      </span>
+                    )}
                     {s.installed && (
-                      <span className="text-green-text">· installed</span>
+                      <span className="shrink-0 text-green-text">· installed</span>
                     )}
                   </>
                 }
