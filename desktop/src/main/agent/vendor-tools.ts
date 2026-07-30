@@ -87,42 +87,7 @@ import { getComputerConfig } from "../computer/config.js";
 import { getProviderManager } from "../provider/manager.js";
 import { inferModalities, type Modality } from "../provider/types.js";
 
-/** Tools advertised to Home (isolated space): no host filesystem/shell —
- * file access is scoped to the CHAT's sandbox via the Sandbox* tools. */
-const HOME_TOOL_NAMES = new Set([
-  "RunPython",
-  "RunCommand",
-  "SandboxList",
-  "SandboxRead",
-  "SandboxWrite",
-  "SandboxEdit",
-  // Looking at a picture the sandbox produced crosses no boundary — the path
-  // is resolved inside this chat's own folder.
-  "ReadMediaFile",
-  "TodoWrite",
-  "Skill",
-  "AskUserQuestion",
-  "WebFetch",
-  "WebSearch",
-  "SearchPastChats",
-  // Memory is about the USER, not the filesystem — it belongs in both spaces.
-  "Remember",
-  // Waiting touches nothing, so it is safe in the isolated space too.
-  "Sleep",
-  // Coordinating THIS chat's own background agents crosses no boundary.
-  "SendMessage",
-  "TeamList",
-]);
-
-/** Sandbox-scoped tools make no sense in Code (it has the real filesystem). */
-const SANDBOX_ONLY_NAMES = new Set([
-  "RunPython",
-  "RunCommand",
-  "SandboxList",
-  "SandboxRead",
-  "SandboxWrite",
-  "SandboxEdit",
-]);
+import { HOME_TOOL_NAMES, SANDBOX_ONLY_NAMES, spaceAllows } from "./space-tools.js";
 
 /** Browser Use tools — Code-only, and only when the user enabled Browser Use. */
 const BROWSER_TOOL_NAMES = new Set([
@@ -364,8 +329,13 @@ export function isSpaceToolAllowed(
   // the permission prompt, and it refuses outright inside an unattended run.
   if (name === "CreateRoutine") return true;
   if (name === "SearchPastChats") return getMemoryConfig().searchChats;
-  // MCP resources are Code-only (Home has no MCP) and only worth advertising
-  // when the user actually has connectors configured.
+  // MCP RESOURCES are Code-only, and the old note here said "Home has no MCP",
+  // which is wrong and is exactly what makes this confusing: Home does get MCP,
+  // from CONNECTOR servers only (see spaceAllowed below, and the check at the
+  // call site). What stays out of Home is a hand-written server from the config
+  // file, because that can be a filesystem or shell server — the machine, which
+  // is what Home isolates. Resources have no connector-only filter yet, so they
+  // remain Code-only rather than being let through unfiltered.
   if (name === "ListMcpResources" || name === "ReadMcpResource")
     return space !== "home" && hasMcpServers();
   // ToolSearch (opt-in) reveals deferred MCP tools. It used to be Code-only,
@@ -380,8 +350,7 @@ export function isSpaceToolAllowed(
   if (BROWSER_TOOL_NAMES.has(name)) return getBrowserConfig().enabled;
   if (name === "Computer")
     return getComputerConfig().enabled && activeModelSeesImages();
-  if (space === "home") return HOME_TOOL_NAMES.has(name);
-  return !SANDBOX_ONLY_NAMES.has(name);
+  return spaceAllows(name, space);
 }
 
 /**
