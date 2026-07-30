@@ -511,6 +511,40 @@ const electronAPI = {
       error?: string;
       candidates?: string[];
     }> => ipcRenderer.invoke("skillstore:install", payload),
+    /** SKILL.md and the file list, read from the repo before installing. */
+    preview: (payload: {
+      source: string;
+      path: string;
+      kind?: string;
+      repository?: string;
+      hint?: string;
+      name?: string;
+    }): Promise<{
+      ok: boolean;
+      repo?: string;
+      dir?: string;
+      files?: string[];
+      content?: string;
+      /** Every text file that was read, so the viewer shows the scripts too. */
+      texts?: Record<string, string>;
+      url?: string;
+      /** Our own static check of those files — see src/main/skill-audit.ts. */
+      audit?: {
+        findings: {
+          category: string;
+          severity: "high" | "medium" | "low";
+          file: string;
+          line: number;
+          detail: string;
+          evidence: string;
+        }[];
+        filesScanned: number;
+        skipped: string[];
+        worst: "high" | "medium" | "low" | "none";
+      };
+      error?: string;
+      candidates?: string[];
+    }> => ipcRenderer.invoke("skillstore:preview", payload),
     /** The next page of the registry sources alone — scrolling must not
      * re-enumerate every github repo. */
     registryPage: (payload: {

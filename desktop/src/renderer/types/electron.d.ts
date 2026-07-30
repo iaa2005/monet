@@ -184,6 +184,37 @@ export interface SkillSource {
   homepage?: string;
 }
 
+/**
+ * One thing the audit saw in a skill's files, mirroring `Finding` in
+ * src/main/skill-audit.ts — the audit runs in main, the verdict is read here.
+ */
+export interface AuditFinding {
+  category:
+    | "remote_code_execution"
+    | "external_download"
+    | "credential_access"
+    | "exfiltration"
+    | "destructive_command"
+    | "obfuscation"
+    | "prompt_injection";
+  severity: "high" | "medium" | "low";
+  file: string;
+  line: number;
+  /** What was seen. */
+  detail: string;
+  /** The matched text, so the claim is checkable rather than asserted. */
+  evidence: string;
+}
+
+export interface SkillAudit {
+  findings: AuditFinding[];
+  /** How many files were read — a verdict over 2 of 20 is not a verdict. */
+  filesScanned: number;
+  /** What was not read, named rather than passed over in silence. */
+  skipped: string[];
+  worst: "high" | "medium" | "low" | "none";
+}
+
 export interface StoreSkill {
   /** Stable unique identity — source plus repo/path, never the name. Two
    * sources can ship a skill called `docx`. */
@@ -643,6 +674,28 @@ export interface ElectronAPI {
     }) => Promise<{
       ok: boolean;
       slug?: string;
+      error?: string;
+      candidates?: string[];
+    }>;
+    preview: (payload: {
+      source: string;
+      path: string;
+      kind?: "github" | "registry";
+      repository?: string;
+      hint?: string;
+      name?: string;
+    }) => Promise<{
+      ok: boolean;
+      repo?: string;
+      dir?: string;
+      files?: string[];
+      content?: string;
+      /** The text of every file that was read, so the viewer can show them all
+       * rather than only SKILL.md. */
+      texts?: Record<string, string>;
+      url?: string;
+      /** Our own static check of the files above, run before any install. */
+      audit?: SkillAudit;
       error?: string;
       candidates?: string[];
     }>;

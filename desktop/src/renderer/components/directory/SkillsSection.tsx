@@ -27,7 +27,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  ExternalLink,
+  Eye,
   Globe,
   Loader2,
   Plus,
@@ -47,6 +47,7 @@ import {
 import { sourceChipLabels } from "./source-labels";
 import { OwnerAvatar, ownerOf } from "./OwnerAvatar";
 import { groupByRepo, type RepoGroup } from "./group-by-repo";
+import { SkillPreview } from "./SkillPreview";
 
 const FILTERS = [
   { label: "All", value: "all" },
@@ -107,6 +108,8 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   /** Which repository groups are expanded. Collapsed by default: a repo with
    * thirty skills should cost one row until it is asked for. */
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  /** The card being read before installing. */
+  const [previewing, setPreviewing] = useState<StoreSkill | null>(null);
   /**
    * The only place a listing is fetched.
    *
@@ -219,7 +222,7 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
       // Matched on uid. source+path marked every registry card at once — they
       // all have an empty path — and marked a same-named skill from another
       // repo as installed too.
-      if (r?.ok)
+      if (r?.ok) {
         setSkills(
           (prev) =>
             prev?.map((x) =>
@@ -228,7 +231,12 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
                 : x,
             ) ?? null,
         );
-      else
+        // The open preview holds its own copy of the card, so without this it
+        // keeps offering Install for something already installed.
+        setPreviewing((p) =>
+          p && p.uid === s.uid ? { ...p, installed: true, slug: r.slug ?? p.slug } : p,
+        );
+      } else
         setErrors([
           r?.candidates?.length
             ? `${r.error} Add ${s.repository} as a source to choose: ${r.candidates.slice(0, 5).join(", ")}`
@@ -410,14 +418,14 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
                 action={
                   <>
                     {/* Read it first. A skill is instructions the model will
-                        follow, and these come from strangers' repositories. */}
-                    {s.url && (
-                      <CardAction
-                        icon={ExternalLink}
-                        title={`Open ${s.url.replace(/^https:\/\//, "")}`}
-                        onClick={() => void api()?.shell.openExternal(s.url!)}
-                      />
-                    )}
+                        follow, and these come from strangers' repositories.
+                        The preview shows SKILL.md here; the link to the real
+                        page lives inside it, next to the audit buttons. */}
+                    <CardAction
+                      icon={Eye}
+                      title="Read this skill before installing"
+                      onClick={() => setPreviewing(s)}
+                    />
                     {s.installed ? (
                     <CardAction
                       icon={Trash2}
@@ -585,6 +593,18 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
         )}
       </div>
 
+      {/* Read it, and see the audit, before it becomes instructions the model
+          follows. Keyed by uid so switching skills starts over rather than
+          carrying the previous verdict across. */}
+      {previewing && (
+        <SkillPreview
+          key={previewing.uid}
+          skill={previewing}
+          installing={busy === previewing.uid}
+          onInstall={() => void install(previewing)}
+          onClose={() => setPreviewing(null)}
+        />
+      )}
     </>
   );
 }

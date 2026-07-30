@@ -38,6 +38,11 @@ import {
 } from "../skills-marketplace.js";
 import { DEFAULT_CONFIG, directoryConfig } from "../directory-config.js";
 import {
+  auditSkill,
+  isAuditableFile,
+  type AuditResult,
+} from "../skill-audit.js";
+import {
   capPerRepo,
   usefulDescription,
   listRegistry,
@@ -285,14 +290,20 @@ async function fetchTree(source: string): Promise<string[]> {
     `https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`,
     { headers: { ...UA, Accept: "application/vnd.github+json" } },
   );
-  if (!res.ok)
+  if (!res.ok) {
+    // Unauthenticated GitHub allows 60 calls an hour, and browsing the Directory
+    // spends them. "A few minutes" was a guess; the reset time is in the headers,
+    // so say the real number rather than send the user back to try again at once.
+    const reset = Number(res.headers.get("x-ratelimit-reset") ?? 0) * 1000;
+    const mins = reset > Date.now() ? Math.ceil((reset - Date.now()) / 60_000) : 0;
     throw new Error(
       res.status === 404
         ? `Repository "${repo}" not found (private repos aren't supported).`
-        : res.status === 403
-          ? `GitHub rate limit reached — wait a few minutes.`
+        : res.status === 403 || res.status === 429
+          ? `GitHub rate limit reached${mins ? ` — it resets in ${mins} minute${mins === 1 ? "" : "s"}.` : " — try again later."}`
           : `GitHub API error ${res.status} — try again later.`,
     );
+  }
   const json = (await res.json()) as {
     tree?: { path: string; type: string }[];
     truncated?: boolean;
@@ -320,6 +331,10 @@ async function fetchRaw(repo: string, path: string): Promise<string | null> {
  * directory-config.ts. This is only the value used before the first fetch
  * lands. */
 const REGISTRY_PAGE = DEFAULT_CONFIG.registryPageSize;
+
+/** How many of a skill's files to read for the audit. A skill is text and a few
+ * scripts; anything past this is a repo mirror and not what is being judged. */
+const AUDIT_FILES = 25;
 
 async function listGithub(src: Extract<SkillSource, { kind: "github" }>): Promise<StoreSkill[]> {
   const paths = await fetchTree(src.id);
@@ -541,6 +556,107 @@ async function installSkill(
 }
 
 export function registerSkillStoreIPC(): void {
+  /**
+   * Read a skill BEFORE installing it.
+   *
+   * A skill is instructions the model will follow, fetched from a stranger's
+   * repository. Sending the user to github.com to read it was better than
+   * nothing; showing it here means they can actually read it in the moment they
+   * are deciding.
+   *
+   * For a registry card the folder is not known yet, so this resolves it the
+   * same way an install would — which also means the preview fails exactly where
+   * the install would fail, and says so, instead of the user finding out after.
+   */
+  ipcMain.handle(
+    "skillstore:preview",
+    async (
+      _e,
+      payload: {
+        source: string;
+        path: string;
+        kind?: SourceKind;
+        repository?: string;
+        hint?: string;
+        name?: string;
+      },
+    ): Promise<{
+      ok: boolean;
+      repo?: string;
+      dir?: string;
+      files?: string[];
+      content?: string;
+      texts?: Record<string, string>;
+      audit?: AuditResult;
+      url?: string;
+      error?: string;
+      candidates?: string[];
+    }> => {
+      try {
+        let repo = payload.source;
+        let dir = payload.path;
+        if (payload.kind === "registry") {
+          if (!payload.repository)
+            return { ok: false, error: "That entry has no repository." };
+          repo = payload.repository;
+          const paths = await fetchTree(repo);
+          const dirs = paths
+            .filter((p) => p.endsWith("/SKILL.md"))
+            .map((p) => p.slice(0, -"/SKILL.md".length));
+          const pick = payload.hint
+            ? (() => {
+                const byHint = pickSkillDir(dirs, payload.hint!);
+                return byHint.ok ? byHint : pickSkillDir(dirs, payload.name ?? "");
+              })()
+            : pickSkillDir(dirs, payload.name ?? "");
+          if (!pick.ok)
+            return { ok: false, error: pick.error, candidates: pick.candidates };
+          dir = pick.dir;
+        } else {
+          repo = parseSource(payload.source).repo;
+        }
+        const paths = await fetchTree(repo);
+        const files = paths
+          .filter((p) => p === `${dir}/SKILL.md` || p.startsWith(`${dir}/`))
+          .map((p) => p.slice(dir.length + 1))
+          .sort();
+        const content = await fetchRaw(repo, `${dir}/SKILL.md`);
+        if (content == null)
+          return { ok: false, error: `Could not read ${dir}/SKILL.md.` };
+
+        // Audit the SCRIPTS too, not just SKILL.md: `curl | bash` lives in
+        // scripts/install.sh far more often than in the prose. Capped, and
+        // binaries are named rather than downloaded.
+        const auditable = files.filter(isAuditableFile).slice(0, AUDIT_FILES);
+        const skipped = files.filter((f) => !auditable.includes(f));
+        const texts: Record<string, string> = { "SKILL.md": content };
+        await Promise.all(
+          auditable
+            .filter((f) => f !== "SKILL.md")
+            .map(async (f) => {
+              const t = await fetchRaw(repo, `${dir}/${f}`);
+              if (t != null) texts[f] = t;
+            }),
+        );
+        return {
+          ok: true,
+          repo,
+          dir,
+          files,
+          content,
+          texts,
+          audit: auditSkill(texts, skipped),
+          url: `https://github.com/${repo}/tree/HEAD/${dir}`,
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "preview failed",
+        };
+      }
+    },
+  );
+
   /**
    * Every source, in one list.
    *
