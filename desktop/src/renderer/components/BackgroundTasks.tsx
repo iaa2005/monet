@@ -8,11 +8,15 @@
  * Rows come from taskStore, fed off the same ordered event stream as the chat.
  * Running chats keep their own compact strip at the top, because jumping to one
  * and stopping it are still the two things you reach for mid-run.
+ *
+ * It lives in the right panel, beside Files and Artifacts — the three answer the
+ * same question from different angles, so they share one surface. It was a
+ * popover hanging off the toolbar, which put it somewhere else entirely and made
+ * it the only one of the three you could not resize or keep open while working.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Activity,
   Check,
   ChevronDown,
   ChevronRight,
@@ -132,12 +136,27 @@ function TaskRow({ task }: { task: TaskEntry }): JSX.Element {
   );
 }
 
+/**
+ * The toolbar button's live count — work of either kind, in any chat.
+ *
+ * Its own hook because the button now sits in App while the rows live here, and
+ * a count derived twice would eventually disagree with itself.
+ */
+export function useTaskBadge(): number {
+  const sessions = useChatStore((s) => s.sessions);
+  const tasks = useTaskStore((s) => s.tasks);
+  const live = tasks.filter((t) => t.status === "running").length;
+  // A chat thinking between tools has no running task, and a task can outlive
+  // the visible chat — so neither count alone covers "something is happening".
+  return live || Object.values(sessions).filter((st) => st.isStreaming).length;
+}
+
 interface BackgroundTasksProps {
   onOpen: (sessionId: string) => void;
   currentSessionId?: string;
 }
 
-export function BackgroundTasks({
+export function BackgroundTasksPanel({
   onOpen,
   currentSessionId,
 }: BackgroundTasksProps): JSX.Element {
@@ -151,9 +170,7 @@ export function BackgroundTasks({
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
-  const [open, setOpen] = useState(false);
   const [showFinished, setShowFinished] = useState(true);
-  const rootRef = useRef<HTMLDivElement>(null);
 
   const chats = Object.entries(sessions).filter(([, st]) => st.isStreaming);
   // THIS chat first. A panel that mixed every chat's tools together answered a
@@ -166,68 +183,17 @@ export function BackgroundTasks({
   const elsewhere = tasks.filter(
     (t) => t.sessionId !== currentSessionId && t.status === "running",
   );
-  // The badge counts live work of either kind — a chat thinking between tools
-  // has no running task, and a task can outlive the visible chat.
-  const badge = running.length + elsewhere.length || chats.length;
-
-  // A running row shows elapsed time; tick so it doesn't sit frozen.
+  // A running row shows elapsed time; tick so it doesn't sit frozen. The panel
+  // only exists while its tab is open, so having rows to tick is the whole gate.
   const [, force] = useState(0);
   useEffect(() => {
-    if (!open || running.length === 0) return;
+    if (running.length === 0) return;
     const id = setInterval(() => force((n) => n + 1), 1000);
     return () => clearInterval(id);
-  }, [open, running.length]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent): void => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node))
-        setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  }, [running.length]);
 
   return (
-    <div ref={rootRef} className="app-no-drag relative">
-      <button
-        type="button"
-        title={
-          badge
-            ? `${running.length} running ${running.length === 1 ? "task" : "tasks"}`
-            : "Background tasks"
-        }
-        aria-label="Background tasks"
-        onClick={() => setOpen((o) => !o)}
-        className={cn(
-          "relative flex size-7 items-center justify-center rounded-md transition-colors",
-          badge
-            ? "text-green-text hover:bg-green-bg"
-            : "text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]",
-        )}
-      >
-        <Activity className="size-4" />
-        {badge > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex min-w-[14px] items-center justify-center rounded-full bg-green-text px-[3px] text-[9px] font-semibold leading-[14px] text-white">
-            {badge}
-          </span>
-        )}
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 flex max-h-[70vh] w-[26rem] flex-col rounded-xl border border-border bg-card shadow-xl">
-          <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-            <h3 className="text-sm font-semibold">Background tasks</h3>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
-            >
-              <X className="size-4" />
-            </button>
-          </div>
-
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+    <div className="space-y-3 p-3">
             {chats.length > 0 && (
               <div className="space-y-1">
                 <div className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -241,10 +207,7 @@ export function BackgroundTasks({
                     <Loader2 className="size-3.5 shrink-0 animate-spin text-green-text" />
                     <button
                       type="button"
-                      onClick={() => {
-                        onOpen(id);
-                        setOpen(false);
-                      }}
+                      onClick={() => onOpen(id)}
                       className="min-w-0 flex-1 truncate text-left text-[13px]"
                     >
                       {chatLabel(st.messages)}
@@ -327,9 +290,6 @@ export function BackgroundTasks({
                 Nothing has run yet. Tool calls show up here as they happen.
               </div>
             )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

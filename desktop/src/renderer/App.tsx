@@ -22,6 +22,7 @@ import {
   Sparkles,
   Files,
   Blocks,
+  Activity,
   Terminal as TerminalIcon,
   FileDiff,
   PanelLeft,
@@ -49,7 +50,10 @@ import { SessionList } from "@/components/SessionList";
 import { ArtifactsPanel } from "@/components/ArtifactsPanel";
 import { ChangesPanel } from "@/components/ChangesPanel";
 import { SandboxFilesPanel } from "@/components/SandboxFilesPanel";
-import { BackgroundTasks } from "@/components/BackgroundTasks";
+import {
+  BackgroundTasksPanel,
+  useTaskBadge,
+} from "@/components/BackgroundTasks";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { FilterDropdown } from "@/components/FilterDropdown";
 import { SkillsPanel } from "@/components/SkillsPanel";
@@ -92,7 +96,7 @@ const Terminal = lazy(() =>
 );
 
 type View = "chat" | "skills" | "routines";
-type RightTab = "files" | "artifacts" | "changes" | null;
+type RightTab = "files" | "artifacts" | "tasks" | "changes" | null;
 type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
 function api(): ElectronAPI | undefined {
@@ -179,11 +183,13 @@ function IconBtn({
   active,
   title,
   onClick,
+  badge,
   children,
 }: {
   active?: boolean;
   title: string;
   onClick?: () => void;
+  badge?: number;
   children: ReactNode;
 }): JSX.Element {
   return (
@@ -193,11 +199,16 @@ function IconBtn({
       aria-label={title}
       onClick={onClick}
       className={cn(
-        "app-no-drag flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]",
+        "app-no-drag relative flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]",
         active && "bg-black/[0.06] text-foreground dark:bg-white/[0.08]",
       )}
     >
       {children}
+      {badge !== undefined && badge > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 flex min-w-[14px] items-center justify-center rounded-full bg-green-text px-[3px] text-[9px] font-semibold leading-[14px] text-white">
+          {badge}
+        </span>
+      )}
     </button>
   );
 }
@@ -295,6 +306,7 @@ export default function App(): JSX.Element {
     useState<"pyodide" | "subprocess" | "docker">("pyodide");
   const [homeShellSupported, setHomeShellSupported] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>(null);
+  const taskBadge = useTaskBadge();
   const [filters, setFilters] = useState({
     status: "all",
     activity: "all",
@@ -937,14 +949,22 @@ export default function App(): JSX.Element {
           >
             <Blocks className="size-4" />
           </IconBtn>
-          {/* Next to Files and Artifacts on purpose: all three answer "what is
-              this chat doing / what came out of it", and this one used to sit at
-              the far end of the bar, next to Incognito. */}
+          {/* Opens in the right panel beside Files and Artifacts, not as its own
+              popover: all three answer "what is this chat doing / what came out
+              of it", so they share one surface you can resize and keep open. */}
           {!incognito && (
-            <BackgroundTasks
-              onOpen={openBackgroundTask}
-              currentSessionId={currentSessionId}
-            />
+            <IconBtn
+              title={
+                taskBadge
+                  ? `Background tasks — ${taskBadge} running`
+                  : "Background tasks"
+              }
+              active={rightTab === "tasks"}
+              badge={taskBadge}
+              onClick={() => toggleRight("tasks")}
+            >
+              <Activity className="size-4" />
+            </IconBtn>
           )}
           {/* Home sandbox shell — only when the engine has one (Podman /
               subprocess). Runs inside the chat's sandbox, not on the host. */}
@@ -1377,6 +1397,25 @@ export default function App(): JSX.Element {
                           >
                             Artifacts
                           </button>
+                          {!incognito && (
+                            <button
+                              type="button"
+                              onClick={() => setRightTab("tasks")}
+                              className={cn(
+                                "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                                rightTab === "tasks"
+                                  ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                                  : "text-muted-foreground hover:text-foreground",
+                              )}
+                            >
+                              Tasks
+                              {taskBadge > 0 && (
+                                <span className="ml-1 text-green-text">
+                                  {taskBadge}
+                                </span>
+                              )}
+                            </button>
+                          )}
                           <div className="flex-1" />
                           <button
                             type="button"
@@ -1388,10 +1427,13 @@ export default function App(): JSX.Element {
                           </button>
                         </div>
                         <div className="min-h-0 flex-1 overflow-auto">
-                          {rightTab === "files" ? (
-                            <SandboxFilesPanel />
-                          ) : (
-                            <ArtifactsPanel />
+                          {rightTab === "files" && <SandboxFilesPanel />}
+                          {rightTab === "artifacts" && <ArtifactsPanel />}
+                          {rightTab === "tasks" && (
+                            <BackgroundTasksPanel
+                              onOpen={openBackgroundTask}
+                              currentSessionId={currentSessionId}
+                            />
                           )}
                         </div>
                       </div>
@@ -1552,6 +1594,24 @@ export default function App(): JSX.Element {
                           >
                             Changes
                           </button>
+                          {!incognito && (
+                            <button
+                              onClick={() => setRightTab("tasks")}
+                              className={cn(
+                                "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                                rightTab === "tasks"
+                                  ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                                  : "text-muted-foreground hover:text-foreground",
+                              )}
+                            >
+                              Tasks
+                              {taskBadge > 0 && (
+                                <span className="ml-1 text-green-text">
+                                  {taskBadge}
+                                </span>
+                              )}
+                            </button>
+                          )}
                           <div className="flex-1" />
                           <button
                             type="button"
@@ -1582,6 +1642,12 @@ export default function App(): JSX.Element {
                             <ArtifactsPanel />
                           </div>
                           {rightTab === "changes" && <ChangesPanel />}
+                          {rightTab === "tasks" && (
+                            <BackgroundTasksPanel
+                              onOpen={openBackgroundTask}
+                              currentSessionId={currentSessionId}
+                            />
+                          )}
                         </div>
                       </Panel>
                     </ResizablePanel>
