@@ -156,11 +156,19 @@ export function BackgroundTasks({
   const rootRef = useRef<HTMLDivElement>(null);
 
   const chats = Object.entries(sessions).filter(([, st]) => st.isStreaming);
-  const running = tasks.filter((t) => t.status === "running");
-  const finished = tasks.filter((t) => t.status !== "running");
+  // THIS chat first. A panel that mixed every chat's tools together answered a
+  // question nobody asked — what is the machine doing — over the one they did:
+  // what is happening in front of me. Work in other chats is still here, in its
+  // own group, because it is the reason to go and look at them.
+  const mine = tasks.filter((t) => t.sessionId === currentSessionId);
+  const running = mine.filter((t) => t.status === "running");
+  const finished = mine.filter((t) => t.status !== "running");
+  const elsewhere = tasks.filter(
+    (t) => t.sessionId !== currentSessionId && t.status === "running",
+  );
   // The badge counts live work of either kind — a chat thinking between tools
   // has no running task, and a task can outlive the visible chat.
-  const badge = running.length || chats.length;
+  const badge = running.length + elsewhere.length || chats.length;
 
   // A running row shows elapsed time; tick so it doesn't sit frozen.
   const [, force] = useState(0);
@@ -264,7 +272,23 @@ export function BackgroundTasks({
 
             {running.length > 0 && (
               <div className="space-y-1.5">
+                <div className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Running
+                </div>
                 {running.map((t) => (
+                  <TaskRow key={t.id} task={t} />
+                ))}
+              </div>
+            )}
+
+            {elsewhere.length > 0 && (
+              // Named rather than merged in: the row looks the same, and without
+              // a heading you would think this chat was doing it.
+              <div className="space-y-1.5">
+                <div className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  From other sessions
+                </div>
+                {elsewhere.map((t) => (
                   <TaskRow key={t.id} task={t} />
                 ))}
               </div>

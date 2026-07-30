@@ -552,6 +552,15 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
         msg.includes("syntax is incorrect") ||
         msg.includes("*.json");
       if (looksBroken && opts.resetOnBroken !== true) {
+        // Drop the latch. `podmanEverReady` exists because the WSL VM idle-
+        // freezes and the socket dies between runs, so "not answering right
+        // now" does not mean broken — but a machine that says its own config
+        // file is unreadable IS broken, and that is better evidence than the
+        // latch. Reported: the sandbox refused every run with this very message
+        // while Settings kept saying "Podman is ready", because the latch had
+        // been set by a working session earlier and nothing ever cleared it.
+        podmanEverReady = false;
+        podmanReadyState = false;
         // Destroying the machine is a repair, not a side effect of running a
         // command: `machine rm -f` throws away the VM, and if the `machine
         // init` behind it doesn't finish, the sandbox is left with nothing and

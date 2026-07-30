@@ -937,6 +937,15 @@ export default function App(): JSX.Element {
           >
             <Blocks className="size-4" />
           </IconBtn>
+          {/* Next to Files and Artifacts on purpose: all three answer "what is
+              this chat doing / what came out of it", and this one used to sit at
+              the far end of the bar, next to Incognito. */}
+          {!incognito && (
+            <BackgroundTasks
+              onOpen={openBackgroundTask}
+              currentSessionId={currentSessionId}
+            />
+          )}
           {/* Home sandbox shell — only when the engine has one (Podman /
               subprocess). Runs inside the chat's sandbox, not on the host. */}
           {appMode === "home" && homeShellSupported && (
@@ -967,12 +976,6 @@ export default function App(): JSX.Element {
                 <FileDiff className="size-4" />
               </IconBtn>
             </>
-          )}
-          {!incognito && (
-            <BackgroundTasks
-              onOpen={openBackgroundTask}
-              currentSessionId={currentSessionId}
-            />
           )}
           {appMode === "home" && (
             <IconBtn
