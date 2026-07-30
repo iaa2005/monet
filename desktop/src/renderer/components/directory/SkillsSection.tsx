@@ -46,10 +46,23 @@ const FILTERS = [
 const REGISTRY_PAGE = 100;
 
 const SORTS = [
+  { label: "Most installed", value: "installs" },
+  { label: "Most stars", value: "stars" },
   { label: "Name", value: "name" },
   { label: "Source", value: "source" },
   { label: "Installed first", value: "installed" },
 ];
+
+/**
+ * The keys a registry can order by itself.
+ *
+ * These go to the main process, because a registry is PAGED: re-ordering the
+ * hundred rows already on screen would answer "the most-installed of an
+ * arbitrary hundred", which is not the question. claudemarketplaces sorts its
+ * whole 23 472-row snapshot; skillsdirectory has a server-side stars sort and no
+ * install counts at all.
+ */
+const SERVER_SORTS = new Set(["installs", "stars", "name"]);
 
 /** What a switched-off source looks like, spelled out once: the row is a set of
  * switches, so an empty grid should say which switch to flip. */
@@ -68,7 +81,7 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
-  const [sort, setSort] = useState("name");
+  const [sort, setSort] = useState("installs");
   const [adding, setAdding] = useState(false);
   const [newSource, setNewSource] = useState("");
   const [reloading, setReloading] = useState(false);
@@ -105,6 +118,7 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
         api()?.skillStore.list({
           query,
           category: category === "all" ? undefined : category,
+          sort: SERVER_SORTS.has(sort) ? sort : undefined,
         }),
       ]);
       // A newer request started while this one was out — its answer is the
@@ -127,7 +141,7 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
     const t = setTimeout(() => void load(), query ? 400 : 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, category]);
+  }, [query, category, sort]);
 
   useEffect(() => {
     void api()
@@ -259,6 +273,9 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
         query,
         offset: next,
         category: category === "all" ? undefined : category,
+        // The same key the first page used, or page two would come from a
+        // different ordering and repeat or skip rows.
+        sort: SERVER_SORTS.has(sort) ? sort : undefined,
       });
       const page = r?.ok ? (r.skills ?? []) : [];
       // A short page means the registry has no more to give for this query.
@@ -342,7 +359,18 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
         matches(query, s.name, s.description, s.source, s.path),
     );
     list = [...list];
-    if (sort === "name") list.sort((a, b) => a.name.localeCompare(b.name));
+    // The registry pages already arrive in the chosen order; this settles the
+    // MERGED view, where a repo source's cards (which have neither figure) sit
+    // beside a registry's. A missing count sorts last rather than as zero-ish
+    // noise in the middle.
+    const num = (v: number | undefined): number => v ?? -1;
+    if (sort === "installs")
+      list.sort(
+        (a, b) => num(b.installs) - num(a.installs) || a.name.localeCompare(b.name),
+      );
+    else if (sort === "stars")
+      list.sort((a, b) => num(b.stars) - num(a.stars) || a.name.localeCompare(b.name));
+    else if (sort === "name") list.sort((a, b) => a.name.localeCompare(b.name));
     else if (sort === "source")
       list.sort(
         (a, b) => a.source.localeCompare(b.source) || a.name.localeCompare(b.name),

@@ -625,6 +625,7 @@ export interface ElectronAPI {
       query?: string;
       offset?: number;
       category?: string;
+      sort?: string;
     }) => Promise<{
       ok: boolean;
       skills?: StoreSkill[];
@@ -649,6 +650,7 @@ export interface ElectronAPI {
       query?: string;
       offset?: number;
       category?: string;
+      sort?: string;
     }) => Promise<{
       ok: boolean;
       skills?: StoreSkill[];

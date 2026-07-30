@@ -489,6 +489,7 @@ const electronAPI = {
       query?: string;
       offset?: number;
       category?: string;
+      sort?: string;
     }): Promise<{
       ok: boolean;
       skills?: unknown[];
@@ -515,6 +516,7 @@ const electronAPI = {
       query?: string;
       offset?: number;
       category?: string;
+      sort?: string;
     }): Promise<{ ok: boolean; skills?: unknown[]; error?: string }> =>
       ipcRenderer.invoke("skillstore:registryPage", payload),
     /** Curated sources published in the community repo — nothing is executed,

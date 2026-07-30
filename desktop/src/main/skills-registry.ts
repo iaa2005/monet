@@ -149,6 +149,10 @@ export async function listRegistry(opts: {
   // hundred already fetched would be filtering the wrong hundred.
   if (opts.category) url.searchParams.set("category", opts.category);
   // A query orders by relevance on their side; browsing needs an explicit one.
+  // `votes` (their default) is effectively unordered — almost nothing has votes,
+  // so a 0-star entry comes first. `stars` is offered because the user can ask
+  // for it, with the per-repo cap doing the work of keeping one project from
+  // owning the page.
   else url.searchParams.set("sort", opts.sort ?? "recent");
   if (opts.offset) url.searchParams.set("offset", String(opts.offset));
   url.searchParams.set(

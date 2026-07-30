@@ -111,14 +111,28 @@ export function matchMarketplace(
   });
 }
 
+export type MarketplaceSort = "installs" | "stars" | "name";
+
 /**
- * Most-installed first when browsing.
+ * Order the WHOLE snapshot, then page it.
  *
- * Unlike skillsdirectory's star counts — which are the REPO's, repeated on
- * every skill in it — `installs` is per skill, so it actually ranks skills.
+ * Sorting only the hundred rows already on screen would answer a different
+ * question: "the most-installed of an arbitrary hundred" is not "the
+ * most-installed", and the difference here is 23 472 against 100.
+ *
+ * `installs` is per skill and is the honest default. `stars` belongs to the
+ * REPOSITORY — nineteen skills called `docx` each inherit their own repo's
+ * figure — so it ranks projects, not skills, and is offered rather than assumed.
  */
-export function sortMarketplace(list: MarketplaceSkill[]): MarketplaceSkill[] {
+export function sortMarketplace(
+  list: MarketplaceSkill[],
+  by: MarketplaceSort = "installs",
+): MarketplaceSkill[] {
+  const byName = (a: MarketplaceSkill, b: MarketplaceSkill): number =>
+    a.name.localeCompare(b.name);
+  if (by === "name") return [...list].sort(byName);
+  const key = by === "stars" ? "stars" : "installs";
   return [...list].sort(
-    (a, b) => (b.installs ?? 0) - (a.installs ?? 0) || a.name.localeCompare(b.name),
+    (a, b) => (b[key] ?? 0) - (a[key] ?? 0) || byName(a, b),
   );
 }

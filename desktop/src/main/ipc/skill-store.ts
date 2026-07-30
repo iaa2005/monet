@@ -34,6 +34,7 @@ import {
   matchMarketplace,
   marketplaceSnapshot,
   sortMarketplace,
+  type MarketplaceSort,
 } from "../skills-marketplace.js";
 import { DEFAULT_CONFIG, directoryConfig } from "../directory-config.js";
 import {
@@ -350,12 +351,17 @@ async function listMarketplaceSource(
   src: Extract<SkillSource, { kind: "registry" }>,
   query: string,
   offset: number,
+  sort?: RegistrySort,
 ): Promise<StoreSkill[]> {
   const cfg = await directoryConfig();
   const snapshot = await marketplaceSnapshot();
-  const hits = query.trim()
-    ? matchMarketplace(snapshot, query)
-    : sortMarketplace(snapshot);
+  // Search results keep relevance order unless an explicit key is asked for;
+  // browsing always needs one.
+  const key: MarketplaceSort =
+    sort === "stars" ? "stars" : sort === "name" ? "name" : "installs";
+  const found = query.trim() ? matchMarketplace(snapshot, query) : snapshot;
+  const hits =
+    query.trim() && !sort ? found : sortMarketplace(found, key);
   const resolve = installResolver();
   return hits.slice(offset, offset + cfg.registryPageSize).map((r) => {
     const uid = `${src.id}|${r.repo}|${r.path}`;
@@ -384,6 +390,7 @@ async function listRegistrySource(
   query: string,
   offset: number,
   category?: string,
+  sort?: RegistrySort,
 ): Promise<StoreSkill[]> {
   const cfg = await directoryConfig();
   const page = await listRegistry({
@@ -391,6 +398,8 @@ async function listRegistrySource(
     category,
     offset,
     limit: cfg.registryPageSize,
+    // No install counts in this registry — only the repo's stars.
+    sort: sort === "stars" ? "stars" : undefined,
   });
   const resolve = installResolver();
   return capPerRepo(page, cfg.maxPerRepo).map((r) => ({
@@ -416,16 +425,21 @@ async function listRegistrySource(
   }));
 }
 
+/** Sort keys a REGISTRY can honour. A github source has neither figure, so it
+ * is unaffected and keeps its own order. */
+export type RegistrySort = "installs" | "stars" | "name";
+
 function listOne(
   src: SkillSource,
   query: string,
   offset: number,
   category?: string,
+  sort?: RegistrySort,
 ): Promise<StoreSkill[]> {
   if (src.kind === "github") return listGithub(src);
   return src.format === "claudemarketplaces-v1"
-    ? listMarketplaceSource(src, query, offset)
-    : listRegistrySource(src, query, offset, category);
+    ? listMarketplaceSource(src, query, offset, sort)
+    : listRegistrySource(src, query, offset, category, sort);
 }
 
 /** Every source, merged. One unreachable repo must not blank the whole
@@ -435,9 +449,10 @@ async function listAll(
   query = "",
   offset = 0,
   category?: string,
+  sort?: RegistrySort,
 ): Promise<{ skills: StoreSkill[]; errors: string[] }> {
   const results = await Promise.allSettled(
-    sources.map((s) => listOne(s, query, offset, category)),
+    sources.map((s) => listOne(s, query, offset, category, sort)),
   );
   const skills: StoreSkill[] = [];
   const errors: string[] = [];
@@ -511,7 +526,12 @@ export function registerSkillStoreIPC(): void {
     "skillstore:list",
     async (
       _e,
-      opts?: { query?: string; offset?: number; category?: string },
+      opts?: {
+        query?: string;
+        offset?: number;
+        category?: string;
+        sort?: RegistrySort;
+      },
     ): Promise<{
       ok: boolean;
       skills?: StoreSkill[];
@@ -524,6 +544,7 @@ export function registerSkillStoreIPC(): void {
           opts?.query ?? "",
           opts?.offset ?? 0,
           opts?.category || undefined,
+          opts?.sort,
         );
         return { ok: true, skills, errors };
       } catch (err) {
@@ -584,7 +605,12 @@ export function registerSkillStoreIPC(): void {
     "skillstore:registryPage",
     async (
       _e,
-      payload: { query?: string; offset?: number; category?: string },
+      payload: {
+        query?: string;
+        offset?: number;
+        category?: string;
+        sort?: RegistrySort;
+      },
     ): Promise<{ ok: boolean; skills?: StoreSkill[]; error?: string }> => {
       try {
         const regs = getSources().filter(
@@ -599,6 +625,7 @@ export function registerSkillStoreIPC(): void {
               payload?.query ?? "",
               payload?.offset ?? 0,
               payload?.category || undefined,
+              payload?.sort,
             ),
           ),
         );

@@ -64,23 +64,50 @@ const SAMPLE: MarketplaceSkill[] = [
   check("no match is an empty list, not everything", matchMarketplace(SAMPLE, "zzzz").length === 0);
 }
 
-// ── 2. Browsing order ─────────────────────────────────────────────────
+// ── 2. Browsing order, by the chosen key ──────────────────────────────
 {
-  const sorted = sortMarketplace(SAMPLE);
-  check("most-installed first", sorted[0]?.name === "find-skills", sorted[0]?.name);
-  check("least last", sorted[sorted.length - 1]?.name === "pdf-filler");
-  // `installs` is per skill here. skillsdirectory's `stars` is the REPO's,
-  // repeated on every skill in it, which is why sorting by it clumped.
+  // Sorting happens over the WHOLE snapshot before paging, not over the hundred
+  // rows on screen: "the most-installed of an arbitrary hundred" is a different
+  // question, and the gap is 23 472 against 100.
+  const byInstalls = sortMarketplace(SAMPLE, "installs");
+  check("installs: most first", byInstalls[0]?.name === "find-skills", byInstalls[0]?.name);
+  check("installs: least last", byInstalls[byInstalls.length - 1]?.name === "pdf-filler");
   check(
-    "the order is by installs, not by repo",
-    sorted.map((x) => x.installs ?? 0).every((v, i, a) => i === 0 || a[i - 1]! >= v),
-    JSON.stringify(sorted.map((x) => [x.name, x.installs])),
+    "installs: monotonic",
+    byInstalls.map((x) => x.installs ?? 0).every((v, i, a) => i === 0 || a[i - 1]! >= v),
+    JSON.stringify(byInstalls.map((x) => [x.name, x.installs])),
   );
+
+  const starred: MarketplaceSkill[] = [
+    { ...s("low-stars", "", "a/b", "low-stars", 9_000), stars: 10 },
+    { ...s("high-stars", "", "c/d", "high-stars", 5), stars: 90_000 },
+  ];
+  const byStars = sortMarketplace(starred, "stars");
+  check("stars: most first", byStars[0]?.name === "high-stars", byStars[0]?.name);
+  // The two keys must genuinely differ, or one of them is decoration: stars
+  // belong to the REPOSITORY and installs to the skill, so the popular skill in
+  // an obscure repo and the obscure skill in a famous repo swap places.
+  check(
+    "stars and installs disagree, as they should",
+    sortMarketplace(starred, "installs")[0]?.name === "low-stars",
+    sortMarketplace(starred, "installs")[0]?.name,
+  );
+
+  const byName = sortMarketplace(SAMPLE, "name");
+  check("name: alphabetical", byName[0]?.name === "docx", byName[0]?.name);
+
+  check("the default is installs", JSON.stringify(sortMarketplace(SAMPLE)) === JSON.stringify(byInstalls));
   check("sorting does not mutate the input", SAMPLE[0]?.name === "find-skills");
-  check("a missing installs count sorts last, not first", sortMarketplace([
-    s("no-count", "", "a/b", "no-count"),
-    s("counted", "", "c/d", "counted", 5),
-  ])[0]?.name === "counted");
+  // A missing figure must not float to the top as if it were the best.
+  check(
+    "a missing count sorts last, not first",
+    sortMarketplace([s("no-count", "", "a/b", "no-count"), s("counted", "", "c/d", "counted", 5)])[0]?.name === "counted",
+  );
+  check(
+    "and ties break by name, so the order is stable",
+    JSON.stringify(sortMarketplace([s("b", "", "x/y", "b", 5), s("a", "", "x/z", "a", 5)]).map((x) => x.name)) ===
+      JSON.stringify(["a", "b"]),
+  );
 }
 
 // ── 3. Nested paths survive ───────────────────────────────────────────
