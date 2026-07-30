@@ -498,6 +498,7 @@ const electronAPI = {
     install: (payload: {
       source: string;
       path: string;
+      uid?: string;
       kind?: string;
       repository?: string;
       name?: string;

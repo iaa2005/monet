@@ -185,6 +185,9 @@ export interface SkillSource {
 }
 
 export interface StoreSkill {
+  /** Stable unique identity — source plus repo/path, never the name. Two
+   * sources can ship a skill called `docx`. */
+  uid: string;
   /** Empty for a registry card — the directory does not say where in the repo
    * the skill lives, so it is resolved at install time. */
   path: string;
@@ -623,6 +626,7 @@ export interface ElectronAPI {
     install: (payload: {
       source: string;
       path: string;
+      uid?: string;
       kind?: "github" | "registry";
       repository?: string;
       name?: string;

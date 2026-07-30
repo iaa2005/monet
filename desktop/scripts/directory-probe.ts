@@ -42,6 +42,7 @@ const check = (label: string, ok: boolean, detail = ""): void => {
 // ── Sources ────────────────────────────────────────────────────────────────
 console.log("\n# sources");
 const def = call("skillstore:getSources") as { kind: string; id: string }[];
+const defaultIds = def.map((s) => s.id);
 // Sources are typed now: a github source enumerated from a repo, plus the
 // registry, which is in the defaults so its chip is there before anything is
 // typed rather than only answering a search.
@@ -52,6 +53,35 @@ check(
   JSON.stringify(def),
 );
 
+// Reported: "Skills Directory включаются но не выключаются". The exact payload
+// the Directory sends when a chip is clicked, through the real handlers.
+{
+  const flip = (id: string, enabled: boolean): any[] =>
+    (call("skillstore:getSources") as any[]).map((x) =>
+      x.id === id
+        ? { kind: x.kind, id: x.id, enabled }
+        : x.kind === "github" && x.enabled
+          ? x.id
+          : { kind: x.kind, id: x.id, enabled: x.enabled },
+    );
+  const stateOf = (id: string): boolean | undefined =>
+    (call("skillstore:getSources") as any[]).find((x) => x.id === id)?.enabled;
+
+  check("the registry starts on", stateOf("skillsdirectory") === true);
+  call("skillstore:setSources", flip("skillsdirectory", false));
+  check("switching it OFF sticks", stateOf("skillsdirectory") === false, String(stateOf("skillsdirectory")));
+  // Read twice: a top-up that re-added an enabled copy would show on the second.
+  check("and is still off on a second read", stateOf("skillsdirectory") === false);
+  call("skillstore:setSources", flip("skillsdirectory", true));
+  check("switching it back ON sticks", stateOf("skillsdirectory") === true);
+
+  const other = "iaa2005/monet-directory/skills";
+  call("skillstore:setSources", flip(other, false));
+  check("a github built-in switches off too", stateOf(other) === false, String(stateOf(other)));
+  check("without disturbing the registry", stateOf("skillsdirectory") === true);
+  call("skillstore:setSources", flip(other, true));
+}
+
 const normalized = (call("skillstore:setSources", [
   "https://github.com/iaa2005/monet-directory",
   "  anthropics/skills  ",
@@ -59,10 +89,17 @@ const normalized = (call("skillstore:setSources", [
   "iaa2005/monet-directory",
   "https://github.com/foo/bar/tree/main/skills",
 ]) as { id: string }[]).map((s) => s.id);
+// The built-ins are always in the list, whatever is written: switchable, not
+// removable, or a user who deleted one would have no way back.
 check(
   "URL forms normalized, junk dropped, duplicates collapsed",
-  JSON.stringify(normalized) ===
+  JSON.stringify(normalized.filter((id) => !defaultIds.includes(id))) ===
     JSON.stringify(["iaa2005/monet-directory", "anthropics/skills", "foo/bar/skills"]),
+  JSON.stringify(normalized),
+);
+check(
+  "built-ins survive a write that omits them",
+  defaultIds.every((id) => normalized.includes(id)),
   JSON.stringify(normalized),
 );
 check(
@@ -70,7 +107,7 @@ check(
   existsSync(join(sandbox, ".monet", "skill-store.json")) &&
     JSON.parse(
       readFileSync(join(sandbox, ".monet", "skill-store.json"), "utf-8"),
-    ).sources.length === 3,
+    ).sources.length === normalized.length,
 );
 
 // ── Listing (real GitHub) ──────────────────────────────────────────────────
@@ -103,9 +140,21 @@ console.log("      sample:", JSON.stringify(sample));
 check("cards carry slug + source", !!sample?.slug && !!sample?.source);
 check("descriptions loaded", (sample?.description ?? "").length > 20);
 
-// Same-named skill in two repos must stay two rows.
-const names = (listed.skills ?? []).map((s: any) => `${s.source}::${s.path}`);
-check("no duplicate keys", new Set(names).size === names.length);
+// Identity. `source::path` was the key, and it collides for every registry
+// card — they share an empty path, because the folder is only resolved at
+// install. Installing one then marked them all installed and pointed every
+// Remove button at the same folder. Same class of bug as `docx` existing in
+// two repos and both rows claiming to be installed.
+const uids = (listed.skills ?? []).map((s: any) => s.uid);
+check("every card has a uid", uids.every((u: string) => !!u));
+check("and they are unique", new Set(uids).size === uids.length, `${new Set(uids).size}/${uids.length}`);
+const sameName = (listed.skills ?? []).filter((s: any) => s.name === "docx");
+if (sameName.length > 1)
+  check(
+    "the same skill name in two repos is two distinct rows",
+    new Set(sameName.map((s: any) => s.uid)).size === sameName.length,
+    JSON.stringify(sameName.map((s: any) => s.uid)),
+  );
 
 // ── Install (real download into the sandbox) ───────────────────────────────
 console.log("\n# install");

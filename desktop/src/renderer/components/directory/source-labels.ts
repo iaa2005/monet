@@ -55,3 +55,20 @@ export function sourceChipLabels(
   }
   return out;
 }
+
+/**
+ * Which curated suggestions are still on offer.
+ *
+ * The catalog rows carry an `added` flag, but it is a snapshot from when they
+ * were fetched: removing a source left it absent from the suggestions until the
+ * page was re-entered. Deriving it from the live source list is correct with no
+ * refetch, and matches on the repo too — a catalog id is kebab-case
+ * ("anthropic-skills") while a configured github source is `owner/repo`.
+ */
+export function offeredSuggestions<
+  S extends { id: string; repo?: string },
+  T extends { id: string; repo?: string },
+>(suggested: T[], sources: S[]): T[] {
+  const have = new Set(sources.flatMap((s) => [s.id, s.repo ?? ""]));
+  return suggested.filter((x) => !have.has(x.id) && !have.has(x.repo ?? ""));
+}

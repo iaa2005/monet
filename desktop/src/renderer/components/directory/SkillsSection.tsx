@@ -26,7 +26,7 @@ import {
   matches,
   Picker,
 } from "./shared";
-import { sourceChipLabels } from "./source-labels";
+import { offeredSuggestions, sourceChipLabels } from "./source-labels";
 
 const FILTERS = [
   { label: "All", value: "all" },
@@ -163,9 +163,6 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   /** Add a curated source. It is a place to look for skills, not code — the
    * install path is unchanged, so nothing runs until the user installs. */
   const addSuggested = async (s: SuggestedSource): Promise<void> => {
-    setSuggested((prev) =>
-      prev.map((x) => (x.id === s.id ? { ...x, added: true } : x)),
-    );
     await save([
       ...sources.map(stored),
       s.kind === "github" ? (s.repo ?? s.id) : { kind: s.kind, id: s.id, api: s.api },
@@ -179,20 +176,24 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   };
 
   const install = async (s: StoreSkill): Promise<void> => {
-    setBusy(s.source + s.path);
+    setBusy(s.uid);
     try {
       const r = await api()?.skillStore.install({
         source: s.source,
         path: s.path,
+        uid: s.uid,
         kind: s.kind,
         repository: s.repository,
         name: s.name,
       });
+      // Matched on uid. source+path marked every registry card at once — they
+      // all have an empty path — and marked a same-named skill from another
+      // repo as installed too.
       if (r?.ok)
         setSkills(
           (prev) =>
             prev?.map((x) =>
-              x.source === s.source && x.path === s.path
+              x.uid === s.uid
                 ? { ...x, installed: true, slug: r.slug ?? x.slug }
                 : x,
             ) ?? null,
@@ -209,16 +210,16 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   };
 
   const remove = async (s: StoreSkill): Promise<void> => {
-    setBusy(s.source + s.path);
+    setBusy(s.uid);
     try {
+      // s.slug is the folder THIS card installed, resolved from the recorded
+      // origin — not slugify(name), which pointed at whichever same-named
+      // skill landed first.
       await api()?.skills.deleteBySlug(s.slug);
       setSkills(
         (prev) =>
-          prev?.map((x) =>
-            x.source === s.source && x.path === s.path
-              ? { ...x, installed: false }
-              : x,
-          ) ?? null,
+          prev?.map((x) => (x.uid === s.uid ? { ...x, installed: false } : x)) ??
+          null,
       );
     } finally {
       setBusy(null);
@@ -281,6 +282,19 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
     return () => io.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasRegistry, moreDone, moreBusy, regOffset, query, skills?.length]);
+
+  /**
+   * Which suggestions are still on offer.
+   *
+   * `added` arrives on the catalog rows too, but it is a snapshot taken when
+   * they were fetched — so removing a source left it missing from the
+   * suggestions until the page was re-entered. Derived from the live source
+   * list instead, which is correct without a refetch.
+   */
+  const offered = useMemo(
+    () => offeredSuggestions(suggested, sources),
+    [suggested, sources],
+  );
 
   /** Seeded from the directory's published list, unioned with whatever the
    * loaded cards actually carry — a category added upstream shows up as soon
@@ -431,15 +445,13 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
       {/* Curated in the community repo (skill-sources.json), so a new source
           reaches everyone with a push rather than an app release. Offered, not
           added: a source is somewhere to look, and the user chooses. */}
-      {suggested.some((x) => !x.added) && (
+      {offered.length > 0 && (
         <div className="mb-4">
           <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Suggested sources
           </div>
           <div className="flex flex-wrap gap-2">
-            {suggested
-              .filter((x) => !x.added)
-              .map((x) => (
+            {offered.map((x) => (
                 <button
                   key={x.id}
                   type="button"
@@ -474,7 +486,7 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
           </Empty>
         ) : (
           shown.map((s) => {
-            const key = s.source + s.path;
+            const key = s.uid;
             return (
               <DirCard
                 key={key}

@@ -46,6 +46,17 @@ export interface RegistrySkill extends BaseRegistrySkill {
 }
 
 export interface StoreSkill {
+  /**
+   * Stable, unique identity for this card, and the key an install is recorded
+   * under.
+   *
+   * Not the name: `docx` exists in anthropics/skills and in this project's own
+   * repo, and keying on the name made installing one mark both as installed —
+   * and, worse, made the second card's Remove button point at the first one's
+   * folder. Not source+path either: a registry card has no path (the folder is
+   * resolved at install time), so every registry card shared one key.
+   */
+  uid: string;
   /** Repo-relative dir of the skill. Empty for a registry card: the registry
    * does not say where in the repo the skill lives, so it is resolved at
    * install time against the repo's own tree. */
@@ -75,6 +86,65 @@ function skillsDir(): string {
 
 function configFile(): string {
   return join(getDataDir(), "skill-store.json");
+}
+
+/**
+ * Which card each installed folder came from: `{ <slug>: <uid> }`.
+ *
+ * Without it "installed" can only be guessed from the folder name, and two
+ * sources shipping a skill of the same name are indistinguishable. Recorded on
+ * install; read on every listing.
+ */
+function originsFile(): string {
+  return join(getDataDir(), "skill-origins.json");
+}
+
+function readOrigins(): Record<string, string> {
+  try {
+    const j = JSON.parse(readFileSync(originsFile(), "utf-8")) as unknown;
+    return j && typeof j === "object" ? (j as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function recordOrigin(slug: string, uid: string): void {
+  try {
+    const all = readOrigins();
+    all[slug] = uid;
+    writeFileSync(originsFile(), JSON.stringify(all, null, 2), "utf-8");
+  } catch {
+    /* the listing falls back to matching by folder name */
+  }
+}
+
+/**
+ * Resolve "is this card installed, and under which folder".
+ *
+ * Built once per listing so the legacy pass is deterministic: folders installed
+ * before origins were recorded have no uid, so they are matched by name — but
+ * each such folder may be claimed by only ONE card, or `docx` from two sources
+ * would both point at it and Remove would delete the wrong one.
+ */
+function installResolver(): (uid: string, name: string) => {
+  installed: boolean;
+  slug: string;
+} {
+  const origins = readOrigins();
+  const byUid = new Map<string, string>();
+  for (const [slug, uid] of Object.entries(origins)) byUid.set(uid, slug);
+  const claimed = new Set(Object.keys(origins));
+  const dir = skillsDir();
+  return (uid, name) => {
+    const known = byUid.get(uid);
+    if (known) return { installed: existsSync(join(dir, known)), slug: known };
+    const guess = slugify(name);
+    if (!claimed.has(guess) && existsSync(join(dir, guess))) {
+      claimed.add(guess); // first card wins; the rest are genuinely not installed
+      return { installed: true, slug: guess };
+    }
+    return { installed: false, slug: guess };
+  };
 }
 
 function getSources(): SkillSource[] {
@@ -194,20 +264,22 @@ async function listGithub(src: Extract<SkillSource, { kind: "github" }>): Promis
     .filter((p) => p.startsWith(prefix) && p.endsWith("/SKILL.md"))
     .map((p) => p.slice(0, -"/SKILL.md".length))
     .slice(0, 60);
-  const local = skillsDir();
+  const resolve = installResolver();
   const metas = await Promise.allSettled(
     dirs.map(async (dir) => {
       const md = await fetchRaw(src.repo, `${dir}/SKILL.md`);
       const fm = md ? parseFrontmatter(md) : {};
       const base = dir.split("/").pop() ?? dir;
-      const slug = slugify(base);
+      const uid = `${src.id}|${dir}`;
+      const { installed, slug } = resolve(uid, base);
       return {
+        uid,
         path: dir,
         source: src.id,
         kind: "github" as const,
         name: fm.name || base,
         description: (fm.description ?? "").slice(0, 400),
-        installed: existsSync(join(local, slug)),
+        installed,
         slug,
       } satisfies StoreSkill;
     }),
@@ -241,8 +313,11 @@ async function listRegistrySource(
     offset,
     limit: REGISTRY_PAGE,
   });
-  const local = skillsDir();
+  const resolve = installResolver();
   return capPerRepo(page, 3).map((r) => ({
+    // Includes the repository: two registry entries can share a name, and the
+    // path cannot be part of the identity because it is not known until install.
+    uid: `${src.id}|${r.repository}|${r.name}`,
     // The registry never says WHERE in the repo the skill is — resolved at
     // install against the repo's tree, so there is nothing to put here.
     path: "",
@@ -252,8 +327,7 @@ async function listRegistrySource(
     name: r.name,
     description: r.description,
     category: r.category,
-    installed: existsSync(join(local, slugify(r.name))),
-    slug: slugify(r.name),
+    ...resolve(`${src.id}|${r.repository}|${r.name}`, r.name),
   }));
 }
 
@@ -295,6 +369,7 @@ async function listAll(
 async function installSkill(
   source: string,
   dir: string,
+  uid?: string,
 ): Promise<{ ok: boolean; slug?: string; error?: string }> {
   try {
     const { repo } = parseSource(source);
@@ -314,6 +389,9 @@ async function installSkill(
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, content, "utf-8");
     }
+    // Remember which card this folder came from, so the next listing can tell
+    // two same-named skills from different sources apart.
+    if (uid) recordOrigin(slug, uid);
     // The agent caches the skill catalog — refresh like ipc/skills.ts does.
     void import("@vendor/skills/loadSkillsDir.js")
       .then((m) => (m as { clearSkillCaches?: () => void }).clearSkillCaches?.())
@@ -377,13 +455,14 @@ export function registerSkillStoreIPC(): void {
       payload: {
         source: string;
         path: string;
+        uid?: string;
         kind?: SourceKind;
         repository?: string;
         name?: string;
       },
     ) => {
       if (payload.kind !== "registry")
-        return installSkill(payload.source, payload.path);
+        return installSkill(payload.source, payload.path, payload.uid);
       if (!payload.repository)
         return { ok: false, error: "That directory entry has no repository." };
       const paths = await fetchTree(payload.repository);
@@ -393,7 +472,7 @@ export function registerSkillStoreIPC(): void {
       const pick = pickSkillDir(dirs, payload.name ?? "");
       if (!pick.ok)
         return { ok: false, error: pick.error, candidates: pick.candidates };
-      return installSkill(payload.repository, pick.dir);
+      return installSkill(payload.repository, pick.dir, payload.uid);
     },
   );
 

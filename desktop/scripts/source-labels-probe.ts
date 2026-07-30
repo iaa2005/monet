@@ -15,6 +15,7 @@
  */
 
 import {
+  offeredSuggestions,
   sourceChipLabels,
   type LabelableSource,
 } from "../src/renderer/components/directory/source-labels";
@@ -98,6 +99,43 @@ const reg = (id: string, name: string): LabelableSource => ({
   // one — but it must not crash or drop an entry.
   const two = sourceChipLabels([reg("a", "Same"), reg("b", "Same")]);
   check("duplicate registry names still map every id", two.size === 2, JSON.stringify([...two]));
+}
+
+// -- 4. Suggestions come back when a source is removed ----------------
+{
+  // Reported: "в Suggested sources обратно не возвращаются источники если их
+  // удалить, надо заново зайти на страницу skills". The catalog's own `added`
+  // flag is a snapshot from fetch time, so it went stale the moment a source
+  // was removed. Derived from the live list, it cannot.
+  const catalog = [
+    { id: "anthropic-skills", repo: "anthropics/skills" },
+    { id: "skillsdirectory" },
+  ];
+
+  const withBoth = [gh("anthropics/skills"), reg("skillsdirectory", "Skills Directory")];
+  check("nothing is offered when both are configured", offeredSuggestions(catalog, withBoth).length === 0);
+
+  // Remove the repo — its suggestion must be back immediately.
+  const afterRemove = [reg("skillsdirectory", "Skills Directory")];
+  const back = offeredSuggestions(catalog, afterRemove);
+  check("removing a source brings its suggestion back", back.length === 1, JSON.stringify(back));
+  check("and it is the right one", back[0]?.id === "anthropic-skills");
+
+  check("an empty config offers everything", offeredSuggestions(catalog, []).length === 2);
+
+  // A catalog id is kebab-case; a configured github source is owner/repo. The
+  // match has to work across that, or the chip would be offered twice.
+  check(
+    "a configured repo suppresses its kebab-case catalog id",
+    offeredSuggestions(catalog, [gh("anthropics/skills")]).every((x) => x.id !== "anthropic-skills"),
+  );
+  // A switched-OFF source is still configured — it belongs in the chip row, not
+  // back in the suggestions, or it would appear in both places at once.
+  const off = [{ ...gh("anthropics/skills") }];
+  check(
+    "a source that is merely switched off is not re-offered",
+    offeredSuggestions(catalog, off).every((x) => x.id !== "anthropic-skills"),
+  );
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL SOURCE-LABEL CHECKS PASSED");
