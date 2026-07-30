@@ -54,7 +54,7 @@
     "smoke:agentdirs": "node scripts/renderer-probe.mjs scripts/agent-folders-probe.ts",
     "smoke:filerows": "node scripts/renderer-probe.mjs scripts/file-rows-probe.ts",
     "smoke:ghbudget": "node scripts/renderer-probe.mjs scripts/gh-budget-probe.ts",
-    "smoke:excludes": "node scripts/renderer-probe.mjs scripts/checkpoint-excludes-probe.ts"
+    "smoke:shadow": "node scripts/renderer-probe.mjs scripts/checkpoint-store-probe.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",

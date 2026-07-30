@@ -14,11 +14,15 @@ import { spawn } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getDataSubdir } from "../data-dir.js";
-import { DEFAULT_EXCLUDES } from "./checkpoint-excludes.js";
+import {
+  DEFAULT_EXCLUDES,
+  needsPackConfig,
+  shadowSlug,
+  withPackConfig,
+} from "./checkpoint-store.js";
 
-function shadowDir(sessionId: string): string {
-  const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_") || "session";
-  return join(getDataSubdir("checkpoints"), safe);
+export function shadowDir(sessionId: string): string {
+  return join(getDataSubdir("checkpoints"), shadowSlug(sessionId));
 }
 
 // The pattern list lives in checkpoint-excludes.ts — dependency-free, so a probe
@@ -37,6 +41,18 @@ function ensureExcludes(gitDir: string): void {
     if (current !== DEFAULT_EXCLUDES) writeFileSync(excludePath, DEFAULT_EXCLUDES);
   } catch {
     /* best-effort */
+  }
+}
+
+/** Write the packing settings into a store that has not got them yet. */
+function ensurePacking(gitDir: string): void {
+  try {
+    const cfg = join(gitDir, "config");
+    if (!existsSync(cfg)) return;
+    const current = readFileSync(cfg, "utf8");
+    if (needsPackConfig(current)) writeFileSync(cfg, withPackConfig(current));
+  } catch {
+    /* best-effort: an unpacked store still works */
   }
 }
 
@@ -111,6 +127,7 @@ export async function snapshotWorkspace(
       if (init.code !== 0) return null;
     }
     ensureExcludes(gitDir);
+    ensurePacking(gitDir);
     const add = await git(workspace, gitDir, ["add", "-A"]);
     if (add.code !== 0) return null;
     // --allow-empty so an unchanged turn still yields a distinct checkpoint.
