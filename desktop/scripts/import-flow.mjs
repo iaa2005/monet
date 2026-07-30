@@ -95,28 +95,46 @@ for (const [icon, rule] of fileIcons) {
   for (const e of rule.e ?? []) put(ext, e, icon);
   for (const n of rule.n ?? []) put(names, n, icon);
 }
-for (const [icon, rule] of folderIcons) for (const n of rule.n ?? []) put(folders, n, icon);
+// Stored with the prefix the art uses, so the resolver can build a filename
+// from the map without knowing this convention.
+for (const [icon, rule] of folderIcons)
+  for (const n of rule.n ?? []) put(folders, n, `folder_${icon}`);
 
 // ── 2. the art ────────────────────────────────────────────────────────
 /** `._name` entries are AppleDouble resource forks: the paid set arrives as a
  * tar built on macOS, and 1342 of them sit beside the 2686 real icons. Copying
  * them would double the folder for nothing and put unreadable files where the
  * resolver expects art. */
-const listing = (dir, suffix) =>
+const listing = (dir, suffix = null) =>
   new Map(
     readdirSync(dir)
-      .filter((f) => !f.startsWith("._") && f.toLowerCase().endsWith(suffix))
+      .filter(
+        (f) =>
+          !f.startsWith("._") &&
+          (suffix ? f.toLowerCase().endsWith(suffix) : /[.](svg|png)$/i.test(f)),
+      )
       .map((f) => [basename(f, f.slice(f.lastIndexOf("."))).toLowerCase(), join(dir, f)]),
   );
 
-const png = { dark: listing(SRC.dark, ".png"), light: listing(SRC.light, ".png") };
-const svg = SVG && existsSync(SVG) ? listing(SVG, ".svg") : new Map();
+// 2.0.9 ships SVG; 1.3.2 shipped PNG. Take whatever is there rather than
+// insisting on one — the format changed under us once already.
+const art = { dark: listing(SRC.dark), light: listing(SRC.light) };
+const suffixOf = (p) => p.slice(p.lastIndexOf(".")).toLowerCase();
+/** An external SVG stash still outranks the pack, for the case where the pack
+ * is the raster one. With 2.0.9 it is redundant and harmless. */
+const stash = SVG && existsSync(SVG) ? listing(SVG, ".svg") : new Map();
 
 /** Every icon name the extension knows about, art or not. */
 const wanted = new Set([
-  ...png.dark.keys(),
+  ...art.dark.keys(),
   ...fileIcons.map(([n]) => n.toLowerCase()),
-  ...folderIcons.flatMap(([n]) => [n.toLowerCase(), `${n.toLowerCase()}_open`]),
+  // A folder rule is keyed by the bare word — `admin` — while its art is
+  // `folder_admin.svg` and `folder_admin_open.svg`. Taking the key at face
+  // value reported 498 icons as missing art that were sitting right there.
+  ...folderIcons.flatMap(([n]) => [
+    `folder_${n.toLowerCase()}`,
+    `folder_${n.toLowerCase()}_open`,
+  ]),
 ]);
 
 const have = {
@@ -127,9 +145,10 @@ const have = {
 
 const plan = { svg: [], png: [], missing: [] };
 for (const name of [...wanted].sort()) {
-  if (svg.has(name)) plan.svg.push(name);
-  else if (png.dark.has(name) && png.light.has(name)) plan.png.push(name);
-  else plan.missing.push(name);
+  const inPack = art.dark.has(name) && art.light.has(name);
+  if (!inPack && !stash.has(name)) plan.missing.push(name);
+  else if (inPack ? suffixOf(art.dark.get(name)) === ".svg" : true) plan.svg.push(name);
+  else plan.png.push(name);
 }
 
 const newNames = [...wanted].filter((n) => !have.base.has(n));
@@ -139,7 +158,7 @@ const oursKept = [...have.base].filter((n) => !wanted.has(n));
 const n = (x) => String(x).padStart(5);
 console.log(`\nSOURCE  ${FROM}`);
 console.log(`PACK    ${PACK}   (dark: ${SRC.dark}, light: ${SRC.light})`);
-console.log(`SVG     ${svg.size ? `${SVG} — ${svg.size} files` : "(none)"}`);
+console.log(`STASH   ${stash.size ? `${SVG} — ${stash.size} files` : "(none)"}`);
 console.log(`MODE    ${WRITE ? "WRITE" : "dry run — nothing will be touched"}`);
 
 console.log(`\nMAPPING (flow's own icons.json)`);
@@ -161,7 +180,11 @@ console.log(`${n(newNames.length)}  names flow adds that we do not have`);
 console.log(`${n(wanted.size - newNames.length)}  names that would be replaced`);
 console.log(`${n(oursKept.length)}  of ours flow does not cover — kept as they are`);
 if (oursKept.length)
-  console.log(`        ${oursKept.slice(0, 14).join(" ")}${oursKept.length > 14 ? " …" : ""}`);
+  console.log(
+    args.includes("--all")
+      ? oursKept.map((x) => `        ${x}`).join("\n")
+      : `        ${oursKept.slice(0, 14).join(" ")}${oursKept.length > 14 ? " …  (--all for the rest)" : ""}`,
+  );
 
 if (!WRITE) {
   console.log(`\nNothing written. Re-run with --write to apply.\n`);
@@ -172,17 +195,13 @@ if (!WRITE) {
 for (const d of Object.values(DEST)) mkdirSync(d, { recursive: true });
 
 let copied = 0;
-for (const name of plan.svg) {
-  // One SVG serves both themes only if the stash has no light variant; the
-  // stash we have is dark-ink art, so it goes to the dark-UI folder and the
-  // extension's own light art is used for the other side when present.
-  copyFileSync(svg.get(name), join(DEST.dark, `${name}.svg`));
-  if (png.light.has(name)) copyFileSync(png.light.get(name), join(DEST.light, `${name}.png`));
-  copied++;
-}
-for (const name of plan.png) {
-  copyFileSync(png.dark.get(name), join(DEST.dark, `${name}.png`));
-  copyFileSync(png.light.get(name), join(DEST.light, `${name}.png`));
+for (const name of [...plan.svg, ...plan.png]) {
+  // The pack's own light art wins over anything derived. The stash is consulted
+  // only when the pack has no art for that name at all.
+  const dark = art.dark.get(name) ?? stash.get(name);
+  const light = art.light.get(name) ?? stash.get(name);
+  copyFileSync(dark, join(DEST.dark, name + suffixOf(dark)));
+  copyFileSync(light, join(DEST.light, name + suffixOf(light)));
   copied++;
 }
 
