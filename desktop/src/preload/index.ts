@@ -134,6 +134,19 @@ const electronAPI = {
     ): Promise<
       { name: string; isDirectory: boolean; isFile: boolean; path: string }[]
     > => ipcRenderer.invoke("files:list", dirPath),
+    search: (
+      rootPath: string,
+      query: string,
+    ): Promise<{
+      hits: { name: string; path: string; isDirectory: boolean; rel: string }[];
+      truncated: boolean;
+    }> => ipcRenderer.invoke("files:search", rootPath, query),
+    /** Fires when the workspace changes on disk. Returns an unsubscribe. */
+    onChanged: (cb: () => void): (() => void) => {
+      const handler = (): void => cb();
+      ipcRenderer.on("files:changed", handler);
+      return () => ipcRenderer.off("files:changed", handler);
+    },
     exists: (path: string): Promise<boolean> =>
       ipcRenderer.invoke("files:exists", path),
     pickDirectory: (): Promise<string | null> =>

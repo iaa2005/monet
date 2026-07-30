@@ -13,6 +13,7 @@ import {
   writeFile,
 } from "fs/promises";
 import { basename, join } from "path";
+import { searchFiles } from "../file-search.js";
 
 /** Normalise Unix-style paths (/c/Users/...) to Windows (C:\Users\...). */
 const MAX_TEXT_BYTES = 400_000;
@@ -112,6 +113,21 @@ export function registerFilesIPC(): void {
       throw publicError("List directory", dirPath, err);
     }
   });
+
+  // Walks the real folder rather than filtering what the tree has loaded: the
+  // tree is lazy, so an on-screen filter would answer "no matches" for anything
+  // inside a collapsed folder.
+  ipcMain.handle(
+    "files:search",
+    async (_event, rootPath: string, query: string) => {
+      try {
+        return await searchFiles(normPath(rootPath), query);
+      } catch (err) {
+        logFilesError("search", err);
+        return { hits: [], truncated: false };
+      }
+    },
+  );
 
   ipcMain.handle("files:exists", async (_event, filePath: string) => {
     try {

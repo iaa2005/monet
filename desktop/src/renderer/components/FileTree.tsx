@@ -2,7 +2,7 @@
  * File Tree — recursive directory browser with charmed-icons.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   ChevronRight,
   ChevronDown,
@@ -13,6 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useIsDark } from "@/components/chat/highlight";
 import { fallbackIcon, resolveIcon } from "@/components/icon-resolver";
+import { useChatStore } from "@/stores/chatStore";
 import type { ElectronAPI } from "@/types/electron";
 
 const LARGE_FILE_THRESHOLD = 5 * 1024 * 1024; // 5 MB
@@ -23,6 +24,13 @@ interface FileEntry {
   isFile: boolean;
   path: string;
   children?: FileEntry[];
+}
+
+interface SearchHit {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  rel: string;
 }
 
 interface FileTreeProps {
@@ -139,14 +147,28 @@ function LargeFileDialog({
   );
 }
 
+/** Directory contents, sorted the way the tree shows them: folders first. */
+function sortEntries(items: FileEntry[]): FileEntry[] {
+  return items
+    .filter((e) => !e.name.startsWith("."))
+    .sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+}
+
 function TreeNode({
   entry,
   depth,
   onSelectFile,
+  refreshKey,
 }: {
   entry: FileEntry;
   depth: number;
   onSelectFile?: (path: string) => void;
+  /** Bumped when the folder changed on disk. An expanded node refetches; a
+   * collapsed one does not, since it will load fresh when opened. */
+  refreshKey: number;
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<FileEntry[] | null>(
@@ -191,16 +213,7 @@ function TreeNode({
       if (!children) {
         setLoading(true);
         try {
-          const items = await api().files.list(entry.path);
-          setChildren(
-            items
-              .filter((e) => !e.name.startsWith("."))
-              .sort((a, b) => {
-                if (a.isDirectory !== b.isDirectory)
-                  return a.isDirectory ? -1 : 1;
-                return a.name.localeCompare(b.name);
-              }),
-          );
+          setChildren(sortEntries(await api().files.list(entry.path)));
         } catch {
           setChildren([]);
         } finally {
@@ -212,6 +225,34 @@ function TreeNode({
       setExpanded(false);
     }
   };
+
+  // Refresh in place: the rows are replaced but this node stays open and so do
+  // its open descendants, because their React keys are paths and survive.
+  // Reloading the whole tree instead would collapse everything the user opened.
+  const firstRefresh = useRef(true);
+  useEffect(() => {
+    if (firstRefresh.current) {
+      firstRefresh.current = false;
+      return;
+    }
+    if (!expanded || !entry.isDirectory) return;
+    let cancelled = false;
+    void api()
+      .files.list(entry.path)
+      .then((items) => {
+        if (!cancelled) setChildren(sortEntries(items));
+      })
+      .catch(() => {
+        // The folder itself may have just been deleted — leave the last known
+        // contents rather than blanking the subtree.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // `expanded` is deliberately not a dependency: opening a node already
+    // loads it, and re-running here would fetch the same folder twice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey, entry.path, entry.isDirectory]);
 
   const iconSrc = resolveIcon(entry.name, entry.isDirectory, expanded, dark);
 
@@ -261,12 +302,13 @@ function TreeNode({
       )}
 
       {expanded &&
-        children?.map((child, i) => (
+        children?.map((child) => (
           <TreeNode
-            key={child.path + i}
+            key={child.path}
             entry={child}
             depth={depth + 1}
             onSelectFile={onSelectFile}
+            refreshKey={refreshKey}
           />
         ))}
 
@@ -297,6 +339,16 @@ export function FileTree({
   const [root, setRoot] = useState<FileEntry | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [search, setSearch] = useState("");
+  const [hits, setHits] = useState<SearchHit[] | null>(null);
+  const [truncated, setTruncated] = useState(false);
+  const [searching, setSearching] = useState(false);
+  // Bumped by the disk watcher. Passed down so open folders refetch in place
+  // instead of the whole tree being rebuilt under the user.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const dark = useIsDark();
+  // The picker bumps this when the folder changes — including the restore that
+  // happens when you open a chat that remembers its own folder.
+  const workspaceVersion = useChatStore((s) => s.workspaceVersion);
 
   useEffect(() => {
     let cancelled = false;
@@ -310,16 +362,9 @@ export function FileTree({
           isDirectory: true,
           isFile: false,
           path: ws,
-          children: items
-            .filter(
-              (e) =>
-                !e.name.startsWith(".") && !e.name.startsWith("node_modules"),
-            )
-            .sort((a, b) => {
-              if (a.isDirectory !== b.isDirectory)
-                return a.isDirectory ? -1 : 1;
-              return a.name.localeCompare(b.name);
-            }),
+          children: sortEntries(items).filter(
+            (e) => e.name !== "node_modules",
+          ),
         });
       } catch {
         if (!cancelled) setRoot(null);
@@ -334,7 +379,73 @@ export function FileTree({
     return () => {
       cancelled = true;
     };
-  }, [rootPath]);
+  }, [rootPath, workspaceVersion]);
+
+  // Reload the root's own listing when the folder changes on disk, without the
+  // reset above: a new file at the top level must appear, but blanking the tree
+  // on every write would be worse than not refreshing at all.
+  useEffect(() => {
+    if (refreshKey === 0 || !root) return;
+    let cancelled = false;
+    const api = (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
+    void api.files
+      .list(root.path)
+      .then((items) => {
+        if (cancelled) return;
+        const children = sortEntries(items).filter(
+          (e) => e.name !== "node_modules",
+        );
+        setRoot((cur) => (cur ? { ...cur, children } : cur));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // `root` is not a dependency: it is what this effect writes to.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+
+  useEffect(() => {
+    const api = (window as unknown as { electronAPI?: ElectronAPI })
+      .electronAPI;
+    return api?.files.onChanged(() => setRefreshKey((k) => k + 1));
+  }, []);
+
+  // Search runs in the main process over the real folder. Debounced, because
+  // typing "component" would otherwise start eight walks of the project.
+  useEffect(() => {
+    const q = search.trim();
+    if (!q) {
+      setHits(null);
+      setSearching(false);
+      return;
+    }
+    const base = rootPath ?? root?.path;
+    if (!base) return;
+    setSearching(true);
+    let cancelled = false;
+    const id = setTimeout(() => {
+      const api = (window as unknown as { electronAPI: ElectronAPI })
+        .electronAPI;
+      void api.files
+        .search(base, q)
+        .then((r) => {
+          if (cancelled) return;
+          setHits(r.hits);
+          setTruncated(r.truncated);
+        })
+        .catch(() => {
+          if (!cancelled) setHits([]);
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(id);
+    };
+  }, [search, rootPath, root?.path, refreshKey]);
 
   const isEmpty = loaded && (!root || (root.children?.length ?? 0) === 0);
 
@@ -345,27 +456,96 @@ export function FileTree({
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter files..."
+          placeholder="Search files…"
           className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
         />
       </div>
 
       <div className="flex-1 overflow-auto">
-        {isEmpty ? (
+        {hits !== null ? (
+          hits.length === 0 ? (
+            <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+              {searching ? "Searching…" : "No files match."}
+            </div>
+          ) : (
+            <>
+              {hits.map((h) => (
+                <SearchRow
+                  key={h.path}
+                  hit={h}
+                  dark={dark}
+                  onSelectFile={onSelectFile}
+                />
+              ))}
+              {truncated && (
+                <div className="px-3 py-2 text-center text-[11px] text-muted-foreground">
+                  Showing the first {hits.length}. Narrow the search to see
+                  more.
+                </div>
+              )}
+            </>
+          )
+        ) : isEmpty ? (
           <div className="px-3 py-6 text-center text-xs text-muted-foreground">
             {emptyLabel ?? "No files yet."}
           </div>
         ) : (
-          root?.children?.map((child, i) => (
+          root?.children?.map((child) => (
             <TreeNode
-              key={child.path + i}
+              key={child.path}
               entry={child}
               depth={0}
               onSelectFile={onSelectFile}
+              refreshKey={refreshKey}
             />
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * One search result: the name, and under it where it lives. A flat list of
+ * bare filenames is unusable in a project with four `index.ts`.
+ */
+function SearchRow({
+  hit,
+  dark,
+  onSelectFile,
+}: {
+  hit: SearchHit;
+  dark: boolean;
+  onSelectFile?: (path: string) => void;
+}): JSX.Element {
+  const iconSrc = resolveIcon(hit.name, hit.isDirectory, false, dark);
+  const dir = hit.rel.slice(0, hit.rel.length - hit.name.length - 1);
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1.5 px-2 py-1 text-[13px]",
+        hit.isDirectory ? "opacity-70" : "cursor-pointer hover:bg-accent/50",
+      )}
+      onClick={() => {
+        if (!hit.isDirectory) onSelectFile?.(hit.path);
+      }}
+    >
+      <img
+        src={iconSrc}
+        className="size-4 shrink-0"
+        alt=""
+        onError={(e) => {
+          const img = e.currentTarget;
+          const fallback = fallbackIcon(hit.isDirectory, false, dark);
+          if (!img.src.endsWith(fallback)) img.src = fallback;
+        }}
+      />
+      <span className="truncate">{hit.name}</span>
+      {dir && (
+        <span className="ml-auto shrink-0 truncate pl-2 text-[11px] text-muted-foreground">
+          {dir}
+        </span>
+      )}
     </div>
   );
 }

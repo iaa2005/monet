@@ -11,6 +11,7 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { basename, join } from "path";
 import { loadClaudeMd } from "../claude-md.js";
 import { getDataDir } from "../data-dir.js";
+import { watchWorkspace } from "../fs-watch.js";
 
 let workspacePath = process.cwd();
 let claudeMdContent: string | null = null;
@@ -44,6 +45,10 @@ function applyWorkspace(path: string): void {
   } catch {
     /* directory may be unreadable — keep state anyway */
   }
+  // Every route into a new folder goes through here — the picker, the restore
+  // on launch, the per-chat pin — so this is the one place the watcher has to
+  // follow, and it cannot be forgotten by a later caller.
+  watchWorkspace(path);
 }
 
 export function registerWorkspaceIPC(): void {
@@ -52,6 +57,9 @@ export function registerWorkspaceIPC(): void {
   const saved = loadSavedWorkspace();
   if (saved) applyWorkspace(saved);
   else if (app.isPackaged) applyWorkspace(app.getPath("home"));
+  // Neither branch runs in a dev session started in a project folder, and that
+  // is exactly the folder being worked in — watch it too. A repeat is a no-op.
+  watchWorkspace(workspacePath);
 
   // Load initial CLAUDE.md
   claudeMdContent = loadClaudeMd(workspacePath);

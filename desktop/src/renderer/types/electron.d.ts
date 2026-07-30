@@ -388,6 +388,17 @@ export interface ElectronAPI {
     ) => Promise<
       { name: string; isDirectory: boolean; isFile: boolean; path: string }[]
     >;
+    /** Recursive name search from `rootPath`. `truncated` when a limit or the
+     * time budget cut the list short. */
+    search: (
+      rootPath: string,
+      query: string,
+    ) => Promise<{
+      hits: { name: string; path: string; isDirectory: boolean; rel: string }[];
+      truncated: boolean;
+    }>;
+    /** Workspace changed on disk. Returns an unsubscribe. */
+    onChanged: (cb: () => void) => () => void;
     exists: (path: string) => Promise<boolean>;
     pickDirectory: () => Promise<string | null>;
     stat: (
