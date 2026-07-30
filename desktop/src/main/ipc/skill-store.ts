@@ -42,6 +42,7 @@ import {
   isAuditableFile,
   type AuditResult,
 } from "../skill-audit.js";
+import { fetchAuditRules } from "../audit-rules-catalog.js";
 import {
   capPerRepo,
   usefulDescription,
@@ -645,7 +646,7 @@ export function registerSkillStoreIPC(): void {
           files,
           content,
           texts,
-          audit: auditSkill(texts, skipped),
+          audit: auditSkill(texts, skipped, (await fetchAuditRules()).rules),
           url: `https://github.com/${repo}/tree/HEAD/${dir}`,
         };
       } catch (err) {

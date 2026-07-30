@@ -53,8 +53,25 @@ export interface AuditResult {
 interface Rule {
   category: Finding["category"];
   severity: Severity;
-  re: RegExp;
   detail: string;
+  /** Built-in rules only — see the note on `allOf` for why. */
+  re?: RegExp;
+  /**
+   * A catalogue rule: every one of these literals must appear on the same line,
+   * matched case-insensitively. No regex, and that is the whole point.
+   *
+   * Measured, and it changed the design: a pattern from the network CANNOT be
+   * made safe with a time budget, because a JavaScript regex cannot be
+   * interrupted once it starts. `^(?:[a-z]|[a-z][a-z])+z$` against forty
+   * characters of "a" took 15 seconds in a single exec — the budget only gets to
+   * look after the exec returns, by which time the app has already frozen.
+   *
+   * Literal matching is linear and cannot backtrack. It also turns out to be
+   * enough for what a new pattern actually needs to say: these words, this line.
+   */
+  allOf?: string[];
+  /** ... and none of these, for carving out the known-innocent case. */
+  noneOf?: string[];
   /**
    * Ignore the match when the phrase is quoted.
    *
@@ -66,6 +83,8 @@ interface Rule {
    * `curl … | bash` in a fence is how a real installer instruction is written.
    */
   notWhenQuoted?: boolean;
+  /** From the repo rather than compiled in. Literal-only, never a regex. */
+  fromCatalog?: boolean;
 }
 
 /**
@@ -167,6 +186,114 @@ const RULES: Rule[] = [
   },
 ];
 
+// ── Rules from the catalogue ─────────────────────────────────────────────────
+//
+// Attack patterns change; a new one should not need an app release. So the repo
+// can publish more rules and they are merged in behind the built-ins above,
+// which always work and never depend on the network.
+//
+// A regex from the network is code, though, so it is treated as untrusted:
+// the category and severity must be ones we know, the pattern must compile, and
+// there is a limit on how many and how long. The real defence against a pattern
+// that backtracks forever is the time budget in `auditSkill` — the shape check
+// below is only a cheap first pass.
+
+const CATEGORIES = new Set<Finding["category"]>([
+  "remote_code_execution",
+  "external_download",
+  "credential_access",
+  "exfiltration",
+  "destructive_command",
+  "obfuscation",
+  "prompt_injection",
+]);
+
+const MAX_CATALOG_RULES = 60;
+/** Per rule: enough to say "curl", "|", "bash"; not enough to write a program. */
+const MAX_LITERALS = 8;
+const MAX_LITERAL = 120;
+
+export interface ParsedRules {
+  rules: Rule[];
+  /** Why each rejected entry was rejected — for the log, not a silent drop. */
+  rejected: string[];
+}
+
+function literals(raw: unknown, what: string, errs: string[]): string[] | null {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw) || raw.length > MAX_LITERALS) {
+    errs.push(`${what} must be an array of at most ${MAX_LITERALS} strings`);
+    return null;
+  }
+  const out: string[] = [];
+  for (const v of raw) {
+    if (typeof v !== "string" || !v || v.length > MAX_LITERAL) {
+      errs.push(`${what} takes non-empty strings under ${MAX_LITERAL} characters`);
+      return null;
+    }
+    // Lower-cased once here, since matching lower-cases the line.
+    out.push(v.toLowerCase());
+  }
+  return out;
+}
+
+export function parseAuditRules(raw: unknown): ParsedRules {
+  const list = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as { rules?: unknown })?.rules)
+      ? (raw as { rules: unknown[] }).rules
+      : [];
+  const rules: Rule[] = [];
+  const rejected: string[] = [];
+  for (const entry of list) {
+    if (rules.length >= MAX_CATALOG_RULES) {
+      rejected.push(`over the limit of ${MAX_CATALOG_RULES} rules`);
+      break;
+    }
+    const e = (entry ?? {}) as Record<string, unknown>;
+    const id = typeof e.id === "string" ? e.id : JSON.stringify(entry).slice(0, 40);
+    // Said explicitly, because this is the first thing anyone will try: a regex
+    // from the network cannot be run safely in this process. See `allOf`.
+    if (e.pattern !== undefined || e.regex !== undefined) {
+      rejected.push(`${id}: patterns are not accepted — use allOf/noneOf literals`);
+      continue;
+    }
+    if (!CATEGORIES.has(e.category as Finding["category"])) {
+      rejected.push(`${id}: unknown category ${String(e.category)}`);
+      continue;
+    }
+    if (e.severity !== "high" && e.severity !== "medium" && e.severity !== "low") {
+      rejected.push(`${id}: unknown severity ${String(e.severity)}`);
+      continue;
+    }
+    if (typeof e.detail !== "string" || !e.detail) {
+      rejected.push(`${id}: no detail — a finding with no sentence is not usable`);
+      continue;
+    }
+    const errs: string[] = [];
+    const allOf = literals(e.allOf, "allOf", errs);
+    const noneOf = literals(e.noneOf, "noneOf", errs);
+    if (!allOf || !noneOf) {
+      rejected.push(`${id}: ${errs.join("; ")}`);
+      continue;
+    }
+    if (!allOf.length) {
+      rejected.push(`${id}: allOf is empty — a rule that matches every line`);
+      continue;
+    }
+    rules.push({
+      category: e.category as Finding["category"],
+      severity: e.severity,
+      detail: e.detail.slice(0, 200),
+      allOf,
+      noneOf,
+      notWhenQuoted: e.notWhenQuoted === true,
+      fromCatalog: true,
+    });
+  }
+  return { rules, rejected };
+}
+
 /** Read as text, or skipped. A .png tells us nothing and a 2 MB blob costs. */
 const TEXT_EXT =
   /\.(?:md|markdown|txt|sh|bash|zsh|ps1|bat|cmd|py|js|mjs|cjs|ts|tsx|json|ya?ml|toml|ini|cfg|rb|pl|lua|env)$/i;
@@ -177,8 +304,34 @@ export function isAuditableFile(path: string): boolean {
 
 const ORDER: Record<Severity, number> = { high: 3, medium: 2, low: 1 };
 
+
 const OPEN = `"'\`«“「`;
 const CLOSE = `"'\`»”」`;
+
+/**
+ * Where a rule matches on a line, or -1.
+ *
+ * Returns the index so a quoted phrase can still be recognised, and so the
+ * evidence can point at something rather than assert.
+ */
+function matchAt(rule: Rule, line: string): { at: number; text: string } | null {
+  if (rule.re) {
+    const m = rule.re.exec(line);
+    return m ? { at: m.index, text: m[0] } : null;
+  }
+  if (!rule.allOf?.length) return null;
+  const hay = line.toLowerCase();
+  let first = -1;
+  for (const lit of rule.allOf) {
+    const at = hay.indexOf(lit);
+    if (at < 0) return null;
+    if (first < 0 || at < first) first = at;
+  }
+  for (const lit of rule.noneOf ?? []) if (hay.includes(lit)) return null;
+  // The whole line is the evidence: with literals there is no single match span,
+  // and the line is what the user needs to see to judge it anyway.
+  return { at: first, text: line.trim() };
+}
 
 /** Is the match wrapped in quotes or backticks — named rather than said? */
 function isQuoted(line: string, at: number, len: number): boolean {
@@ -201,23 +354,25 @@ function isQuoted(line: string, at: number, len: number): boolean {
 export function auditSkill(
   files: Record<string, string>,
   skipped: string[] = [],
+  extra: Rule[] = [],
 ): AuditResult {
   const findings: Finding[] = [];
+  const all = extra.length ? [...RULES, ...extra] : RULES;
   for (const [file, content] of Object.entries(files)) {
     const lines = content.split(/\r?\n/);
-    for (const rule of RULES) {
+    for (const rule of all) {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]!;
-        const m = rule.re.exec(line);
+        const m = matchAt(rule, line);
         if (!m) continue;
-        if (rule.notWhenQuoted && isQuoted(line, m.index, m[0].length)) continue;
+        if (rule.notWhenQuoted && isQuoted(line, m.at, m.text.length)) continue;
         findings.push({
           category: rule.category,
           severity: rule.severity,
           file,
           line: i + 1,
           detail: rule.detail,
-          evidence: m[0].trim().slice(0, 160),
+          evidence: m.text.trim().slice(0, 160),
         });
         // One hit per rule per file: twelve copies of the same warning buries
         // the other eleven rules.
