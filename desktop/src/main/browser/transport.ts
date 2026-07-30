@@ -17,6 +17,7 @@ import type { WebContents } from "electron";
 import { getBrowserConfig, type BrowserEngine } from "./config.js";
 import { activeContents } from "./registry.js";
 import { getExternalTransport } from "./external.js";
+import { ensureLogging, stopLogging } from "./logs.js";
 
 export interface Rect {
   x: number;
@@ -249,9 +250,24 @@ export class NoPageError extends Error {
   }
 }
 
-/** The transport the tools act through, per the user's engine setting. */
+/**
+ * The transport the tools act through, per the user's engine setting.
+ *
+ * Recording starts here rather than at the first BrowserLogs call: Network and
+ * Log only report what happens after they are enabled, so a recorder started on
+ * demand would hand back an empty file for a page that has been running for a
+ * minute.
+ */
 export async function getTransport(): Promise<BrowserTransport> {
-  if (getBrowserConfig().engine === "external") return getExternalTransport();
+  const t =
+    getBrowserConfig().engine === "external"
+      ? getExternalTransport()
+      : embeddedFromActiveTab();
+  ensureLogging(t);
+  return t;
+}
+
+function embeddedFromActiveTab(): BrowserTransport {
   const wc = activeContents();
   if (!wc) throw new NoPageError();
   return embeddedTransport(wc);
@@ -264,6 +280,9 @@ export async function getTransport(): Promise<BrowserTransport> {
  * DevTools on it. Turning the tools off should give that back.
  */
 export function resetEmbeddedTransports(): void {
-  for (const t of embedded.values()) t.detach();
+  for (const t of embedded.values()) {
+    stopLogging(t.targetId);
+    t.detach();
+  }
   embedded.clear();
 }

@@ -211,6 +211,50 @@ export async function pagePressEnter(): Promise<void> {
   await t.pressKey("Enter");
 }
 
+/**
+ * Give the page a moment to react, then wait until it has finished loading.
+ *
+ * Built into the acting tools instead of exposed as BrowserWaitFor. A model
+ * that has to decide when to wait gets it wrong in both directions — reading a
+ * page mid-navigation and reporting the old one, or waiting after a click that
+ * changed nothing. Neither is a decision worth delegating.
+ */
+export async function pageSettle(maxMs = 6_000): Promise<void> {
+  await sleep(450);
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    try {
+      if ((await pageEvaluate("document.readyState")) === "complete") return;
+    } catch {
+      // The execution context went away mid-navigation. The next evaluate
+      // lands in the new document, so keep waiting rather than reporting.
+    }
+    await sleep(150);
+  }
+}
+
+/** Emulate a viewport size (responsive checks), or clear the override. */
+export async function pageSetViewport(
+  size: { width: number; height: number; mobile?: boolean } | null,
+): Promise<void> {
+  const t = await transport();
+  if (!size) {
+    await t.send("Emulation.clearDeviceMetricsOverride");
+    return;
+  }
+  await t.send("Emulation.setDeviceMetricsOverride", {
+    width: size.width,
+    height: size.height,
+    deviceScaleFactor: 1,
+    mobile: size.mobile ?? false,
+  });
+}
+
+/** The transport's id, for naming this page's log files. */
+export async function pageTargetId(): Promise<string> {
+  return (await transport()).targetId;
+}
+
 /** Tear down both engines (feature turned off, engine switched, app quit). */
 export function disconnectCdp(): void {
   disconnectExternal();

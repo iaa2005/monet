@@ -75,17 +75,21 @@ import {
 import { ensurePosixShell } from "./shell-env.js";
 import {
   BrowserClickTool,
+  BrowserEvalTool,
+  BrowserLogsTool,
   BrowserNavigateTool,
   BrowserReadPageTool,
+  BrowserResizeTool,
   BrowserScreenshotTool,
   BrowserScrollTool,
+  BrowserTabsTool,
   BrowserTypeTool,
 } from "./browser-tools.js";
 import { getBrowserConfig } from "../browser/config.js";
 import { ComputerTool } from "./computer-tools.js";
 import { getComputerConfig } from "../computer/config.js";
 import { getProviderManager } from "../provider/manager.js";
-import { inferModalities, type Modality } from "../provider/types.js";
+import { activeModelAccepts } from "./model-modalities.js";
 
 import { HOME_TOOL_NAMES, SANDBOX_ONLY_NAMES, spaceAllows } from "./space-tools.js";
 
@@ -97,6 +101,10 @@ const BROWSER_TOOL_NAMES = new Set([
   "BrowserType",
   "BrowserScroll",
   "BrowserScreenshot",
+  "BrowserLogs",
+  "BrowserEval",
+  "BrowserResize",
+  "BrowserTabs",
 ]);
 import {
   callMcpTool,
@@ -237,6 +245,10 @@ const ALL_TOOLS = [
   BrowserTypeTool,
   BrowserScrollTool,
   BrowserScreenshotTool,
+  BrowserLogsTool,
+  BrowserEvalTool,
+  BrowserResizeTool,
+  BrowserTabsTool,
   ComputerTool,
   ...CONNECTOR_TOOLS,
   CreateRoutineTool,
@@ -280,16 +292,11 @@ export function resetVendorTools(): void {
  * the API tool list and the system prompt, so the model never even hears
  * about Bash/FileEdit while in Home.
  */
-/** Whether the active model accepts a given input modality. The fallback for
- * a config with no resolved modalities reads the MODEL id, not the provider's
- * Base URL — see inferModalities(). */
-export function activeModelAccepts(modality: Modality): boolean {
-  const active = getProviderManager().getActive();
-  if (!active) return false;
-  const mods =
-    active.modalities ?? inferModalities(active.kind, active.model ?? "");
-  return mods.includes(modality);
-}
+/** Whether the active model accepts a given input modality. Lives in its own
+ * leaf module so the tools can ask too — this file imports them. The fallback
+ * for a config with no resolved modalities reads the MODEL id, not the
+ * provider's Base URL — see inferModalities(). */
+export { activeModelAccepts };
 
 function activeModelSeesImages(): boolean {
   return activeModelAccepts("image");

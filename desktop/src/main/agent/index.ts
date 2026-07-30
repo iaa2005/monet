@@ -58,6 +58,7 @@ import {
 } from "./caveman.js";
 import { clearRevealedTools } from "./revealed-tools.js";
 import { deferredLines } from "./deferred-inventory.js";
+import { browserDirective } from "./browser-directive.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import {
   loadTranscriptWithMeta,
@@ -752,6 +753,7 @@ export async function computeContextBreakdown(
     const directives = [
       ...(space === "home" ? [homeDirective()] : []),
       deferredToolsDirective(space, sessionId),
+      browserDirective(),
     ].filter(Boolean);
     const systemPrompt = [...directives, basePrompt]
       .filter(Boolean)
@@ -1052,6 +1054,8 @@ async function runAgentScoped(
     // What ToolSearch is holding back. Without this the model cannot tell a
     // deferred capability from an absent one, and answers as if it were absent.
     deferredToolsDirective(space, sessionId),
+    // What is already open, and which dev servers are already running.
+    browserDirective(),
   ].filter(Boolean);
   const systemPrompt =
     directives.length > 0
