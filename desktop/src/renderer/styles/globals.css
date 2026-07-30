@@ -28,13 +28,13 @@
     --bg-300: 220 4% 95%;
     --bg-400: 220 3% 92%;
 
-    --text-000: 60 2.6% 7.6%;
-    --text-200: 60 2.5% 23.3%;
+    --text-000: 210 2.6% 7.6%;
+    --text-200: 210 2.5% 23.3%;
     /* Secondary text. Was 53.7%, which measures 3.32:1 on the canvas — under the
        4.5:1 AA floor for normal text, and this token carries every subtitle,
        meta line and sidebar label in the app. At 43% it is 4.85 on the canvas,
        4.96 on a card and 4.64 on a muted surface. */
-    --text-400: 51 3.1% 43%;
+    --text-400: 210 3.1% 43%;
 
     --brand: 15 63.1% 59.6%; /* terracotta — logo mark only */
     --link: 210 73.7% 40.2%; /* blue — links / file refs */
@@ -66,8 +66,8 @@
     --red-text: hsl(341 88% 51%);
     --red-border: hsl(341 88% 51% / 0.4);
 
-    --border: hsl(48 15% 88%);
-    --input: hsl(48 15% 88%);
+    --border: hsl(210 15% 88%);
+    --input: hsl(210 15% 88%);
     --ring: hsl(var(--brand));
 
     --sidebar: hsl(var(--bg-100));
@@ -76,22 +76,32 @@
     --sidebar-primary-foreground: hsl(var(--bg-000));
     --sidebar-accent: hsl(var(--bg-200));
     --sidebar-accent-foreground: hsl(var(--text-000));
-    --sidebar-border: hsl(48 15% 88%);
+    --sidebar-border: hsl(210 15% 88%);
     --sidebar-ring: hsl(var(--brand));
 }
 
 .dark {
-    --bg-000: 60 2.1% 17.4%;
-    --bg-100: 60 2.7% 11.5%;
-    --bg-200: 30 3.3% 15%;
-    --bg-300: 30 3.3% 18%;
-    --bg-400: 30 3.3% 22%;
+    /* Every neutral sits on hue 210, the same blue the links already used.
+       They used to run 30–60, which is orange through yellow: at 2–3%
+       saturation the backgrounds only hinted at it, but --text-000 carries 33%,
+       so the primary text was a warm cream and the whole theme read yellow.
 
-    --text-000: 48 33.3% 97.1%;
-    --text-200: 50 9% 73.7%;
+       Hue moved, saturation and lightness left alone — the contrast figures
+       below therefore barely shift, but they do shift, because relative
+       luminance weights green at 0.72 and blue at 0.07. Measured, not assumed:
+       the largest change anywhere is text-200 losing 0.36. */
+    --bg-000: 210 2.1% 17.4%;
+    --bg-100: 210 2.7% 11.5%;
+    --bg-200: 210 3.3% 15%;
+    --bg-300: 210 3.3% 18%;
+    --bg-400: 210 3.3% 22%;
+
+    --text-000: 210 33.3% 97.1%;
+    --text-200: 210 9% 73.7%;
     /* 59.2% passed AA (5.91 on the canvas) but read as faint next to the primary
-       text. 68% gives 7.66 on the canvas, 6.31 on a card, 6.91 on muted. */
-    --text-400: 48 4.8% 68%;
+       text. 68% gives 7.48 on the canvas, 6.19 on a card, 6.73 on muted —
+       re-measured after the hue move, which cost about 0.18 of each. */
+    --text-400: 210 4.8% 68%;
 
     --brand: 15 63.1% 59.6%;
     --link: 210 65.5% 67.1%;
