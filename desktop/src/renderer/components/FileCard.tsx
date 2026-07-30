@@ -29,6 +29,8 @@ import { isPdf, pdfThumbnail } from "@/lib/pdfThumb";
 import { useChatStore } from "@/stores/chatStore";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
+import { useIsDark } from "@/components/chat/highlight";
+import { fallbackIcon, resolveIcon } from "@/components/icon-resolver";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -214,62 +216,76 @@ export function typeLabel(a: {
 }
 
 /**
- * A sheet of paper with its top-right corner turned down, on a plate.
+ * One sheet of paper, corner turned down, cut off by the bottom of the card.
  *
- * Monochrome and outlined, matching the reference: the mark says "a file", and
- * WHICH kind comes from the app glyph inside it — the real one the OS owns, so a
- * .pdf shows Acrobat's mark without this app shipping anybody's brand art.
+ * There is no plate. An earlier version put the sheet on a white rounded square
+ * and the reference has none — the sheet IS the light thing, sitting straight on
+ * the grey row, and it is the row's own bottom edge that crops it. Compared side
+ * by side that was the only difference left.
  *
- * A coloured version with the extension printed across the page came first and
- * was thrown away. It read as a sticker next to the rest of the chat, and the
- * reference is quiet on purpose: the filename is already beside it.
+ * The icon on the sheet is the same charmed-icons set the file tree uses, through
+ * the same resolver, so a `.ts` here and a `.ts` in the tree are one picture — and
+ * a name the set has no icon for falls back the way the tree falls back.
  *
- * The fold is a real fold — the page outline stops short of the corner and the
+ * The fold is a real fold: the outline stops short of the corner and the
  * turned-down flap is drawn over it, so the two edges meet the way paper does.
  */
 export function StackedDocIcon({
   className,
-  a,
+  name,
 }: {
   className?: string;
-  /** The file, for the app glyph in the middle of the page. */
-  a?: { path?: string; kind: ArtifactItem["kind"] };
+  /** Filename, for picking the icon that goes on the sheet. */
+  name?: string;
 }): JSX.Element {
+  const dark = useIsDark();
+  const src = name ? resolveIcon(name, false, false, dark) : null;
   return (
-    <span
-      className={cn(
-        // The plate: the most elevated surface, so it reads against the row's
-        // grey. `card` is white in the light theme and the lightest grey in the
-        // dark one, which keeps the same relationship in both.
-        "relative grid shrink-0 place-items-center rounded-xl bg-card",
-        className,
-      )}
-    >
-      <svg viewBox="0 0 40 48" fill="none" className="h-[68%] w-[68%]" aria-hidden="true">
-        {/* Transparent, so the plate is what you see through the page and the
-            outline is the whole mark. `stroke-border` is white at 10% in the dark
-            theme — right for a panel edge, invisible on a 1.6px line at this
-            size — so the mark carries its own weight. */}
-        <path
-          d="M2 6a4 4 0 0 1 4-4h17.2L38 16.8V42a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4z"
-          className="fill-transparent stroke-muted-foreground/40"
-          strokeWidth="1.7"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M23.2 2v10.8a4 4 0 0 0 4 4H38z"
-          className="fill-muted-foreground/15 stroke-muted-foreground/40"
-          strokeWidth="1.7"
-          strokeLinejoin="round"
-        />
-      </svg>
-      {a && (
-        // Centred on the page, below the fold. Small, because the OS hands back a
-        // 32-pixel bitmap and scaling it up would show.
-        <span className="pointer-events-none absolute left-1/2 top-[57%] -translate-x-1/2 -translate-y-1/2">
-          <AppIcon a={a} className="size-4" />
-        </span>
-      )}
+    // The layout box is shorter than the sheet: the overflow goes DOWN, and the
+    // row (overflow-hidden, rounded) is what cuts it off.
+    // Proportions read off the reference at full zoom: the sheet is about 0.8 as
+    // wide as it is tall (mine was 0.68 and looked like a different object), it
+    // stands about 80% of the card's height, and roughly a tenth of it is cut off
+    // at the bottom.
+    <span className={cn("relative block h-11 w-12 shrink-0", className)}>
+      <span
+        className={cn(
+          "absolute left-0 top-0 block h-[3.75rem] w-full origin-top",
+          // Decoration, so it sits behind motion-safe: someone who asked the OS
+          // for less movement gets the same card without the swing.
+          "transition-transform duration-300 ease-out",
+          "motion-safe:group-hover:-rotate-[7deg] motion-safe:group-hover:scale-[1.06]",
+        )}
+      >
+        <svg viewBox="0 0 36 45" fill="none" className="h-full w-full" aria-hidden="true">
+          <path
+            d="M1 4.5a3.5 3.5 0 0 1 3.5-3.5h16.6L35 14.9V40.5a3.5 3.5 0 0 1-3.5 3.5H4.5A3.5 3.5 0 0 1 1 40.5z"
+            // White on the grey row — `card` is the lifted surface in both themes.
+            className="fill-card stroke-muted-foreground/30"
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M21.1 1v10.4a3.5 3.5 0 0 0 3.5 3.5H35z"
+            className="fill-muted-foreground/15 stroke-muted-foreground/30"
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+          />
+        </svg>
+        {src && (
+          <img
+            src={src}
+            alt=""
+            aria-hidden
+            className="absolute left-1/2 top-[48%] h-[38%] w-[46%] -translate-x-1/2 -translate-y-1/2 object-contain"
+            onError={(e) => {
+              const img = e.currentTarget;
+              const back = fallbackIcon(false, false, dark);
+              if (!img.src.endsWith(back)) img.src = back;
+            }}
+          />
+        )}
+      </span>
     </span>
   );
 }
@@ -378,7 +394,10 @@ export function FileCard({
   // read as a card at all.
   return (
     <div className="group rounded-2xl border border-border bg-muted">
-    <div className="flex items-center gap-3 px-3 py-2.5">
+    {/* overflow-hidden here is the crop: the sheet is taller than its box and
+        the row's own rounded bottom edge cuts it off. On the row rather than the
+        outer card so the versions list below keeps its square corners. */}
+    <div className="flex items-center gap-3 overflow-hidden rounded-2xl px-3 py-2.5">
       <button
         type="button"
         onClick={() => viewArtifact(a)}
@@ -391,7 +410,7 @@ export function FileCard({
             spinner, which has to keep moving because it is telling them
             something. */}
         <StackedDocIcon
-          a={a}
+          name={a.name}
           className={cn(
             "size-12 transition-transform duration-300 ease-out",
             "motion-safe:group-hover:-rotate-6 motion-safe:group-hover:scale-[1.06]",

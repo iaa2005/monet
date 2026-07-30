@@ -68,7 +68,162 @@ const EXT_MAP: Record<string, string> = {
   readme: "readme",
   license: "license",
   changelog: "changelog",
-  makefile: "shell",
+  // The set HAS a makefile icon; this pointed at the shell one, which is the
+  // same class of mistake as the mappings that pointed at names the set never
+  // had. Same symptom too: a file drawn as something it is not.
+  makefile: "makefile",
+};
+
+/**
+ * The rest of the set.
+ *
+ * Reported: "в дереве не все типы показываются иконки, они рисуются обычным
+ * файлом". Measured — the set ships 249 icons and only 102 names were reachable,
+ * so 73 FILE icons were sitting on disk that nothing could ever ask for. `.pdf`,
+ * `.zip`, `.txt`, `.lua`, `.vue`, `.tex`, fonts, audio, video and a Makefile all
+ * drew the generic page.
+ *
+ * The earlier fix was the opposite mistake — mappings pointing at names the set
+ * does not have — and the check only looked in that direction. It looks both ways
+ * now.
+ *
+ * Five icons are still unreachable on purpose, because nothing in a FILENAME can
+ * honestly select them: `css3` (an alternative to `css`), `test-teal` and
+ * `test-yellow` (colour variants with no signal to pick between them),
+ * `roblox-lock`, `event`, and `workflow` — which wants `.github/workflows/`, a PATH, and
+ * this resolver is given a name. The probe pins that list, so the next icon added
+ * to the set does not quietly join it.
+ */
+const MORE_EXT: Record<string, string> = {
+  // Documents and plain data
+  pdf: "pdf",
+  txt: "text",
+  text: "text",
+  rtf: "text",
+  log: "text",
+  todo: "todo",
+  tex: "latex",
+  bib: "latex",
+  // Archives — one icon for the family
+  zip: "zip",
+  "7z": "zip",
+  rar: "zip",
+  tar: "zip",
+  gz: "zip",
+  tgz: "zip",
+  xz: "zip",
+  bz2: "zip",
+  zst: "zip",
+  // Media
+  mp3: "audio",
+  wav: "audio",
+  flac: "audio",
+  ogg: "audio",
+  m4a: "audio",
+  aac: "audio",
+  mp4: "video",
+  mov: "video",
+  mkv: "video",
+  avi: "video",
+  webm: "video",
+  wmv: "video",
+  woff: "font",
+  woff2: "font",
+  ttf: "font",
+  otf: "font",
+  eot: "font",
+  // Binaries and keys
+  exe: "binary",
+  dll: "binary",
+  so: "binary",
+  dylib: "binary",
+  bin: "binary",
+  wasm: "web-assembly",
+  pem: "key",
+  crt: "key",
+  cer: "key",
+  pub: "key",
+  // Languages the set has and the map did not
+  lua: "lua",
+  luau: "luau",
+  vue: "vue",
+  svelte: "svelte",
+  astro: "astro",
+  jl: "julia",
+  nim: "nim",
+  nims: "nim",
+  nix: "nix",
+  odin: "odin",
+  gleam: "gleam",
+  zig: "zig",
+  zon: "zig",
+  pl: "perl",
+  pm: "perl",
+  f: "fortran",
+  f90: "fortran",
+  f95: "fortran",
+  f77: "fortran-fixed",
+  asm: "assembly",
+  s: "assembly",
+  hcl: "hcl",
+  tf: "terraform",
+  tfvars: "terraform",
+  pcss: "pcss",
+  // Named files. These are matched whole, or by suffix — see iconName.
+  "go.mod": "go-mod",
+  "go.sum": "go-mod",
+  "cargo.toml": "rust-config",
+  "justfile": "just",
+  "jsconfig.json": "javascript-config",
+  "package-lock.json": "package-lock",
+  "yarn.lock": "yarn-lock",
+  ".yarnrc": "yarn",
+  ".yarnrc.yml": "yarn",
+  ".npmrc": "npm",
+  "bun.lockb": "bun-lock",
+  "bunfig.toml": "bun",
+  "wally.toml": "wally",
+  "wally.lock": "wally-lock",
+  "code_of_conduct.md": "code-of-conduct",
+  codeowners: "codeowners",
+  "security.md": "security",
+  ".luarc.json": "lua-config",
+  // Config files, by the part of the name that identifies them
+  "next.config": "next",
+  "nuxt.config": "nuxt",
+  "astro.config": "astro-config",
+  "tailwind.config": "tailwind",
+  "drizzle.config": "drizzle-orm",
+  ".code-workspace": "vscode",
+  sln: "visual-studio",
+  ".d.ts": "typescript-def",
+  ".d.luau": "luau-def",
+  ".stories.ts": "storybook",
+  ".stories.tsx": "storybook",
+  ".stories.js": "storybook",
+  ".nvmrc": "node",
+  node: "node",
+  // Where the set draws a finer distinction than the map did
+  mdx: "markdownx",
+  tsx: "react-typescript",
+  "package.json": "package-config",
+  "npm-shrinkwrap.json": "npm-lock",
+  ".luaurc": "luau-config",
+  "default.project.json": "roblox-config",
+  ".test.ts": "test-blue",
+  ".test.tsx": "test-blue",
+  ".test.js": "test-blue",
+  ".spec.ts": "test-blue",
+  ".spec.js": "test-blue",
+  // Godot and Roblox, which the set covers
+  gd: "godot",
+  tscn: "godot",
+  tres: "godot",
+  import: "godot-assets",
+  rbxl: "roblox",
+  rbxlx: "roblox",
+  rbxm: "roblox-model",
+  rbxmx: "roblox-model",
 };
 
 const FOLDER_MAP: Record<string, string> = {
@@ -172,6 +327,10 @@ const FOLDER_MAP: Record<string, string> = {
   camera: "folder_camera",
 };
 
+/** The two tables as one lookup. Kept separate above only so the second one can
+ * carry the story of why it exists. */
+const ALL_EXT: Record<string, string> = { ...EXT_MAP, ...MORE_EXT };
+
 function iconName(name: string, isDir: boolean, open: boolean): string {
   if (isDir) {
     const key = name.toLowerCase();
@@ -185,23 +344,34 @@ function iconName(name: string, isDir: boolean, open: boolean): string {
         : "_folder";
   }
 
-  const dot = name.lastIndexOf(".");
-  if (dot === -1) {
-    const mapped = EXT_MAP[name.toLowerCase()];
-    return mapped ?? "_file";
-  }
-
-  const ext = name.slice(dot + 1).toLowerCase();
-  const mapped = EXT_MAP[ext];
-  if (mapped) return mapped;
-
   const lower = name.toLowerCase();
-  for (const [pattern, icon] of Object.entries(EXT_MAP)) {
-    if (pattern.includes(".") && lower === pattern) return icon;
-    if (pattern.includes(".") && lower.endsWith(pattern)) return icon;
+
+  // Most specific first. This order is the whole fix: the extension used to be
+  // tried before anything else, so `Cargo.toml` resolved as `toml`,
+  // `package.json` as `json` and `types.d.ts` as `ts` — and the map's own
+  // `tsconfig.json`, `vite.config`, `readme`, `license` and `changelog` keys were
+  // dead the entire time, unreachable by any filename.
+
+  // 1. The whole name: `package.json`, `go.mod`, `Makefile`, `CODEOWNERS`.
+  const whole = ALL_EXT[lower];
+  if (whole) return whole;
+
+  // 2. A dotted tail: `.d.ts`, `.test.ts`, `.stories.tsx`, `.code-workspace`.
+  for (const [pattern, icon] of Object.entries(ALL_EXT))
+    if (pattern.startsWith(".") && lower.endsWith(pattern)) return icon;
+
+  // 3. The stem — the name without its last extension. This is what makes
+  //    `README.md` a readme and `next.config.mjs` a Next config, rather than a
+  //    markdown file and an mjs file.
+  const dot = lower.lastIndexOf(".");
+  if (dot > 0) {
+    const stem = ALL_EXT[lower.slice(0, dot)];
+    if (stem) return stem;
   }
 
-  return "_file";
+  // 4. The extension itself.
+  if (dot === -1) return "_file";
+  return ALL_EXT[lower.slice(dot + 1)] ?? "_file";
 }
 
 export function resolveIcon(
@@ -232,7 +402,7 @@ export function allMappedIconNames(): string[] {
     "_file",
     "_folder",
     "_folder_open",
-    ...Object.values(EXT_MAP),
+    ...Object.values(ALL_EXT),
   ]);
   for (const folder of Object.values(FOLDER_MAP)) {
     names.add(folder);

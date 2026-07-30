@@ -108,5 +108,88 @@ check(
   fallbackIcon(true, true, true),
 )
 
+// ── The other direction ────────────────────────────────────────────────
+//
+// Reported: "в дереве не все типы показываются иконки, они рисуются обычным
+// файлом". Every check above asks "does this mapping point at a real icon" — and
+// they all passed, because the mappings were fine. The gap was the opposite one:
+// the set ships 249 icons and only 102 names could ever be asked for, so 73 FILE
+// icons sat on disk unreachable and `.pdf`, `.zip`, `.txt`, `.lua`, `.vue`,
+// `.tex`, fonts, audio and video all drew the generic page.
+{
+  // Real names, and the icon each must land on. A table, because the failure was
+  // silent: a wrong icon and no icon look the same in a tree.
+  const cases: [string, string][] = [
+    ['tesla_tsla_tear_sheet.pdf', 'pdf'],
+    ['notes.txt', 'text'],
+    ['archive.zip', 'zip'],
+    ['bundle.tar.gz', 'zip'],
+    ['paper.tex', 'latex'],
+    ['init.lua', 'lua'],
+    ['App.vue', 'vue'],
+    ['Card.svelte', 'svelte'],
+    ['analysis.jl', 'julia'],
+    ['main.nim', 'nim'],
+    ['flake.nix', 'nix'],
+    ['main.zig', 'zig'],
+    ['script.pl', 'perl'],
+    ['solver.f90', 'fortran'],
+    ['boot.asm', 'assembly'],
+    ['main.tf', 'terraform'],
+    ['Inter.woff2', 'font'],
+    ['theme.mp3', 'audio'],
+    ['clip.mp4', 'video'],
+    ['app.exe', 'binary'],
+    ['module.wasm', 'web-assembly'],
+    ['server.pem', 'key'],
+    ['Makefile', 'makefile'],
+    ['justfile', 'just'],
+    ['go.mod', 'go-mod'],
+    ['Cargo.toml', 'rust-config'],
+    ['package.json', 'package-config'],
+    ['yarn.lock', 'yarn-lock'],
+    ['bun.lockb', 'bun-lock'],
+    ['SECURITY.md', 'security'],
+    ['CODEOWNERS', 'codeowners'],
+    ['types.d.ts', 'typescript-def'],
+    ['Button.stories.tsx', 'storybook'],
+    ['tailwind.config.ts', 'tailwind'],
+    ['next.config.mjs', 'next'],
+    ['Button.test.ts', 'test-blue'],
+    ['guide.mdx', 'markdownx'],
+    ['App.tsx', 'react-typescript'],
+    ['level.tscn', 'godot'],
+    // Keys that existed all along and were unreachable, because the bare
+    // extension was tried before the whole name and before the stem.
+    ['tsconfig.json', 'typescript-config'],
+    ['README.md', 'readme'],
+    ['LICENSE', 'license'],
+    ['vite.config.ts', 'vite'],
+    ['.nvmrc', 'node'],
+  ]
+  for (const [file, want] of cases) {
+    const got = resolveIcon(file, false, false, false)
+    check(`${file} -> ${want}`, got.endsWith(`/${want}.svg`), got.split('/').pop())
+  }
+
+  // And the standing check, so the next icon added to the set cannot quietly
+  // become unreachable. These five are inert on purpose: nothing in a FILENAME
+  // can honestly select them — `workflow` wants a path, `test-teal` and
+  // `test-yellow` are colour variants with no signal to choose between, `css3` is
+  // an alternative spelling of `css`, and `roblox-lock` has no filename.
+  const INERT = new Set(['css3', 'event', 'roblox-lock', 'test-teal', 'test-yellow', 'workflow'])
+  const mapped = new Set(allMappedIconNames())
+  const unreachable = [...present.base!]
+    .filter((n) => !n.startsWith('folder_') && !n.startsWith('_'))
+    .filter((n) => !mapped.has(n))
+    .sort()
+  check(
+    'every file icon in the set is reachable, bar the known-inert ones',
+    unreachable.every((n) => INERT.has(n)),
+    unreachable.filter((n) => !INERT.has(n)).join(', ') || 'none',
+  )
+  console.log(`      ${present.base!.size} icons, ${mapped.size} reachable, ${unreachable.length} inert`)
+}
+
 console.log(failures === 0 ? '\nALL ICON CHECKS PASSED' : `\n${failures} FAILED`)
 process.exit(failures === 0 ? 0 : 1)
