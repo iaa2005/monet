@@ -93,7 +93,14 @@ const BUILTIN = "iaa2005/monet-directory/skills";
   // every built-in is in the list — off if asked, but present.
   const only = [parseStoredSource("someone/else")!];
   const list = withBuiltins(only);
-  check("built-ins are re-added to a config without them", list.length === 3, list.length);
+  // Counted off DEFAULT_SOURCES rather than a literal: a third built-in was
+  // added (claudemarketplaces) and a hardcoded 3 turned a working change into a
+  // red probe.
+  check(
+    "built-ins are re-added to a config without them",
+    list.length === DEFAULT_SOURCES.length + 1,
+    `${list.length} vs ${DEFAULT_SOURCES.length} defaults + 1`,
+  );
   for (const d of DEFAULT_SOURCES)
     check(`  ${d.id} is present`, list.some((x) => x.id === d.id));
   check("and the user's own is kept", list.some((x) => x.id === "someone/else"));

@@ -45,7 +45,9 @@
     "smoke:skillcat": "node scripts/renderer-probe.mjs scripts/skill-catalog-probe.ts",
     "smoke:mcpcat": "node scripts/renderer-probe.mjs scripts/mcp-catalog-probe.ts",
     "smoke:srclabels": "node scripts/renderer-probe.mjs scripts/source-labels-probe.ts",
-    "smoke:skillsrc": "node scripts/renderer-probe.mjs scripts/skill-sources-probe.ts"
+    "smoke:skillsrc": "node scripts/renderer-probe.mjs scripts/skill-sources-probe.ts",
+    "smoke:marketplace": "node scripts/renderer-probe.mjs scripts/marketplace-probe.ts",
+    "smoke:catalogschema": "node scripts/catalog-schema-probe.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",

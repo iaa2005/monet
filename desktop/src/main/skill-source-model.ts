@@ -42,25 +42,60 @@ type SourceCommon = {
   builtin: boolean;
 };
 
+/**
+ * Which registry dialect a source speaks. A URL is not enough: the two differ
+ * in the response schema AND in the fetch strategy, so the code has to know
+ * which it is talking to.
+ *
+ *   skillsdirectory-v1  — 96 920 entries, server-side search and paging, but no
+ *                         path inside the repo, so installs resolve by name.
+ *   claudemarketplaces-v1 — 23 472 entries returned WHOLE (12.7 MB, every paging
+ *                         parameter ignored), searched locally, and carrying the
+ *                         path, so installs are exact.
+ */
+export type RegistryFormat = "skillsdirectory-v1" | "claudemarketplaces-v1";
+
 export type SkillSource =
   | ({ kind: "github"; repo: string; sub: string } & SourceCommon)
-  | ({ kind: "registry"; api: string; name: string; homepage?: string } &
-      SourceCommon);
+  | ({
+      kind: "registry";
+      api: string;
+      name: string;
+      format: RegistryFormat;
+      homepage?: string;
+    } & SourceCommon);
 
 const SKILLSDIRECTORY: Extract<SkillSource, { kind: "registry" }> = {
   kind: "registry",
   id: "skillsdirectory",
   api: "https://www.skillsdirectory.com/api/registry",
   name: "Skills Directory",
+  format: "skillsdirectory-v1",
   homepage: "https://www.skillsdirectory.com",
   enabled: true,
   builtin: true,
 };
 
+const MARKETPLACES: Extract<SkillSource, { kind: "registry" }> = {
+  kind: "registry",
+  id: "claudemarketplaces",
+  api: "https://claudemarketplaces.com/api/skills",
+  name: "Claude Marketplaces",
+  format: "claudemarketplaces-v1",
+  homepage: "https://claudemarketplaces.com",
+  enabled: true,
+  builtin: true,
+};
+
+/** Registries the app understands, by id and by endpoint — a source naming
+ * anything else is dropped rather than queried with a guessed dialect. */
+const KNOWN_REGISTRIES = [SKILLSDIRECTORY, MARKETPLACES];
+
 /** Ids that ship with the app — switchable, not removable. */
 export const BUILTIN_IDS = new Set([
   "iaa2005/monet-directory/skills",
   SKILLSDIRECTORY.id,
+  MARKETPLACES.id,
 ]);
 
 /** Config rows are either a bare string (a GitHub repo — the original format,
@@ -96,12 +131,14 @@ export function parseStoredSource(raw: StoredSource): SkillSource | null {
   // described sources that were all being listed.
   const enabled = raw?.enabled !== false;
   if (raw?.kind === "registry") {
-    // Only the one registry is understood; an unknown api is not something to
-    // guess a protocol for.
+    // Matched against the registries whose dialect this code implements. An
+    // unknown one is dropped, not queried: guessing a schema means turning
+    // whatever comes back into an install the user is offered.
     const api = typeof raw.api === "string" ? raw.api : "";
-    if (raw.id === SKILLSDIRECTORY.id || api === SKILLSDIRECTORY.api)
-      return { ...SKILLSDIRECTORY, enabled };
-    return null;
+    const known = KNOWN_REGISTRIES.find(
+      (k) => raw.id === k.id || api === k.api,
+    );
+    return known ? { ...known, enabled } : null;
   }
   if (typeof raw?.repo === "string") {
     const base = parseStoredSource(raw.repo);
@@ -131,6 +168,7 @@ export function toStored(s: SkillSource): StoredSource {
 export const DEFAULT_SOURCES: SkillSource[] = [
   parseStoredSource("iaa2005/monet-directory/skills")!,
   SKILLSDIRECTORY,
+  MARKETPLACES,
 ];
 
 /** The built-ins are always present in the list — switched off if the config

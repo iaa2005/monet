@@ -31,6 +31,11 @@ import {
   type StoredSource,
 } from "../skill-source-model.js";
 import {
+  matchMarketplace,
+  marketplaceSnapshot,
+  sortMarketplace,
+} from "../skills-marketplace.js";
+import {
   capPerRepo,
   CATEGORY_SLUGS,
   listRegistry,
@@ -301,6 +306,39 @@ async function listGithub(src: Extract<SkillSource, { kind: "github" }>): Promis
  * 4805 entries, and the Directory pages through with registryPage below as
  * the user scrolls.
  */
+/**
+ * A page of claudemarketplaces, as cards.
+ *
+ * Local paging over a cached snapshot, because their API returns all 23 472
+ * rows on every request and ignores every paging parameter. Cards carry a real
+ * `path`, so install goes down the ordinary repo route with no name resolution.
+ */
+async function listMarketplaceSource(
+  src: Extract<SkillSource, { kind: "registry" }>,
+  query: string,
+  offset: number,
+): Promise<StoreSkill[]> {
+  const snapshot = await marketplaceSnapshot();
+  const hits = query.trim()
+    ? matchMarketplace(snapshot, query)
+    : sortMarketplace(snapshot);
+  const resolve = installResolver();
+  return hits.slice(offset, offset + REGISTRY_PAGE).map((r) => {
+    const uid = `${src.id}|${r.repo}|${r.path}`;
+    return {
+      uid,
+      // The real folder — this source publishes it, so nothing is guessed.
+      path: r.path,
+      source: src.id,
+      kind: "registry" as const,
+      repository: r.repo,
+      name: r.name,
+      description: r.description,
+      ...resolve(uid, r.name),
+    } satisfies StoreSkill;
+  });
+}
+
 async function listRegistrySource(
   src: Extract<SkillSource, { kind: "registry" }>,
   query: string,
@@ -337,8 +375,9 @@ function listOne(
   offset: number,
   category?: string,
 ): Promise<StoreSkill[]> {
-  return src.kind === "github"
-    ? listGithub(src)
+  if (src.kind === "github") return listGithub(src);
+  return src.format === "claudemarketplaces-v1"
+    ? listMarketplaceSource(src, query, offset)
     : listRegistrySource(src, query, offset, category);
 }
 
@@ -465,6 +504,11 @@ export function registerSkillStoreIPC(): void {
         return installSkill(payload.source, payload.path, payload.uid);
       if (!payload.repository)
         return { ok: false, error: "That directory entry has no repository." };
+      // A card that already knows its folder needs no resolution — that is what
+      // claudemarketplaces publishes, and it is why installing from it cannot
+      // land on the wrong skill.
+      if (payload.path)
+        return installSkill(payload.repository, payload.path, payload.uid);
       const paths = await fetchTree(payload.repository);
       const dirs = paths
         .filter((p) => p.endsWith("/SKILL.md"))
