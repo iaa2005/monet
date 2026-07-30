@@ -14,6 +14,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import refractor from "refractor";
 import { cn } from "@/lib/utils";
+import { fixLatexEscapedDollar } from "./latex-dollar";
+
+// Applied once, at import, so every code block gets the corrected grammar.
+fixLatexEscapedDollar(refractor);
 
 /** Reactively tracks the `dark` class on <html> so highlighting follows theme. */
 export function useIsDark(): boolean {

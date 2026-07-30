@@ -30,7 +30,11 @@
 
     --text-000: 60 2.6% 7.6%;
     --text-200: 60 2.5% 23.3%;
-    --text-400: 51 3.1% 53.7%;
+    /* Secondary text. Was 53.7%, which measures 3.32:1 on the canvas — under the
+       4.5:1 AA floor for normal text, and this token carries every subtitle,
+       meta line and sidebar label in the app. At 43% it is 4.85 on the canvas,
+       4.96 on a card and 4.64 on a muted surface. */
+    --text-400: 51 3.1% 43%;
 
     --brand: 15 63.1% 59.6%; /* terracotta — logo mark only */
     --link: 210 73.7% 40.2%; /* blue — links / file refs */
@@ -85,7 +89,9 @@
 
     --text-000: 48 33.3% 97.1%;
     --text-200: 50 9% 73.7%;
-    --text-400: 48 4.8% 59.2%;
+    /* 59.2% passed AA (5.91 on the canvas) but read as faint next to the primary
+       text. 68% gives 7.66 on the canvas, 6.31 on a card, 6.91 on muted. */
+    --text-400: 48 4.8% 68%;
 
     --brand: 15 63.1% 59.6%;
     --link: 210 65.5% 67.1%;
