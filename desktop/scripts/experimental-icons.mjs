@@ -94,18 +94,6 @@ const SQUARE_BODY =
 const SQUARE_RING =
   "M15 5v6a4 4 0 0 1-4 4H5a4 4 0 0 1-4-4V5a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4M5 2a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V5a3 3 0 0 0-3-3z";
 
-/**
- * The corner bite. flow cuts one per icon, shaped around that icon's glyph;
- * this is one circle, subtracted with fill-rule evenodd, so every folder gets
- * the same gap and every glyph sits in it. Not their hand-work — but it puts
- * the glyph where flow puts it, which is what makes a folder legible at 16px.
- */
-// Big, and pushed at the corner: measured off folder_src, flow's cut takes the
-// whole bottom-right — its body ends around x=6.4 at the base and the glyph sits
-// almost entirely OUTSIDE the folder, overlapping it. A smaller circle punched a
-// hole in the middle of the panel instead, which is what read as wrong.
-const BITE = "M11.6 17a5.2 5.2 0 1 1 0-10.4 5.2 5.2 0 0 1 0 10.4z";
-
 const DOC_BODY =
   "M5 1h3.76a3 3 0 0 1 2.12.88l2.24 2.24A3 3 0 0 1 14 6.24V12a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V4a3 3 0 0 1 3-3";
 const DOC_RING =
@@ -222,35 +210,35 @@ const sheetIcon = (d, colour) =>
   svg(layer(DOC_BODY, DOC_RING, colour, ".4") + (d ? glyph(d, colour) : ""));
 
 /**
- * The folder glyph is drawn in flow's inverse ink, not in the folder's own
- * colour. On the front panel — the same hue at 80% — a same-colour glyph is
- * invisible; flow avoids this by hanging the glyph off the corner over the page
- * instead, which needs the per-icon bite these do not have.
+ * The cut follows the glyph's own outline, offset outwards — which is what
+ * makes flow's folders look drawn rather than assembled, and what a circle
+ * could never be. Not hand-work, though: paint the glyph into a mask with a
+ * thick round stroke and it subtracts its own silhouette plus the stroke's
+ * width as the gap. The gap IS the stroke-width; nothing has to be traced.
  *
- * `#334155` is the right choice rather than white because it is half of flow's
- * own inverse pair: the recolour table swaps it with `#f8fafc`, so the glyph is
- * dark ink on a pale folder in the dark UI and pale ink on a saturated folder in
- * the light one. Contrast in both, from one value.
+ * (The earlier circle punched a hole in the middle of the panel instead. It
+ * was the wrong shape for every glyph at once.)
  */
-const FOLDER_INK = "#334155";
+const GAP = 0.95; // in glyph units; ×1.35 by the transform below
+
+/** Glyphs are drawn around (8,10) so the file forms can share them; this puts
+ * them in the corner at flow's size — its own run about 8 units across. */
+const PLACE = 'transform="translate(0.8 -1.7) scale(1.35)"';
 
 const folderIcon = (d, colour, open) => {
-  // With a glyph, the front panel loses a corner to it — as flow's do. Without
-  // one (_folder), the panel stays whole.
+  const tab = open ? TAB_OPEN : TAB_CLOSED;
   const body = open ? BODY_OPEN : BODY_CLOSED;
   const ring = open ? BODY_OPEN_RING : BODY_CLOSED_RING;
+  const panel = layer(tab, tab, colour, ".4") + layer(body, ring, colour, ".8");
+  if (!d) return svg(panel);
   return svg(
-    layer(open ? TAB_OPEN : TAB_CLOSED, open ? TAB_OPEN : TAB_CLOSED, colour, ".4") +
-      layer(d ? body + BITE : body, d ? ring + BITE : ring, colour, ".8") +
-      // The glyphs are drawn around (8,10) so the file forms can share them;
-      // this lands them in the bite at (11.5,11.5) instead of re-cutting
-      // fourteen paths by hand.
-      // Glyphs are drawn around (8,10) so the file forms can share them; this
-      // lands them in the cut at (11.6,11.8), at flow's size — its own folder
-      // glyphs run about 8 units across, not 6.
-      (d
-        ? `<g transform="translate(0.8 -1.7) scale(1.35)">${glyph(d, colour)}</g>`
-        : ""),
+    `<defs><mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="16" height="16">` +
+      `<rect width="16" height="16" fill="#fff"/>` +
+      `<g ${PLACE}><path d="${d}" fill="#000" stroke="#000" stroke-width="${GAP}" ` +
+      `stroke-linejoin="round" stroke-linecap="round"/></g>` +
+      `</mask></defs>` +
+      `<g mask="url(#cut)">${panel}</g>` +
+      `<g ${PLACE}>${glyph(d, colour)}</g>`,
   );
 };
 
