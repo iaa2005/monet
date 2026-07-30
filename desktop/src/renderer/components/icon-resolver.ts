@@ -919,9 +919,16 @@ function iconName(name: string, isDir: boolean, open: boolean): string {
   const doc = DOC_NAMES[stem];
   if (doc && DOC_EXT.has(ext)) return doc;
 
-  // 5. The extension itself.
-  return ALL_EXT[ext] ?? "_file";
+  // 5. The extension itself. An unknown one gets flow's `document` rather than
+  //    the old `_file`: the rest of the set is flow's drawing, and the one icon
+  //    an unrecognised file was guaranteed to get was the one in the other
+  //    style. `_file` stays as the last resort in fallbackIcon, where it stands
+  //    for "the mapped icon has no file behind it" — a different failure.
+  return ALL_EXT[ext] ?? UNKNOWN_FILE;
 }
+
+/** What an unrecognised extension gets. flow's own generic document. */
+const UNKNOWN_FILE = "document";
 
 export function resolveIcon(
   name: string,
@@ -951,6 +958,7 @@ export function allMappedIconNames(): string[] {
     "_file",
     "_folder",
     "_folder_open",
+    UNKNOWN_FILE,
     ...Object.values(ALL_EXT),
     ...Object.values(FLOW_FOLDERS),
     // These two were missing, so every icon reached only through a document

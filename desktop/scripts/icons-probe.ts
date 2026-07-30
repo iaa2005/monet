@@ -89,9 +89,16 @@ for (const [name, isDir] of cases) {
 }
 check('every sampled filename resolves to a real icon', failures === 0)
 
-// An unmapped extension must land on the generic file icon, not on nothing.
+// An unmapped extension must land on the generic file icon, not on nothing —
+// and that icon is flow's `document`, so the one thing an unrecognised file was
+// guaranteed to show is not the single icon drawn in the older style.
 const unknown = resolveIcon('thing.qqq', false, false, false)
-check('an unknown extension falls back to _file', unknown.endsWith('_file.svg'), unknown)
+check('an unknown extension falls back to flow document', unknown.endsWith('document.svg'), unknown)
+check('…in both themes', resolveIcon('thing.qqq', false, false, true).endsWith('document.svg'))
+check('…and that icon exists', present.base!.has('document') && present.light!.has('document'))
+// A file with no extension at all takes the same road.
+const bare = resolveIcon('somefile', false, false, false)
+check('an extensionless unknown does too', bare.endsWith('document.svg'), bare)
 
 // The runtime fallback the tree uses on a load error.
 check('the file fallback exists', present.base!.has('_file'))
