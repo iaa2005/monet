@@ -35,9 +35,9 @@ import {
   marketplaceSnapshot,
   sortMarketplace,
 } from "../skills-marketplace.js";
+import { DEFAULT_CONFIG, directoryConfig } from "../directory-config.js";
 import {
   capPerRepo,
-  CATEGORY_SLUGS,
   listRegistry,
   pickSkillDir,
   searchRegistry,
@@ -258,9 +258,10 @@ async function fetchRaw(repo: string, path: string): Promise<string | null> {
   }
 }
 
-/** The API's own maximum. Was 40, which is what made the registry look like it
- * held fifty skills — the per-repo cap only ever accounted for a handful. */
-const REGISTRY_PAGE = 100;
+/** Page size and the per-repo cap come from the catalog repo — see
+ * directory-config.ts. This is only the value used before the first fetch
+ * lands. */
+const REGISTRY_PAGE = DEFAULT_CONFIG.registryPageSize;
 
 async function listGithub(src: Extract<SkillSource, { kind: "github" }>): Promise<StoreSkill[]> {
   const paths = await fetchTree(src.id);
@@ -318,12 +319,13 @@ async function listMarketplaceSource(
   query: string,
   offset: number,
 ): Promise<StoreSkill[]> {
+  const cfg = await directoryConfig();
   const snapshot = await marketplaceSnapshot();
   const hits = query.trim()
     ? matchMarketplace(snapshot, query)
     : sortMarketplace(snapshot);
   const resolve = installResolver();
-  return hits.slice(offset, offset + REGISTRY_PAGE).map((r) => {
+  return hits.slice(offset, offset + cfg.registryPageSize).map((r) => {
     const uid = `${src.id}|${r.repo}|${r.path}`;
     return {
       uid,
@@ -345,14 +347,15 @@ async function listRegistrySource(
   offset: number,
   category?: string,
 ): Promise<StoreSkill[]> {
+  const cfg = await directoryConfig();
   const page = await listRegistry({
     query,
     category,
     offset,
-    limit: REGISTRY_PAGE,
+    limit: cfg.registryPageSize,
   });
   const resolve = installResolver();
-  return capPerRepo(page, 3).map((r) => ({
+  return capPerRepo(page, cfg.maxPerRepo).map((r) => ({
     // Includes the repository: two registry entries can share a name, and the
     // path cannot be part of the identity because it is not known until install.
     uid: `${src.id}|${r.repository}|${r.name}`,
@@ -450,7 +453,10 @@ async function installSkill(
 export function registerSkillStoreIPC(): void {
   // The filter's starting list. Seeded from the directory's own categories
   // page; the UI unions in whatever it actually sees.
-  ipcMain.handle("skillstore:categories", (): string[] => [...CATEGORY_SLUGS]);
+  ipcMain.handle(
+    "skillstore:categories",
+    async (): Promise<string[]> => (await directoryConfig()).skillCategories,
+  );
   ipcMain.handle("skillstore:getSources", (): SkillSource[] => getSources());
   ipcMain.handle(
     "skillstore:setSources",

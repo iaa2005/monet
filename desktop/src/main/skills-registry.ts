@@ -19,34 +19,6 @@
 const BASE = "https://www.skillsdirectory.com/api/registry";
 const UA = { "User-Agent": "monet-desktop" };
 
-/**
- * The category slugs the directory publishes, read off its own /categories
- * page — there is no API endpoint for them (both /api/categories and
- * /api/registry/categories are 404).
- *
- * Used only to SEED the filter. Whatever categories actually appear in results
- * are unioned in, so one added upstream shows up without a release here, and
- * one retired upstream simply stops appearing in the data.
- */
-export const CATEGORY_SLUGS = [
-  "ai-agents",
-  "blockchain",
-  "business",
-  "code-quality",
-  "content-marketing",
-  "data",
-  "databases",
-  "design",
-  "development",
-  "devops",
-  "documentation",
-  "education",
-  "research",
-  "security",
-  "testing",
-  "tools",
-] as const;
-
 export interface RegistrySkill {
   name: string;
   /** The registry's own id — `<author>-<skill>`, not a repo path. */
@@ -129,7 +101,7 @@ export function pickSkillDir(dirs: string[], name: string): PickResult {
  */
 export function capPerRepo<T extends { repository: string }>(
   list: T[],
-  n = 3,
+  n: number,
 ): T[] {
   const seen = new Map<string, number>();
   const out: T[] = [];

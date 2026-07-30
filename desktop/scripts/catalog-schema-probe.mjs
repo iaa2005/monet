@@ -24,7 +24,11 @@ const RAW = "https://raw.githubusercontent.com/iaa2005/monet-directory/main";
 const PAIRS = [
   ["skill-sources.json", "skill-sources.schema.json"],
   ["mcp-sources.json", "mcp-sources.schema.json"],
+  ["directory-config.json", "directory-config.schema.json"],
 ];
+
+/** The catalogs are arrays; the tuning file is an object. */
+const IS_ARRAY = new Set(["skill-sources.json", "mcp-sources.json"]);
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -52,8 +56,12 @@ for (const [dataFile, schemaFile] of PAIRS) {
     continue;
   }
   check("both files are published", true);
-  check("the catalog is an array", Array.isArray(data), Array.isArray(data) ? "array" : typeof data);
-  check("it is not empty", Array.isArray(data) && data.length > 0, data?.length);
+  if (IS_ARRAY.has(dataFile)) {
+    check("the catalog is an array", Array.isArray(data), Array.isArray(data) ? "array" : typeof data);
+    check("it is not empty", Array.isArray(data) && data.length > 0, data?.length);
+  } else {
+    check("the file is an object", !!data && typeof data === "object" && !Array.isArray(data));
+  }
 
   let validate;
   try {
@@ -68,12 +76,16 @@ for (const [dataFile, schemaFile] of PAIRS) {
   check(
     "the live catalog validates against it",
     ok,
-    ok ? `${data.length} entries` : ajv.errorsText(validate.errors, { separator: "; " }),
+    ok
+      ? Array.isArray(data)
+        ? `${data.length} entries`
+        : `${Object.keys(data).length} fields`
+      : ajv.errorsText(validate.errors, { separator: "; " }),
   );
 
   // Ids are what the app dedupes and matches on, so a duplicate silently hides
   // an entry rather than erroring.
-  if (Array.isArray(data)) {
+  if (IS_ARRAY.has(dataFile) && Array.isArray(data)) {
     const ids = data.map((e) => e?.id);
     check("every entry has an id", ids.every(Boolean), JSON.stringify(ids));
     check("and ids are unique", new Set(ids).size === ids.length, JSON.stringify(ids));
