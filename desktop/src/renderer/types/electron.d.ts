@@ -173,6 +173,10 @@ export interface SuggestedSource {
 export interface SkillSource {
   kind: "github" | "registry";
   id: string;
+  /** Off means not listed and not fetched. */
+  enabled: boolean;
+  /** Ships with the app: switchable, never deletable. */
+  builtin: boolean;
   repo?: string;
   sub?: string;
   api?: string;

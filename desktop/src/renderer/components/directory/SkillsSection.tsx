@@ -1,12 +1,17 @@
 /**
  * Directory → Skills.
  *
- * Two kinds of source. A GitHub repo whose folders contain a SKILL.md is
- * enumerated and merged into the grid, each card labelled with its repo.
+ * A source is a place to look for skills, and the chips are its on/off switch —
+ * nothing more. Off means not listed and not fetched. What ships with the app
+ * can be switched off but not deleted; what the user added can be both.
  *
- * skillsdirectory.com is the other kind: an INDEX of such repos, ~97 000
- * entries, so it cannot be listed — it is searched, and appears as its own
- * group once the query is long enough to mean something.
+ * That replaced a "filter the grid by source" reading of the same chips, which
+ * nothing on screen explained and which shared the row with a delete button.
+ *
+ * Two kinds of source. A GitHub repo whose folders hold a SKILL.md is
+ * enumerated — one tree request, complete listing. skillsdirectory.com is an
+ * INDEX of such repos, ~97 000 entries, so it is paged: query and category go
+ * to the server, and more arrives as the grid is scrolled.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -37,12 +42,15 @@ const SORTS = [
   { label: "Installed first", value: "installed" },
 ];
 
+/** What a switched-off source looks like, spelled out once: the row is a set of
+ * switches, so an empty grid should say which switch to flip. */
+const ALL_OFF = "Every source is switched off — turn one on above.";
+
 export function SkillsSection({ query }: { query: string }): JSX.Element {
   const [sources, setSources] = useState<SkillSource[]>([]);
   const [skills, setSkills] = useState<StoreSkill[] | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [source, setSource] = useState("all");
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState("name");
   const [adding, setAdding] = useState(false);
@@ -58,33 +66,54 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   const sentinel = useRef<HTMLDivElement>(null);
   const [category, setCategory] = useState("all");
   const [catSlugs, setCatSlugs] = useState<string[]>([]);
-  const load = async (q = query): Promise<void> => {
+  /**
+   * The only place a listing is fetched.
+   *
+   * It used to be three effects — mount, query, category — each calling its own
+   * `load`. Two could be in flight at once and the older response could land
+   * last, which is why filtering by category appeared to work once and then
+   * stop, and why the source chips flickered: every response overwrote both
+   * lists. A token makes the newest request the only one allowed to write.
+   */
+  const reqId = useRef(0);
+
+  const load = async (): Promise<void> => {
+    const mine = ++reqId.current;
     setReloading(true);
     try {
       const [srcs, r] = await Promise.all([
         api()?.skillStore.getSources(),
-        // The query goes to the MAIN process too: a registry source is paged,
-        // not enumerated, so it must search server-side rather than be
-        // filtered client-side like a repo's listing.
+        // The query and category go to the MAIN process: a registry source is
+        // paged, not enumerated, so both must be applied server-side rather
+        // than filtered over the hundred rows already fetched.
         api()?.skillStore.list({
-          query: q,
+          query,
           category: category === "all" ? undefined : category,
         }),
       ]);
+      // A newer request started while this one was out — its answer is the
+      // current one, and writing this stale one would undo it.
+      if (mine !== reqId.current) return;
       setSources(srcs ?? []);
       setSkills(r?.ok ? (r.skills ?? []) : []);
-      // A new listing restarts the registry paging — the pages that follow
-      // belong to this query, not the previous one.
       setRegOffset(0);
       setMoreDone(false);
       setErrors(r?.ok ? (r.errors ?? []) : [r?.error ?? "Failed to load"]);
     } finally {
-      setReloading(false);
+      if (mine === reqId.current) setReloading(false);
     }
   };
 
+  // One effect for every input. The debounce is for the query — a registry
+  // search is a request to someone else's server on each keystroke — and
+  // costs nothing on a category change or first paint.
   useEffect(() => {
-    void load();
+    const t = setTimeout(() => void load(), query ? 400 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, category]);
+
+  useEffect(() => {
     void api()
       ?.skillStore.categories()
       .then((c) => setCatSlugs(c ?? []))
@@ -93,70 +122,60 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
       ?.skillStore.suggestions()
       .then((r) => setSuggested(r?.sources ?? []))
       .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // A registry source is searched on the server, so a new query means a new
-  // request — debounced, or every keystroke hits skillsdirectory.com.
-  const hasRegistry = sources.some((s) => s.kind === "registry");
-  useEffect(() => {
-    if (!hasRegistry) return;
-    const t = setTimeout(() => void load(query), 400);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, hasRegistry]);
+  const hasRegistry = sources.some((s) => s.kind === "registry" && s.enabled);
 
-  // The category is a SERVER-side filter: "development" alone matches 22 389
-  // entries, so narrowing the hundred already on screen would narrow the wrong
-  // hundred. Changing it therefore re-queries rather than re-filters.
-  const firstRender = useRef(true);
-  useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
-    void load(query);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category]);
+  /** How a source goes back into the config. */
+  const stored = (x: SkillSource): unknown =>
+    x.kind === "github" && x.enabled
+      ? x.id
+      : { kind: x.kind, id: x.id, enabled: x.enabled };
+
+  const save = async (list: unknown[]): Promise<void> => {
+    const next = await api()?.skillStore.setSources(list);
+    setSources(next ?? sources);
+    await load();
+  };
 
   const addSource = async (): Promise<void> => {
     const v = newSource.trim();
     if (!v) return;
-    // Sources go back as the config stores them: a bare string for a repo,
-    // an object for anything else.
-    const next = await api()?.skillStore.setSources([
-      ...sources.map((x) => (x.kind === "github" ? x.id : { kind: x.kind, id: x.id })),
-      v,
-    ]);
-    setSources(next ?? sources);
     setNewSource("");
     setAdding(false);
-    await load();
+    await save([...sources.map(stored), v]);
+  };
+
+  /**
+   * The whole interaction: a source is on or off.
+   *
+   * It used to be a view filter — clicking a chip hid the other sources'
+   * cards — which read as arbitrary because nothing said so and the labels
+   * were unrecognisable. On/off is the thing a person actually wants, and a
+   * switched-off source is not fetched at all.
+   */
+  const toggleSource = async (id: string): Promise<void> => {
+    await save(
+      sources.map((x) => (x.id === id ? stored({ ...x, enabled: !x.enabled }) : stored(x))),
+    );
   };
 
   /** Add a curated source. It is a place to look for skills, not code — the
    * install path is unchanged, so nothing runs until the user installs. */
   const addSuggested = async (s: SuggestedSource): Promise<void> => {
-    const next = await api()?.skillStore.setSources([
-      ...sources.map((x) => (x.kind === "github" ? x.id : { kind: x.kind, id: x.id })),
-      s.kind === "github" ? (s.repo ?? s.id) : { kind: s.kind, id: s.id, api: s.api },
-    ]);
-    setSources(next ?? sources);
     setSuggested((prev) =>
       prev.map((x) => (x.id === s.id ? { ...x, added: true } : x)),
     );
-    await load();
+    await save([
+      ...sources.map(stored),
+      s.kind === "github" ? (s.repo ?? s.id) : { kind: s.kind, id: s.id, api: s.api },
+    ]);
   };
 
+  /** Only a source the user added. A built-in can be switched off; deleting it
+   * would leave no way back short of typing its id. */
   const removeSource = async (id: string): Promise<void> => {
-    const next = await api()?.skillStore.setSources(
-      sources
-        .filter((x) => x.id !== id)
-        .map((x) => (x.kind === "github" ? x.id : { kind: x.kind, id: x.id })),
-    );
-    setSources(next ?? sources);
-    if (source === id) setSource("all");
-    await load();
+    await save(sources.filter((x) => x.id !== id).map(stored));
   };
 
   const install = async (s: StoreSkill): Promise<void> => {
@@ -282,9 +301,11 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
   const sourceLabels = useMemo(() => sourceChipLabels(sources), [sources]);
 
   const shown = useMemo(() => {
+    // No source filter here any more: a switched-off source is not fetched, so
+    // there is nothing of its to hide. The query is still applied locally for
+    // the github sources, whose listings are complete rather than paged.
     let list = (skills ?? []).filter(
       (s) =>
-        (source === "all" || s.source === source) &&
         (filter === "all" ||
           (filter === "installed" ? s.installed : !s.installed)) &&
         matches(query, s.name, s.description, s.source, s.path),
@@ -302,7 +323,7 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
           a.name.localeCompare(b.name),
       );
     return list;
-  }, [skills, source, filter, sort, query]);
+  }, [skills, filter, sort, query]);
 
   return (
     <>
@@ -310,24 +331,22 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
         chips={
           <>
             <span className="mr-0.5 shrink-0 self-center text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Source
+              Sources
             </span>
-            {sources.length > 1 && (
-              <Chip
-                label="All"
-                title="Show skills from every source"
-                active={source === "all"}
-                onClick={() => setSource("all")}
-              />
-            )}
             {sources.map((s) => (
               <Chip
                 key={s.id}
                 label={sourceLabels.get(s.id) ?? s.id}
-                title={`Show only skills from ${s.kind === "registry" ? (s.homepage ?? s.name ?? s.id) : s.id} — click again to show all`}
-                active={source === s.id}
-                onClick={() => setSource(source === s.id ? "all" : s.id)}
-                onRemove={() => void removeSource(s.id)}
+                title={
+                  (s.enabled ? "On — click to switch off. " : "Off — click to switch on. ") +
+                  (s.kind === "registry" ? (s.homepage ?? s.name ?? s.id) : s.id) +
+                  (s.builtin ? " (built in, cannot be removed)" : "")
+                }
+                active={s.enabled}
+                onClick={() => void toggleSource(s.id)}
+                // Built-ins switch off but never disappear; only what the user
+                // added can be deleted.
+                onRemove={s.builtin ? undefined : () => void removeSource(s.id)}
               />
             ))}
             {adding ? (
@@ -447,10 +466,10 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
           </Empty>
         ) : shown.length === 0 ? (
           <Empty>
-            {query
-              ? `Nothing matches “${query}”.`
-              : sources.length === 0
-                ? "Add a repository to browse skills."
+            {sources.every((s) => !s.enabled)
+              ? ALL_OFF
+              : query
+                ? `Nothing matches “${query}”.`
                 : "No skills here."}
           </Empty>
         ) : (

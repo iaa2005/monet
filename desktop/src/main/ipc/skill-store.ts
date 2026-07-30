@@ -20,6 +20,17 @@ import {
   type SuggestedSource,
 } from "../skill-source-catalog.js";
 import {
+  BUILTIN_IDS,
+  DEFAULT_SOURCES,
+  normalizeSource,
+  parseStoredSource,
+  toStored,
+  withBuiltins,
+  type SkillSource,
+  type SourceKind,
+  type StoredSource,
+} from "../skill-source-model.js";
+import {
   capPerRepo,
   CATEGORY_SLUGS,
   listRegistry,
@@ -54,72 +65,8 @@ export interface StoreSkill {
   slug: string;
 }
 
-export type SourceKind = "github" | "registry";
-
-/**
- * A skill source.
- *
- * `github` is enumerable: one tree request lists every folder holding a
- * SKILL.md. `registry` is not — skillsdirectory.com indexes ~97 000 entries
- * and returns them a page at a time, so it contributes a page rather than a
- * complete listing, and its cards resolve to a folder only on install.
- */
-export type SkillSource =
-  | { kind: "github"; id: string; repo: string; sub: string }
-  | { kind: "registry"; id: string; api: string; name: string; homepage?: string };
-
-const SKILLSDIRECTORY: Extract<SkillSource, { kind: "registry" }> = {
-  kind: "registry",
-  id: "skillsdirectory",
-  api: "https://www.skillsdirectory.com/api/registry",
-  name: "Skills Directory",
-  homepage: "https://www.skillsdirectory.com",
-};
-
-/** Config rows are either a bare string (a GitHub repo — the original format,
- * still what most entries are) or an object for anything else. */
-type StoredSource = string | { kind?: string; id?: string; repo?: string; api?: string; name?: string; homepage?: string };
-
-export function parseStoredSource(raw: StoredSource): SkillSource | null {
-  if (typeof raw === "string") {
-    const norm = normalizeSource(raw);
-    if (norm.split("/").length < 2) return null;
-    const parts = norm.split("/");
-    return {
-      kind: "github",
-      id: norm,
-      repo: parts.slice(0, 2).join("/"),
-      sub: parts.slice(2).join("/"),
-    };
-  }
-  if (raw?.kind === "registry") {
-    // Only the one registry is understood; an unknown api is not something to
-    // guess a protocol for.
-    const api = typeof raw.api === "string" ? raw.api : "";
-    if (raw.id === SKILLSDIRECTORY.id || api === SKILLSDIRECTORY.api)
-      return SKILLSDIRECTORY;
-    return null;
-  }
-  if (typeof raw?.repo === "string") return parseStoredSource(raw.repo);
-  return null;
-}
-
-/** Back to what goes in the config file — strings stay strings so a
- * hand-edited skill-store.json keeps reading the way it always did. */
-function toStored(s: SkillSource): StoredSource {
-  return s.kind === "github" ? s.id : { kind: "registry", id: s.id };
-}
-
 const UA = { "User-Agent": "monet-desktop" };
 const CACHE_MS = 10 * 60 * 1000;
-/** Out of the box: the project's own skills, plus the directory — which is
- * where "not just a search" comes from. It is a source like any other now, so
- * its chip is there before anything is typed. */
-const DEFAULT_SOURCES: SkillSource[] = [
-  parseStoredSource("iaa2005/monet-directory/skills")!,
-  SKILLSDIRECTORY,
-];
-
 function skillsDir(): string {
   const dir = join(getDataDir(), "claude", "skills");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -128,16 +75,6 @@ function skillsDir(): string {
 
 function configFile(): string {
   return join(getDataDir(), "skill-store.json");
-}
-
-/** Normalize a user-typed source: accepts a full GitHub URL or `owner/repo`. */
-export function normalizeSource(raw: string): string {
-  return raw
-    .trim()
-    .replace(/^https?:\/\/(www\.)?github\.com\//i, "")
-    .replace(/\.git$/i, "")
-    .replace(/\/tree\/[^/]+\//, "/") // .../tree/main/subdir → .../subdir
-    .replace(/^\/+|\/+$/g, "");
 }
 
 function getSources(): SkillSource[] {
@@ -157,7 +94,7 @@ function getSources(): SkillSource[] {
       .filter((x): x is SkillSource => x !== null);
     const seen = new Set<string>();
     const clean = parsed.filter((x) => !seen.has(x.id) && seen.add(x.id));
-    if (clean.length) return clean;
+    if (clean.length) return withBuiltins(clean);
   } catch {
     /* default below */
   }
@@ -169,7 +106,9 @@ function setSources(list: StoredSource[]): SkillSource[] {
     .map((x) => parseStoredSource(x))
     .filter((x): x is SkillSource => x !== null);
   const seen = new Set<string>();
-  const clean = parsed.filter((x) => !seen.has(x.id) && seen.add(x.id));
+  const clean = withBuiltins(
+    parsed.filter((x) => !seen.has(x.id) && seen.add(x.id)),
+  );
   writeFileSync(
     configFile(),
     JSON.stringify({ sources: clean.map(toStored) }, null, 2),
@@ -414,7 +353,7 @@ export function registerSkillStoreIPC(): void {
     }> => {
       try {
         const { skills, errors } = await listAll(
-          getSources(),
+          getSources().filter((s) => s.enabled),
           opts?.query ?? "",
           opts?.offset ?? 0,
           opts?.category || undefined,
@@ -474,7 +413,7 @@ export function registerSkillStoreIPC(): void {
       try {
         const regs = getSources().filter(
           (s): s is Extract<SkillSource, { kind: "registry" }> =>
-            s.kind === "registry",
+            s.kind === "registry" && s.enabled,
         );
         if (regs.length === 0) return { ok: true, skills: [] };
         const pages = await Promise.all(
