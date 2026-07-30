@@ -53,6 +53,41 @@ export function normalizeName(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+/** Words, for comparing a name against a folder a token at a time. */
+function tokens(s: string): string[] {
+  return s
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+/** How many tokens of prefix one name may carry over the other. */
+const MAX_PREFIX = 2;
+
+/**
+ * How many tokens of prefix separate `cand` from `want`, or null if they are not
+ * the same name at all. 0 never happens here — that is an exact match.
+ *
+ * Reported: `vercel-react-best-practices` matched none of the nine folders in
+ * vercel-labs/agent-skills, whose skill is at `skills/react-best-practices` —
+ * the catalogue prefixes the name with the vendor and the repository does not.
+ * The reverse happens too: the same catalogue lists a `react-best-practices`
+ * whose folder in another repo IS called `vercel-react-best-practices`.
+ *
+ * Both directions, and deliberately tight, because matching too eagerly installs
+ * the WRONG skill. Whole tokens only, at least two of them, and at most two
+ * tokens of difference. That is what keeps `vercel-cli-with-tokens` from being
+ * answered by a folder called `tokens`.
+ */
+function prefixDistance(want: string, cand: string): number | null {
+  const w = tokens(want);
+  const c = tokens(cand);
+  const [long, short] = w.length >= c.length ? [w, c] : [c, w];
+  const extra = long.length - short.length;
+  if (short.length < 2 || extra === 0 || extra > MAX_PREFIX) return null;
+  return long.slice(extra).join("-") === short.join("-") ? extra : null;
+}
+
 export type PickResult =
   | {
       ok: true;
@@ -97,19 +132,40 @@ export function pickSkillDir(dirs: string[], name: string): PickResult {
   if (dirs.length === 0)
     return { ok: false, error: "That repository has no SKILL.md anywhere." };
 
+  const base = (d: string): string => d.split("/").pop() ?? d;
   const want = normalizeName(name);
-  const exact = bestFirst(
-    dirs.filter((d) => normalizeName(d.split("/").pop() ?? d) === want),
-  );
-  if (exact.length === 1) return { ok: true, dir: exact[0]! };
-  if (exact.length > 1) {
-    if (ties(exact[0]!, exact[1]!))
+
+  /** Rank a matched set, or report it when the choice is genuinely arbitrary. */
+  const settle = (found: string[]): PickResult | null => {
+    const ranked = bestFirst(found);
+    if (ranked.length === 0) return null;
+    if (ranked.length === 1) return { ok: true, dir: ranked[0]! };
+    if (ties(ranked[0]!, ranked[1]!))
       return {
         ok: false,
-        error: `"${name}" matches ${exact.length} folders in that repository.`,
-        candidates: exact,
+        error: `"${name}" matches ${ranked.length} folders in that repository.`,
+        candidates: ranked,
       };
-    return { ok: true, dir: exact[0]!, variants: exact };
+    return { ok: true, dir: ranked[0]!, variants: ranked };
+  };
+
+  const exact = settle(dirs.filter((d) => normalizeName(base(d)) === want));
+  if (exact) return exact;
+
+  // The catalogue's name may carry a vendor prefix the repository does not —
+  // `vercel-react-best-practices` for a folder called `react-best-practices` —
+  // or the other way round. Tried only after an exact match fails.
+  //
+  // Nearest wins: with both `best-practices` and `react-best-practices` in the
+  // repo, the one that leaves less of the name unaccounted for is not a guess
+  // between equals, so it is taken rather than reported as ambiguous.
+  const near = dirs
+    .map((d) => ({ d, at: prefixDistance(name, base(d)) }))
+    .filter((x): x is { d: string; at: number } => x.at !== null);
+  if (near.length) {
+    const best = Math.min(...near.map((x) => x.at));
+    const nearly = settle(near.filter((x) => x.at === best).map((x) => x.d));
+    if (nearly) return nearly;
   }
 
   // No name match. One skill in the repo is unambiguous regardless of naming.

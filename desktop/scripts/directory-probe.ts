@@ -313,6 +313,24 @@ console.log("\n# the reported installs, against the real repos");
   });
   check("a folder outside the repo is refused", bogus.ok === false, JSON.stringify(bogus).slice(0, 90));
 
+  // Reported: "Could not tell which of the 9 skills in that repository
+  // vercel-react-best-practices is". The catalogue prefixes the name with the
+  // vendor; the repository does not. Two of those nine folders begin with
+  // `vercel`, so this is also the check that the near-match is not loose.
+  const vercel = await call("skillstore:preview", {
+    source: "claudemarketplaces",
+    path: "",
+    kind: "registry",
+    repository: "vercel-labs/agent-skills",
+    name: "vercel-react-best-practices",
+  });
+  check("a vendor-prefixed name resolves", vercel.ok === true, vercel.error);
+  check(
+    "and lands on react-best-practices",
+    vercel.dir === "skills/react-best-practices",
+    vercel.dir,
+  );
+
   const foundry = await call("skillstore:preview", {
     source: "claudemarketplaces",
     path: "",

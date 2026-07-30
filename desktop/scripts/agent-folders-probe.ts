@@ -157,6 +157,70 @@ const check = (name: string, ok: boolean, detail?: unknown): void => {
   check("different depths do not", !ties("skills/x", "a/b/skills/x"));
 }
 
+// ── 6b. A vendor prefix on the catalogue's name ───────────────────────
+{
+  // Reported: nothing installed, "Could not tell which of the 9 skills in that
+  // repository vercel-react-best-practices is". The nine folders are the real
+  // ones from vercel-labs/agent-skills, and the answer is react-best-practices:
+  // claudemarketplaces prefixes the name with the vendor, the repo does not.
+  //
+  // Note the trap in this list — two folders already START with `vercel`, so a
+  // rule that merely looked for the word would have picked one of them.
+  const vercel = [
+    "skills/composition-patterns",
+    "skills/deploy-to-vercel",
+    "skills/react-best-practices",
+    "skills/react-native-skills",
+    "skills/react-view-transitions",
+    "skills/vercel-cli-with-tokens",
+    "skills/vercel-optimize",
+    "skills/web-design-guidelines",
+    "skills/writing-guidelines",
+  ];
+  const r = pickSkillDir(vercel, "vercel-react-best-practices");
+  check("a vendor-prefixed name resolves", r.ok, r.ok ? r.dir : r.error);
+  check(
+    "and to the right folder, not one starting with vercel",
+    r.ok && r.dir === "skills/react-best-practices",
+    r.ok ? r.dir : "",
+  );
+  // The other direction is just as real: the same catalogue lists a plain
+  // `react-best-practices` whose folder in another repo carries the prefix.
+  const back = pickSkillDir(
+    ["skills/vercel-react-best-practices", "skills/other"],
+    "react-best-practices",
+  );
+  check(
+    "a prefix on the FOLDER resolves too",
+    back.ok && back.dir === "skills/vercel-react-best-practices",
+    back.ok ? back.dir : back.error,
+  );
+
+  // And the part that matters more: it must not match loosely. Each of these
+  // would install the wrong skill.
+  const nope: [string, string[], string][] = [
+    ["a single trailing token is not enough", ["skills/tokens"], "vercel-cli-with-tokens"],
+    ["nor a single leading one", ["skills/vercel"], "vercel-optimize"],
+    ["three tokens of prefix is too many", ["skills/practices-x-y"], "a-b-c-practices-x-y"],
+    ["a shared tail is not a match", ["skills/view-transitions"], "react-view-transitions-extra"],
+    ["and neither is a shared word", ["skills/react-native-skills"], "vercel-react-best-practices"],
+  ];
+  for (const [label, dirs, name] of nope) {
+    const x = pickSkillDir([...dirs, "skills/filler-one", "skills/filler-two"], name);
+    check(label, !x.ok, x.ok ? `matched ${x.dir}` : "refused");
+  }
+  // Two equally-near folders is a question, not an answer.
+  const two = pickSkillDir(
+    ["skills/best-practices", "skills/react-best-practices", "skills/filler"],
+    "vercel-react-best-practices",
+  );
+  check(
+    "the closer of two candidates wins on exactness",
+    two.ok && two.dir === "skills/react-best-practices",
+    two.ok ? two.dir : two.error,
+  );
+}
+
 // ── 7. Agents published by the catalogue ──────────────────────────────
 {
   // The list changes fastest of anything here — one repo already uses six

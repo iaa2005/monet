@@ -21,6 +21,7 @@ import {
   ClipboardCheck,
   ExternalLink,
   FileText,
+  Folder,
   Loader2,
   Plus,
   ShieldAlert,
@@ -33,6 +34,7 @@ import type { AuditFinding, SkillAudit, StoreSkill } from "@/types/electron";
 import { api } from "./shared";
 import { OwnerAvatar, ownerOf } from "./OwnerAvatar";
 import { AgentIcon } from "./AgentIcon";
+import { fileRows } from "./file-rows";
 
 /** The scanners, in the order the user named them. Each takes a pasted URL. */
 const SCANNERS = [
@@ -183,7 +185,7 @@ export function SkillPreview({
       onClick={onClose}
     >
       <div
-        className="flex h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
+        className="flex h-[86vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-2.5 border-b border-border px-5 py-3.5">
@@ -396,33 +398,49 @@ export function SkillPreview({
 
         <div className="flex min-h-0 flex-1">
           {(data?.files?.length ?? 0) > 1 && (
-            <div className="w-56 shrink-0 overflow-y-auto border-r border-border py-2">
-              {data!.files!.map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setFile(f)}
-                  className={cn(
-                    "flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-[12px]",
-                    f === file
-                      ? "bg-black/[0.05] text-foreground dark:bg-white/[0.06]"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <FileText className="size-3 shrink-0" />
-                  <span className="truncate">{f}</span>
-                  {/* A dot on the files the audit had something to say about. */}
-                  {flagged[f] && (
-                    <span
-                      title={`Audit flagged ${f}`}
-                      className={cn(
-                        "ml-auto size-1.5 shrink-0 rounded-full",
-                        flagged[f] === "high" ? "bg-red-500" : "bg-amber-500",
-                      )}
-                    />
-                  )}
-                </button>
-              ))}
+            <div className="w-64 shrink-0 overflow-y-auto border-r border-border py-2">
+              {/* Folders as headings, files by their own name. Seventeen rows
+                  all starting `references/routes/` said nothing seventeen
+                  times, and truncated the part that differed. */}
+              {fileRows(data!.files!).map((row) =>
+                row.kind === "dir" ? (
+                  <div
+                    key={`d:${row.path}`}
+                    style={{ paddingLeft: 12 + row.depth * 12 }}
+                    className="flex items-center gap-1.5 py-1.5 pr-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70"
+                  >
+                    <Folder className="size-3 shrink-0" />
+                    <span className="truncate">{row.name}</span>
+                  </div>
+                ) : (
+                  <button
+                    key={row.path}
+                    type="button"
+                    onClick={() => setFile(row.path)}
+                    title={row.path}
+                    style={{ paddingLeft: 12 + row.depth * 12 }}
+                    className={cn(
+                      "flex w-full items-center gap-1.5 py-1.5 pr-3 text-left text-[12px]",
+                      row.path === file
+                        ? "bg-black/[0.05] text-foreground dark:bg-white/[0.06]"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <FileText className="size-3 shrink-0" />
+                    <span className="truncate">{row.name}</span>
+                    {/* A dot on the files the audit had something to say about. */}
+                    {flagged[row.path] && (
+                      <span
+                        title={`Audit flagged ${row.path}`}
+                        className={cn(
+                          "ml-auto size-1.5 shrink-0 rounded-full",
+                          flagged[row.path] === "high" ? "bg-red-500" : "bg-amber-500",
+                        )}
+                      />
+                    )}
+                  </button>
+                ),
+              )}
             </div>
           )}
           <div className="min-w-0 flex-1 overflow-y-auto px-5 py-4">

@@ -38,6 +38,7 @@ import type { SkillSource, StoreSkill } from "@/types/electron";
 import {
   api,
   CardAction,
+  type CardLook,
   Chip,
   DirCard,
   Empty,
@@ -382,11 +383,13 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
 
   /** One card. Shared by loose cards and the ones inside a group, so the two
    * cannot drift apart. */
-  const renderCard = (s: StoreSkill): JSX.Element => {
+  /** `look` is "row" inside a repository group, where the group is the card. */
+  const renderCard = (s: StoreSkill, look: CardLook = "wide"): JSX.Element => {
     const key = s.uid;
     return (
               <DirCard
                 key={key}
+                look={look}
                 title={`/${s.name}`}
                 meta={
                   <>
@@ -565,7 +568,9 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      {/* One column. Two put the description in a 30-character column and
+            still left the card half empty; full width, a skill reads as a row. */}
+        <div className="flex flex-col gap-2">
         {skills === null ? (
           <Empty>
             <Loader2 className="mx-auto size-5 animate-spin" />
@@ -619,8 +624,9 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
  * and over, pushing everyone else's work off screen. Collapsed, the repo costs
  * one row and hides nothing — a click opens it.
  *
- * Open, it spans both columns, so its skills read as a list belonging to it
- * rather than cards that happen to sit nearby.
+ * Open, its skills are ROWS inside it — no border, no rounding, no gap of their
+ * own. A card nested in a card reads as two things when it is one; a table reads
+ * as the repository's contents, which is what it is.
  */
 function RepoGroupCard({
   group,
@@ -631,10 +637,10 @@ function RepoGroupCard({
   group: RepoGroup<StoreSkill>;
   open: boolean;
   onToggle: () => void;
-  renderCard: (s: StoreSkill) => JSX.Element;
+  renderCard: (s: StoreSkill, look?: CardLook) => JSX.Element;
 }): JSX.Element {
   return (
-    <div className={cn("rounded-xl border border-border", open && "lg:col-span-2")}>
+    <div className="rounded-2xl border border-border">
       <button
         type="button"
         onClick={onToggle}
@@ -676,8 +682,11 @@ function RepoGroupCard({
         </span>
       </button>
       {open && (
-        <div className="grid grid-cols-1 gap-3 border-t border-border p-3 lg:grid-cols-2">
-          {group.items.map(renderCard)}
+        // No padding, no gap, no rounding: the group is the card and these are
+        // its lines, so the whole thing reads as one table rather than cards
+        // nested inside a card.
+        <div className="border-t border-border">
+          {group.items.map((s) => renderCard(s, "row"))}
         </div>
       )}
     </div>

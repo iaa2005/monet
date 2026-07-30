@@ -168,6 +168,16 @@ export function Chip({
  * One catalog entry. Title, a provenance line, the description, and an action
  * slot in the top-right — the same shape whatever the section is showing.
  */
+/**
+ * How a card sits in its container.
+ *
+ * `card` is the two-column grid Connectors and MCP still use. `wide` is the same
+ * card without the fixed height, for a single-column list where the height only
+ * bought empty space. `row` is a line in a group: the group is the card, so these
+ * drop their own border, rounding and gap and read as a table instead.
+ */
+export type CardLook = "card" | "wide" | "row";
+
 export function DirCard({
   title,
   meta,
@@ -176,6 +186,7 @@ export function DirCard({
   action,
   onClick,
   dim,
+  look = "card",
 }: {
   title: ReactNode;
   meta?: ReactNode;
@@ -184,12 +195,22 @@ export function DirCard({
   action?: ReactNode;
   onClick?: () => void;
   dim?: boolean;
+  look?: CardLook;
 }): JSX.Element {
   return (
     <div
       onClick={onClick}
       className={cn(
-        "flex min-h-[7.5rem] flex-col rounded-2xl border border-border bg-card/60 p-4 transition-colors",
+        "flex flex-col transition-colors",
+        // A fixed height keeps a two-column grid's cells even. In one column it
+        // only adds empty space under a one-line description.
+        look === "card" && "min-h-[7.5rem] rounded-2xl border border-border bg-card/60 p-4",
+        look === "wide" && "rounded-2xl border border-border bg-card/60 p-4",
+        // Inside a group: no border of its own, no rounding, no gap. The group is
+        // the card; these are its rows, and a row that looks like a card inside a
+        // card reads as two things when it is one.
+        look === "row" &&
+          "border-b border-border/60 px-4 py-3 last:border-b-0",
         onClick && "cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03]",
         dim && "opacity-60",
       )}
