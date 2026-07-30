@@ -693,8 +693,9 @@ export interface ElectronAPI {
       repo?: string;
       dir?: string;
       /** Folders holding this skill, best-first, when a repo ships one copy per
-       * agent. Absent when there is nothing to choose between. */
-      variants?: string[];
+       * agent, each labelled by main so the renderer keeps no second list.
+       * Absent when there is nothing to choose between. */
+      variants?: { dir: string; agent: string; label: string }[];
       files?: string[];
       content?: string;
       /** The text of every file that was read, so the viewer can show them all

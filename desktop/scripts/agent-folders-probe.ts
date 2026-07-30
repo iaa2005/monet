@@ -16,8 +16,11 @@
 import {
   AGENT_FOLDERS,
   agentOfPath,
+  allAgentFolders,
   bestFirst,
+  parseAgentFolders,
   rankPath,
+  setExtraAgentFolders,
   ties,
 } from "../src/main/agent-folders";
 import { pickSkillDir } from "../src/main/skills-registry";
@@ -152,6 +155,80 @@ const check = (name: string, ok: boolean, detail?: unknown): void => {
   check("two neutral siblings tie", ties("a/x", "b/x"));
   check("two agent folders do not", !ties(".cursor/skills/x", ".gemini/skills/x"));
   check("different depths do not", !ties("skills/x", "a/b/skills/x"));
+}
+
+// ── 7. Agents published by the catalogue ──────────────────────────────
+{
+  // The list changes fastest of anything here — one repo already uses six
+  // folders that appear on no published list of agents — so it comes from
+  // monet-directory. What it must NOT be able to do is reorder.
+  const { agents, rejected } = parseAgentFolders([
+    { id: "newagent", label: "New Agent", dir: ".newagent" },
+    { id: "another", label: "Another", dir: ".another" },
+  ]);
+  check("a good entry is accepted", agents.length === 2, rejected.join("; "));
+  setExtraAgentFolders(agents);
+  check("and names its folder", agentOfPath(".newagent/skills/x")?.label === "New Agent");
+  check("it appears in the full list", allAgentFolders().length === AGENT_FOLDERS.length + 2);
+
+  // The promise that matters: nothing published can outrank our own folders.
+  check(
+    "a catalogue agent ranks below Claude",
+    rankPath(".newagent/skills/x") > rankPath(".claude/skills/x"),
+  );
+  check("below a neutral folder too", rankPath(".newagent/skills/x") > rankPath("skills/x"));
+  check(
+    "and picking still prefers Claude",
+    (() => {
+      const r = pickSkillDir([".newagent/skills/x", ".claude/skills/x"], "x");
+      return r.ok && r.dir === ".claude/skills/x";
+    })(),
+  );
+
+  // A catalogue entry cannot relabel a built-in, or the promise above would be
+  // decided by whoever edits the file.
+  setExtraAgentFolders(
+    parseAgentFolders([{ id: "fake", label: "Not Claude", dir: ".claude" }]).agents,
+  );
+  check(
+    "it cannot claim .claude",
+    agentOfPath(".claude/skills/x")?.id === "claude-code",
+    agentOfPath(".claude/skills/x")?.id,
+  );
+  check("or change its rank", rankPath(".claude/skills/x") === 1, rankPath(".claude/skills/x"));
+
+  const bad = parseAgentFolders([
+    { id: "Bad Id", label: "x", dir: ".x" },
+    { id: "no-label", dir: ".y" },
+    { id: "long-label", label: "l".repeat(41), dir: ".z" },
+    { id: "no-dot", label: "x", dir: "plain" },
+    { id: "traversal", label: "x", dir: "../../etc" },
+    { id: "nested", label: "x", dir: ".a/b" },
+    { id: "dupe-a", label: "x", dir: ".dupe" },
+    { id: "dupe-b", label: "x", dir: ".dupe" },
+    null,
+  ]);
+  check("only the first of a duplicated folder survives", bad.agents.length === 1, bad.agents.length);
+  check("and the rest are each explained", bad.rejected.length === 8, bad.rejected.length);
+  check(
+    "a traversal dir is refused",
+    bad.rejected.some((r) => r.startsWith("traversal:")),
+    bad.rejected.join(" | "),
+  );
+
+  check("a missing file is no agents", parseAgentFolders(null).agents.length === 0);
+  check(
+    "the wrapped form is read",
+    parseAgentFolders({ agents: [{ id: "w", label: "W", dir: ".w" }] }).agents.length === 1,
+  );
+  const flood = parseAgentFolders(
+    Array.from({ length: 200 }, (_, i) => ({ id: `a${i}`, label: "A", dir: `.a${i}` })),
+  );
+  check("a flood is capped", flood.agents.length === 80, flood.agents.length);
+
+  // Leave the module as the rest of the suite found it.
+  setExtraAgentFolders([]);
+  check("cleared again", allAgentFolders().length === AGENT_FOLDERS.length);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL AGENT-FOLDER CHECKS PASSED");

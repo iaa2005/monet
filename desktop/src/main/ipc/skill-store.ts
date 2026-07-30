@@ -43,6 +43,8 @@ import {
   type AuditResult,
 } from "../skill-audit.js";
 import { fetchAuditRules } from "../audit-rules-catalog.js";
+import { agentOfPath } from "../agent-folders.js";
+import { loadAgentFolders } from "../agent-folder-catalog.js";
 import {
   capPerRepo,
   usefulDescription,
@@ -587,9 +589,14 @@ export function registerSkillStoreIPC(): void {
       ok: boolean;
       repo?: string;
       dir?: string;
-      /** Every folder in the repo holding a skill of this name, best-first.
-       * Present only when there is more than one, i.e. a choice to offer. */
-      variants?: string[];
+      /**
+       * Every folder in the repo holding a skill of this name, best-first, each
+       * with the agent it belongs to. Present only when there is a choice.
+       *
+       * The label comes from here rather than a copy of the agent list in the
+       * renderer: one source of truth, and the catalogue can add to it.
+       */
+      variants?: { dir: string; agent: string; label: string }[];
       files?: string[];
       content?: string;
       texts?: Record<string, string>;
@@ -601,11 +608,14 @@ export function registerSkillStoreIPC(): void {
       try {
         let repo = payload.source;
         let dir = payload.path;
-        let variants: string[] | undefined;
+        let variants: { dir: string; agent: string; label: string }[] | undefined;
         if (payload.kind === "registry") {
           if (!payload.repository)
             return { ok: false, error: "That entry has no repository." };
           repo = payload.repository;
+          // Names the folders a published agent uses, so a variant reads as
+          // "Trae CN" rather than ".trae-cn". Cached for a day and never fatal.
+          await loadAgentFolders();
           const paths = await fetchTree(repo);
           const dirs = paths
             .filter((p) => p.endsWith("/SKILL.md"))
@@ -618,7 +628,17 @@ export function registerSkillStoreIPC(): void {
             : pickSkillDir(dirs, payload.name ?? "");
           if (!pick.ok)
             return { ok: false, error: pick.error, candidates: pick.candidates };
-          variants = pick.variants;
+          variants = pick.variants?.map((d) => {
+            const a = agentOfPath(d);
+            // A neutral folder is named by its root, so two of them are still
+            // told apart: `skills/x` and `plugin/skills/x`.
+            const root = d.split("/")[0] ?? d;
+            return {
+              dir: d,
+              agent: a?.id ?? `dir:${root}`,
+              label: a?.label ?? root,
+            };
+          });
           // The user's pick wins over the resolver's, but only if the repo has it.
           dir =
             payload.dir && dirs.includes(payload.dir) ? payload.dir : pick.dir;

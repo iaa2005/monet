@@ -528,7 +528,7 @@ const electronAPI = {
       repo?: string;
       dir?: string;
       /** Folders holding this skill, best-first, when a repo ships one per agent. */
-      variants?: string[];
+      variants?: { dir: string; agent: string; label: string }[];
       files?: string[];
       content?: string;
       /** Every text file that was read, so the viewer shows the scripts too. */

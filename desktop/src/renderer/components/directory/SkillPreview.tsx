@@ -73,57 +73,10 @@ const TONE = {
 /** How many findings to show before folding the rest away. */
 const SHOWN = 6;
 
-/**
- * Which agent a folder belongs to, and what to call it.
- *
- * Mirrors AGENT_FOLDERS in src/main/agent-folders.ts. Kept as a small map rather
- * than an import because the renderer does not reach into main — and the labels
- * are the only part the UI needs.
- */
-const AGENT_BY_DIR: Record<string, { id: string; label: string }> = {
-  ".monet": { id: "monet", label: "Code Monet" },
-  ".claude": { id: "claude-code", label: "Claude Code" },
-  ".agents": { id: "agents", label: "Any agent" },
-  ".cursor": { id: "cursor", label: "Cursor" },
-  ".codex": { id: "codex", label: "Codex" },
-  ".github": { id: "github-copilot", label: "GitHub Copilot" },
-  ".gemini": { id: "gemini", label: "Gemini" },
-  ".antigravity": { id: "antigravity", label: "Antigravity" },
-  ".windsurf": { id: "windsurf", label: "Windsurf" },
-  ".cline": { id: "cline", label: "Cline" },
-  ".amp": { id: "amp", label: "AMP" },
-  ".clawdbot": { id: "clawdbot", label: "ClawdBot" },
-  ".droid": { id: "droid", label: "Droid" },
-  ".goose": { id: "goose", label: "Goose" },
-  ".grok": { id: "grok", label: "Grok" },
-  ".kilo": { id: "kilo", label: "Kilo" },
-  ".kiro": { id: "kiro-cli", label: "Kiro CLI" },
-  ".opencode": { id: "opencode", label: "OpenCode" },
-  ".pi": { id: "pi", label: "Pi" },
-  ".qoder": { id: "qoder", label: "Qoder" },
-  ".roo": { id: "roo", label: "Roo" },
-  ".rovodev": { id: "rovodev", label: "Rovo Dev" },
-  ".trae": { id: "trae", label: "Trae" },
-  ".trae-cn": { id: "trae-cn", label: "Trae CN" },
-  ".vibe": { id: "vibe", label: "Vibe" },
-  ".vscode": { id: "vscode", label: "VS Code" },
-  ".zed": { id: "zed", label: "Zed" },
-};
-
-/** The agent a variant folder is for, or a plain label for a neutral one. */
-function variantAgent(dir: string): { id: string; label: string } {
-  const known = AGENT_BY_DIR[dir.split("/")[0] ?? ""];
-  if (known) return known;
-  // Not an agent folder: `skills/x`, `plugin/skills/x`. Name it by its root so
-  // two neutral variants are still told apart.
-  const root = dir.split("/")[0] ?? dir;
-  return { id: `dir:${root}`, label: root };
-}
-
 interface Preview {
   repo?: string;
   dir?: string;
-  variants?: string[];
+  variants?: { dir: string; agent: string; label: string }[];
   files?: string[];
   content?: string;
   texts?: Record<string, string>;
@@ -293,14 +246,13 @@ export function SkillPreview({
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               {data!.variants!.map((v) => {
-                const a = variantAgent(v);
-                const active = v === (data!.dir ?? "");
+                const active = v.dir === (data!.dir ?? "");
                 return (
                   <button
-                    key={v}
+                    key={v.dir}
                     type="button"
-                    onClick={() => setChosen(v)}
-                    title={v}
+                    onClick={() => setChosen(v.dir)}
+                    title={v.dir}
                     className={cn(
                       "flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] transition-colors",
                       active
@@ -308,8 +260,8 @@ export function SkillPreview({
                         : "border-border text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    <AgentIcon id={a.id} label={a.label} size={13} />
-                    {a.label}
+                    <AgentIcon id={v.agent} label={v.label} size={13} />
+                    {v.label}
                   </button>
                 );
               })}
