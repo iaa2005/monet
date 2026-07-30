@@ -219,6 +219,30 @@ class ExternalTransport implements BrowserTransport {
     };
   }
 
+  // A real Chrome window has no panel to park, so CDP is the whole story here.
+  async navigate(url: string): Promise<void> {
+    await this.send("Page.navigate", { url });
+  }
+
+  async reload(): Promise<void> {
+    await this.send("Page.reload");
+  }
+
+  async goHistory(delta: -1 | 1): Promise<void> {
+    const hist = (await this.send("Page.getNavigationHistory")) as {
+      currentIndex?: number;
+      entries?: { id: number }[];
+    };
+    const entry = hist.entries?.[(hist.currentIndex ?? 0) + delta];
+    if (!entry)
+      throw new Error(`Nothing to go ${delta < 0 ? "back" : "forward"} to.`);
+    await this.send("Page.navigateToHistoryEntry", { entryId: entry.id });
+  }
+
+  async reveal(): Promise<void> {
+    // Its own window; nothing to un-park.
+  }
+
   async mouseMove(x: number, y: number): Promise<void> {
     await this.send("Input.dispatchMouseEvent", {
       type: "mouseMoved",

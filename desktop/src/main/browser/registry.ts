@@ -110,6 +110,26 @@ export async function ensureTab(url: string, timeoutMs = 10_000): Promise<void> 
     throw new Error("The Browser panel did not open a tab in time.");
 }
 
+/**
+ * Bring the Browser panel on screen, and give it a frame to paint.
+ *
+ * Not a courtesy — a requirement. The panel keeps inactive tabs alive by
+ * parking them off-screen, and Chromium produces no frame for one: a capture
+ * of a parked guest never answers (measured in scripts/webview-probe.cjs).
+ * Anything visual has to ask for the page to be visible first.
+ *
+ * It is also the honest behaviour: a screenshot the user cannot see being
+ * taken is a screenshot they cannot check.
+ */
+export async function revealPanel(): Promise<void> {
+  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send("browser:reveal");
+  // One paint at 60Hz is ~16ms; this is the panel animating open and the guest
+  // getting its first frame back.
+  await new Promise((r) => setTimeout(r, 350));
+}
+
 export function tabContents(id: string): WebContents | null {
   const rec = tabs.get(id);
   if (!rec) return null;

@@ -79,7 +79,7 @@ export async function pageNavigate(
   // navigating again would load it twice.
   if (hadPage) {
     const wait = t.waitEvent("Page.loadEventFired", 12_000);
-    await t.send("Page.navigate", { url });
+    await t.navigate(url);
     await wait;
   } else {
     await t.waitEvent("Page.loadEventFired", 12_000);
@@ -212,7 +212,12 @@ export async function pageTypeText(text: string): Promise<void> {
 /** Scroll with several wheel ticks (positive deltaY scrolls down). */
 export async function pageScrollWheel(totalDeltaY: number): Promise<void> {
   const t = await transport();
+  // Scrolling is visual, and a parked guest scrolls unreliably or not at all.
+  await t.reveal();
   await seedMouse();
+  // A wheel event with no pointer over the page scrolls nothing. Measured:
+  // without this move the page stayed at scrollY 0.
+  await t.mouseMove(mouseX, mouseY);
   const chunks = Math.max(3, Math.min(6, Math.round(Math.abs(totalDeltaY) / 250)));
   let remaining = totalDeltaY;
   for (let i = 0; i < chunks; i++) {
@@ -224,6 +229,15 @@ export async function pageScrollWheel(totalDeltaY: number): Promise<void> {
     await t.wheel(mouseX, mouseY, part);
     await humanPause(40, 120);
   }
+}
+
+/** Back, forward or reload — through whatever the engine's safe path is. */
+export async function pageHistory(
+  action: "back" | "forward" | "reload",
+): Promise<void> {
+  const t = await transport();
+  if (action === "reload") await t.reload();
+  else await t.goHistory(action === "back" ? -1 : 1);
 }
 
 export async function pagePressEnter(): Promise<void> {

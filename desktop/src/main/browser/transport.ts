@@ -15,7 +15,7 @@
 
 import type { WebContents } from "electron";
 import { getBrowserConfig, type BrowserEngine } from "./config.js";
-import { activeContents } from "./registry.js";
+import { activeContents, revealPanel } from "./registry.js";
 import { getExternalTransport } from "./external.js";
 import { ensureLogging, stopLogging } from "./logs.js";
 
@@ -44,6 +44,27 @@ export interface BrowserTransport {
   waitEvent(method: string, timeoutMs: number): Promise<void>;
   /** Subscribe to every CDP event. Returns an unsubscribe. */
   onEvent(handler: CdpEventHandler): () => void;
+
+  /**
+   * Navigation, as an intent rather than a CDP call.
+   *
+   * Measured, not assumed: CDP `Page.reload` DESTROYS an Electron <webview>
+   * guest and a new one attaches with a new id — taking the debugger session,
+   * the injected overlay and the log recording with it. `webContents.reload()`
+   * keeps the same guest. See scripts/webview-probe.cjs.
+   */
+  navigate(url: string): Promise<void>;
+  reload(): Promise<void>;
+  goHistory(delta: -1 | 1): Promise<void>;
+
+  /**
+   * Make sure the page is actually on screen before something visual.
+   *
+   * The panel parks inactive tabs off-screen to keep them running, and
+   * Chromium will not produce a frame for one: `Page.captureScreenshot` never
+   * answers at all — it hangs rather than returning a blank image.
+   */
+  reveal(): Promise<void>;
 
   mouseMove(x: number, y: number): Promise<void>;
   mouseDown(x: number, y: number): Promise<void>;
@@ -111,15 +132,52 @@ class EmbeddedTransport implements BrowserTransport {
     this.attached = true;
   }
 
+  /**
+   * A CDP command, with a deadline.
+   *
+   * `debugger.sendCommand` has no timeout of its own, and there is at least one
+   * command that never answers: a capture of a guest that is parked off-screen.
+   * Without this, one screenshot of a background tab wedges the turn forever.
+   */
   async send(
     method: string,
     params: Record<string, unknown> = {},
   ): Promise<Record<string, unknown>> {
     await this.ensureAttached();
-    return (await this.wc.debugger.sendCommand(method, params)) as Record<
-      string,
-      unknown
-    >;
+    let timer: NodeJS.Timeout | undefined;
+    const expired = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`${method} did not answer within 15s`)),
+        15_000,
+      );
+    });
+    try {
+      return (await Promise.race([
+        this.wc.debugger.sendCommand(method, params),
+        expired,
+      ])) as Record<string, unknown>;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async navigate(url: string): Promise<void> {
+    await this.wc.loadURL(url);
+  }
+
+  async reload(): Promise<void> {
+    // NOT Page.reload — see the note on the interface. This one keeps the guest.
+    this.wc.reload();
+  }
+
+  async goHistory(delta: -1 | 1): Promise<void> {
+    const history = this.wc.navigationHistory;
+    if (history.canGoToOffset(delta)) history.goToOffset(delta);
+    else throw new Error(`Nothing to go ${delta < 0 ? "back" : "forward"} to.`);
+  }
+
+  async reveal(): Promise<void> {
+    await revealPanel();
   }
 
   async waitEvent(method: string, timeoutMs: number): Promise<void> {
@@ -213,9 +271,9 @@ class EmbeddedTransport implements BrowserTransport {
   }
 
   async screenshot(clip?: Rect): Promise<Buffer> {
-    // fromSurface:false renders from the page itself rather than the window's
-    // compositor surface. The panel's inactive tabs are parked off-screen, and
-    // a surface capture of those comes back blank.
+    // A parked guest cannot be captured at ALL — measured: the command never
+    // answers, with or without fromSurface. So show the page first.
+    await this.reveal();
     const params: Record<string, unknown> = {
       format: "png",
       fromSurface: false,

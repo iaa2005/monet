@@ -63,7 +63,8 @@
     "smoke:browserurl": "node scripts/renderer-probe.mjs scripts/browser-url-probe.ts",
     "smoke:browserlogs": "node scripts/renderer-probe.mjs scripts/browser-logs-probe.ts",
     "smoke:elementctx": "node scripts/renderer-probe.mjs scripts/element-context-probe.ts",
-    "smoke:browserorigins": "node scripts/renderer-probe.mjs scripts/browser-origins-probe.ts"
+    "smoke:browserorigins": "node scripts/renderer-probe.mjs scripts/browser-origins-probe.ts",
+    "smoke:webview": "electron scripts/webview-probe.cjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",

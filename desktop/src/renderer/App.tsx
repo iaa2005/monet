@@ -363,11 +363,22 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const bridge = api();
     if (!bridge) return;
-    return bridge.browser.onOpenTab((url) => {
+    const offOpen = bridge.browser.onOpenTab((url) => {
       setBrowserUsed(true);
       setRightTab("browser");
       useBrowserStore.getState().openTab(url);
     });
+    // Something visual is about to happen to the page. A parked guest produces
+    // no frames at all — a screenshot of one never even returns — so the panel
+    // has to be on screen before it, not after.
+    const offReveal = bridge.browser.onReveal(() => {
+      setBrowserUsed(true);
+      setRightTab("browser");
+    });
+    return () => {
+      offOpen();
+      offReveal();
+    };
   }, []);
 
   // Design mode. Subscribed here rather than in the panel: a selection made

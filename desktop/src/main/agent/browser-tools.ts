@@ -32,13 +32,13 @@ import {
   pageNavigate,
   pagePressEnter,
   pageScreenshot,
+  pageHistory,
   pageScrollWheel,
   pageSetViewport,
   pageSettle,
   pageTargetId,
   pageTypeText,
 } from "../browser/page.js";
-import { getTransport } from "../browser/transport.js";
 import { logPath, logSummary, readLog } from "../browser/logs.js";
 import { listTabs, setActiveTab, tabContents } from "../browser/registry.js";
 import { getBrowserConfig } from "../browser/config.js";
@@ -176,12 +176,7 @@ export const BrowserNavigateTool = buildTool({
   async call({ url, action }: z.infer<NavSchema>) {
     try {
       if (action) {
-        const t = await getTransport();
-        if (action === "reload") await t.send("Page.reload");
-        else
-          await t.send("Page.navigateToHistoryEntry", {
-            entryId: await historyEntry(action),
-          });
+        await pageHistory(action);
         await pageSettle();
         const info = await pageInfo();
         return ok(`Went ${action}. Now on "${info.title}" — ${info.url}${await traffic()}`);
@@ -207,19 +202,6 @@ export const BrowserNavigateTool = buildTool({
     return null;
   },
 });
-
-/** The history entry id one step back or forward, for Page.navigateToHistoryEntry. */
-async function historyEntry(direction: "back" | "forward"): Promise<number> {
-  const t = await getTransport();
-  const hist = (await t.send("Page.getNavigationHistory")) as {
-    currentIndex?: number;
-    entries?: { id: number }[];
-  };
-  const idx = (hist.currentIndex ?? 0) + (direction === "back" ? -1 : 1);
-  const entry = hist.entries?.[idx];
-  if (!entry) throw new Error(`Nothing to go ${direction} to.`);
-  return entry.id;
-}
 
 // ─── BrowserReadPage ──────────────────────────────────────────────────────
 

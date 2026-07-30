@@ -731,6 +731,12 @@ const electronAPI = {
       ipcRenderer.on("browser:openTab", handler);
       return () => ipcRenderer.off("browser:openTab", handler);
     },
+    /** Main needs the panel on screen before a screenshot or a scroll. */
+    onReveal: (cb: () => void): (() => void) => {
+      const handler = (): void => cb();
+      ipcRenderer.on("browser:reveal", handler);
+      return () => ipcRenderer.off("browser:reveal", handler);
+    },
     setDesignMode: (on: boolean): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("browser:setDesignMode", on),
     /** The user picked an element (or marked a region) in design mode. */

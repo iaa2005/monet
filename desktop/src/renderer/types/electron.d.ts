@@ -853,6 +853,7 @@ export interface ElectronAPI {
     unregisterTab: (tabId: string) => Promise<void>;
     activateTab: (tabId: string) => Promise<void>;
     onOpenTab: (cb: (url: string) => void) => () => void;
+    onReveal: (cb: () => void) => () => void;
     setDesignMode: (on: boolean) => Promise<{ ok: boolean; error?: string }>;
     onSelection: (cb: (sel: BrowserSelection) => void) => () => void;
     onDesignMode: (cb: (on: boolean) => void) => () => void;
