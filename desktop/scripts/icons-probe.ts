@@ -121,10 +121,10 @@ check(
   // silent: a wrong icon and no icon look the same in a tree.
   const cases: [string, string][] = [
     ['tesla_tsla_tear_sheet.pdf', 'pdf'],
-    ['notes.txt', 'text'],
+    ['notes.txt', 'document'],
     ['archive.zip', 'zip'],
     ['bundle.tar.gz', 'zip'],
-    ['paper.tex', 'latex'],
+    ['paper.tex', 'tex'],
     ['init.lua', 'lua'],
     ['App.vue', 'vue'],
     ['Card.svelte', 'svelte'],
@@ -140,32 +140,32 @@ check(
     ['theme.mp3', 'audio'],
     ['clip.mp4', 'video'],
     ['app.exe', 'binary'],
-    ['module.wasm', 'web-assembly'],
+    ['module.wasm', 'webassembly'],
     ['server.pem', 'key'],
     ['Makefile', 'makefile'],
     ['justfile', 'just'],
     ['go.mod', 'go-mod'],
-    ['Cargo.toml', 'rust-config'],
-    ['package.json', 'package-config'],
-    ['yarn.lock', 'yarn-lock'],
-    ['bun.lockb', 'bun-lock'],
+    ['Cargo.toml', 'cargo'],
+    ['package.json', 'nodejs'],
+    ['yarn.lock', 'yarn_lock'],
+    ['bun.lockb', 'bun_lock'],
     ['SECURITY.md', 'security'],
     ['CODEOWNERS', 'codeowners'],
-    ['types.d.ts', 'typescript-def'],
+    ['types.d.ts', 'typescript_def'],
     ['Button.stories.tsx', 'storybook'],
-    ['tailwind.config.ts', 'tailwind'],
+    ['tailwind.config.ts', 'tailwindcss'],
     ['next.config.mjs', 'next'],
-    ['Button.test.ts', 'test-blue'],
-    ['guide.mdx', 'markdownx'],
-    ['App.tsx', 'react-typescript'],
+    ['Button.test.ts', 'test_ts'],
+    ['guide.mdx', 'mdx'],
+    ['App.tsx', 'react_ts'],
     ['level.tscn', 'godot'],
     // Keys that existed all along and were unreachable, because the bare
     // extension was tried before the whole name and before the stem.
-    ['tsconfig.json', 'typescript-config'],
+    ['tsconfig.json', 'tsconfig'],
     ['README.md', 'readme'],
     ['LICENSE', 'license'],
     ['vite.config.ts', 'vite'],
-    ['.nvmrc', 'node'],
+    ['.nvmrc', 'nodejs'],
   ]
   for (const [file, want] of cases) {
     const got = resolveIcon(file, false, false, false)
@@ -211,7 +211,16 @@ check(
   // can honestly select them — `workflow` wants a path, `test-teal` and
   // `test-yellow` are colour variants with no signal to choose between, `css3` is
   // an alternative spelling of `css`, and `roblox-lock` has no filename.
-  const INERT = new Set(['css3', 'event', 'roblox-lock', 'test-teal', 'test-yellow', 'workflow'])
+  // Inert on purpose: nothing in a FILENAME can honestly select these. Frameworks
+  // and services want a project, not a file (django, laravel, circleci); the
+  // `_alt`/`_misc` variants are second drawings of something already mapped; and
+  // `prolog` would want `.pl`, which Perl already has a better claim to.
+  const INERT = new Set([
+    'architecture', 'circleci', 'django', 'file', 'godot_alt', 'godot_assets_alt',
+    'i18n', 'image_alt_2', 'image_alt_3', 'image_alt_4', 'image_alt_5', 'issues',
+    'java_misc', 'javascript_other', 'laravel', 'opa', 'opam', 'prolog',
+    'python_misc', 'red', 'support', 'table', 'template', 'tree', 'tune', 'twine',
+  ])
   const mapped = new Set(allMappedIconNames())
   const unreachable = [...present.base!]
     .filter((n) => !n.startsWith('folder_') && !n.startsWith('_'))
