@@ -62,7 +62,10 @@ function TaskRow({ task }: { task: TaskEntry }): JSX.Element {
   const shown = clipped ? out.slice(-OUTPUT_LIMIT) : out;
 
   return (
-    <div className="rounded-lg border border-border bg-card/40">
+    // overflow-hidden so the row's hover fill is cut by the card's own radius —
+    // without it the highlight is a square behind rounded corners — and so the
+    // opened body can run edge to edge.
+    <div className="overflow-hidden rounded-lg border border-border bg-card/40">
       <button
         type="button"
         disabled={!hasBody}
@@ -103,15 +106,18 @@ function TaskRow({ task }: { task: TaskEntry }): JSX.Element {
       </button>
 
       {open && hasBody && (
-        <div className="space-y-1.5 px-3 pb-2.5">
+        // No padding of its own, and the blocks lose their rounding: a command
+        // line inset by the card AND by its own box had barely half the width
+        // left for the text, which is the thing anyone opened this to read.
+        <div className="border-t border-border">
           {task.detail && (
-            <pre className="overflow-x-auto rounded-md bg-black/[0.05] px-2.5 py-2 font-mono text-[11px] leading-relaxed text-foreground dark:bg-white/[0.06]">
+            <pre className="overflow-x-auto bg-black/[0.05] px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground dark:bg-white/[0.06]">
               <span className="select-none text-muted-foreground">$ </span>
               {task.detail}
             </pre>
           )}
           {out && (
-            <pre className="max-h-64 overflow-auto rounded-md bg-black/[0.05] px-2.5 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground dark:bg-white/[0.06]">
+            <pre className="max-h-64 overflow-auto border-t border-border bg-black/[0.05] px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground dark:bg-white/[0.06]">
               {clipped && (
                 <span className="select-none italic">
                   … {out.length - OUTPUT_LIMIT} earlier characters hidden{"\n"}

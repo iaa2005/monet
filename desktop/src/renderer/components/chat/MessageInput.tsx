@@ -1031,18 +1031,22 @@ export function MessageInput({
                 e.target.value = "";
               }}
             />
-            {isStreaming ? (
-              <>
+{isStreaming ? (
+              // One control, not three. Rounded on the outside only, with hairline
+              // dividers where the cells meet, so the group reads as a single
+              // segmented button rather than three pills that happen to be near
+              // each other.
+              <div className="inline-flex shrink-0 overflow-hidden rounded-lg bg-foreground text-background">
                 <button
                   type="button"
                   onClick={() => void injectNow()}
                   disabled={!input.trim()}
                   title="Send into the running turn (Ctrl+S) — the model sees it before its next step"
                   className={cn(
-                    "flex size-7 items-center justify-center rounded-md transition-opacity",
+                    "flex size-8 items-center justify-center transition-colors",
                     input.trim()
-                      ? "bg-foreground text-background hover:opacity-90"
-                      : "opacity-30",
+                      ? "hover:bg-background/20"
+                      : "opacity-35",
                   )}
                 >
                   <CornerDownLeft className="size-4" />
@@ -1059,10 +1063,10 @@ export function MessageInput({
                   disabled={!input.trim()}
                   title="Queue message (send after generation)"
                   className={cn(
-                    "flex size-7 items-center justify-center rounded-md transition-opacity",
+                    "flex size-8 items-center justify-center border-x border-background/20 transition-colors",
                     input.trim()
-                      ? "bg-foreground text-background hover:opacity-90"
-                      : "opacity-30",
+                      ? "hover:bg-background/20"
+                      : "opacity-35",
                   )}
                 >
                   <ListEnd className="size-4" />
@@ -1071,11 +1075,11 @@ export function MessageInput({
                   type="button"
                   onClick={abort}
                   title="Stop"
-                  className="flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity hover:opacity-90"
+                  className="flex size-8 items-center justify-center transition-colors hover:bg-background/20"
                 >
                   <Square className="size-3.5 fill-current" />
                 </button>
-              </>
+              </div>
             ) : (
               <button
                 type="button"
@@ -1083,7 +1087,9 @@ export function MessageInput({
                 disabled={!input.trim()}
                 title="Send"
                 className={cn(
-                  "flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity",
+                  // Matches the streaming group's cell exactly, so the row does not
+                  // change height the moment a turn starts.
+                  "flex size-8 items-center justify-center rounded-lg bg-foreground text-background transition-opacity",
                   input.trim() ? "hover:opacity-90" : "opacity-30",
                 )}
               >
