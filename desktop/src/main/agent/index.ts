@@ -318,8 +318,16 @@ export interface AgentRunOptions {
   signal?: AbortSignal;
   /** Prepended to the system prompt (used by chat modes like Plan/Concise). */
   modeDirective?: string;
-  /** Permission level driving the tool gate (default: "default" = ask). */
-  permissionMode?: UiPermissionMode;
+  /**
+   * Permission level driving the tool gate (default: "default" = ask).
+   *
+   * A FUNCTION, so switching the mode mid-answer takes effect on the very next
+   * tool call. It used to be a value captured when the message was sent, which
+   * meant flipping to Bypass while the model was working changed nothing until
+   * the next message — the user kept being asked, and reasonably read that as
+   * the switch not working.
+   */
+  permissionMode?: UiPermissionMode | (() => UiPermissionMode);
   /** Called when a tool needs the user's approval (routes to the UI dialog). */
   requestPermission?: RequestPermission;
   /** Round-trips an AskUserQuestion to the renderer dialog. */
@@ -1012,7 +1020,7 @@ async function runAgentScoped(
     maxTurns = 40,
     signal,
     modeDirective,
-    permissionMode = "default",
+    permissionMode: permissionModeOption = "default",
     requestPermission,
     askUser,
     askPlanApproval,
@@ -1320,7 +1328,11 @@ async function runAgentScoped(
         name: tc.name,
         input: tc.input,
         model: runModel,
-        permissionMode,
+        // Read now, not when the turn started: see the note on the option.
+        permissionMode:
+          typeof permissionModeOption === "function"
+            ? permissionModeOption()
+            : permissionModeOption,
         requestPermission,
         askUser,
         askPlanApproval,

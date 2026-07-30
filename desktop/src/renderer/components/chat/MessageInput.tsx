@@ -433,6 +433,18 @@ export function MessageInput({
     return () => window.removeEventListener("permission-mode-changed", sync);
   }, []);
 
+  // Tell a turn already in flight. The mode used to travel with the message and
+  // be captured for the whole answer, so switching to Bypass while the model was
+  // working changed nothing until the next message — it kept asking, which reads
+  // as the switch being broken.
+  //
+  // On `mode` rather than inside pickMode, so the plan dialog's own switch
+  // (which arrives through the event above) is covered by the same line.
+  useEffect(() => {
+    const sessionId = useChatStore.getState().currentSessionId;
+    if (sessionId) void api()?.chat.setPermissionMode(sessionId, mode);
+  }, [mode]);
+
   const stageFiles = (list: FileList | File[] | null): void => {
     if (!list) return;
     setFiles((prev) => [

@@ -331,6 +331,11 @@ export interface ElectronAPI {
       }[];
     }) => Promise<{ ok: boolean }>;
     abort: (sessionId?: string) => Promise<{ ok: boolean }>;
+    /** Apply a permission-mode change to a turn already running. */
+    setPermissionMode: (
+      sessionId: string,
+      mode: string,
+    ) => Promise<{ ok: boolean }>;
     /** Hand text to a turn already in flight. ok:false = session is idle. */
     inject: (sessionId: string, text: string) => Promise<{ ok: boolean }>;
     /** Drop the last N prompts from the model's context (files untouched). */

@@ -20,6 +20,7 @@ import {
   undoableTurnCount,
   lastTurnTokens,
 } from "../agent/index.js";
+import type { UiPermissionMode } from "../agent/permission-types.js";
 import { injectMessage } from "../agent/injection.js";
 import { expandSlashCommand } from "../agent/skill-tool.js";
 import { abortAllBgAgents, abortBgAgents } from "../agent/bg-agents.js";
@@ -196,6 +197,20 @@ const VALID_MODES = new Set([
   "bypassPermissions",
 ]);
 
+/**
+ * The permission mode each running chat is under, right now.
+ *
+ * Reported: switching to Bypass mid-answer changed nothing and the app kept
+ * asking. The mode travelled with the message and was captured for the whole
+ * turn, so the picker only took effect on the NEXT one. This map is what the run
+ * reads on every tool call instead.
+ *
+ * Keyed by session and never cleaned: one short string per chat, and a stale
+ * entry is harmless — the next `chat:send` overwrites it, and nothing reads it
+ * for a session that is not running.
+ */
+const livePermissionMode = new Map<string, UiPermissionMode>();
+
 const MODE_DIRECTIVES: Record<string, string> = {
   plan: "You are operating in PLAN mode: think through the task and present a clear, numbered plan first. Do NOT modify files or run mutating commands until the user approves the plan.",
 };
@@ -328,10 +343,15 @@ export function registerChatIPC(): void {
       win.webContents.send("chat:token", { sessionId, event });
     };
 
+    // The mode the picker is showing RIGHT NOW, not the one it showed when this
+    // message was sent. Switching to Bypass mid-answer used to change nothing
+    // until the next message, because the value was captured here.
+    livePermissionMode.set(sessionId, mode);
+
     const runOptions = {
       signal: abort.signal,
       modeDirective: modeDirectiveFor(mode),
-      permissionMode: mode,
+      permissionMode: () => livePermissionMode.get(sessionId) ?? mode,
       requestPermission: (ask: Parameters<typeof requestPermissionFromRenderer>[1]) =>
         requestPermissionFromRenderer(win, ask),
       askUser: (questions: Parameters<typeof askUserFromRenderer>[1]) =>
@@ -396,6 +416,21 @@ export function registerChatIPC(): void {
 
     return { ok: true };
   });
+
+  /**
+   * The picker moved. Takes effect on the next tool call of a turn already in
+   * flight, which is the whole point — a mode you have to send a message to
+   * apply is a mode that looks broken.
+   */
+  ipcMain.handle(
+    "chat:setPermissionMode",
+    (_e, sessionId: string, mode: string): { ok: boolean } => {
+      if (!sessionId || !VALID_MODES.has(mode)) return { ok: false };
+      // Narrowed by VALID_MODES, which is the same set the union is built from.
+      livePermissionMode.set(sessionId, mode as UiPermissionMode);
+      return { ok: true };
+    },
+  );
 
   ipcMain.handle("chat:abort", (_e, sessionId?: string) => {
     if (sessionId) {

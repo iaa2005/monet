@@ -40,6 +40,12 @@ const electronAPI = {
     }): Promise<{ ok: boolean }> => ipcRenderer.invoke("chat:send", payload),
     abort: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:abort", sessionId),
+    /** Apply a permission-mode change to a turn already running. */
+    setPermissionMode: (
+      sessionId: string,
+      mode: string,
+    ): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("chat:setPermissionMode", sessionId, mode),
     /** Hand text to a turn already in flight. ok:false = session is idle. */
     inject: (sessionId: string, text: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:inject", sessionId, text),
