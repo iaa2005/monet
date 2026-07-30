@@ -1,8 +1,11 @@
 /**
- * File Tree — recursive directory browser with charmed-icons.
+ * File Tree — directory browser with charmed-icons.
+ *
+ * Flat and windowed rather than recursive: see tree-rows.ts for why the rows,
+ * and not the icons, were what made a large folder crawl.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
 import {
   ChevronRight,
   ChevronDown,
@@ -13,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useIsDark } from "@/components/chat/highlight";
 import { fallbackIcon, resolveIcon } from "@/components/icon-resolver";
+import { flattenTree, visibleWindow } from "@/components/tree-rows";
 import { useChatStore } from "@/stores/chatStore";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -157,179 +161,69 @@ function sortEntries(items: FileEntry[]): FileEntry[] {
     });
 }
 
-function TreeNode({
+/** Row height in px. Fixed on purpose: the window arithmetic needs to know
+ * where row N sits without measuring it, and measuring a thousand rows to
+ * avoid rendering a thousand rows would defeat the exercise. */
+const ROW_H = 22;
+
+/** One row. Memoised — a scroll changes which rows exist, not what the
+ * surviving ones look like, and re-rendering the whole window on every wheel
+ * tick is the jank this is meant to remove. */
+const Row = memo(function Row({
   entry,
   depth,
-  onSelectFile,
-  refreshKey,
+  expanded,
+  loading,
+  dark,
+  onToggle,
 }: {
   entry: FileEntry;
   depth: number;
-  onSelectFile?: (path: string) => void;
-  /** Bumped when the folder changed on disk. An expanded node refetches; a
-   * collapsed one does not, since it will load fresh when opened. */
-  refreshKey: number;
+  expanded: boolean;
+  loading: boolean;
+  dark: boolean;
+  onToggle: (entry: FileEntry) => void;
 }): JSX.Element {
-  const [expanded, setExpanded] = useState(false);
-  const [children, setChildren] = useState<FileEntry[] | null>(
-    entry.children ?? null,
-  );
-  const [loading, setLoading] = useState(false);
-  const [largeFileDialog, setLargeFileDialog] = useState<{
-    path: string;
-    size: number;
-  } | null>(null);
-  const dark = useIsDark();
-
-  const api = (): ElectronAPI =>
-    (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
-
-  const openFile = (path: string): void => {
-    onSelectFile?.(path);
-  };
-
-  const handleFileClick = async (): Promise<void> => {
-    if (!entry.isFile) return;
-
-    try {
-      const stat = await api().files.stat(entry.path);
-      if (stat.size > LARGE_FILE_THRESHOLD) {
-        setLargeFileDialog({ path: entry.path, size: stat.size });
-        return;
-      }
-    } catch {
-      // stat failed — proceed anyway
-    }
-    openFile(entry.path);
-  };
-
-  const handleToggle = async (): Promise<void> => {
-    if (entry.isFile) {
-      await handleFileClick();
-      return;
-    }
-
-    if (!expanded) {
-      if (!children) {
-        setLoading(true);
-        try {
-          setChildren(sortEntries(await api().files.list(entry.path)));
-        } catch {
-          setChildren([]);
-        } finally {
-          setLoading(false);
-        }
-      }
-      setExpanded(true);
-    } else {
-      setExpanded(false);
-    }
-  };
-
-  // Refresh in place: the rows are replaced but this node stays open and so do
-  // its open descendants, because their React keys are paths and survive.
-  // Reloading the whole tree instead would collapse everything the user opened.
-  const firstRefresh = useRef(true);
-  useEffect(() => {
-    if (firstRefresh.current) {
-      firstRefresh.current = false;
-      return;
-    }
-    if (!expanded || !entry.isDirectory) return;
-    let cancelled = false;
-    void api()
-      .files.list(entry.path)
-      .then((items) => {
-        if (!cancelled) setChildren(sortEntries(items));
-      })
-      .catch(() => {
-        // The folder itself may have just been deleted — leave the last known
-        // contents rather than blanking the subtree.
-      });
-    return () => {
-      cancelled = true;
-    };
-    // `expanded` is deliberately not a dependency: opening a node already
-    // loads it, and re-running here would fetch the same folder twice.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey, entry.path, entry.isDirectory]);
-
   const iconSrc = resolveIcon(entry.name, entry.isDirectory, expanded, dark);
-
   return (
-    <div>
-      <div
-        className={cn(
-          "flex cursor-pointer items-center gap-0.5 rounded px-1 py-0.5 text-[13px] hover:bg-accent/50",
-        )}
-        style={{ paddingLeft: `${depth * 16 + 4}px` }}
-        onClick={handleToggle}
-      >
-        {entry.isDirectory ? (
-          expanded ? (
-            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
-          )
+    <div
+      className="flex cursor-pointer items-center gap-0.5 rounded px-1 text-[13px] hover:bg-accent/50"
+      style={{ height: ROW_H, paddingLeft: `${depth * 16 + 4}px` }}
+      onClick={() => onToggle(entry)}
+    >
+      {entry.isDirectory ? (
+        expanded ? (
+          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
         ) : (
-          <span className="w-3.5 shrink-0" />
-        )}
-        {/* A name that has no icon file must fall back to the generic one.
-            Without this a mapping typo renders the browser's broken-image
-            glyph — which is how `.svg` and `.ico` (and six other types) sat
-            broken: the map pointed at "vector" and "favicon", names that were
-            never in the icon set. */}
-        <img
-          src={iconSrc}
-          className="size-4 shrink-0"
-          alt=""
-          onError={(e) => {
-            const img = e.currentTarget;
-            const fallback = fallbackIcon(entry.isDirectory, expanded, dark);
-            if (!img.src.endsWith(fallback)) img.src = fallback;
-          }}
-        />
-        <span className="truncate">{entry.name}</span>
-      </div>
-
-      {expanded && loading && (
-        <div
-          style={{ paddingLeft: `${(depth + 1) * 16 + 4}px` }}
-          className="py-0.5 text-xs text-muted-foreground"
-        >
-          Loading...
-        </div>
+          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+        )
+      ) : (
+        <span className="w-3.5 shrink-0" />
       )}
-
-      {expanded &&
-        children?.map((child) => (
-          <TreeNode
-            key={child.path}
-            entry={child}
-            depth={depth + 1}
-            onSelectFile={onSelectFile}
-            refreshKey={refreshKey}
-          />
-        ))}
-
-      {largeFileDialog && (
-        <LargeFileDialog
-          path={largeFileDialog.path}
-          size={largeFileDialog.size}
-          onOpen={() => {
-            openFile(largeFileDialog.path);
-            setLargeFileDialog(null);
-          }}
-          onExplorer={() => {
-            api().shell.openPath(largeFileDialog.path);
-            setLargeFileDialog(null);
-          }}
-          onCancel={() => setLargeFileDialog(null)}
-        />
+      {/* A name that has no icon file must fall back to the generic one.
+          Without this a mapping typo renders the browser's broken-image
+          glyph — which is how `.svg` and `.ico` (and six other types) sat
+          broken: the map pointed at "vector" and "favicon", names that were
+          never in the icon set. */}
+      <img
+        src={iconSrc}
+        className="size-4 shrink-0"
+        alt=""
+        onError={(e) => {
+          const img = e.currentTarget;
+          const fallback = fallbackIcon(entry.isDirectory, expanded, dark);
+          if (!img.src.endsWith(fallback)) img.src = fallback;
+        }}
+      />
+      <span className="truncate">{entry.name}</span>
+      {loading && (
+        <span className="ml-1 shrink-0 text-[11px] text-muted-foreground">
+          …
+        </span>
       )}
     </div>
   );
-}
+});
 
 export function FileTree({
   onSelectFile,
@@ -342,29 +236,44 @@ export function FileTree({
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [searching, setSearching] = useState(false);
-  // Bumped by the disk watcher. Passed down so open folders refetch in place
-  // instead of the whole tree being rebuilt under the user.
+  // Expansion and loaded children live here, not in the rows: the rows are a
+  // flat array so only the visible ones need to exist, and a component that is
+  // not rendered cannot hold the fact that its folder is open.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const [childrenOf, setChildrenOf] = useState<
+    ReadonlyMap<string, FileEntry[]>
+  >(new Map());
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+  const [largeFileDialog, setLargeFileDialog] = useState<{
+    path: string;
+    size: number;
+  } | null>(null);
+  // Bumped by the disk watcher. Only open folders refetch — a collapsed one
+  // will read fresh from disk whenever it is opened.
   const [refreshKey, setRefreshKey] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportH, setViewportH] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const dark = useIsDark();
   // The picker bumps this when the folder changes — including the restore that
   // happens when you open a chat that remembers its own folder.
   const workspaceVersion = useChatStore((s) => s.workspaceVersion);
 
+  const api = (): ElectronAPI =>
+    (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
+
   useEffect(() => {
     let cancelled = false;
-    const api = (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
     const load = async (ws: string): Promise<void> => {
       try {
-        const items = await api.files.list(ws);
+        const items = await api().files.list(ws);
         if (cancelled) return;
         setRoot({
           name: ws.split(/[/\\]/).pop() || ws,
           isDirectory: true,
           isFile: false,
           path: ws,
-          children: sortEntries(items).filter(
-            (e) => e.name !== "node_modules",
-          ),
+          children: sortEntries(items).filter((e) => e.name !== "node_modules"),
         });
       } catch {
         if (!cancelled) setRoot(null);
@@ -374,41 +283,65 @@ export function FileTree({
     };
     setLoaded(false);
     setRoot(null);
+    // A different folder shares no paths with the old one; keeping the open set
+    // would leave stale entries that never match anything again.
+    setExpanded(new Set());
+    setChildrenOf(new Map());
     if (rootPath) void load(rootPath);
-    else void api.workspace.get().then((ws) => load(ws));
+    else
+      void api()
+        .workspace.get()
+        .then((ws) => load(ws));
     return () => {
       cancelled = true;
     };
   }, [rootPath, workspaceVersion]);
 
-  // Reload the root's own listing when the folder changes on disk, without the
-  // reset above: a new file at the top level must appear, but blanking the tree
-  // on every write would be worse than not refreshing at all.
+  // The folder changed on disk: re-list the root and every open folder. Bounded
+  // by what is open, not by what exists — a project with 40k files and three
+  // folders open costs three calls.
   useEffect(() => {
     if (refreshKey === 0 || !root) return;
     let cancelled = false;
-    const api = (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
-    void api.files
-      .list(root.path)
-      .then((items) => {
-        if (cancelled) return;
-        const children = sortEntries(items).filter(
-          (e) => e.name !== "node_modules",
-        );
-        setRoot((cur) => (cur ? { ...cur, children } : cur));
-      })
-      .catch(() => {});
+    void (async () => {
+      try {
+        const items = await api().files.list(root.path);
+        if (!cancelled) {
+          const children = sortEntries(items).filter(
+            (e) => e.name !== "node_modules",
+          );
+          setRoot((cur) => (cur ? { ...cur, children } : cur));
+        }
+      } catch {
+        // The root may have just been removed; keep the last known contents.
+      }
+      const listed = await Promise.all(
+        [...expanded].map((p) =>
+          api()
+            .files.list(p)
+            .then((items) => [p, sortEntries(items)] as const)
+            .catch(() => null),
+        ),
+      );
+      if (cancelled) return;
+      setChildrenOf((cur) => {
+        const next = new Map(cur);
+        for (const r of listed) if (r) next.set(r[0], r[1]);
+        return next;
+      });
+    })();
     return () => {
       cancelled = true;
     };
-    // `root` is not a dependency: it is what this effect writes to.
+    // `root` and `expanded` are read at fire time, not triggers: this must run
+    // when the disk changed, not when a folder is opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
 
   useEffect(() => {
-    const api = (window as unknown as { electronAPI?: ElectronAPI })
+    const electron = (window as unknown as { electronAPI?: ElectronAPI })
       .electronAPI;
-    return api?.files.onChanged(() => setRefreshKey((k) => k + 1));
+    return electron?.files.onChanged(() => setRefreshKey((k) => k + 1));
   }, []);
 
   // Search runs in the main process over the real folder. Debounced, because
@@ -425,10 +358,8 @@ export function FileTree({
     setSearching(true);
     let cancelled = false;
     const id = setTimeout(() => {
-      const api = (window as unknown as { electronAPI: ElectronAPI })
-        .electronAPI;
-      void api.files
-        .search(base, q)
+      void api()
+        .files.search(base, q)
         .then((r) => {
           if (cancelled) return;
           setHits(r.hits);
@@ -447,6 +378,72 @@ export function FileTree({
     };
   }, [search, rootPath, root?.path, refreshKey]);
 
+  const toggle = useCallback(
+    (entry: FileEntry): void => {
+      if (!entry.isDirectory) {
+        void (async () => {
+          try {
+            const stat = await api().files.stat(entry.path);
+            if (stat.size > LARGE_FILE_THRESHOLD) {
+              setLargeFileDialog({ path: entry.path, size: stat.size });
+              return;
+            }
+          } catch {
+            // stat failed — proceed anyway
+          }
+          onSelectFile?.(entry.path);
+        })();
+        return;
+      }
+      const path = entry.path;
+      setExpanded((cur) => {
+        const next = new Set(cur);
+        if (next.has(path)) next.delete(path);
+        else next.add(path);
+        return next;
+      });
+      // Load once; a reopened folder shows what it had, and the watcher
+      // corrects it if the disk moved on.
+      setChildrenOf((cur) => {
+        if (cur.has(path)) return cur;
+        setPending((p) => new Set(p).add(path));
+        void api()
+          .files.list(path)
+          .then((items) => {
+            setChildrenOf((c) => new Map(c).set(path, sortEntries(items)));
+          })
+          .catch(() => {
+            setChildrenOf((c) => new Map(c).set(path, []));
+          })
+          .finally(() => {
+            setPending((p) => {
+              const n = new Set(p);
+              n.delete(path);
+              return n;
+            });
+          });
+        return cur;
+      });
+    },
+    [onSelectFile],
+  );
+
+  const rows = useMemo(
+    () => flattenTree(root?.children ?? [], expanded, childrenOf),
+    [root, expanded, childrenOf],
+  );
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = (): void => setViewportH(el.clientHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hits === null]);
+
+  const win = visibleWindow(rows.length, ROW_H, scrollTop, viewportH);
   const isEmpty = loaded && (!root || (root.children?.length ?? 0) === 0);
 
   return (
@@ -461,7 +458,11 @@ export function FileTree({
         />
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-auto"
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+      >
         {hits !== null ? (
           hits.length === 0 ? (
             <div className="px-3 py-6 text-center text-xs text-muted-foreground">
@@ -490,21 +491,44 @@ export function FileTree({
             {emptyLabel ?? "No files yet."}
           </div>
         ) : (
-          root?.children?.map((child) => (
-            <TreeNode
-              key={child.path}
-              entry={child}
-              depth={0}
-              onSelectFile={onSelectFile}
-              refreshKey={refreshKey}
-            />
-          ))
+          <>
+            {/* Spacers stand in for the rows that are not in the document, so
+                the scrollbar reports the real length of the list. */}
+            <div style={{ height: win.padTop }} />
+            {rows.slice(win.start, win.end).map((r) => (
+              <Row
+                key={r.entry.path}
+                entry={r.entry}
+                depth={r.depth}
+                expanded={expanded.has(r.entry.path)}
+                loading={pending.has(r.entry.path)}
+                dark={dark}
+                onToggle={toggle}
+              />
+            ))}
+            <div style={{ height: win.padBottom }} />
+          </>
         )}
       </div>
+
+      {largeFileDialog && (
+        <LargeFileDialog
+          path={largeFileDialog.path}
+          size={largeFileDialog.size}
+          onOpen={() => {
+            onSelectFile?.(largeFileDialog.path);
+            setLargeFileDialog(null);
+          }}
+          onExplorer={() => {
+            void api().shell.openPath(largeFileDialog.path);
+            setLargeFileDialog(null);
+          }}
+          onCancel={() => setLargeFileDialog(null)}
+        />
+      )}
     </div>
   );
 }
-
 /**
  * One search result: the name, and under it where it lives. A flat list of
  * bare filenames is unusable in a project with four `index.ts`.
