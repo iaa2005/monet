@@ -15,7 +15,16 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Check, Globe, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  ExternalLink,
+  Globe,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import type { SkillSource, StoreSkill, SuggestedSource } from "@/types/electron";
 import {
   api,
@@ -184,6 +193,7 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
         uid: s.uid,
         kind: s.kind,
         repository: s.repository,
+        hint: s.hint,
         name: s.name,
       });
       // Matched on uid. source+path marked every registry card at once — they
@@ -501,7 +511,17 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
                 }
                 description={s.description}
                 action={
-                  s.installed ? (
+                  <>
+                    {/* Read it first. A skill is instructions the model will
+                        follow, and these come from strangers' repositories. */}
+                    {s.url && (
+                      <CardAction
+                        icon={ExternalLink}
+                        title={`Open ${s.url.replace(/^https:\/\//, "")}`}
+                        onClick={() => void api()?.shell.openExternal(s.url!)}
+                      />
+                    )}
+                    {s.installed ? (
                     <CardAction
                       icon={Trash2}
                       title="Remove this skill"
@@ -516,7 +536,8 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
                       busy={busy === key}
                       onClick={() => void install(s)}
                     />
-                  )
+                  )}
+                  </>
                 }
               />
             );

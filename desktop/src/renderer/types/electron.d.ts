@@ -196,6 +196,11 @@ export interface StoreSkill {
   kind?: "github" | "registry";
   /** Registry cards only: `owner/repo` where the files actually are. */
   repository?: string;
+  /** Registry cards only: a clue to which folder, resolved at install. Not a
+   * repo-relative path. */
+  hint?: string;
+  /** Where to read this skill before installing it. */
+  url?: string;
   /** Registry cards only — what the category filter offers. */
   category?: string;
   name: string;
@@ -628,6 +633,7 @@ export interface ElectronAPI {
       path: string;
       uid?: string;
       kind?: "github" | "registry";
+      hint?: string;
       repository?: string;
       name?: string;
     }) => Promise<{

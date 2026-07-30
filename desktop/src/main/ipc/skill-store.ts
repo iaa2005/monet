@@ -72,6 +72,15 @@ export interface StoreSkill {
   kind: SourceKind;
   /** Registry cards only: `owner/repo` where the files actually are. */
   repository?: string;
+  /**
+   * Registry cards only: the best clue to WHICH folder in that repo, used at
+   * install time. Not a repo-relative path — measured against real repos,
+   * claudemarketplaces publishes a leaf name: it reports `find-skills` for a
+   * skill that lives at `skills/find-skills`, and 5 of 8 sampled entries sat
+   * somewhere else entirely (`plugins/x/skills/y`, `frameworks/shared-skills/
+   * skills/z`). A better clue than a display name, still a clue.
+   */
+  hint?: string;
   name: string;
   description: string;
   installed: boolean;
@@ -79,6 +88,14 @@ export interface StoreSkill {
   category?: string;
   /** Local folder name once installed — what removal needs. */
   slug: string;
+  /**
+   * Where to go and read this before installing it. A skill is instructions the
+   * model will follow, so the source should be one click away.
+   *
+   * `tree/HEAD/<path>` rather than a branch name: verified against real repos,
+   * and it means the link needs no extra request to learn the default branch.
+   */
+  url?: string;
 }
 
 const UA = { "User-Agent": "monet-desktop" };
@@ -280,6 +297,7 @@ async function listGithub(src: Extract<SkillSource, { kind: "github" }>): Promis
       const { installed, slug } = resolve(uid, base);
       return {
         uid,
+        url: `https://github.com/${src.repo}/tree/HEAD/${dir}`,
         path: dir,
         source: src.id,
         kind: "github" as const,
@@ -311,8 +329,13 @@ async function listGithub(src: Extract<SkillSource, { kind: "github" }>): Promis
  * A page of claudemarketplaces, as cards.
  *
  * Local paging over a cached snapshot, because their API returns all 23 472
- * rows on every request and ignores every paging parameter. Cards carry a real
- * `path`, so install goes down the ordinary repo route with no name resolution.
+ * rows on every request and ignores every paging parameter.
+ *
+ * Their `path` is NOT repo-relative. Checked against the repos themselves: they
+ * report `find-skills` for `skills/find-skills`, and most sampled entries sat
+ * deeper still. So it is passed as a resolution HINT — a folder basename, which
+ * is what pickSkillDir matches on, and a much better clue than the display name
+ * skillsdirectory leaves us with. Ambiguity is still refused, not guessed.
  */
 async function listMarketplaceSource(
   src: Extract<SkillSource, { kind: "registry" }>,
@@ -329,11 +352,15 @@ async function listMarketplaceSource(
     const uid = `${src.id}|${r.repo}|${r.path}`;
     return {
       uid,
-      // The real folder — this source publishes it, so nothing is guessed.
-      path: r.path,
+      // Their own page: it shows the description, the install count and a link
+      // on to the repo. The exact folder is not known until install.
+      url: `https://claudemarketplaces.com/skills/${r.id}`,
+      // Empty: the folder is resolved at install, like any registry card.
+      path: "",
       source: src.id,
       kind: "registry" as const,
       repository: r.repo,
+      hint: r.path,
       name: r.name,
       description: r.description,
       ...resolve(uid, r.name),
@@ -359,6 +386,11 @@ async function listRegistrySource(
     // Includes the repository: two registry entries can share a name, and the
     // path cannot be part of the identity because it is not known until install.
     uid: `${src.id}|${r.repository}|${r.name}`,
+    // Their skill page — the folder inside the repo is unknown until install, so
+    // the repo root would be the only alternative and says much less.
+    url: r.slug
+      ? `https://www.skillsdirectory.com/skills/${r.slug}`
+      : `https://github.com/${r.repository}`,
     // The registry never says WHERE in the repo the skill is — resolved at
     // install against the repo's tree, so there is nothing to put here.
     path: "",
@@ -503,6 +535,7 @@ export function registerSkillStoreIPC(): void {
         uid?: string;
         kind?: SourceKind;
         repository?: string;
+        hint?: string;
         name?: string;
       },
     ) => {
@@ -510,16 +543,18 @@ export function registerSkillStoreIPC(): void {
         return installSkill(payload.source, payload.path, payload.uid);
       if (!payload.repository)
         return { ok: false, error: "That directory entry has no repository." };
-      // A card that already knows its folder needs no resolution — that is what
-      // claudemarketplaces publishes, and it is why installing from it cannot
-      // land on the wrong skill.
-      if (payload.path)
-        return installSkill(payload.repository, payload.path, payload.uid);
       const paths = await fetchTree(payload.repository);
       const dirs = paths
         .filter((p) => p.endsWith("/SKILL.md"))
         .map((p) => p.slice(0, -"/SKILL.md".length));
-      const pick = pickSkillDir(dirs, payload.name ?? "");
+      // The hint first — a folder basename beats a display name. Falling back to
+      // the name covers skillsdirectory, which publishes nothing better.
+      const pick = payload.hint
+        ? (() => {
+            const byHint = pickSkillDir(dirs, payload.hint!);
+            return byHint.ok ? byHint : pickSkillDir(dirs, payload.name ?? "");
+          })()
+        : pickSkillDir(dirs, payload.name ?? "");
       if (!pick.ok)
         return { ok: false, error: pick.error, candidates: pick.candidates };
       return installSkill(payload.repository, pick.dir, payload.uid);

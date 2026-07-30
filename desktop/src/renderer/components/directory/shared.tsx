@@ -206,7 +206,11 @@ export function DirCard({
             </div>
           )}
         </div>
-        {action && <div className="ml-1 shrink-0">{action}</div>}
+        {/* flex, because a card can offer more than one action — reading the
+            source before installing it, for one. */}
+        {action && (
+          <div className="ml-1 flex shrink-0 items-center gap-0.5">{action}</div>
+        )}
       </div>
       {description && (
         <p className="mt-2.5 line-clamp-3 text-[13px] leading-relaxed text-muted-foreground">

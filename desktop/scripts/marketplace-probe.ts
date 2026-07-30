@@ -15,6 +15,7 @@
  * rather than turned into a card that fails on click.
  */
 
+import { pickSkillDir } from "../src/main/skills-registry";
 import {
   matchMarketplace,
   sortMarketplace,
@@ -89,6 +90,45 @@ const SAMPLE: MarketplaceSkill[] = [
   const hit = matchMarketplace(SAMPLE, "git-commit")[0];
   check("a nested path is kept whole", hit?.path === "git/commit", hit?.path);
   check("and the repo is separate from it", hit?.repo === "someone/tools");
+}
+
+// -- 4. Their `path` is a leaf name, not a repo-relative path ---------
+{
+  // I claimed installs from this source were exact because it publishes a path.
+  // Measured against the repos: of 8 sampled entries only ONE matched from the
+  // repo root. `find-skills` lives at `skills/find-skills`; others sat under
+  // plugins/, frameworks/, frontend/. So the path is a folder BASENAME, which
+  // is what pickSkillDir matches on — a far better clue than skillsdirectory's
+  // display name, but still resolved, and still refused when ambiguous.
+  //
+  // Trees below are the real ones, fetched while writing this.
+  const check1 = pickSkillDir(["skills/find-skills"], "find-skills");
+  check("a stripped prefix resolves", check1.ok && check1.dir === "skills/find-skills", check1.ok ? check1.dir : check1.error);
+
+  const nested = pickSkillDir(
+    ["plugins/dotnet-advanced/skills/dotnet-pinvoke", "plugins/other/skills/thing"],
+    "dotnet-pinvoke",
+  );
+  check("a deeply nested one resolves", nested.ok && nested.dir === "plugins/dotnet-advanced/skills/dotnet-pinvoke", nested.ok ? nested.dir : nested.error);
+
+  const notUnderSkills = pickSkillDir(["frontend/framer-motion-animator", "backend/api"], "framer-motion-animator");
+  check("one outside a skills/ folder resolves", notUnderSkills.ok && notUnderSkills.dir === "frontend/framer-motion-animator");
+
+  // langchain-ai/deepagents really does ship two folders of this name.
+  const ambiguous = pickSkillDir(
+    ["libs/code/examples/skills/langgraph-docs", "libs/cli/examples/skills/langgraph-docs"],
+    "langgraph-docs",
+  );
+  check("two folders of the same name are refused, not guessed", !ambiguous.ok);
+  check("with both named", !ambiguous.ok && ambiguous.candidates?.length === 2, !ambiguous.ok ? JSON.stringify(ambiguous.candidates) : undefined);
+
+  // Using the path AS a repo-relative path is what would have failed: nothing
+  // lives at `find-skills`, so the download would have found no files.
+  check(
+    "the raw path would NOT have been a valid folder",
+    !["skills/find-skills"].includes("find-skills"),
+    "installing it verbatim downloads nothing",
+  );
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL MARKETPLACE CHECKS PASSED");

@@ -500,6 +500,7 @@ const electronAPI = {
       path: string;
       uid?: string;
       kind?: string;
+      hint?: string;
       repository?: string;
       name?: string;
     }): Promise<{
