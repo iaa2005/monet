@@ -250,26 +250,40 @@ export function StackedDocIcon({
     <span className={cn("relative block h-11 w-12 shrink-0", className)}>
       <span
         className={cn(
-          // Pivoting on the BOTTOM: the sheet swings anticlockwise like a page held
-          // at the edge it is tucked behind, rather than tipping from the top.
-          "absolute left-0 top-0 block h-[3.75rem] w-full origin-bottom",
-          // Decoration, so it sits behind motion-safe: someone who asked the OS
-          // for less movement gets the same card without the swing.
-          "transition-transform duration-300 ease-out",
-          "motion-safe:group-hover:-rotate-[7deg] motion-safe:group-hover:scale-[1.06]",
+          // Turning about the sheet's own centre, anticlockwise.
+          "absolute left-0 top-1.5 block h-[3.75rem] w-full origin-center",
+          // NOT behind motion-safe, and that is deliberate. Tailwind compiles
+          // motion-safe into `@media (prefers-reduced-motion: no-preference)`,
+          // and this machine answers `reduce` — Windows has "show animations"
+          // off — so the whole block was dead and the swing never happened
+          // anywhere. Same cause as the spinner that would not spin, and the
+          // same answer: reduce the movement rather than remove it, since the
+          // person asking for less movement is the one who asked for this.
+          "transition-transform duration-300 ease-out motion-reduce:duration-150",
+          "group-hover:-rotate-[7deg] group-hover:scale-[1.06]",
         )}
       >
         <svg viewBox="0 0 36 45" fill="none" className="h-full w-full" aria-hidden="true">
+          {/* The page. Its top-right is cut, and that diagonal belongs to THIS
+              path — the flap must not draw it a second time. */}
           <path
-            d="M1 4.5a3.5 3.5 0 0 1 3.5-3.5h16.6L35 14.9V40.5a3.5 3.5 0 0 1-3.5 3.5H4.5A3.5 3.5 0 0 1 1 40.5z"
-            // White on the grey row — `card` is the lifted surface in both themes.
+            d="M1 4.5a3.5 3.5 0 0 1 3.5-3.5H25L35 11V40.5a3.5 3.5 0 0 1-3.5 3.5H4.5A3.5 3.5 0 0 1 1 40.5z"
             className="fill-card stroke-muted-foreground/30"
             strokeWidth="1"
             strokeLinejoin="round"
           />
+          {/* The turned-down flap, filled only. */}
           <path
-            d="M21.1 1v10.4a3.5 3.5 0 0 0 3.5 3.5H35z"
-            className="fill-muted-foreground/15 stroke-muted-foreground/30"
+            d="M25 1v6.5a3.5 3.5 0 0 0 3.5 3.5H35z"
+            className="fill-muted-foreground/15"
+          />
+          {/* ...and its crease, as an OPEN path. Closing it would lay a second
+              line along the diagonal the page already draws, and two 1px strokes
+              on the same edge read as a brighter line than the rest of the
+              outline — which is what you could see. */}
+          <path
+            d="M25 1v6.5a3.5 3.5 0 0 0 3.5 3.5H35"
+            className="stroke-muted-foreground/30"
             strokeWidth="1"
             strokeLinejoin="round"
           />
@@ -381,21 +395,33 @@ export function FileCard({
   a,
   action = "open",
   older,
+  surface = "chat",
 }: {
   a: ArtifactItem;
   action?: "open" | "icon";
   /** Earlier copies of this same file, newest first. */
   older?: ArtifactItem[];
+  /** Which background it sits on: the chat, or the Artifacts panel. */
+  surface?: "chat" | "panel";
 }): JSX.Element {
   const [showVersions, setShowVersions] = useState(false);
   const versions = older?.length ?? 0;
 
-  // The card carries the chat's own background, so only its border and the white
-  // sheet separate it from the canvas. That also hands the Open button its fill
-  // back: at bg-muted the card and the button were the same colour and the button
-  // vanished into it.
+  // The fill follows the surface. Under a reply the card carries the chat's own
+  // background, so only its border and the white sheet separate it from the
+  // canvas; in the Artifacts panel that would sink into the panel, so it takes
+  // the lifted `card` instead.
+  //
+  // `glass-panel` puts it in the Monet glass system: with a painting behind the
+  // app, `.monet-glass` makes these transparent with a blurred backdrop, and a
+  // card without the class stays an opaque block in the middle of it.
   return (
-    <div className="group rounded-2xl border border-border bg-background">
+    <div
+      className={cn(
+        "group glass-panel rounded-2xl border border-border",
+        surface === "panel" ? "bg-card" : "bg-background",
+      )}
+    >
     {/* overflow-hidden here is the crop: the sheet is taller than its box and
         the row's own rounded bottom edge cuts it off. On the row rather than the
         outer card so the versions list below keeps its square corners. */}

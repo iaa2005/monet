@@ -102,6 +102,7 @@ export function ArtifactsPanel(): JSX.Element {
                 a={g.latest}
                 older={g.older}
                 action="icon"
+                surface="panel"
               />
             ))}
           </div>
