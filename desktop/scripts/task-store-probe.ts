@@ -75,6 +75,33 @@ const reset = (): void => useTaskStore.setState({ tasks: [] });
     taskDetail("Edit", { file_path: "/a/b/c/chatStore.ts" }) === "chatStore.ts",
   );
   check("nothing to show is undefined, not empty", taskDetail("TodoWrite", {}) === undefined);
+  // The sandbox file tools call their path `name`, not `file_path`. Missing it
+  // is what turned the panel into a wall of bare "SandboxWrite" rows.
+  check(
+    "the sandbox tools' `name` is a path too",
+    taskDetail("SandboxWrite", { name: "src/app.py", content: "x" }) === "app.py",
+    taskDetail("SandboxWrite", { name: "src/app.py", content: "x" }),
+  );
+}
+
+// ── 2b. Sandbox writes must say which file ────────────────────────────
+{
+  check(
+    "a sandbox write names the file",
+    taskTitle("SandboxWrite", { name: "src/app.py", content: "print(1)" }) ===
+      "Sandbox write · app.py",
+    taskTitle("SandboxWrite", { name: "src/app.py", content: "print(1)" }),
+  );
+  check(
+    "…and so do read and edit",
+    toolLabel("SandboxRead") === "Sandbox read" && toolLabel("SandboxEdit") === "Sandbox edit",
+    `${toolLabel("SandboxRead")} / ${toolLabel("SandboxEdit")}`,
+  );
+  check(
+    "listing the sandbox reads as files, not a raw tool name",
+    toolLabel("SandboxList") === "Sandbox files",
+    toolLabel("SandboxList"),
+  );
 }
 
 // ── 3. MCP tools must be readable ─────────────────────────────────────

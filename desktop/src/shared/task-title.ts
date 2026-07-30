@@ -22,6 +22,13 @@ const TOOL_LABELS: Record<string, string> = {
   Task: "Sub-agent",
   RunPython: "Python",
   RunCommand: "Command",
+  // The sandbox tools touch this chat's scratch folder, not the user's disk.
+  // Worth keeping distinct: "Write · app.py" reading as a write to their
+  // project would be a lie.
+  SandboxWrite: "Sandbox write",
+  SandboxRead: "Sandbox read",
+  SandboxEdit: "Sandbox edit",
+  SandboxList: "Sandbox files",
 };
 
 export function toolLabel(tool: string): string {
@@ -55,7 +62,9 @@ export function taskDetail(
   if (tool === "Bash" || tool === "PowerShell" || tool === "RunCommand")
     return str(input, "command");
   if (tool === "RunPython") return str(input, "code");
-  const path = str(input, "file_path") ?? str(input, "path");
+  // `name` last: the sandbox tools spell their path that way. A tool that uses
+  // `name` for something else still reads better named than not.
+  const path = str(input, "file_path") ?? str(input, "path") ?? str(input, "name");
   if (path) return basename(path);
   return (
     str(input, "pattern") ??
