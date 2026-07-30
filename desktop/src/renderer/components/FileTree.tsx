@@ -1,5 +1,5 @@
 /**
- * File Tree — directory browser with charmed-icons.
+ * File Tree — directory browser, icons from the flow pack.
  *
  * Flat and windowed rather than recursive: see tree-rows.ts for why the rows,
  * and not the icons, were what made a large folder crawl.

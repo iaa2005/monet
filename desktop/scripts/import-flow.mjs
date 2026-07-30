@@ -3,29 +3,27 @@
  *
  * Dry-run by default. Pass --write to actually touch anything.
  *
- * What the extension looks like, read off the installed 1.3.2 rather than
- * assumed:
- *
  *   <ext>/icons.json          the whole mapping, {files:{}, folders:{}}
- *   <ext>/dawn/*.png          dark-UI art        }  also deep/ and dim/,
- *   <ext>/dawn-light/*.png    light-UI art       }  three packs, same names
- *   <ext>/{dawn,deep,dim}.json  generated themes, not needed by us
+ *   <ext>/dawn/*.svg          dark-UI art     }  also deep/, dim/, you/ —
+ *   <ext>/dawn-light/*.svg    light-UI art    }  four packs, same names
  *
- * After a licence key is entered the extension GETs a signed URL, writes
- * <ext>/icons.gz and untars it OVER ITSELF — so the full set appears in exactly
- * these folders, under exactly these names. Nothing about this script changes
- * when the paid icons arrive; only the counts do.
+ * After a licence key is entered the extension fetches a signed URL, writes
+ * <ext>/icons.gz — brotli despite the name — and untars it OVER ITSELF, so the
+ * full set appears in these folders under these names.
  *
- * Two facts worth knowing before relying on it:
+ * Two things this had to learn the hard way:
  *
- *  1. The extension ships PNG at 48×48, not SVG — share.js builds every path as
- *     `./${folder}/${key}.png`. Our set is SVG today, so importing from the
- *     extension trades vector for raster. Hence --svg, which lets a directory of
- *     real SVGs win over the PNG of the same name.
+ *  1. A folder rule is keyed by the bare word — `admin` — while its art is
+ *     `folder_admin.svg` and `folder_admin_open.svg`. Taking the key at face
+ *     value reported 498 icons as having no art while they sat in the folder.
  *
- *  2. `<pack>-light` is separate ARTWORK, not a recolour — seven files compared,
- *     seven different. Our light theme is currently a mechanical palette
- *     translation of the dark one; importing gives us the author's own.
+ *  2. `opentofu` lists an empty string among its filenames, and an empty key is
+ *     what a file with no extension looks up. Left in, every extensionless file
+ *     in the tree resolves to opentofu.
+ *
+ * 1.3.2 shipped 48x48 PNG; 2.0.9 ships SVG. If a future pack goes back to
+ * raster this refuses to run rather than quietly filling the set with names the
+ * resolver will ask for as .svg.
  */
 
 import {
@@ -47,11 +45,9 @@ const flag = (name, fallback = null) => {
 const WRITE = args.includes("--write");
 const FROM = flag(
   "from",
-  "C:/Users/alexivanov/.vscode/extensions/thang-nm.flow-icons-1.3.2",
+  "C:/Users/alexivanov/.vscode/extensions/thang-nm.flow-icons-2.0.9",
 );
 const PACK = flag("pack", "dawn");
-/** A directory of SVGs that outrank the extension's PNG of the same name. */
-const SVG = flag("svg", "D:/alexivanov/Desktop/flow-icons-svgs/dawn");
 const ICONS = "D:/Projects/claude-code/desktop/src/renderer/public/icons";
 const GENERATED =
   "D:/Projects/claude-code/desktop/src/renderer/components/flow-map.generated.ts";
@@ -124,13 +120,12 @@ const listing = (dir, suffix = null) =>
       .map((f) => [basename(f, f.slice(f.lastIndexOf("."))).toLowerCase(), join(dir, f)]),
   );
 
-// 2.0.9 ships SVG; 1.3.2 shipped PNG. Take whatever is there rather than
-// insisting on one — the format changed under us once already.
-const art = { dark: listing(SRC.dark), light: listing(SRC.light) };
-const suffixOf = (p) => p.slice(p.lastIndexOf(".")).toLowerCase();
-/** An external SVG stash still outranks the pack, for the case where the pack
- * is the raster one. With 2.0.9 it is redundant and harmless. */
-const stash = SVG && existsSync(SVG) ? listing(SVG, ".svg") : new Map();
+const art = { dark: listing(SRC.dark, ".svg"), light: listing(SRC.light, ".svg") };
+if (art.dark.size === 0)
+  die(
+    `No SVG in ${SRC.dark}. 1.3.2 shipped PNG; if this pack has gone back to ` +
+      `raster, the resolver's .svg URLs need addressing before importing.`,
+  );
 
 /** Every icon name the extension knows about, art or not. */
 const wanted = new Set([
@@ -151,13 +146,9 @@ const have = {
   ),
 };
 
-const plan = { svg: [], png: [], missing: [] };
-for (const name of [...wanted].sort()) {
-  const inPack = art.dark.has(name) && art.light.has(name);
-  if (!inPack && !stash.has(name)) plan.missing.push(name);
-  else if (inPack ? suffixOf(art.dark.get(name)) === ".svg" : true) plan.svg.push(name);
-  else plan.png.push(name);
-}
+const plan = { present: [], missing: [] };
+for (const name of [...wanted].sort())
+  (art.dark.has(name) && art.light.has(name) ? plan.present : plan.missing).push(name);
 
 const newNames = [...wanted].filter((n) => !have.base.has(n));
 const oursKept = [...have.base].filter((n) => !wanted.has(n));
@@ -166,7 +157,6 @@ const oursKept = [...have.base].filter((n) => !wanted.has(n));
 const n = (x) => String(x).padStart(5);
 console.log(`\nSOURCE  ${FROM}`);
 console.log(`PACK    ${PACK}   (dark: ${SRC.dark}, light: ${SRC.light})`);
-console.log(`STASH   ${stash.size ? `${SVG} — ${stash.size} files` : "(none)"}`);
 console.log(`MODE    ${WRITE ? "WRITE" : "dry run — nothing will be touched"}`);
 
 console.log(`\nMAPPING (flow's own icons.json)`);
@@ -181,9 +171,8 @@ if (blanks.length)
   console.log(`${n(blanks.length)}  blank keys dropped (${[...new Set(blanks)].join(", ")})`);
 
 console.log(`\nART`);
-console.log(`${n(plan.svg.length)}  from SVG   (vector, preferred)`);
-console.log(`${n(plan.png.length)}  from PNG   48x48 raster`);
-console.log(`${n(plan.missing.length)}  named but no art in either place`);
+console.log(`${n(plan.present.length)}  icons with art in both themes`);
+console.log(`${n(plan.missing.length)}  named but no art`);
 
 console.log(`\nAGAINST OUR SET (${have.base.size} names today)`);
 console.log(`${n(newNames.length)}  names flow adds that we do not have`);
@@ -205,20 +194,11 @@ if (!WRITE) {
 for (const d of Object.values(DEST)) mkdirSync(d, { recursive: true });
 
 let copied = 0;
-for (const name of [...plan.svg, ...plan.png]) {
-  // The pack's own light art wins over anything derived. The stash is consulted
-  // only when the pack has no art for that name at all.
-  const dark = art.dark.get(name) ?? stash.get(name);
-  const light = art.light.get(name) ?? stash.get(name);
-  copyFileSync(dark, join(DEST.dark, name + suffixOf(dark)));
-  copyFileSync(light, join(DEST.light, name + suffixOf(light)));
+for (const name of plan.present) {
+  copyFileSync(art.dark.get(name), join(DEST.dark, `${name}.svg`));
+  copyFileSync(art.light.get(name), join(DEST.light, `${name}.svg`));
   copied++;
 }
-
-/** Names whose art is a PNG rather than an SVG. The resolver builds a URL from
- * a name, so with a mixed set it has to be told which is which — there is no
- * asking the filesystem from the renderer. */
-const pngNames = new Set(plan.png);
 
 const asRecord = (m) =>
   `{\n${[...m.entries()]
@@ -245,8 +225,6 @@ export const FLOW_NAMES: Record<string, string> = ${asRecord(names)};
 /** Folder name to icon name; the open variant is that name plus "_open". */
 export const FLOW_FOLDERS: Record<string, string> = ${asRecord(folders)};
 
-/** Icons whose file is .png. Everything else is .svg. */
-export const PNG_ICONS: ReadonlySet<string> = new Set(${JSON.stringify([...pngNames].sort())});
 `,
 );
 

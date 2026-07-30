@@ -4316,5 +4316,3 @@ export const FLOW_FOLDERS: Record<string, string> = {
   "zenodo": "folder_zenodo",
 };
 
-/** Icons whose file is .png. Everything else is .svg. */
-export const PNG_ICONS: ReadonlySet<string> = new Set([]);

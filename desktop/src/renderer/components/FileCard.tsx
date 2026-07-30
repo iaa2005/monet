@@ -7,7 +7,7 @@
  *   FileTile  — a square tile for the Content grid, showing a preview when the
  *               file is an image and the name + type badge otherwise.
  *
- * The mark on the left is the same charmed-icons set the file tree uses, so a
+ * The mark on the left is the same flow icon set the file tree uses, so a
  * file looks the same wherever the app shows it. The action button is a plain
  * label: it used to carry the OS icon of whatever app owns the extension, which
  * put a second, differently-drawn icon of the same file on the same row.
@@ -223,7 +223,7 @@ export function typeLabel(a: {
  * the grey row, and it is the row's own bottom edge that crops it. Compared side
  * by side that was the only difference left.
  *
- * The icon on the sheet is the same charmed-icons set the file tree uses, through
+ * The icon on the sheet is the same flow icon set the file tree uses, through
  * the same resolver, so a `.ts` here and a `.ts` in the tree are one picture — and
  * a name the set has no icon for falls back the way the tree falls back.
  *
