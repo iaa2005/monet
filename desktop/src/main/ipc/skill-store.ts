@@ -156,6 +156,26 @@ function readOrigins(): Record<string, string> {
   }
 }
 
+/**
+ * Forget a folder we no longer have.
+ *
+ * Found in the wild: five records in skill-origins.json, and not one of their
+ * folders still existed — deleting a skill removed the directory and left its
+ * record behind. That is not only untidy. `installResolver` builds its `claimed`
+ * set from these keys, so a record for a folder that is gone makes a REAL folder
+ * of the same name read as not installed.
+ */
+export function forgetOrigin(slug: string): void {
+  try {
+    const all = readOrigins();
+    if (!(slug in all)) return;
+    delete all[slug];
+    writeFileSync(originsFile(), JSON.stringify(all, null, 2), "utf-8");
+  } catch {
+    /* the prune on the next listing catches it */
+  }
+}
+
 function recordOrigin(slug: string, uid: string): void {
   try {
     const all = readOrigins();
@@ -183,11 +203,24 @@ function installResolver(): (uid: string, name: string) => {
   installed: boolean;
   slug: string;
 } {
-  const origins = readOrigins();
-  const byUid = new Map<string, string>();
-  for (const [slug, uid] of Object.entries(origins)) byUid.set(uid, slug);
-  const claimed = new Set(Object.keys(origins));
   const dir = skillsDir();
+  // Drop records whose folder is gone before using them. A skill can also be
+  // deleted from outside the app, so this has to be self-healing rather than
+  // relying on every delete going through us.
+  const origins = readOrigins();
+  const live = Object.fromEntries(
+    Object.entries(origins).filter(([slug]) => existsSync(join(dir, slug))),
+  );
+  if (Object.keys(live).length !== Object.keys(origins).length) {
+    try {
+      writeFileSync(originsFile(), JSON.stringify(live, null, 2), "utf-8");
+    } catch {
+      /* the in-memory copy is already correct for this listing */
+    }
+  }
+  const byUid = new Map<string, string>();
+  for (const [slug, uid] of Object.entries(live)) byUid.set(uid, slug);
+  const claimed = new Set(Object.keys(live));
   return (uid, name) => {
     const known = byUid.get(uid);
     if (known) return { installed: existsSync(join(dir, known)), slug: known };

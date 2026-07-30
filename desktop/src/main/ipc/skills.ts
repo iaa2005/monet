@@ -21,6 +21,7 @@ import {
 } from "fs";
 import { basename, join, resolve, sep } from "path";
 import { getDataDir } from "../data-dir.js";
+import { forgetOrigin } from "./skill-store.js";
 
 export interface SkillInfo {
   slug: string;
@@ -185,6 +186,9 @@ export function registerSkillsIPC(): void {
   ipcMain.handle("skills:delete", (_e, slug: string): { ok: boolean } => {
     const dir = join(skillsDir(), slug);
     if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+    // And forget which card installed it, or the record outlives the folder and
+    // makes a later folder of the same name read as not installed.
+    forgetOrigin(slug);
     refreshSkillCaches();
     return { ok: true };
   });

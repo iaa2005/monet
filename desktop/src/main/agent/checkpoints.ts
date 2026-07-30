@@ -14,45 +14,15 @@ import { spawn } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getDataSubdir } from "../data-dir.js";
+import { DEFAULT_EXCLUDES } from "./checkpoint-excludes.js";
 
 function shadowDir(sessionId: string): string {
   const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_") || "session";
   return join(getDataSubdir("checkpoints"), safe);
 }
 
-/**
- * Repo-local ignore patterns for the shadow repo (written to info/exclude).
- * The workspace's own .gitignore is still honoured on top of this; this is a
- * safety net so a workspace WITHOUT a .gitignore doesn't snapshot heavy dirs.
- * `.git/` is always excluded so we never vacuum the user's real repo internals.
- */
-const DEFAULT_EXCLUDES = [
-  ".git/",
-  "node_modules/",
-  "bower_components/",
-  ".pnpm-store/",
-  "dist/",
-  "build/",
-  "out/",
-  "target/",
-  ".next/",
-  ".nuxt/",
-  ".svelte-kit/",
-  ".turbo/",
-  ".parcel-cache/",
-  ".cache/",
-  "coverage/",
-  ".venv/",
-  "venv/",
-  "__pycache__/",
-  ".mypy_cache/",
-  ".pytest_cache/",
-  ".gradle/",
-  ".idea/",
-  ".DS_Store",
-  "*.log",
-  "",
-].join("\n");
+// The pattern list lives in checkpoint-excludes.ts — dependency-free, so a probe
+// can hold it to what real git actually ignores.
 
 /** Ensure the shadow repo's info/exclude carries our default ignores. Also
  * upgrades shadow repos created before this file existed. Cheap; idempotent. */

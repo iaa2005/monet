@@ -6,7 +6,7 @@
  * imports data-dir, so nothing here touches the user's real .monet dir.
  */
 import { app, ipcMain } from "electron";
-import { mkdtempSync, existsSync, readFileSync } from "fs";
+import { mkdtempSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { DEFAULT_SOURCES } from "../src/main/skill-source-model";
@@ -25,7 +25,11 @@ const { registerSkillStoreIPC } = await import("../src/main/ipc/skill-store.js")
 const { registerMcpRegistryIPC } = await import(
   "../src/main/ipc/mcp-registry.js"
 );
+const { registerSkillsIPC } = await import("../src/main/ipc/skills.js");
 registerSkillStoreIPC();
+// Registered so the DELETE path is the real one: the bug being pinned is that
+// skills:delete did not tell the skill store to forget the folder.
+registerSkillsIPC();
 registerMcpRegistryIPC();
 
 const call = (ch: string, ...args: any[]): any => {
@@ -170,6 +174,9 @@ console.log("\n# install");
 const inst = await call("skillstore:install", {
   source: "iaa2005/monet-directory/skills",
   path: "skills/pptx",
+  // The uid the Directory sends. Without it nothing is recorded, so leaving it
+  // out was testing a payload the app never sends.
+  uid: sample?.uid,
 });
 check("install ok", inst.ok === true, inst.error ?? "");
 const skillMd = join(sandbox, ".monet", "claude", "skills", inst.slug ?? "", "SKILL.md");
@@ -186,6 +193,52 @@ check(
   relisted.skills?.find((s: any) => s.path === "skills/pptx" && s.source === "iaa2005/monet-directory/skills")
     ?.installed === true,
 );
+
+// ── Removing it must forget it too ─────────────────────────────────────────
+//
+// Found in the real data dir: five records in skill-origins.json and not one of
+// their folders left. Deleting a skill removed the directory and kept the record,
+// and that is not merely untidy — installResolver builds its `claimed` set from
+// these keys, so a record for a folder that is gone makes a REAL folder of the
+// same name read as not installed.
+{
+  const originsPath = join(sandbox, ".monet", "skill-origins.json");
+  const read = (): Record<string, string> => {
+    try {
+      return JSON.parse(readFileSync(originsPath, "utf-8"));
+    } catch {
+      return {};
+    }
+  };
+  check("installing recorded an origin", inst.slug! in read(), JSON.stringify(read()));
+
+  await call("skills:delete", inst.slug);
+  check(
+    "deleting the skill forgets its origin",
+    !(inst.slug! in read()),
+    JSON.stringify(read()),
+  );
+  check(
+    "and it reads as not installed again",
+    (await call("skillstore:list")).skills?.find(
+      (s: any) => s.path === "skills/pptx",
+    )?.installed === false,
+  );
+
+  // The self-healing half: a record whose folder went away behind our back —
+  // deleted in a file manager, or by another tool — must not keep its claim.
+  writeFileSync(
+    originsPath,
+    JSON.stringify({ "gone-forever": "some|uid|here" }, null, 2),
+    "utf-8",
+  );
+  await call("skillstore:list");
+  check(
+    "a stale record is pruned on the next listing",
+    !("gone-forever" in read()),
+    JSON.stringify(read()),
+  );
+}
 
 // ── MCP registry (live API) ────────────────────────────────────────────────
 console.log("\n# mcp registry");
