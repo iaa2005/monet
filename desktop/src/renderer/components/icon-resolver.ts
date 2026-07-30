@@ -327,6 +327,43 @@ const FOLDER_MAP: Record<string, string> = {
   camera: "folder_camera",
 };
 
+/**
+ * Names that identify a FILE rather than a TYPE, and so may outrank an
+ * extension.
+ *
+ * Deliberately short, and the distinction is the whole point: `readme` belongs
+ * here because a README is a README whatever it is written in; `bash` does not,
+ * because `bash.svg` is a picture. Getting that backwards made every icon in the
+ * icon set render as its own subject.
+ */
+const DOC_NAMES: Record<string, string> = {
+  readme: "readme",
+  license: "license",
+  licence: "license",
+  changelog: "changelog",
+  contributing: "contributing",
+  authors: "authors",
+  security: "security",
+  code_of_conduct: "code-of-conduct",
+};
+
+/** ...and the extensions a document is actually written in. */
+const DOC_EXT = new Set(["md", "markdown", "txt", "rst", "adoc", ""]);
+
+/**
+ * Config stems, matched whatever the file is written in: `vite.config.ts`,
+ * `vite.config.mjs`. The dot inside the stem is what makes them unambiguous —
+ * nothing is called `next.config.svg`.
+ */
+const CONFIG_STEMS: Record<string, string> = {
+  "vite.config": "vite",
+  "next.config": "next",
+  "nuxt.config": "nuxt",
+  "astro.config": "astro-config",
+  "tailwind.config": "tailwind",
+  "drizzle.config": "drizzle-orm",
+};
+
 /** The two tables as one lookup. Kept separate above only so the second one can
  * carry the story of why it exists. */
 const ALL_EXT: Record<string, string> = { ...EXT_MAP, ...MORE_EXT };
@@ -346,11 +383,17 @@ function iconName(name: string, isDir: boolean, open: boolean): string {
 
   const lower = name.toLowerCase();
 
-  // Most specific first. This order is the whole fix: the extension used to be
-  // tried before anything else, so `Cargo.toml` resolved as `toml`,
-  // `package.json` as `json` and `types.d.ts` as `ts` — and the map's own
-  // `tsconfig.json`, `vite.config`, `readme`, `license` and `changelog` keys were
-  // dead the entire time, unreachable by any filename.
+  // Most specific first. The extension used to be tried before anything else,
+  // so `Cargo.toml` resolved as toml, `package.json` as json and `types.d.ts`
+  // as ts — and the map's own `tsconfig.json`, `vite.config`, `readme`,
+  // `license` and `changelog` keys were unreachable by any filename.
+  //
+  // But "most specific" is not "longest match", and the first version of this
+  // got that wrong in the other direction: it consulted the WHOLE map for the
+  // stem, so `bash.svg` came out as bash, `c.svg` as C and `css.svg` as CSS.
+  // Those are pictures. The map holds names of TYPES (bash, c, css) alongside
+  // names of FILES (readme, license), and only the second kind may outrank an
+  // extension — see DOC_NAMES and CONFIG_STEMS.
 
   // 1. The whole name: `package.json`, `go.mod`, `Makefile`, `CODEOWNERS`.
   const whole = ALL_EXT[lower];
@@ -360,18 +403,23 @@ function iconName(name: string, isDir: boolean, open: boolean): string {
   for (const [pattern, icon] of Object.entries(ALL_EXT))
     if (pattern.startsWith(".") && lower.endsWith(pattern)) return icon;
 
-  // 3. The stem — the name without its last extension. This is what makes
-  //    `README.md` a readme and `next.config.mjs` a Next config, rather than a
-  //    markdown file and an mjs file.
   const dot = lower.lastIndexOf(".");
-  if (dot > 0) {
-    const stem = ALL_EXT[lower.slice(0, dot)];
-    if (stem) return stem;
-  }
+  const stem = dot > 0 ? lower.slice(0, dot) : lower;
+  const ext = dot > 0 ? lower.slice(dot + 1) : "";
 
-  // 4. The extension itself.
-  if (dot === -1) return "_file";
-  return ALL_EXT[lower.slice(dot + 1)] ?? "_file";
+  // 3. A config stem, whatever it is written in: `vite.config.ts`,
+  //    `next.config.mjs`. The dot inside the stem makes these unmistakable.
+  const config = CONFIG_STEMS[stem];
+  if (config) return config;
+
+  // 4. A document name — but only with an extension a document is written in.
+  //    This is the line that keeps `changelog.svg` a picture while
+  //    `CHANGELOG.md` is a changelog.
+  const doc = DOC_NAMES[stem];
+  if (doc && DOC_EXT.has(ext)) return doc;
+
+  // 5. The extension itself.
+  return ALL_EXT[ext] ?? "_file";
 }
 
 export function resolveIcon(

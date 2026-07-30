@@ -172,6 +172,40 @@ check(
     check(`${file} -> ${want}`, got.endsWith(`/${want}.svg`), got.split('/').pop())
   }
 
+  // ── A name that is a TYPE must not outrank the extension ────────────
+  //
+  // Reported from the icon set's own folder, which is the perfect adversarial
+  // case: it is 249 files called `<a-type-name>.svg`. The stem rule consulted
+  // the WHOLE map, so `bash.svg` came out as bash, `c.svg` as C, `css.svg` as
+  // CSS — every icon rendered as its own subject. Only names of FILES may beat
+  // an extension, never names of types.
+  for (const stem of [
+    'bash', 'c', 'cpp', 'css', 'csv', 'astro', 'lua', 'zip', 'pdf', 'go',
+    'java', 'json', 'toml', 'node', 'vue', 'svelte',
+    // ...and the document names too, when the extension is a picture.
+    'changelog', 'readme', 'license', 'authors', 'contributing', 'codeowners',
+  ]) {
+    const got = resolveIcon(`${stem}.svg`, false, false, false)
+    check(`${stem}.svg is a picture`, got.endsWith('/svg.svg'), got.split('/').pop())
+  }
+  // The same names in a document extension still resolve to the document.
+  for (const [file, want] of [
+    ['README.md', 'readme'],
+    ['CHANGELOG.md', 'changelog'],
+    ['CONTRIBUTING.md', 'contributing'],
+    ['AUTHORS.txt', 'authors'],
+    ['LICENSE.md', 'license'],
+  ] as [string, string][]) {
+    const got = resolveIcon(file, false, false, false)
+    check(`${file} -> ${want}`, got.endsWith(`/${want}.svg`), got.split('/').pop())
+  }
+  // And a config stem wins whatever it is written in — no picture is called
+  // `next.config.svg`, so this one needs no extension guard.
+  for (const file of ['vite.config.ts', 'vite.config.mjs', 'next.config.js', 'tailwind.config.cjs']) {
+    const got = resolveIcon(file, false, false, false)
+    check(`${file} keeps its config icon`, !got.endsWith('/typescript.svg') && !got.endsWith('/javascript.svg'), got.split('/').pop())
+  }
+
   // And the standing check, so the next icon added to the set cannot quietly
   // become unreachable. These five are inert on purpose: nothing in a FILENAME
   // can honestly select them — `workflow` wants a path, `test-teal` and

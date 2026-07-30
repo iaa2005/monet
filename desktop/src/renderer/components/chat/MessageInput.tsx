@@ -1047,7 +1047,6 @@ export function MessageInput({
                 >
                   <CornerDownLeft className="size-4" />
                 </button>
-                <div className="w-1" />
                 <button
                   type="button"
                   onClick={() => {
@@ -1068,7 +1067,6 @@ export function MessageInput({
                 >
                   <ListEnd className="size-4" />
                 </button>
-                <div className="w-1" />
                 <button
                   type="button"
                   onClick={abort}
