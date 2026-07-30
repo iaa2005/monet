@@ -12,12 +12,16 @@
  *     the "sources disappear" half of the report.
  *   - a built-in can be switched off. Off is not gone.
  *   - only what the user added can be deleted.
- *   - a config written before the switch existed described sources that were
- *     all being listed, so a missing `enabled` reads as on.
+ *   - a missing `enabled` reads as on, the useful default for an entry someone
+ *     added by hand.
+ *   - there is ONE config shape. The pre-Directory `{ "source": ... }` key is not
+ *     migrated: the app is unreleased, and that migration resurrected a source
+ *     nobody had added.
  */
 
 import {
   DEFAULT_SOURCES,
+  migrateStoredSources,
   parseStoredSource,
   toStored,
   withBuiltins,
@@ -132,6 +136,35 @@ const BUILTIN = "iaa2005/monet-directory/skills";
   check("a switched-off one needs the object form", typeof st === "object", JSON.stringify(st));
   check("and reads back off", parseStoredSource(st)?.enabled === false);
   check("and reads back with the same id", parseStoredSource(st)?.id === "a/b");
+}
+
+// ── One config shape, no migration ───────────────────────────────────
+{
+  // Reported twice, the second time with the chip circled: a source labelled
+  // `skills` that could not be removed by editing the catalogue, because it was
+  // never in the catalogue. It came from the pre-Directory config shape,
+  // `{ "source": "anthropics/skills" }` — this app's own default in the first
+  // version of the skill store, resurrected as a chip nobody had added.
+  //
+  // The app is unreleased, so that shape is not supported at all now. These
+  // checks pin that: the old key is ignored, and an unreadable config falls back
+  // to the built-ins rather than to something invented.
+  check(
+    "the pre-Directory key is ignored",
+    migrateStoredSources({ source: "anthropics/skills" } as never).length === 0,
+    JSON.stringify(migrateStoredSources({ source: "anthropics/skills" } as never)),
+  );
+  check(
+    "even for a source somebody might have typed",
+    migrateStoredSources({ source: "obra/superpowers" } as never).length === 0,
+  );
+  check("a list is read as it stands", migrateStoredSources({ sources: ["a/b"] }).length === 1);
+  check("an empty config yields nothing", migrateStoredSources({}).length === 0);
+  check("and junk in `sources` yields nothing", migrateStoredSources({ sources: "a/b" }).length === 0);
+  // Nothing was outlawed — the repo is still perfectly addable, and removable.
+  const readded = parseStoredSource("anthropics/skills");
+  check("the repo can still be added by hand", readded?.id === "anthropics/skills");
+  check("and deleted again, not being a builtin", readded?.builtin === false);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL SKILL-SOURCE CHECKS PASSED");

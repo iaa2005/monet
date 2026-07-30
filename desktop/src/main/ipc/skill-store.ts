@@ -22,6 +22,7 @@ import {
 import {
   BUILTIN_IDS,
   DEFAULT_SOURCES,
+  migrateStoredSources,
   normalizeSource,
   parseStoredSource,
   toStored,
@@ -168,10 +169,15 @@ function recordOrigin(slug: string, uid: string): void {
 /**
  * Resolve "is this card installed, and under which folder".
  *
- * Built once per listing so the legacy pass is deterministic: folders installed
- * before origins were recorded have no uid, so they are matched by name — but
- * each such folder may be claimed by only ONE card, or `docx` from two sources
- * would both point at it and Remove would delete the wrong one.
+ * The name fallback is NOT a migration, and calling it one would be wrong: a
+ * folder in the skills directory that this app did not install is a permanent
+ * case, not a legacy one. It can be dropped in by hand, or put there by Claude
+ * Code itself, and either way the Directory should say `installed` rather than
+ * offer to install it again on top.
+ *
+ * What it must not do is claim the same folder twice. Built once per listing so
+ * the pass is deterministic: `docx` from two sources would otherwise both point
+ * at one folder, and Remove would delete the other card's skill.
  */
 function installResolver(): (uid: string, name: string) => {
   installed: boolean;
@@ -198,16 +204,9 @@ function getSources(): SkillSource[] {
   try {
     const j = JSON.parse(readFileSync(configFile(), "utf-8")) as {
       sources?: unknown;
-      source?: unknown;
     };
-    // Migration: the single-source config predates the Directory.
-    const list = Array.isArray(j.sources)
-      ? j.sources
-      : typeof j.source === "string"
-        ? [j.source]
-        : [];
-    const parsed = list
-      .map((x) => parseStoredSource(x as StoredSource))
+    const parsed = migrateStoredSources(j)
+      .map((x) => parseStoredSource(x))
       .filter((x): x is SkillSource => x !== null);
     const seen = new Set<string>();
     const clean = parsed.filter((x) => !seen.has(x.id) && seen.add(x.id));

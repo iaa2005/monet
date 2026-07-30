@@ -98,8 +98,26 @@ export const BUILTIN_IDS = new Set([
   MARKETPLACES.id,
 ]);
 
-/** Config rows are either a bare string (a GitHub repo — the original format,
- * still what most entries are) or an object for anything else. */
+/**
+ * The source rows in a stored config.
+ *
+ * One shape only. There WAS a migration here for the pre-Directory
+ * `{ "source": "owner/repo" }` config, and it is gone: the app is not released,
+ * so there is no installed base to carry, and the migration was actively wrong —
+ * it resurrected `anthropics/skills` (this app's own default in the first version
+ * of the skill store) as a chip the user had never added and could not explain.
+ *
+ * A config the app cannot read falls back to the built-in sources, which is the
+ * right answer for a shape nobody should still have.
+ */
+export function migrateStoredSources(j: {
+  sources?: unknown;
+}): StoredSource[] {
+  return Array.isArray(j.sources) ? (j.sources as StoredSource[]) : [];
+}
+
+/** Config rows are either a bare string (a GitHub repo, which is most of them)
+ * or an object for anything that needs more than an id. */
 export type StoredSource =
   | string
   | {
@@ -113,7 +131,8 @@ export type StoredSource =
     };
 
 export function parseStoredSource(raw: StoredSource): SkillSource | null {
-  // A bare string is the original format and means an enabled github source.
+  // A bare string is an enabled github source — the common case, kept short so
+  // the config file reads well by hand.
   if (typeof raw === "string") {
     const norm = normalizeSource(raw);
     if (norm.split("/").length < 2) return null;
@@ -127,8 +146,7 @@ export function parseStoredSource(raw: StoredSource): SkillSource | null {
       builtin: BUILTIN_IDS.has(norm),
     };
   }
-  // Absent `enabled` means on: a config written before the switch existed
-  // described sources that were all being listed.
+  // Absent `enabled` means on — the useful default for an entry added by hand.
   const enabled = raw?.enabled !== false;
   if (raw?.kind === "registry") {
     // Matched against the registries whose dialect this code implements. An
@@ -151,8 +169,8 @@ export function parseStoredSource(raw: StoredSource): SkillSource | null {
   return null;
 }
 
-/** Back to what goes in the config file — strings stay strings so a
- * hand-edited skill-store.json keeps reading the way it always did. */
+/** Back to what goes in the config file. An enabled repo stays a bare string, so
+ * skill-store.json is a list of repos anyone can edit by hand. */
 export function toStored(s: SkillSource): StoredSource {
   // A plain enabled repo stays a bare string, so a hand-edited config keeps
   // reading the way it always did; anything else needs the object form.
