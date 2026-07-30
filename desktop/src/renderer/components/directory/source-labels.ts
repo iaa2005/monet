@@ -86,3 +86,16 @@ export function ownerOf(repoOrId: string | undefined): string {
   // GitHub logins are alphanumeric with hyphens, and never start with one.
   return /^[A-Za-z0-9][A-Za-z0-9-]*$/.test(first) ? first : "";
 }
+
+/**
+ * The owner whose avatar to show, or "" when there is nobody to show.
+ *
+ * `ownerOf` cannot tell a login from a registry id, and it should not pretend to:
+ * `claudemarketplaces` is a perfectly valid-looking login and a guaranteed 404.
+ * What separates them is the slash — a card's provenance is `owner/repo`, a
+ * registry id is one word. So the question "is there an avatar for this" belongs
+ * here rather than being asked slightly differently at each call site.
+ */
+export function avatarOwner(repoOrSource: string | undefined): string {
+  return (repoOrSource ?? "").includes("/") ? ownerOf(repoOrSource) : "";
+}

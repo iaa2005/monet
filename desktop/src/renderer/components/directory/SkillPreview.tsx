@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 import { MarkdownViewer } from "@/components/chat/MarkdownViewer";
 import type { AuditFinding, SkillAudit, StoreSkill } from "@/types/electron";
 import { api } from "./shared";
-import { OwnerAvatar, ownerOf } from "./OwnerAvatar";
+import { avatarOwner, OwnerAvatar } from "./OwnerAvatar";
 import { AgentIcon } from "./AgentIcon";
 import { fileRows } from "./file-rows";
 
@@ -189,7 +189,7 @@ export function SkillPreview({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-2.5 border-b border-border px-5 py-3.5">
-          <OwnerAvatar owner={ownerOf(skill.repository ?? skill.source)} size={24} />
+          <OwnerAvatar owner={avatarOwner(skill.repository ?? skill.source)} size={24} />
           <div className="min-w-0 flex-1">
             <h3 className="truncate text-base font-semibold">/{skill.name}</h3>
             <p className="truncate text-xs text-muted-foreground">

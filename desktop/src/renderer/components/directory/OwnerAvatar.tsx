@@ -14,9 +14,9 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { ownerOf } from "./source-labels";
+import { avatarOwner, ownerOf } from "./source-labels";
 
-export { ownerOf };
+export { avatarOwner, ownerOf };
 
 export function OwnerAvatar({
   owner,

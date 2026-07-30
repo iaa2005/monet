@@ -46,7 +46,7 @@ import {
   Picker,
 } from "./shared";
 import { sourceChipLabels } from "./source-labels";
-import { OwnerAvatar, ownerOf } from "./OwnerAvatar";
+import { avatarOwner, OwnerAvatar } from "./OwnerAvatar";
 import { groupByRepo, type RepoGroup } from "./group-by-repo";
 import { SkillPreview } from "./SkillPreview";
 
@@ -390,6 +390,14 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
               <DirCard
                 key={key}
                 look={look}
+                // A standalone card carries its owner's avatar; a row inside a
+                // group does not, because the group's header is the owner and
+                // repeating it down every row says it thirty times.
+                icon={
+                  look === "row" ? undefined : (
+                    <OwnerAvatar owner={avatarOwner(s.repository ?? s.source)} />
+                  )
+                }
                 title={`/${s.name}`}
                 meta={
                   <>
@@ -646,7 +654,7 @@ function RepoGroupCard({
         onClick={onToggle}
         className="flex w-full items-start gap-2.5 p-4 text-left"
       >
-        <OwnerAvatar owner={ownerOf(group.key)} />
+        <OwnerAvatar owner={avatarOwner(group.key)} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] font-medium leading-tight">
             {group.key}

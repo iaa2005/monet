@@ -16,6 +16,7 @@
 
 import {
   offeredSuggestions,
+  avatarOwner,
   ownerOf,
   sourceChipLabels,
   type LabelableSource,
@@ -149,14 +150,21 @@ const reg = (id: string, name: string): LabelableSource => ({
   check("hyphens are valid in a login", ownerOf("vercel-labs/skills") === "vercel-labs");
   check("a bare owner passes through", ownerOf("microsoft") === "microsoft");
 
-  // A registry card with no repository falls back to its SOURCE id, and
-  // "claudemarketplaces" is not a GitHub account — asking for its avatar is a
-  // guaranteed 404 and a torn image in a grid of a hundred cards.
-  // A registry id looks like a login and cannot be told apart here, so the
-  // caller decides: a registry card passes its repository or nothing. What this
-  // function must guarantee is that it never invents an owner from a shape that
-  // could not be one.
+  // A registry id looks exactly like a login, so this function cannot tell them
+  // apart and does not try. What it guarantees is narrower: it never invents an
+  // owner from a shape that could not be one. Deciding whether there is an
+  // avatar to fetch is `avatarOwner` below.
   check("a plausible login is returned as such", ownerOf("claudemarketplaces") === "claudemarketplaces");
+  // Which is why the avatar asks a different question. `claudemarketplaces` is a
+  // valid-looking login and a guaranteed 404, and a torn image in a grid of a
+  // hundred cards reads as the app being broken.
+  check("a repo path has an avatar owner", avatarOwner("vercel-labs/agent-skills") === "vercel-labs");
+  check("a subfolder source too", avatarOwner("iaa2005/monet-directory/skills") === "iaa2005");
+  check("a registry id has none", avatarOwner("claudemarketplaces") === "", avatarOwner("claudemarketplaces"));
+  check("nor does skillsdirectory", avatarOwner("skillsdirectory") === "");
+  check("and nothing from nothing", avatarOwner("") === "" && avatarOwner(undefined) === "");
+  // A slash is necessary but not sufficient — the junk rules still apply.
+  check("junk before the slash is still refused", avatarOwner("bad name/repo") === "");
   check("but nothing is invented from junk", ownerOf("") === "" && ownerOf(undefined) === "");
   check("a leading hyphen is refused", ownerOf("-bad/repo") === "");
   check("so is a name with a dot or space", ownerOf("bad.name/repo") === "" && ownerOf("bad name/repo") === "");
