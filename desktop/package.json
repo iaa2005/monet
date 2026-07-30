@@ -49,7 +49,8 @@
     "smoke:marketplace": "node scripts/renderer-probe.mjs scripts/marketplace-probe.ts",
     "smoke:catalogschema": "node scripts/catalog-schema-probe.mjs",
     "smoke:dircfg": "node scripts/renderer-probe.mjs scripts/directory-config-probe.ts",
-    "smoke:groups": "node scripts/renderer-probe.mjs scripts/group-by-repo-probe.ts"
+    "smoke:groups": "node scripts/renderer-probe.mjs scripts/group-by-repo-probe.ts",
+    "smoke:audit": "node scripts/renderer-probe.mjs scripts/skill-audit-probe.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",

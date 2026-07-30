@@ -9,6 +9,7 @@ import { app, ipcMain } from "electron";
 import { mkdtempSync, existsSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { DEFAULT_SOURCES } from "../src/main/skill-source-model";
 
 const sandbox = mkdtempSync(join(tmpdir(), "monet-dirprobe-"));
 // defaultDataDir() = dirname(getAppPath())/.monet
@@ -46,11 +47,19 @@ const defaultIds = def.map((s) => s.id);
 // Sources are typed now: a github source enumerated from a repo, plus the
 // registry, which is in the defaults so its chip is there before anything is
 // typed rather than only answering a search.
+// Counted off DEFAULT_SOURCES rather than spelled out: a hardcoded list here
+// turns "the user asked for another source" into a red probe on working code,
+// which teaches you to ignore the probe.
 check(
-  "default sources are the project's skills and the registry",
+  "the built-in sources are the defaults, all enabled",
   JSON.stringify(def.map((s) => `${s.kind}:${s.id}`)) ===
-    JSON.stringify(["github:iaa2005/monet-directory/skills", "registry:skillsdirectory"]),
+    JSON.stringify(DEFAULT_SOURCES.map((s) => `${s.kind}:${s.id}`)),
   JSON.stringify(def),
+);
+check(
+  "and every one is a github repo or a registry",
+  def.every((s) => s.kind === "github" || s.kind === "registry"),
+  JSON.stringify(def.map((s) => s.kind)),
 );
 
 // Reported: "Skills Directory включаются но не выключаются". The exact payload
