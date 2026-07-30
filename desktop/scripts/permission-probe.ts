@@ -70,6 +70,9 @@ function ctxFor(over: Partial<PolicyContext> & { tool: Tool }): PolicyContext {
     permissionMode: over.permissionMode ?? 'default',
     sessionId: over.sessionId ?? 's1',
     grants: over.grants ?? new Set<string>(),
+    // Absent by default: most cases have nothing to do with the browser, and
+    // the stage must have no opinion when it is not told anything.
+    browser: over.browser,
     requestPermission: hasChannel
       ? (over.requestPermission ?? (async () => 'allow-once'))
       : undefined,
@@ -302,6 +305,127 @@ check(
   r.decision.behavior === 'deny' && r.decidedBy === 'sensitive-file-ask',
   r,
 )
+
+// ─── Browser origins ────────────────────────────────────────────────────
+//
+// The trade this stage makes: localhost runs silently because the cycle of
+// change-a-style, reload, look happens twenty times an hour and a prompt each
+// time trains people to approve without reading. Everything else asks. The
+// cases below are the ones where getting it backwards is invisible — acting on
+// a page that has LEFT an allowed origin, and running JavaScript.
+
+const nav = stubTool({ name: 'BrowserNavigate' })
+const clickTool = stubTool({ name: 'BrowserClick' })
+const readPage = stubTool({ name: 'BrowserReadPage', readOnly: true })
+const evalTool = stubTool({ name: 'BrowserEval' })
+
+const browserCtx = (over: {
+  approval?: 'manual' | 'allowlist' | 'auto'
+  allowedOrigins?: string[]
+  currentUrl?: string | null
+}) => ({
+  approval: over.approval ?? ('allowlist' as const),
+  allowedOrigins: over.allowedOrigins ?? [],
+  currentUrl: over.currentUrl ?? null,
+})
+
+r = await decidePermission(
+  ctxFor({
+    tool: nav,
+    input: { url: 'http://localhost:5173/' },
+    browser: browserCtx({}),
+  }),
+)
+check(
+  'navigating to localhost never asks',
+  r.decision.behavior === 'allow' && r.decidedBy === 'browser-origin',
+  r,
+)
+
+r = await decidePermission(
+  ctxFor({ tool: nav, input: { url: 'https://example.com' }, browser: browserCtx({}) }),
+)
+check('navigating anywhere else asks', r.decidedBy === 'fallback-ask', r)
+
+r = await decidePermission(
+  ctxFor({
+    tool: nav,
+    input: { url: 'https://acme.dev/app' },
+    browser: browserCtx({ allowedOrigins: ['https://acme.dev'] }),
+  }),
+)
+check('an allow-listed site does not ask', r.decidedBy === 'browser-origin', r)
+
+// Acting is judged by where the page IS. Following a link off an allowed site
+// must put the prompts back — otherwise one approved navigation licenses every
+// click that follows, anywhere it leads.
+r = await decidePermission(
+  ctxFor({
+    tool: clickTool,
+    browser: browserCtx({
+      allowedOrigins: ['https://acme.dev'],
+      currentUrl: 'https://tracker.evil/landing',
+    }),
+  }),
+)
+check('clicking after leaving an allowed origin asks again', r.decidedBy === 'fallback-ask', r)
+
+r = await decidePermission(
+  ctxFor({
+    tool: clickTool,
+    browser: browserCtx({
+      allowedOrigins: ['https://acme.dev'],
+      currentUrl: 'https://acme.dev/app',
+    }),
+  }),
+)
+check('clicking on the allowed page does not', r.decidedBy === 'browser-origin', r)
+
+r = await decidePermission(
+  ctxFor({ tool: readPage, browser: browserCtx({ currentUrl: 'https://example.com' }) }),
+)
+check(
+  'reading a page never asks, wherever it is',
+  r.decision.behavior === 'allow' && r.decidedBy === 'browser-origin',
+  r,
+)
+
+r = await decidePermission(
+  ctxFor({
+    tool: evalTool,
+    input: { javascript: 'document.title' },
+    browser: browserCtx({ currentUrl: 'http://localhost:5173/' }),
+  }),
+)
+check('running JavaScript asks even on localhost', r.decidedBy === 'fallback-ask', r)
+
+r = await decidePermission(
+  ctxFor({
+    tool: nav,
+    input: { url: 'http://localhost:5173/' },
+    browser: browserCtx({ approval: 'manual' }),
+  }),
+)
+check('"ask about everything" means localhost too', r.decidedBy === 'fallback-ask', r)
+
+r = await decidePermission(
+  ctxFor({
+    tool: evalTool,
+    input: { javascript: 'fetch("/admin/delete")' },
+    browser: browserCtx({ approval: 'auto', currentUrl: 'https://example.com' }),
+  }),
+)
+check('"never ask" means never', r.decidedBy === 'browser-origin', r)
+
+// A non-browser tool must not be touched by any of this.
+r = await decidePermission(
+  ctxFor({ tool: bash, browser: browserCtx({ approval: 'auto' }) }),
+)
+check('the browser stage ignores other tools', r.decidedBy !== 'browser-origin', r)
+
+// Without browser facts the stage has no opinion — it cannot invent one.
+r = await decidePermission(ctxFor({ tool: nav, input: { url: 'http://localhost:3000' } }))
+check('no browser context means no browser decision', r.decidedBy !== 'browser-origin', r)
 
 console.log(failures === 0 ? '\nALL PERMISSION CHECKS PASSED' : `\n${failures} FAILED`)
 process.exit(failures === 0 ? 0 : 1)

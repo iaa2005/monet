@@ -19,7 +19,7 @@ import {
   type Rect,
 } from "./transport.js";
 import { disconnectExternal } from "./external.js";
-import { ensureTab } from "./registry.js";
+import { activeContents, ensureTab } from "./registry.js";
 
 const rand = (min: number, max: number): number =>
   min + Math.random() * (max - min);
@@ -101,7 +101,27 @@ export async function pageInfo(): Promise<{ title: string; url: string }> {
     "JSON.stringify({t: document.title, u: location.href})",
   );
   const parsed = JSON.parse(raw) as { t?: string; u?: string };
+  if (parsed.u) lastKnownUrl = parsed.u;
   return { title: parsed.t ?? "", url: parsed.u ?? "" };
+}
+
+/**
+ * Where the page is, without a round trip.
+ *
+ * The permission check runs before every acting tool call, and asking the page
+ * would mean a CDP evaluate each time — on the embedded engine the WebContents
+ * already knows. The external engine has no such shortcut, so the last URL we
+ * saw stands in; it is refreshed by every navigation and every pageInfo().
+ */
+let lastKnownUrl: string | null = null;
+
+export function currentPageUrl(): string | null {
+  const wc = activeContents();
+  if (wc) {
+    const url = wc.getURL();
+    if (url) return url;
+  }
+  return lastKnownUrl;
 }
 
 export async function pageEvaluate(expression: string): Promise<string> {

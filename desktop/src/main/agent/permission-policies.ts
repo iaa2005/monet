@@ -19,6 +19,7 @@
 
 import type { Tool, ToolUseContext } from "@vendor/Tool.js";
 import { isSensitivePath } from "./secret-filter.js";
+import { isOriginAllowed } from "@shared/origins.js";
 import type { RequestPermission, UiPermissionMode } from "./permission-types.js";
 
 export interface PolicyContext {
@@ -30,6 +31,19 @@ export interface PolicyContext {
   sessionId: string;
   /** Per-session "Allow always" grants, keyed `sessionId:key`. */
   grants: Set<string>;
+  /**
+   * Browser facts, passed IN rather than read here.
+   *
+   * Reading them would mean importing the browser config and the tab
+   * registry, and both reach Electron — which would drag the whole main
+   * process into a file whose value is that it is decidable on its own.
+   */
+  browser?: {
+    approval: "manual" | "allowlist" | "auto";
+    allowedOrigins: readonly string[];
+    /** Where the page is NOW, which is what an acting tool is judged on. */
+    currentUrl: string | null;
+  };
 }
 
 export type PolicyDecision =
@@ -142,6 +156,53 @@ const sensitiveFileAsk: PermissionPolicy = {
     // Approved — but say nothing, so the stages below still apply their own
     // rules to the call. An approved secret read is not an approved anything.
     return null;
+  },
+};
+
+/**
+ * Browser tools, judged by which site they would act on.
+ *
+ * The cycle this exists for is "change the CSS, reload, look" — on the user's
+ * own dev server, twenty times an hour. Asking each time trains people to
+ * approve without reading, which costs more safety than it buys. So localhost
+ * is silent and anything else is a question.
+ *
+ * Reading is never a question: BrowserReadPage and BrowserScreenshot report
+ * what is already on screen. Acting is judged by where the page IS, not where
+ * it was sent — follow a link off an allowed site and the tools go back to
+ * asking, which is the rule Cursor settled on for the same reason.
+ *
+ * BrowserEval always asks outside auto mode. It is arbitrary code in a page
+ * that may be hostile, and no origin list makes that routine.
+ */
+const BROWSER_READ_ONLY = new Set([
+  "BrowserReadPage",
+  "BrowserScreenshot",
+  "BrowserLogs",
+]);
+
+const browserOriginAsk: PermissionPolicy = {
+  name: "browser-origin",
+  decide({ tool, input, browser }): PolicyDecision {
+    if (!tool.name.startsWith("Browser") || !browser) return null;
+
+    // "Ask about everything" means exactly that — fall through to fallbackAsk.
+    if (browser.approval === "manual") return null;
+    if (browser.approval === "auto") return { behavior: "allow", input };
+
+    if (BROWSER_READ_ONLY.has(tool.name)) return { behavior: "allow", input };
+    if (tool.name === "BrowserEval") return null;
+
+    const target =
+      tool.name === "BrowserNavigate" && typeof input.url === "string"
+        ? input.url
+        : browser.currentUrl;
+    // Nowhere identifiable to act on — let someone look at it.
+    if (!target) return null;
+
+    return isOriginAllowed(target, browser.allowedOrigins)
+      ? { behavior: "allow", input }
+      : null;
   },
 };
 
@@ -275,6 +336,7 @@ export const PERMISSION_POLICIES: readonly PermissionPolicy[] = [
   planModeGuard,
   sensitiveFileAsk,
   sessionApprovalHistory,
+  browserOriginAsk,
   toolOwnRules,
   autoModeApprove,
   autoModeAcceptEdits,

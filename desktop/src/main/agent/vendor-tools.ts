@@ -86,6 +86,7 @@ import {
   BrowserTypeTool,
 } from "./browser-tools.js";
 import { getBrowserConfig } from "../browser/config.js";
+import { currentPageUrl } from "../browser/page.js";
 import { ComputerTool } from "./computer-tools.js";
 import { getComputerConfig } from "../computer/config.js";
 import { getProviderManager } from "../provider/manager.js";
@@ -164,9 +165,17 @@ async function gatePermission(args: {
   requestPermission?: RequestPermission;
   sessionId: string;
 }): Promise<GateResult> {
+  const browserCfg = getBrowserConfig();
   const { decision } = await decidePermission({
     ...args,
     grants: sessionAllowAlways,
+    // Read here, where reaching Electron is already the norm, and handed to a
+    // policy file that stays decidable on its own.
+    browser: {
+      approval: browserCfg.approval,
+      allowedOrigins: browserCfg.allowedOrigins,
+      currentUrl: args.tool.name.startsWith("Browser") ? currentPageUrl() : null,
+    },
   });
   return decision;
 }

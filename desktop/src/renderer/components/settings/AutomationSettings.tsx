@@ -8,7 +8,12 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, Globe, MonitorSmartphone, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
-import type { BrowserEngine, ElectronAPI } from "@/types/electron";
+import type {
+  BrowserApproval,
+  BrowserEngine,
+  ElectronAPI,
+} from "@/types/electron";
+import { isValidPattern } from "@shared/origins";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -18,6 +23,10 @@ function api(): ElectronAPI | undefined {
 export function AutomationSettings(): JSX.Element {
   const [browserOn, setBrowserOn] = useState(false);
   const [engine, setEngine] = useState<BrowserEngine>("embedded");
+  const [approval, setApproval] = useState<BrowserApproval>("allowlist");
+  const [allowedOrigins, setAllowedOrigins] = useState<string[]>([]);
+  const [newOrigin, setNewOrigin] = useState("");
+  const [originError, setOriginError] = useState<string | null>(null);
   const [computerOn, setComputerOn] = useState(false);
   const [deniedApps, setDeniedApps] = useState<string[]>([]);
   const [newApp, setNewApp] = useState("");
@@ -28,6 +37,8 @@ export function AutomationSettings(): JSX.Element {
       .then((c) => {
         setBrowserOn(!!c.enabled);
         setEngine(c.engine);
+        setApproval(c.approval);
+        setAllowedOrigins(c.allowedOrigins);
       })
       .catch(() => {});
     api()
@@ -47,6 +58,32 @@ export function AutomationSettings(): JSX.Element {
   const changeEngine = (v: BrowserEngine): void => {
     setEngine(v);
     void api()?.browser.setConfig({ engine: v });
+  };
+
+  const changeApproval = (v: BrowserApproval): void => {
+    setApproval(v);
+    void api()?.browser.setConfig({ approval: v });
+  };
+
+  const saveOrigins = (list: string[]): void => {
+    setAllowedOrigins(list);
+    void api()?.browser.setConfig({ allowedOrigins: list });
+  };
+
+  const addOrigin = (): void => {
+    const o = newOrigin.trim().replace(/\/+$/, "");
+    if (!o) return;
+    // Validated here rather than on save: a bare hostname looks right and
+    // silently matches nothing, which reads as the allowlist being ignored.
+    if (!isValidPattern(o)) {
+      setOriginError(
+        "Needs a scheme and a host, e.g. https://example.com — not a path or a bare name.",
+      );
+      return;
+    }
+    if (!allowedOrigins.includes(o)) saveOrigins([...allowedOrigins, o]);
+    setNewOrigin("");
+    setOriginError(null);
   };
 
   const toggleComputer = (v: boolean): void => {
@@ -136,6 +173,114 @@ export function AutomationSettings(): JSX.Element {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {browserOn && (
+          <div className="mt-4">
+            <div className="text-[13px] font-medium">Ask before acting</div>
+            <div className="mt-2 space-y-1.5">
+              {(
+                [
+                  [
+                    "allowlist",
+                    "Allowed sites run silently",
+                    "localhost is always allowed. Anywhere else asks, unless you add it below.",
+                  ],
+                  [
+                    "manual",
+                    "Ask about everything",
+                    "Every navigation and click waits for you, including on localhost.",
+                  ],
+                  [
+                    "auto",
+                    "Never ask",
+                    "Fast, and unsafe on a site you don't control: a page can carry instructions aimed at the agent.",
+                  ],
+                ] as const
+              ).map(([value, label, hint]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => changeApproval(value)}
+                  className={cn(
+                    "flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
+                    approval === value
+                      ? "border-link bg-link/[0.06]"
+                      : "border-border hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "mt-1 size-2 shrink-0 rounded-full",
+                      approval === value ? "bg-link" : "bg-border",
+                    )}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-medium">{label}</span>
+                    <span className="block text-[12px] text-muted-foreground">
+                      {hint}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {approval === "allowlist" && (
+              <div className="mt-3">
+                <div className="text-[13px] font-medium">Allowed sites</div>
+                <p className="mt-0.5 text-[12px] text-muted-foreground">
+                  Origins, not pages:{" "}
+                  <span className="font-mono">https://acme.dev</span>,{" "}
+                  <span className="font-mono">https://*.acme.dev</span>,{" "}
+                  <span className="font-mono">http://build.local:8080</span>. A
+                  port matters — add <span className="font-mono">:*</span> for any.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {allowedOrigins.map((o) => (
+                    <span
+                      key={o}
+                      className="flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-[12px]"
+                    >
+                      <span className="font-mono">{o}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          saveOrigins(allowedOrigins.filter((x) => x !== o))
+                        }
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-2 flex gap-1.5">
+                  <input
+                    value={newOrigin}
+                    onChange={(e) => {
+                      setNewOrigin(e.target.value);
+                      setOriginError(null);
+                    }}
+                    onKeyDown={(e) => e.key === "Enter" && addOrigin()}
+                    placeholder="https://example.com"
+                    spellCheck={false}
+                    className="w-64 rounded-md border border-border bg-background px-2 py-1 font-mono text-[12px] outline-none focus:border-link"
+                  />
+                  <button
+                    type="button"
+                    onClick={addOrigin}
+                    className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[12px] font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+                  >
+                    <Plus className="size-3.5" />
+                    Add
+                  </button>
+                </div>
+                {originError && (
+                  <p className="mt-1 text-[12px] text-destructive">{originError}</p>
+                )}
+              </div>
+            )}
           </div>
         )}
 
