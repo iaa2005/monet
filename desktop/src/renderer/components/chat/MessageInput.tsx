@@ -1036,16 +1036,19 @@ export function MessageInput({
               // dividers where the cells meet, so the group reads as a single
               // segmented button rather than three pills that happen to be near
               // each other.
-              <div className="inline-flex shrink-0 overflow-hidden rounded-lg bg-foreground text-background">
+              // Nearly the composer's own surface rather than a black slab on it: `muted`
+              // sits one step under `card` in both themes, so the group reads as an
+              // inset control instead of a hole punched in the input.
+              <div className="inline-flex shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
                 <button
                   type="button"
                   onClick={() => void injectNow()}
                   disabled={!input.trim()}
                   title="Send into the running turn (Ctrl+S) — the model sees it before its next step"
                   className={cn(
-                    "flex size-8 items-center justify-center transition-colors",
+                    "flex size-8 items-center justify-center text-muted-foreground transition-colors",
                     input.trim()
-                      ? "hover:bg-background/20"
+                      ? "hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
                       : "opacity-35",
                   )}
                 >
@@ -1063,9 +1066,9 @@ export function MessageInput({
                   disabled={!input.trim()}
                   title="Queue message (send after generation)"
                   className={cn(
-                    "flex size-8 items-center justify-center border-x border-background/20 transition-colors",
+                    "flex size-8 items-center justify-center border-x border-border text-muted-foreground transition-colors",
                     input.trim()
-                      ? "hover:bg-background/20"
+                      ? "hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
                       : "opacity-35",
                   )}
                 >
@@ -1075,7 +1078,10 @@ export function MessageInput({
                   type="button"
                   onClick={abort}
                   title="Stop"
-                  className="flex size-8 items-center justify-center transition-colors hover:bg-background/20"
+                  // Red because it is the only cell that is always live, and the
+                  // only one you cannot take back. Soft red, not a warning: it is
+                  // an ordinary thing to do, just not an accident to make.
+                  className="flex size-8 items-center justify-center bg-red-bg text-red-text transition-colors hover:brightness-95 dark:hover:brightness-110"
                 >
                   <Square className="size-3.5 fill-current" />
                 </button>
@@ -1087,8 +1093,9 @@ export function MessageInput({
                 disabled={!input.trim()}
                 title="Send"
                 className={cn(
-                  // Matches the streaming group's cell exactly, so the row does not
-                  // change height the moment a turn starts.
+                  // The primary action keeps the accent fill; the streaming group
+                  // is deliberately quieter. Same size and radius as a cell, so
+                  // the row does not change height when a turn starts.
                   "flex size-8 items-center justify-center rounded-lg bg-foreground text-background transition-opacity",
                   input.trim() ? "hover:opacity-90" : "opacity-30",
                 )}
