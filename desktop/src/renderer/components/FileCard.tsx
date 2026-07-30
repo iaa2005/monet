@@ -213,51 +213,119 @@ export function typeLabel(a: {
   return family ? `${family} · ${tag}` : tag;
 }
 
-/** Two stacked sheets — the "this is a file" mark used on every card. */
+/**
+ * Which colour a file family gets, and it is the extension that earns it.
+ *
+ * A row of identical grey pages tells you nothing at a glance; the extension is
+ * the one thing about a file you always want to know first, so it is the label
+ * ON the mark rather than only in the line underneath.
+ */
+const EXT_TONE: Record<string, string> = {
+  pdf: "text-red-500",
+  doc: "text-blue-500",
+  docx: "text-blue-500",
+  odt: "text-blue-500",
+  rtf: "text-blue-500",
+  xls: "text-emerald-500",
+  xlsx: "text-emerald-500",
+  ods: "text-emerald-500",
+  csv: "text-emerald-500",
+  tsv: "text-emerald-500",
+  ppt: "text-orange-500",
+  pptx: "text-orange-500",
+  odp: "text-orange-500",
+  zip: "text-amber-500",
+  tar: "text-amber-500",
+  gz: "text-amber-500",
+  "7z": "text-amber-500",
+  rar: "text-amber-500",
+  png: "text-violet-500",
+  jpg: "text-violet-500",
+  jpeg: "text-violet-500",
+  gif: "text-violet-500",
+  svg: "text-violet-500",
+  webp: "text-violet-500",
+  mp3: "text-pink-500",
+  wav: "text-pink-500",
+  mp4: "text-cyan-500",
+  mov: "text-cyan-500",
+};
+
+/**
+ * A sheet of paper with its top-right corner turned down, and a second sheet
+ * peeking out behind it.
+ *
+ * The fold is a real fold: the page outline stops short of the corner and the
+ * turned-down triangle is drawn over it, so the two edges meet the way paper
+ * does. Drawn rather than taken from the OS, because `app.getFileIcon` returns a
+ * 32-pixel bitmap and this is rendered at 72.
+ */
 export function StackedDocIcon({
   className,
+  ext,
 }: {
   className?: string;
+  /** Lowercase extension, for the label and its colour. */
+  ext?: string;
 }): JSX.Element {
+  const label = (ext ?? "").slice(0, 4).toUpperCase();
+  const tone = EXT_TONE[ext ?? ""] ?? "text-muted-foreground";
   return (
     <svg
-      viewBox="0 0 44 48"
+      viewBox="0 0 48 56"
       fill="none"
       className={cn("shrink-0", className)}
       aria-hidden="true"
     >
-      <g strokeWidth="1.6">
-        {/* back sheet — tilted and peeking up-left, so the mark reads as a
-            stack rather than a single page */}
-        <rect
-          x="4"
-          y="4"
-          width="25"
-          height="33"
-          rx="5"
-          className="fill-muted/50 stroke-border"
-          transform="rotate(-9 16.5 20.5)"
-        />
-        {/* front sheet, opaque so it sits on top of the tilted one */}
-        <rect
-          x="12"
-          y="10"
-          width="27"
-          height="34"
-          rx="5"
-          className="fill-card stroke-border"
-        />
-      </g>
-      {/* small document glyph centred on the front sheet */}
-      <g
-        className="stroke-muted-foreground"
+      {/* The sheet behind, tilted, so the mark reads as a document rather than a
+          rectangle. Muted and thin — it is depth, not content. */}
+      <rect
+        x="9"
+        y="9"
+        width="27"
+        height="36"
+        rx="4.5"
+        className="fill-muted/40 stroke-border"
+        strokeWidth="1.4"
+        transform="rotate(-8 22.5 27)"
+      />
+      {/* The front page, with the corner missing. `fill-card` so the tilted sheet
+          behind it stays behind it. */}
+      <path
+        d="M14 11.5a4 4 0 0 1 4-4h11.2L40 18v25.5a4 4 0 0 1-4 4H18a4 4 0 0 1-4-4z"
+        className="fill-card stroke-border"
         strokeWidth="1.5"
-        strokeLinecap="round"
         strokeLinejoin="round"
-      >
-        <path d="M21 22h6.5l2.5 2.5V33h-9z" />
-        <path d="M27.5 22v2.5H30" />
-      </g>
+      />
+      {/* The turned-down corner: the flap's two straight edges plus the crease. */}
+      <path
+        d="M29.2 7.5V14a4 4 0 0 0 4 4H40z"
+        className="fill-muted/70 stroke-border"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      {label ? (
+        <text
+          x="27"
+          y="38"
+          textAnchor="middle"
+          className={cn("fill-current font-sans", tone)}
+          style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.2 }}
+        >
+          {label}
+        </text>
+      ) : (
+        // No extension to show: three ruled lines, so the page is not blank.
+        <g
+          className="stroke-muted-foreground/50"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        >
+          <path d="M20 28h14" />
+          <path d="M20 33.5h14" />
+          <path d="M20 39h9" />
+        </g>
+      )}
     </svg>
   );
 }
@@ -361,15 +429,39 @@ export function FileCard({
   const versions = older?.length ?? 0;
 
   return (
-    <div className="rounded-2xl border border-border bg-card">
-    <div className="flex items-center gap-3 px-3 py-2.5">
+    <div className="group rounded-2xl border border-border bg-card">
+    {/* The mark is bigger than the space it is given and the card's own rounded
+        edge crops it — a sheet half out of the pocket, rather than a small glyph
+        centred in a box. `overflow-hidden` lives here, on the row, so the
+        versions list below keeps its own square corners. */}
+    <div className="flex items-center gap-3 overflow-hidden rounded-2xl px-3 py-2.5">
       <button
         type="button"
         onClick={() => viewArtifact(a)}
         title={`Preview ${a.name}`}
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
-        <StackedDocIcon className="size-11" />
+        {/*
+          The layout box stays small and the icon overflows it, so the card's own
+          edge does the cropping.
+
+          It may only overflow LEFT and vertically. The first attempt let it grow
+          to the right as well and it covered the filename — so the icon's right
+          edge sits exactly on the box's right edge, and everything past the left
+          one is what the border cuts off.
+        */}
+        <span className="relative block size-12 shrink-0">
+          <StackedDocIcon
+            ext={extOf(a.name)}
+            className={cn(
+              "absolute -left-6 top-1/2 size-[4.5rem] -translate-y-1/2",
+              // Decorative, so it sits behind motion-safe: someone who asked the
+              // OS for less movement gets the same card without the swing.
+              "transition-transform duration-300 ease-out",
+              "motion-safe:group-hover:-rotate-6 motion-safe:group-hover:scale-[1.06]",
+            )}
+          />
+        </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{a.name}</span>
           <span className="block truncate text-xs text-muted-foreground">
