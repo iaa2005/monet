@@ -7,10 +7,10 @@
  *   FileTile  — a square tile for the Content grid, showing a preview when the
  *               file is an image and the name + type badge otherwise.
  *
- * The action button carries the OS icon of whatever app owns the extension, so
- * the button shows what will actually open — Acrobat for a .pdf, the user's
- * editor for a .tex. That icon comes from the shell (app.getFileIcon), not from
- * bundled brand art.
+ * The mark on the left is the same charmed-icons set the file tree uses, so a
+ * file looks the same wherever the app shows it. The action button is a plain
+ * label: it used to carry the OS icon of whatever app owns the extension, which
+ * put a second, differently-drawn icon of the same file on the same row.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -306,34 +306,6 @@ export function StackedDocIcon({
   );
 }
 
-/** The OS icon for this file's default app; falls back to the kind glyph. */
-export function AppIcon({
-  a,
-  className = "size-4",
-}: {
-  a: { path?: string; kind: ArtifactItem["kind"] };
-  className?: string;
-}): JSX.Element {
-  const [url, setUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!a.path) return;
-    let alive = true;
-    void api()
-      ?.artifacts.appIcon(a.path)
-      .then((r) => {
-        if (alive && r.ok && r.dataUrl) setUrl(r.dataUrl);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [a.path]);
-
-  if (!url) return <KindIcon kind={a.kind} className={className} />;
-  return <img src={url} alt="" className={cn(className, "shrink-0")} />;
-}
-
 export function openWithOS(path?: string): void {
   if (path) void api()?.artifacts.open(path);
 }
@@ -479,7 +451,6 @@ export function FileCard({
             a.path ? "hover:bg-muted/70" : "opacity-40",
           )}
         >
-          <AppIcon a={a} className="size-4" />
           Open
         </button>
       ) : (
