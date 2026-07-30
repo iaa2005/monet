@@ -12,6 +12,7 @@ import { registerSessionsIPC } from "./sessions.js";
 import { registerSettingsIPC } from "./settings.js";
 import { registerStatsIPC } from "./stats.js";
 import { registerSkillsIPC } from "./skills.js";
+import { seedSkills } from "../agent/seed-skills.js";
 import { registerSkillStoreIPC } from "./skill-store.js";
 import { registerAgentsIPC } from "./agents.js";
 import { registerMemoryIPC } from "./memory.js";
@@ -46,6 +47,9 @@ export function registerAllIPC(): void {
   registerStatsIPC();
   registerSkillsIPC();
   registerSkillStoreIPC();
+  // Ships /create-skill into the user's skills folder the first time, where the
+  // vendor discovers it like any other. Never overwrites, never returns.
+  seedSkills();
   registerAgentsIPC();
   registerMemoryIPC();
   registerReflectIPC();

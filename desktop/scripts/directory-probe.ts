@@ -6,7 +6,7 @@
  * imports data-dir, so nothing here touches the user's real .monet dir.
  */
 import { app, ipcMain } from "electron";
-import { mkdtempSync, existsSync, readFileSync, writeFileSync } from "fs";
+import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { DEFAULT_SOURCES } from "../src/main/skill-source-model";
@@ -397,6 +397,53 @@ console.log("\n# the reported installs, against the real repos");
     foundry.dir === "skills/microsoft-foundry",
     foundry.dir,
   );
+}
+
+// ── The skill the app ships, and the folder it lands in ────────────────────
+console.log("\n# create-skill");
+{
+  const { seedSkills } = await import("../src/main/agent/seed-skills.js");
+  const skillsDir = join(sandbox, ".monet", "claude", "skills");
+  const md = join(skillsDir, "create-skill", "SKILL.md");
+  const marker = join(sandbox, ".monet", "seeded-skills.json");
+
+  seedSkills();
+  check("/create-skill is seeded on first run", existsSync(md), md);
+
+  // The frontmatter is what makes it a command. Parsed back rather than
+  // string-matched, because a header that does not parse leaves the skill
+  // INVISIBLE rather than broken, which is the harder failure to notice.
+  const front = readFileSync(md, "utf-8").split("---\n")[1] ?? "";
+  const meta = (await import("yaml")).parse(front) as {
+    name?: string;
+    description?: string;
+  };
+  check("its frontmatter parses", !!meta, JSON.stringify(meta));
+  check("with the command's name", meta.name === "create-skill", meta.name);
+  check(
+    "and a description that says when it fires",
+    (meta.description ?? "").length > 30,
+    meta.description,
+  );
+  check("the seeding is recorded", existsSync(marker));
+
+  // An edit is the user's; seeding again must not undo it.
+  writeFileSync(
+    md,
+    "---\nname: create-skill\ndescription: mine\n---\nmy version\n",
+    "utf-8",
+  );
+  seedSkills();
+  check(
+    "a second run does not overwrite an edited copy",
+    readFileSync(md, "utf-8").includes("my version"),
+  );
+
+  // And a deletion is a decision. Putting it back would be worse than never
+  // having shipped it at all.
+  rmSync(join(skillsDir, "create-skill"), { recursive: true, force: true });
+  seedSkills();
+  check("nor restore a deleted one", !existsSync(md));
 }
 
 console.log(`\n${failures === 0 ? "ALL PASS" : `${failures} FAILURE(S)`}`);
