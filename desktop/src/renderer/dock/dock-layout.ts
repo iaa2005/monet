@@ -20,6 +20,7 @@ export type DockPanelId =
   | "files"
   | "artifacts"
   | "changes"
+  | "routines"
   | "browser"
   | "tasks"
   | "terminal";

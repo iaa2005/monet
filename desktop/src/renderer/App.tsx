@@ -63,7 +63,6 @@ import { DirectoryModal } from "@/components/directory/DirectoryModal";
 import { AboutPanel } from "@/components/AboutPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { OnboardingIntro } from "@/components/OnboardingIntro";
-import { RoutinesSettings } from "@/components/settings/RoutinesSettings";
 import { Modal } from "@/components/ui/modal";
 import {
   DropdownMenu,
@@ -87,7 +86,7 @@ import { RoutinesList } from "@/components/RoutinesList";
 import type { ChatMessage } from "@/types/chat";
 import type { ElectronAPI } from "@/types/electron";
 
-type View = "chat" | "skills" | "routines";
+type View = "chat" | "skills";
 type RightTab = "files" | "artifacts" | "tasks" | "changes" | "browser" | null;
 type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
@@ -182,7 +181,7 @@ function NavRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex h-7 w-full items-center gap-2.5 rounded-md px-2 text-[13px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]",
+        "flex h-7 w-full items-center gap-2.5 px-3 text-[13px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]",
         active && "bg-black/[0.06] text-foreground dark:bg-white/[0.08]",
       )}
     >
@@ -1319,20 +1318,20 @@ export default function App(): JSX.Element {
                 className="min-w-[280px]"
                 style={{ overflow: "visible" }}
               >
-                <aside className="glass-panel flex h-full flex-col bg-card">
-                  {/* Home / Code tabs */}
-                  <div className="flex items-center gap-1 px-1 py-1">
-                    <div className="flex flex-1 items-center rounded-md bg-black/[0.05] p-0.5 dark:bg-white/[0.06] border">
+                <aside className="glass-panel flex h-full flex-col bg-sidebar">
+                  {/* Home / Code: flush tabs sharing the sidebar's edge. */}
+                  <div className="flex h-8 shrink-0 items-stretch border-b border-border">
+                    <div className="flex flex-1 items-stretch">
                       <button
                         onClick={() => {
                           setAppMode("home");
                           setView("chat");
                         }}
                         className={cn(
-                          "flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
+                          "flex flex-1 items-center justify-center gap-1.5 border-r border-border text-xs font-medium transition-colors last:border-r-0",
                           appMode === "home"
-                            ? "bg-card text-foreground shadow-sm"
-                            : "text-muted-foreground hover:text-foreground",
+                            ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                            : "text-muted-foreground hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.04]",
                         )}
                       >
                         <Home className="size-3" />
@@ -1344,10 +1343,10 @@ export default function App(): JSX.Element {
                           setView("chat");
                         }}
                         className={cn(
-                          "flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
+                          "flex flex-1 items-center justify-center gap-1.5 border-r border-border text-xs font-medium transition-colors last:border-r-0",
                           appMode === "code"
-                            ? "bg-card text-foreground shadow-sm"
-                            : "text-muted-foreground hover:text-foreground",
+                            ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                            : "text-muted-foreground hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.04]",
                         )}
                       >
                         <Code className="size-3" />
@@ -1356,7 +1355,7 @@ export default function App(): JSX.Element {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-0.5 px-1 pt-1">
+                  <div className="flex flex-col pt-1">
                     <NavRow
                       icon={Plus}
                       label="New session"
@@ -1370,10 +1369,8 @@ export default function App(): JSX.Element {
                     <NavRow
                       icon={Zap}
                       label="Routines"
-                      active={view === "routines"}
-                      onClick={() =>
-                        setView((v) => (v === "routines" ? "chat" : "routines"))
-                      }
+                      active={dockOpen.includes("routines")}
+                      onClick={() => toggleDock("routines")}
                     />
                   </div>
 
@@ -1390,8 +1387,8 @@ export default function App(): JSX.Element {
                     space={appMode}
                   />
 
-                  <div className="flex min-h-0 flex-1 flex-col px-1">
-                    <div className="flex items-center justify-between px-2 pb-1 pt-3">
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    <div className="flex items-center justify-between px-3 pb-1 pt-3">
                       <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
                         Recents
                       </span>
@@ -1414,7 +1411,7 @@ export default function App(): JSX.Element {
                     </div>
                   </div>
 
-                  <div className="p-1">
+                  <div className="border-t border-border">
                     <AccountMenu
                       onOpenSettings={() => setSettingsOpen(true)}
                       onOpenAbout={() => setAboutOpen(true)}
@@ -1436,33 +1433,26 @@ export default function App(): JSX.Element {
               space={appMode}
               currentSessionId={currentSessionId}
               openBackgroundTask={openBackgroundTask}
+              openChat={openChatById}
               sandboxRunner={sandboxRunner}
             />
             {mainHost &&
               createPortal(
                 <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
                   {appMode === "home" ? (
-                    view === "routines" ? (
-                      <div className="h-full overflow-auto">
-                        <div className="mx-auto max-w-4xl px-6 py-8">
-                          <RoutinesSettings />
-                        </div>
-                      </div>
-                    ) : (
-                      <ChatView
-                        transcriptMode={transcriptMode}
-                        sessionTitle={sessionTitle}
-                        home
-                        onOpenSettings={() => {
-                          setSettingsSection("sandbox");
-                          setSettingsOpen(true);
-                        }}
-                        onOpenProvidersSettings={() => {
-                          setSettingsSection("providers");
-                          setSettingsOpen(true);
-                        }}
-                      />
-                    )
+                    <ChatView
+                      transcriptMode={transcriptMode}
+                      sessionTitle={sessionTitle}
+                      home
+                      onOpenSettings={() => {
+                        setSettingsSection("sandbox");
+                        setSettingsOpen(true);
+                      }}
+                      onOpenProvidersSettings={() => {
+                        setSettingsSection("providers");
+                        setSettingsOpen(true);
+                      }}
+                    />
                   ) : (
                     <>
                       {view === "chat" && (
@@ -1478,13 +1468,6 @@ export default function App(): JSX.Element {
                       {view === "skills" && (
                         <div className="h-full overflow-auto">
                           <SkillsPanel />
-                        </div>
-                      )}
-                      {view === "routines" && (
-                        <div className="h-full overflow-auto">
-                          <div className="mx-auto max-w-4xl px-6 py-8">
-                            <RoutinesSettings onOpenChat={openChatById} />
-                          </div>
                         </div>
                       )}
                     </>

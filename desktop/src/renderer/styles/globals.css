@@ -81,36 +81,43 @@
 }
 
 .dark {
-    /* Every neutral sits on hue 210, the same blue the links already used.
-       They used to run 30–60, which is orange through yellow: at 2–3%
-       saturation the backgrounds only hinted at it, but --text-000 carries 33%,
-       so the primary text was a warm cream and the whole theme read yellow.
+    /*
+     * Cursor's palette: a neutral, near-black stack with the CONTENT deepest
+     * and the chrome a step above it — the opposite of the old scheme, where
+     * cards floated lighter than the canvas. Pure greys (0% saturation): the
+     * previous 210-hue tint existed to cancel a yellow cast that these
+     * values do not have.
+     *
+     *   bg-000 #121212  editor-deep — dock panels, the conversation
+     *   bg-100 #181818  chrome — window, header, sidebar
+     *   bg-200 #1f1f1f  raised — inputs, menus, popovers
+     *   bg-300 #262626  selection / active
+     *   bg-400 #323232  strong hover
+     */
+    --bg-000: 0 0% 7.1%;
+    --bg-100: 0 0% 9.4%;
+    --bg-200: 0 0% 12.2%;
+    --bg-300: 0 0% 14.9%;
+    --bg-400: 0 0% 19.6%;
 
-       Hue moved, saturation and lightness left alone — the contrast figures
-       below therefore barely shift, but they do shift, because relative
-       luminance weights green at 0.72 and blue at 0.07. Measured, not assumed:
-       the largest change anywhere is text-200 losing 0.36. */
-    --bg-000: 210 2.1% 17.4%;
-    --bg-100: 210 2.7% 11.5%;
-    --bg-200: 210 3.3% 15%;
-    --bg-300: 210 3.3% 18%;
-    --bg-400: 210 3.3% 22%;
-
-    --text-000: 210 33.3% 97.1%;
-    --text-200: 210 9% 73.7%;
-    /* 59.2% passed AA (5.91 on the canvas) but read as faint next to the primary
-       text. 68% gives 7.48 on the canvas, 6.19 on a card, 6.73 on muted —
-       re-measured after the hue move, which cost about 0.18 of each. */
-    --text-400: 210 4.8% 68%;
+    /* #d4d4d4 — soft white, not paper white. */
+    --text-000: 0 0% 83.1%;
+    --text-200: 0 0% 74%;
+    /* Measured, not guessed: AA (4.5:1) on the #181818 chrome needs at least
+       50.2% lightness. 62% gives 6.6:1 there and 7.1:1 on the deep surface. */
+    --text-400: 0 0% 62%;
 
     --brand: 15 63.1% 59.6%;
-    --link: 210 65.5% 67.1%;
+    /* VS Code / Cursor's link blue (#569cd6), a shade lighter for contrast. */
+    --link: 207 61% 64%;
 
     --background: hsl(var(--bg-100));
     --foreground: hsl(var(--text-000));
     --card: hsl(var(--bg-000));
     --card-foreground: hsl(var(--text-000));
-    --popover: hsl(var(--bg-000));
+    /* Menus and popovers lift OFF the deep surface rather than sinking into
+       it — the one place where a lighter step reads as "in front". */
+    --popover: hsl(var(--bg-200));
     --popover-foreground: hsl(var(--text-000));
 
     --primary: hsl(var(--text-000));
@@ -125,15 +132,19 @@
     --destructive: hsl(0 67% 59.6%);
     --destructive-foreground: hsl(0 0% 100%);
 
-    --green-bg: hsl(100 84% 42% / 0.12);
-    --green-text: hsl(100 84% 42%);
-    --green-border: hsl(100 84% 42% / 0.4);
-    --red-bg: hsl(341 88% 51% / 0.12);
-    --red-text: hsl(341 88% 51%);
-    --red-border: hsl(341 88% 51% / 0.4);
+    /* Status colours from the same family as the syntax palette below:
+       #6a9955 added / #f14c4c deleted. Both measured at 5.6:1 and 5.2:1 on
+       the deep surface. */
+    --green-bg: hsl(101 29% 47% / 0.16);
+    --green-text: hsl(101 29% 52%);
+    --green-border: hsl(101 29% 47% / 0.45);
+    --red-bg: hsl(0 85% 62% / 0.14);
+    --red-text: hsl(0 85% 62%);
+    --red-border: hsl(0 85% 62% / 0.4);
 
-    --border: hsl(0 0% 100% / 0.1);
-    --input: hsl(0 0% 100% / 0.14);
+    /* #333333 — a line you can see without it drawing the eye. */
+    --border: hsl(0 0% 20%);
+    --input: hsl(0 0% 24%);
     --ring: hsl(var(--brand));
 
     --sidebar: hsl(var(--bg-100));
@@ -142,7 +153,7 @@
     --sidebar-primary-foreground: hsl(var(--bg-100));
     --sidebar-accent: hsl(var(--bg-200));
     --sidebar-accent-foreground: hsl(var(--text-000));
-    --sidebar-border: hsl(0 0% 100% / 0.1);
+    --sidebar-border: hsl(0 0% 20%);
     --sidebar-ring: hsl(var(--brand));
 }
 
@@ -443,33 +454,36 @@
 .dark .diff-hl {
     color: var(--foreground);
 }
+/* Dark syntax: VS Code Dark+ / Cursor, the family the UI palette came from. */
 .dark .diff-hl .token.comment,
 .dark .diff-hl .token.prolog,
 .dark .diff-hl .token.cdata {
-    color: #5c6370;
+    color: #6a9955;
 }
 .dark .diff-hl .token.doctype,
 .dark .diff-hl .token.punctuation,
 .dark .diff-hl .token.entity {
-    color: #abb2bf;
+    color: #d4d4d4;
 }
 .dark .diff-hl .token.attr-name,
-.dark .diff-hl .token.class-name,
 .dark .diff-hl .token.boolean,
 .dark .diff-hl .token.constant,
 .dark .diff-hl .token.number,
 .dark .diff-hl .token.atrule {
-    color: #d19a66;
+    color: #b5cea8;
+}
+.dark .diff-hl .token.class-name {
+    color: #4ec9b0;
 }
 .dark .diff-hl .token.keyword {
-    color: #c678dd;
+    color: #c586c0;
 }
 .dark .diff-hl .token.property,
 .dark .diff-hl .token.tag,
 .dark .diff-hl .token.symbol,
 .dark .diff-hl .token.deleted,
 .dark .diff-hl .token.important {
-    color: #e06c75;
+    color: #569cd6;
 }
 .dark .diff-hl .token.selector,
 .dark .diff-hl .token.string,
@@ -478,20 +492,22 @@
 .dark .diff-hl .token.inserted,
 .dark .diff-hl .token.regex,
 .dark .diff-hl .token.attr-value {
-    color: #98c379;
+    color: #ce9178;
 }
-.dark .diff-hl .token.variable,
 .dark .diff-hl .token.function {
-    color: #61afef;
+    color: #dcdcaa;
+}
+.dark .diff-hl .token.variable {
+    color: #9cdcfe;
 }
 .dark .diff-hl .token.operator,
 .dark .diff-hl .token.url {
-    color: #56b6c2;
+    color: #d4d4d4;
 }
 
 /* Line numbers — pure CSS via counter, no JS overhead.
    Uses its own color outside the token palette so numbers never look
-   like code (comment color = #a0a1a7 light / #5c6370 dark). */
+   like code (comment color = #a0a1a7 light / #6a9955 dark). */
 pre.diff-hl code {
     display: block;
 }

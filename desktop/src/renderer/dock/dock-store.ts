@@ -26,6 +26,7 @@ export const DOCK_TITLES: Record<DockPanelId, string> = {
   files: "Files",
   artifacts: "Artifacts",
   changes: "Changes",
+  routines: "Routines",
   browser: "Browser",
   tasks: "Tasks",
   terminal: "Terminal",

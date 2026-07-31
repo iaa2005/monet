@@ -48,6 +48,7 @@ import { ArtifactsPanel } from "@/components/ArtifactsPanel";
 import { ChangesPanel } from "@/components/ChangesPanel";
 import { SandboxFilesPanel } from "@/components/SandboxFilesPanel";
 import { BackgroundTasksPanel } from "@/components/BackgroundTasks";
+import { RoutinesSettings } from "@/components/settings/RoutinesSettings";
 import { FileTree } from "@/components/FileTree";
 import { FileViewer } from "@/components/FileViewer";
 import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
@@ -65,6 +66,8 @@ export interface DockAreaContext {
   space: "home" | "code";
   currentSessionId?: string;
   openBackgroundTask: (id: string) => void;
+  /** Open a chat by id — routines link to the sessions they started. */
+  openChat: (id: string) => void;
   sandboxRunner: (
     command: string,
   ) => Promise<{ output?: string; error?: string }>;
@@ -73,6 +76,7 @@ export interface DockAreaContext {
 let latest: DockAreaContext = {
   space: "code",
   openBackgroundTask: () => {},
+  openChat: () => {},
   sandboxRunner: async () => ({ error: "not ready" }),
 };
 
@@ -180,6 +184,18 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
   },
   changes: function ChangesDockPanel() {
     return scrollWrap(<ChangesPanel />);
+  },
+  /**
+   * Scheduled runs. A panel rather than a takeover of the chat: reading a
+   * routine's history while the conversation that triggered it is right
+   * there is the whole point.
+   */
+  routines: function RoutinesDockPanel() {
+    return scrollWrap(
+      <div className="px-4 py-4">
+        <RoutinesSettings onOpenChat={(id) => latest.openChat(id)} />
+      </div>,
+    );
   },
   tasks: function TasksDockPanel() {
     const sessionId = useChatStore((s) => s.currentSessionId);
