@@ -70,7 +70,8 @@
     "smoke:servers": "node scripts/renderer-probe.mjs scripts/servers-probe.ts",
     "smoke:ansi": "node scripts/renderer-probe.mjs scripts/ansi-probe.ts",
     "smoke:bookmarks": "node scripts/renderer-probe.mjs scripts/bookmark-store-probe.ts",
-    "smoke:dock": "node scripts/renderer-probe.mjs scripts/dock-layout-probe.ts"
+    "smoke:dock": "node scripts/renderer-probe.mjs scripts/dock-layout-probe.ts",
+    "smoke:dockclick": "electron scripts/dock-click-probe.cjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",
