@@ -26,7 +26,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
-import { toolLabel, useTaskStore, type TaskEntry } from "@/stores/taskStore";
+import {
+  taskDuration,
+  toolLabel,
+  useTaskStore,
+  type TaskEntry,
+} from "@/stores/taskStore";
 import type { ChatMessage } from "@/types/chat";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -39,13 +44,6 @@ function chatLabel(messages: ChatMessage[]): string {
   const t = firstUser?.content?.trim();
   if (!t) return "Untitled chat";
   return t.length > 44 ? `${t.slice(0, 44)}…` : t;
-}
-
-function duration(t: TaskEntry): string {
-  const end = t.finishedAt ?? Date.now();
-  const s = Math.max(0, Math.round((end - t.startedAt) / 1000));
-  if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
 const STATUS_TEXT: Record<TaskEntry["status"], string> = {
@@ -95,9 +93,34 @@ function TaskRow({ task }: { task: TaskEntry }): JSX.Element {
           <span className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
             <span>{toolLabel(task.tool)}</span>
             <span>{STATUS_TEXT[task.status]}</span>
-            <span className="tabular-nums">{duration(task)}</span>
+            <span className="tabular-nums">{taskDuration(task)}</span>
           </span>
         </span>
+        {/* A running row is the only one worth interrupting, and the honest
+            label is what it does: this stops the whole run the tool belongs to,
+            because a tool call is not cancellable on its own. A span, not a
+            button — this sits inside the row's own button. */}
+        {task.status === "running" && (
+          <span
+            role="button"
+            tabIndex={0}
+            title="Stop the run this task belongs to"
+            onClick={(e) => {
+              e.stopPropagation();
+              void api()?.chat.abort(task.sessionId);
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              e.stopPropagation();
+              void api()?.chat.abort(task.sessionId);
+            }}
+            className="mt-0.5 flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Square className="size-3 fill-current" />
+            Stop
+          </span>
+        )}
         {hasBody && (
           <span className="mt-0.5 shrink-0 text-muted-foreground">
             {open ? (

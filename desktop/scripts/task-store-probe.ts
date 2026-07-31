@@ -16,6 +16,7 @@ import {
   MAX_TASKS,
   mergeTasks,
   taskDetail,
+  taskDuration,
   taskTitle,
   toolLabel,
   useTaskStore,
@@ -279,6 +280,34 @@ const reset = (): void => useTaskStore.setState({ tasks: [] });
   );
   check("and is done", store().tasks[0]?.status === "done");
   reset();
+}
+
+// ── Sub-second work is not "0s" ─────────────────────────────────────────
+//
+// A row reading "Completed 0s" looks like nothing happened — which is exactly
+// the impression that sent someone hunting for a bug in a tool that had worked.
+{
+  const at = (started: number, finished?: number) => ({
+    id: "d",
+    sessionId: "s",
+    tool: "BrowserNavigate",
+    title: "t",
+    status: "done" as const,
+    startedAt: started,
+    finishedAt: finished,
+  });
+
+  check("half a second reads as 0.5s", taskDuration(at(0, 500)) === "0.5s", taskDuration(at(0, 500)));
+  check("under a tenth still shows", taskDuration(at(0, 40)) === "0.0s", taskDuration(at(0, 40)));
+  check("two seconds keeps a decimal", taskDuration(at(0, 2000)) === "2.0s");
+  check("past ten seconds it rounds", taskDuration(at(0, 12_400)) === "12s", taskDuration(at(0, 12_400)));
+  check("past a minute it splits", taskDuration(at(0, 95_000)) === "1m 35s", taskDuration(at(0, 95_000)));
+  check(
+    "a running row measures against now",
+    taskDuration({ ...at(1_000), status: "running" }, 4_000) === "3.0s",
+    taskDuration({ ...at(1_000), status: "running" }, 4_000),
+  );
+  check("a clock that went backwards is not negative", taskDuration(at(5_000, 1_000)) === "0.0s");
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL TASK-STORE CHECKS PASSED");

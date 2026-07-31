@@ -21,8 +21,10 @@ import {
   joinSelections,
   labelOf,
   refToken,
+  snapSelection,
   splitSelections,
   tokenBefore,
+  tokenSpans,
   usedRefs,
 } from "../src/renderer/lib/selection-marks";
 
@@ -203,7 +205,51 @@ const block = (opts: { component?: string; element?: string; url?: string }) =>
   );
 }
 
-// ── 8. A message with no selections is left completely alone ──────────
+// ── 8. A chip is selected whole, or not at all ────────────────────────
+//
+// Half of ⟨HeroImage⟩ on the clipboard refers to nothing, and pasting it back
+// leaves a message mentioning an element nobody can resolve.
+{
+  const text = "до ⟨Hero⟩ после";
+  const open = text.indexOf("⟨");
+  const close = text.indexOf("⟩") + 1;
+
+  const cut = snapSelection(text, open + 2, close + 2);
+  check(
+    "a selection starting inside a token is widened left",
+    cut.start === open,
+    JSON.stringify(cut),
+  );
+  check("and its end is left alone outside", cut.end === close + 2);
+
+  const inside = snapSelection(text, open + 1, close - 1);
+  check(
+    "a selection wholly inside becomes the whole token",
+    inside.start === open && inside.end === close,
+    JSON.stringify(inside),
+  );
+
+  const around = snapSelection(text, 0, text.length);
+  check(
+    "a selection already containing it is untouched",
+    around.start === 0 && around.end === text.length,
+  );
+
+  const outside = snapSelection(text, 0, 2);
+  check("a selection nowhere near one is untouched", outside.end === 2);
+
+  const caretOnly = snapSelection(text, open + 2, open + 2);
+  check(
+    "a caret is not a selection and never grows",
+    caretOnly.start === caretOnly.end && caretOnly.start === open + 2,
+  );
+
+  const spans = tokenSpans("⟨A⟩ и ⟨B⟩");
+  check("every token is found", spans.length === 2, JSON.stringify(spans));
+  check("with the right bounds", spans[0]?.start === 0 && spans[0]?.end === 3);
+}
+
+// ── 9. A message with no selections is left completely alone ──────────
 {
   const plain = "обычное сообщение\n\nсо вторым абзацем";
   const { text, refs } = splitSelections(plain);

@@ -32,9 +32,11 @@ import { StagedFileTile } from "@/components/FileCard";
 import { GoalStrip } from "./GoalStrip";
 import {
   insertRefToken,
+  snapSelection,
   tokenBefore,
   usedRefs,
 } from "@/lib/selection-marks";
+import { COMPOSER_TEXT, TokenHighlight } from "./TokenHighlight";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -299,6 +301,8 @@ export function MessageInput({
   const [slashIndex, setSlashIndex] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  /** The chip layer behind the textarea — scrolled in step with it. */
+  const highlightRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -1034,16 +1038,37 @@ export function MessageInput({
         <div className="glass-panel p-3 rounded-2xl border border-border bg-card transition-colors focus-within:border-foreground/25">
           
           <div className="flex gap-2.5 w-full items-end">
+            {/* The chip layer sits behind the textarea and shares its metrics;
+                see TokenHighlight for why it does not draw the text itself. */}
+            <div className="relative min-w-0 flex-1">
+            <TokenHighlight ref={highlightRef} text={input} />
             <textarea
               ref={taRef}
+              onScroll={(e) => {
+                const h = highlightRef.current;
+                if (h) h.scrollTop = e.currentTarget.scrollTop;
+              }}
               value={input}
               onChange={(e) => {
                 setInput(e.target.value);
                 setCaret(e.target.selectionStart ?? e.target.value.length);
               }}
-              onSelect={(e) =>
-                setCaret(e.currentTarget.selectionStart ?? 0)
-              }
+              onSelect={(e) => {
+                const ta = e.currentTarget;
+                // A chip copies as a chip: half of ⟨HeroImage⟩ refers to
+                // nothing, so a selection that cuts one is widened to its edges.
+                const snapped = snapSelection(
+                  ta.value,
+                  ta.selectionStart ?? 0,
+                  ta.selectionEnd ?? 0,
+                );
+                if (
+                  snapped.start !== ta.selectionStart ||
+                  snapped.end !== ta.selectionEnd
+                )
+                  ta.setSelectionRange(snapped.start, snapped.end);
+                setCaret(ta.selectionStart ?? 0);
+              }}
               onKeyDown={(e) => {
                 // Backspace just past a ⟨reference⟩ removes the whole thing,
                 // the one thing a real pill would give for free.
@@ -1119,9 +1144,13 @@ export function MessageInput({
               }}
               placeholder="Type / for commands"
               rows={1}
-              className="pt-1 pl-1 max-h-50 min-h-7 w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
+              className={cn(
+                COMPOSER_TEXT,
+                "relative max-h-50 min-h-7 w-full resize-none bg-transparent outline-none placeholder:text-muted-foreground",
+              )}
             />
-  
+            </div>
+
             <input
               ref={fileRef}
               type="file"

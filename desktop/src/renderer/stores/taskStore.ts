@@ -86,6 +86,20 @@ function trim(tasks: TaskEntry[]): TaskEntry[] {
   return strandedRunning.length ? [...keep, ...strandedRunning] : keep;
 }
 
+/**
+ * How long a task has been going, or took.
+ *
+ * Sub-second work is rounded to one decimal instead of to zero: a row reading
+ * "Completed 0s" looks like nothing happened, which is exactly the impression
+ * that sent someone hunting for a bug in a tool that had worked fine.
+ */
+export function taskDuration(t: TaskEntry, now = Date.now()): string {
+  const ms = Math.max(0, (t.finishedAt ?? now) - t.startedAt);
+  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`;
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
 export const useTaskStore = create<TaskStore>((set) => ({
   tasks: [],
 

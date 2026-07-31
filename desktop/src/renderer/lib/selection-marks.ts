@@ -137,6 +137,39 @@ export function tokenBefore(
   return { start, end: caret };
 }
 
+/** Every token's bounds in the text, in order. */
+export function tokenSpans(text: string): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = [];
+  REF_TOKEN.lastIndex = 0;
+  for (const m of text.matchAll(REF_TOKEN)) {
+    const start = m.index ?? 0;
+    out.push({ start, end: start + m[0].length });
+  }
+  return out;
+}
+
+/**
+ * Widen a selection so it never cuts a reference in half.
+ *
+ * A chip should copy as a chip. Half of ⟨HeroImage⟩ on the clipboard is not a
+ * reference to anything, and pasting it back would leave a message that
+ * mentions an element nobody can resolve.
+ */
+export function snapSelection(
+  text: string,
+  start: number,
+  end: number,
+): { start: number; end: number } {
+  if (start === end) return { start, end };
+  let s = start;
+  let e = end;
+  for (const span of tokenSpans(text)) {
+    if (s > span.start && s < span.end) s = span.start;
+    if (e > span.start && e < span.end) e = span.end;
+  }
+  return { start: s, end: e };
+}
+
 /** Insert a reference at the caret, spacing it like a word. */
 export function insertRefToken(
   text: string,
