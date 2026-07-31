@@ -165,10 +165,14 @@ export function createAcpAgent(
               });
               break;
             case "tool_result":
+              // The placeholder and each progress update arrive as this same
+              // event; only the last one means the call is over. Reporting
+              // "completed" on the first told the editor every tool finished
+              // instantly, with the word "Running…" as its output.
               send({
                 sessionUpdate: "tool_call_update",
                 toolCallId: event.toolUseID,
-                status: "completed",
+                status: event.final ? "completed" : "in_progress",
                 content: [
                   {
                     type: "content",

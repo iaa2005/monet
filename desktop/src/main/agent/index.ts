@@ -1385,11 +1385,14 @@ async function runAgentScoped(
         toolUseID: tc.id,
         toolName: tc.name,
         content: result.content,
+        final: true,
       });
       // Closes the log row. Deliberately here and not on every tool_result
       // event: the placeholder before execution and each onProgress update are
       // the same event type, and closing on one of those would stamp a row
-      // "Completed" with the word "Running..." as its output.
+      // "Completed" with the word "Running..." as its output. The `final` flag
+      // above says the same thing to anyone downstream — the renderer's task
+      // panel was doing exactly that, since it only had the event to go on.
       recordFinish(tc.id, result.content, result.isError === true);
       return {
         tool_use_id: tc.id,

@@ -117,11 +117,15 @@ async function handleChat(body: ChatBody): Promise<unknown> {
         steps.push({ type: "tool", name: ev.name, input: ev.input });
         break;
       case "tool_result":
-        steps.push({
-          type: "tool_result",
-          name: ev.toolName,
-          text: ev.content.slice(0, 4_000),
-        });
+        // Final results only: the placeholder and the progress updates share
+        // this event type, and a transcript full of "Running…" is noise in
+        // exactly the artefact prompt evaluation reads.
+        if (ev.final)
+          steps.push({
+            type: "tool_result",
+            name: ev.toolName,
+            text: ev.content.slice(0, 4_000),
+          });
         break;
       case "error":
         steps.push({ type: "error", text: ev.error });

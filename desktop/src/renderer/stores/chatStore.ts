@@ -1132,7 +1132,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
       const tasks = useTaskStore.getState();
       if (event.type === "tool_use")
         tasks.startTask(sessionId, event.id, event.name, event.input ?? {});
-      else if (event.type === "tool_result")
+      // Only the FINAL result closes a row. A tool emits this event three ways
+      // — a placeholder before it runs, progress while it runs, and the result
+      // — and closing on the first stamped every task "Completed 0s" with the
+      // word "Running…" as its output, then ignored the real result because the
+      // row was no longer running.
+      else if (event.type === "tool_result" && event.final)
         tasks.finishTask(
           event.toolUseID,
           event.content ?? "",

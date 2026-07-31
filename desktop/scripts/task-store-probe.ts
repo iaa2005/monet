@@ -235,5 +235,51 @@ const reset = (): void => useTaskStore.setState({ tasks: [] });
   check("nothing live, everything stored shows", mergeTasks([], stored).length === 2);
 }
 
+// ── A row closes on the RESULT, not on the placeholder ──────────────────
+//
+// A tool emits `tool_result` three times: a placeholder before it runs,
+// progress while it runs, and the actual result. The panel closed on the
+// first, so every task read "Completed · 0s" with the word "Running…" as its
+// output — and then ignored the real result, because finishTask only touches a
+// row that is still running. It looked like a browser bug, a sleep bug and a
+// bash bug in turn; it was one line in the event handler.
+//
+// The store cannot see the flag itself, so what is pinned here is the rule it
+// depends on: a row that has been closed stays closed, and a row closed with
+// the real output keeps it.
+{
+  reset();
+  store().startTask("s1", "t1", "BrowserNavigate", { url: "http://localhost:5173" });
+  check("a fresh row is running", store().tasks[0]?.status === "running");
+
+  // What the placeholder USED to do.
+  store().finishTask("t1", "Running...", false);
+  check(
+    "once closed, a row keeps the output it was closed with",
+    store().tasks[0]?.output === "Running...",
+  );
+
+  // The real result, arriving second — silently dropped, which is what made
+  // the bug invisible rather than merely wrong.
+  store().finishTask("t1", 'Opened "Портфолио" — http://localhost:5173/', false);
+  check(
+    "a second close cannot correct the first",
+    store().tasks[0]?.output === "Running...",
+    store().tasks[0]?.output,
+  );
+
+  // So the row must still be running when the result lands.
+  reset();
+  store().startTask("s1", "t2", "BrowserNavigate", { url: "http://localhost:5173" });
+  store().finishTask("t2", 'Opened "Портфолио" — http://localhost:5173/', false);
+  check(
+    "closed by the result, the row shows the result",
+    store().tasks[0]?.output?.startsWith("Opened"),
+    store().tasks[0]?.output,
+  );
+  check("and is done", store().tasks[0]?.status === "done");
+  reset();
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nALL TASK-STORE CHECKS PASSED");
 process.exit(failures ? 1 : 0);

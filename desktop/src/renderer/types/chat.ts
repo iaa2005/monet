@@ -61,7 +61,16 @@ export type LLMEvent =
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
   | { type: 'message_stop'; stop_reason: string; usage?: { input_tokens: number; output_tokens: number } }
   | { type: 'error'; error: string }
-  | { type: 'tool_result'; toolUseID: string; toolName: string; content: string }
+  /** `final` marks the RESULT. The placeholder before a tool runs and each
+   * progress update arrive as this same event, so anything that closes a row
+   * has to wait for it — see stores/chatStore.ts. */
+  | {
+      type: 'tool_result'
+      toolUseID: string
+      toolName: string
+      content: string
+      final?: boolean
+    }
   | { type: 'checkpoint'; sha: string }
   /** Goal mode state, emitted on every change (see agent/goal/driver.ts). */
   | {

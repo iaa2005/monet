@@ -115,6 +115,13 @@ export type LLMEvent =
       toolUseID: string;
       toolName: string;
       content: string;
+      /**
+       * The call actually finished, as opposed to starting or reporting
+       * progress — all three arrive as this event with the content of the
+       * moment. Anything that CLOSES a row must wait for this one, or it
+       * records the placeholder as the result: done in 0s, output "Running…".
+       */
+      final?: boolean;
     }
   // Live progress of a sub-agent launched by the Task tool, keyed to the
   // launching tool_use so the UI can render a nested "agent card".
