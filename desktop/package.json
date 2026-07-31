@@ -67,7 +67,8 @@
     "smoke:webview": "electron scripts/webview-probe.cjs",
     "smoke:capture": "electron scripts/capture-target-probe.cjs",
     "smoke:selmarks": "node scripts/renderer-probe.mjs scripts/selection-marks-probe.ts",
-    "smoke:servers": "node scripts/renderer-probe.mjs scripts/servers-probe.ts"
+    "smoke:servers": "node scripts/renderer-probe.mjs scripts/servers-probe.ts",
+    "smoke:ansi": "node scripts/renderer-probe.mjs scripts/ansi-probe.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",

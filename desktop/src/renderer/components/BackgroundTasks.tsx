@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AnsiText } from "@/components/chat/AnsiText";
 import { useChatStore } from "@/stores/chatStore";
 import {
   taskDuration,
@@ -150,7 +151,7 @@ function TaskRow({ task }: { task: TaskEntry }): JSX.Element {
                   … {out.length - OUTPUT_LIMIT} earlier characters hidden{"\n"}
                 </span>
               )}
-              {shown}
+              <AnsiText text={shown} />
             </pre>
           )}
         </div>

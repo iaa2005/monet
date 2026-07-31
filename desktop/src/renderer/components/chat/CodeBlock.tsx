@@ -8,12 +8,14 @@
  * glass-panel wrapper — so Read / Search / Edit / Write all look consistent.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DiffView } from "./DiffView";
 import { isUnifiedDiff, parseUnifiedDiff } from "./diff-core";
 import { HighlightedCode } from "./highlight";
+import { AnsiText } from "./AnsiText";
+import { hasAnsi } from "@/lib/ansi";
 
 // Fenced-block languages that don't need a "language:" label chip.
 const PLAIN = new Set(["", "text", "plaintext", "txt", "output"]);
@@ -146,6 +148,9 @@ export function CodeBlock({
       ? lines.slice(0, PREVIEW_LINES).join("\n")
       : src;
   const plain = shown.length > HIGHLIGHT_CHAR_LIMIT;
+  // Checked before highlighting, not after: a syntax highlighter fed escape
+  // sequences produces coloured garbage rather than plain garbage.
+  const coloured = useMemo(() => hasAnsi(shown), [shown]);
 
   return (
     <div className={cn(PANEL, className)}>
@@ -158,7 +163,21 @@ export function CodeBlock({
         </div>
       )}
       <div className="overflow-auto" style={maxHeight ? { maxHeight } : undefined}>
-        {plain ? (
+        {coloured ? (
+          // Command output paints itself. Rendered as text those escapes are
+          // worse than noise — Vite puts one INSIDE the port number — so any
+          // block that carries them is drawn as a terminal rather than as code.
+          <pre
+            className="m-0 whitespace-pre-wrap break-words p-3"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "12.5px",
+              lineHeight: "1.6",
+            }}
+          >
+            <AnsiText text={shown} />
+          </pre>
+        ) : plain ? (
           <pre
             className="m-0 whitespace-pre-wrap break-words p-3"
             style={{
