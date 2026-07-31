@@ -216,6 +216,7 @@ export function formatElement(
 export function formatSelection(
   payload: SelectionPayload,
   candidatesByIndex: Record<number, string[]> = {},
+  opts: { browserToolsEnabled?: boolean } = {},
 ): string {
   const head = [
     `page: ${payload.title || "(untitled)"} — ${payload.url}`,
@@ -223,6 +224,18 @@ export function formatSelection(
       payload.viewport.dpr !== 1 ? ` @${payload.viewport.dpr}x` : ""
     }`,
   ];
+  // Said in the block itself, because the model reaches for WebFetch by habit:
+  // the user pointed at a LIVE tab, and a fetch gets a fresh anonymous copy of
+  // the URL — no login, no client-side state, not the page the selection came
+  // from. Only said when the Browser tools are actually available to reach for.
+  if (opts.browserToolsEnabled) {
+    head.push(
+      "This page is OPEN in the app's Browser panel. To look at it further, use " +
+        "the Browser tools (BrowserTabs to find the tab, BrowserReadPage / " +
+        "BrowserEval / BrowserScreenshot on it) — do NOT WebFetch this URL: " +
+        "that fetches a fresh anonymous copy, not this live page.",
+    );
+  }
   if (payload.region)
     head.push(
       `region marked: ${Math.round(payload.region.w)}×${Math.round(payload.region.h)} at (${Math.round(payload.region.x)}, ${Math.round(payload.region.y)})`,

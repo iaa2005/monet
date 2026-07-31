@@ -19,6 +19,7 @@ import {
   type SelectionPayload,
 } from "./element-context.js";
 import { ripGrep } from "../agent/ripgrep.js";
+import { getBrowserConfig } from "./config.js";
 import { getWorkspacePath } from "../ipc/workspace.js";
 import { getTransport } from "./transport.js";
 import type { BrowserTransport } from "./transport.js";
@@ -181,7 +182,9 @@ export async function handleSelection(
     }),
   );
 
-  const context = formatSelection(payload, candidatesByIndex);
+  const context = formatSelection(payload, candidatesByIndex, {
+    browserToolsEnabled: getBrowserConfig().enabled,
+  });
 
   // The picture: the marked region if there is one, else the first element.
   let imageDataUrl: string | undefined;

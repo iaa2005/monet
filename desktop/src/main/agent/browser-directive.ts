@@ -54,7 +54,12 @@ export function browserDirective(): string {
       lines.push(
         `  ${t.active ? "*" : " "} ${t.title || "(untitled)"} — ${t.url}`,
       );
-    lines.push("  (* is the tab the browser tools act on.)");
+    lines.push(
+      "  (* is the tab the browser tools act on.)",
+      "  Never WebFetch a URL that is open in a tab — the tab is the LIVE page",
+      "  (logged in, current state); a fetch gets a fresh anonymous copy. Use",
+      "  BrowserTabs to switch and BrowserReadPage to read it instead.",
+    );
   } else if (cfg.engine === "embedded") {
     lines.push("The Browser panel has no page open yet.");
   } else {

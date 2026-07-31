@@ -227,5 +227,33 @@ const el = (over: Partial<RawElement> = {}): RawElement => ({
   check("a marked region is described", region.includes("region marked: 300×150"), region);
 }
 
+// ── 8. The block says where the page IS — when there are tools to use ─
+//
+// Found in use: the user pointed at an element in a live tab, and the model
+// WebFetched the URL — a fresh anonymous copy of a page that was already open,
+// logged in, one BrowserReadPage away. The URL alone does not say "this is a
+// tab"; somebody has to.
+{
+  const payload: SelectionPayload = {
+    url: "https://www.skills.sh/",
+    title: "Skills",
+    viewport: { w: 1280, h: 800, dpr: 1 },
+    elements: [el({ component: "Badge" })],
+  };
+
+  const withTools = formatSelection(payload, {}, { browserToolsEnabled: true });
+  check(
+    "with tools, the block names the live tab",
+    withTools.includes("OPEN in the app's Browser panel"),
+    withTools.split("\n").find((l) => l.includes("OPEN")),
+  );
+  check("and warns off WebFetch by name", withTools.includes("do NOT WebFetch"));
+
+  // Without the tools the advice would name calls the model cannot make.
+  const without = formatSelection(payload, {});
+  check("without tools, no such advice", !without.includes("Browser panel"));
+  check("and no WebFetch talk either", !without.includes("WebFetch"));
+}
+
 console.log(failures === 0 ? "\nelement context probe OK" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
