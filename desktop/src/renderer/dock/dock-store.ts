@@ -35,14 +35,27 @@ export const DOCK_TITLES: Record<DockPanelId, string> = {
 export const DOCK_PANEL_IDS = Object.keys(DOCK_TITLES) as DockPanelId[];
 
 /**
+ * Panels that belong to the APP, not to a chat.
+ *
+ * Routines are the workspace's scheduled jobs — nothing about them is per
+ * conversation, so switching chats must not open or close the panel. Open
+ * stays open, closed stays closed: a desk restore neither brings it back nor
+ * takes it away.
+ */
+export const GLOBAL_PANEL_IDS: DockPanelId[] = ["routines"];
+
+/**
  * Panels a SAVED desk may bring back.
  *
  * The viewer is excluded: it is a window onto one file, opened by clicking
  * that file, and a viewer restored with nothing in it is an empty panel the
  * user has to close. Which file was open belongs to the conversation, not to
- * the furniture.
+ * the furniture. Global panels are excluded for the opposite reason — they
+ * are not the chat's to decide.
  */
-export const RESTORABLE_PANEL_IDS = DOCK_PANEL_IDS.filter((id) => id !== "viewer");
+export const RESTORABLE_PANEL_IDS = DOCK_PANEL_IDS.filter(
+  (id) => id !== "viewer" && !GLOBAL_PANEL_IDS.includes(id),
+);
 
 function addPanel(api: DockviewApi, id: DockPanelId): void {
   api.addPanel({
@@ -279,6 +292,9 @@ export function isApplyingDesk(): boolean {
 
 function applyToApi(api: DockviewApi, desk: DockDesk | null): void {
   applying = true;
+  // What the app-level panels were doing before this desk arrived — restored
+  // afterwards, because a chat switch has no opinion about them.
+  const globalsOpen = GLOBAL_PANEL_IDS.filter((id) => !!api.getPanel(id));
   try {
     if (!desk) {
       api.clear();
@@ -314,6 +330,8 @@ function applyToApi(api: DockviewApi, desk: DockDesk | null): void {
     // A desk saved before the chat became a panel restores without it.
     ensureMain(api);
   } finally {
+    // Put the app-level panels back exactly as they were.
+    for (const id of globalsOpen) if (!api.getPanel(id)) addPanel(api, id);
     applying = false;
   }
 }

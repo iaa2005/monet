@@ -37,6 +37,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Select, TimeSelect } from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -262,7 +263,7 @@ export function RoutinesSettings({
     );
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="flex items-center gap-2 text-base font-semibold">
@@ -734,31 +735,27 @@ function RoutineDetail({
             <div className={cn(CARD, "space-y-3 p-3")}>
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <TriggerIcon className="size-4 shrink-0 text-muted-foreground" />
-                <select
+                <Select
+                  ariaLabel="Trigger"
                   value={d.triggerKind}
-                  onChange={(e) =>
-                    set({ triggerKind: e.target.value as Draft["triggerKind"] })
-                  }
-                  className={FIELD}
-                >
-                  {(Object.keys(TRIGGER_META) as Draft["triggerKind"][]).map((k) => (
-                    <option key={k} value={k}>
-                      {TRIGGER_META[k].label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => set({ triggerKind: v as Draft["triggerKind"] })}
+                  options={(Object.keys(TRIGGER_META) as Draft["triggerKind"][]).map(
+                    (k) => ({ value: k, label: TRIGGER_META[k].label }),
+                  )}
+                />
                 {d.triggerKind === "schedule" && (
                   <ScheduleSentence cron={d.cron} onChange={(c) => set({ cron: c })} />
                 )}
                 <span className="text-muted-foreground">in</span>
-                <select
+                <Select
+                  ariaLabel="Space"
                   value={d.space}
-                  onChange={(e) => set({ space: e.target.value as "home" | "code" })}
-                  className={FIELD}
-                >
-                  <option value="code">code</option>
-                  <option value="home">home</option>
-                </select>
+                  onChange={(v) => set({ space: v as "home" | "code" })}
+                  options={[
+                    { value: "code", label: "code" },
+                    { value: "home", label: "home" },
+                  ]}
+                />
               </div>
               {d.triggerKind === "schedule" && (
                 <p className="pl-6 text-xs text-muted-foreground">{preview}</p>
@@ -768,18 +765,21 @@ function RoutineDetail({
                 <div className="space-y-2 pl-6">
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     <span className="text-muted-foreground">Watch</span>
-                    <select
+                    <Select
+                      ariaLabel="Connector to watch"
                       value={d.eventConnector}
-                      onChange={(e) => set({ eventConnector: e.target.value })}
-                      className={FIELD}
-                    >
-                      <option value="">any connected</option>
-                      {servers.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => set({ eventConnector: v })}
+                      options={[
+                        { value: "", label: "any connected" },
+                        ...servers.map((x) => ({
+                          value: x.id,
+                          label:
+                            presets.find((p) => p.id === x.id)?.displayName ??
+                            x.label,
+                          hint: x.kind,
+                        })),
+                      ]}
+                    />
                     <span className="text-muted-foreground">every</span>
                     <input
                       type="number"
@@ -849,37 +849,34 @@ function RoutineDetail({
                 className="w-full resize-none bg-transparent px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground/60"
               />
               <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
-                <select
+                <Select
+                  ariaLabel="Provider"
                   value={d.providerId}
-                  onChange={(e) => set({ providerId: e.target.value, model: "" })}
-                  className="max-w-[16rem] bg-transparent text-xs text-muted-foreground outline-none"
-                >
-                  <option value="">Whatever model is active when it runs</option>
-                  {providers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => set({ providerId: v, model: "" })}
+                  className="max-w-[18rem] border-transparent text-muted-foreground"
+                  options={[
+                    { value: "", label: "Whatever model is active when it runs" },
+                    ...providers.map((p) => ({ value: p.id, label: p.name })),
+                  ]}
+                />
                 {d.providerId && (
-                  <select
+                  <Select
+                    ariaLabel="Model"
                     value={d.model}
-                    onChange={(e) => set({ model: e.target.value })}
-                    className="max-w-[16rem] bg-transparent text-xs text-muted-foreground outline-none"
-                  >
-                    <option value="">
-                      {providers.find((p) => p.id === d.providerId)?.model
-                        ? `Default (${providers.find((p) => p.id === d.providerId)?.model})`
-                        : "That provider's default"}
-                    </option>
-                    {(providers.find((p) => p.id === d.providerId)?.models ?? []).map(
-                      (m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.label || m.name}
-                        </option>
+                    onChange={(v) => set({ model: v })}
+                    className="max-w-[18rem] border-transparent text-muted-foreground"
+                    options={[
+                      {
+                        value: "",
+                        label: providers.find((p) => p.id === d.providerId)?.model
+                          ? `Default (${providers.find((p) => p.id === d.providerId)?.model})`
+                          : "That provider's default",
+                      },
+                      ...(providers.find((p) => p.id === d.providerId)?.models ?? []).map(
+                        (m) => ({ value: m.name, label: m.label || m.name }),
                       ),
-                    )}
-                  </select>
+                    ]}
+                  />
                 )}
               </div>
             </div>
@@ -1088,18 +1085,18 @@ function RoutineDetail({
                   ))}
                 </div>
                 {d.outputKind === "connector" && (
-                  <select
+                  <Select
+                    ariaLabel="Output connector"
                     value={d.outputConnector}
-                    onChange={(e) => set({ outputConnector: e.target.value })}
-                    className={FIELD}
-                  >
-                    <option value="">Pick a connector</option>
-                    {servers.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => set({ outputConnector: v })}
+                    placeholder="Pick a connector"
+                    options={servers.map((x) => ({
+                      value: x.id,
+                      label:
+                        presets.find((p) => p.id === x.id)?.displayName ?? x.label,
+                      hint: x.kind,
+                    }))}
+                  />
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -1348,42 +1345,30 @@ function ScheduleSentence({
 
   return (
     <>
-      <select
+      <Select
+        ariaLabel="How often"
         value={mode}
-        onChange={(e) => apply(e.target.value as SchedMode, time, weekday)}
-        className={FIELD}
-      >
-        {(Object.keys(SCHED_LABEL) as SchedMode[]).map((k) => (
-          <option key={k} value={k}>
-            {SCHED_LABEL[k]}
-          </option>
-        ))}
-      </select>
+        onChange={(v) => apply(v as SchedMode, time, weekday)}
+        options={(Object.keys(SCHED_LABEL) as SchedMode[]).map((k) => ({
+          value: k,
+          label: SCHED_LABEL[k],
+        }))}
+      />
       {mode === "weekly" && (
         <>
           <span className="text-muted-foreground">on</span>
-          <select
-            value={weekday}
-            onChange={(e) => apply(mode, time, Number(e.target.value))}
-            className={FIELD}
-          >
-            {DOW.map((day, i) => (
-              <option key={day} value={i}>
-                {day}
-              </option>
-            ))}
-          </select>
+          <Select
+            ariaLabel="Day of week"
+            value={String(weekday)}
+            onChange={(v) => apply(mode, time, Number(v))}
+            options={DOW.map((day, i) => ({ value: String(i), label: day }))}
+          />
         </>
       )}
       {mode !== "hourly" && mode !== "custom" && (
         <>
           <span className="text-muted-foreground">at</span>
-          <input
-            type="time"
-            value={time}
-            onChange={(e) => apply(mode, e.target.value, weekday)}
-            className={FIELD}
-          />
+          <TimeSelect value={time} onChange={(t) => apply(mode, t, weekday)} />
         </>
       )}
       {mode === "custom" && (

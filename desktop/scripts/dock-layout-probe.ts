@@ -21,6 +21,7 @@ import {
 } from "../src/renderer/dock/dock-layout";
 import {
   DOCK_PANEL_IDS,
+  GLOBAL_PANEL_IDS,
   RESTORABLE_PANEL_IDS,
 } from "../src/renderer/dock/dock-store";
 
@@ -202,9 +203,12 @@ const desk = () => ({
     !RESTORABLE_PANEL_IDS.includes("viewer"),
     RESTORABLE_PANEL_IDS.join(", "),
   );
+  // Two exclusions now: the viewer (a file is the chat's, not the desk's) and
+  // the app-level panels (section 9).
   check(
     "every other panel still restores",
-    RESTORABLE_PANEL_IDS.length === DOCK_PANEL_IDS.length - 1,
+    RESTORABLE_PANEL_IDS.length ===
+      DOCK_PANEL_IDS.length - 1 - GLOBAL_PANEL_IDS.length,
     `${RESTORABLE_PANEL_IDS.length} of ${DOCK_PANEL_IDS.length}`,
   );
 
@@ -228,6 +232,41 @@ const desk = () => ({
   check(
     "while the rest of the desk survives",
     Object.keys(out.panels as object).length === 5,
+    Object.keys(out.panels as object).join(", "),
+  );
+}
+
+// ── 9. App-level panels are nobody's chat to decide ───────────────────
+//
+// Routines are the workspace's scheduled jobs. Switching conversations must
+// not open or close that panel — so it is excluded from what a saved desk may
+// restore, the same exclusion the viewer gets for the opposite reason.
+{
+  check(
+    "routines is an app-level panel",
+    GLOBAL_PANEL_IDS.includes("routines"),
+    GLOBAL_PANEL_IDS.join(", "),
+  );
+  check(
+    "and therefore not restorable from a chat's desk",
+    !RESTORABLE_PANEL_IDS.includes("routines"),
+    RESTORABLE_PANEL_IDS.join(", "),
+  );
+
+  // A desk saved while it happened to be open must not carry it into another
+  // chat: the sanitizer drops it, and the store re-opens it only if it was
+  // already open (that half is measured live, in the app).
+  const d = desk();
+  (d.panels as Record<string, unknown>)["routines"] = {
+    id: "routines",
+    contentComponent: "routines",
+    title: "Routines",
+  };
+  d.grid.root.data.push(leaf("gr", ["routines"]));
+  const out = sanitizeDockLayout(d, RESTORABLE_PANEL_IDS)!;
+  check(
+    "a saved desk never carries routines into another chat",
+    !("routines" in (out.panels as object)),
     Object.keys(out.panels as object).join(", "),
   );
 }
