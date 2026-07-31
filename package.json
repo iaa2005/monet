@@ -8,8 +8,5 @@
     "preview": "npm --prefix desktop run preview",
     "typecheck": "npm --prefix desktop run typecheck",
     "smoke:agent": "npm --prefix desktop run smoke:agent"
-  },
-  "dependencies": {
-    "dockview-react": "^7.0.4"
   }
 }

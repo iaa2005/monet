@@ -89,6 +89,7 @@
     "cli-highlight": "^2.1.11",
     "clsx": "^2.1.0",
     "diff": "^9.0.0",
+    "dockview-react": "^7.0.4",
     "docx-preview": "^0.4.0",
     "execa": "^9.6.1",
     "fflate": "^0.8.3",
