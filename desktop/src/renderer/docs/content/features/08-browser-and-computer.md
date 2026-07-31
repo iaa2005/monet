@@ -42,6 +42,12 @@ While the list is empty the menu offers your own npm scripts — but only the
 ones that pin a port, since a server it could start and then not open is worse
 than one it never offered.
 
+The list also shows servers **nobody declared** — one the agent started with
+`npm run dev`, or one you started in a terminal. They appear as soon as they
+are listening, and the only thing offered is a **+** to write them down, since
+there is no way to know the command something else used to start itself. Do
+that once and it gets a start button like the rest.
+
 A green dot means the **port answers**, not that a process is alive: a dev
 server takes a few seconds to bind, and one that died on a syntax error leaves
 a perfectly healthy npm shell behind it. A server somebody else started shows

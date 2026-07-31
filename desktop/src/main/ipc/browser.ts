@@ -18,6 +18,7 @@ import { detectDevServers, type DevServer } from "../browser/dev-servers.js";
 import {
   readServers,
   serverOutput,
+  mergeDetected,
   serverStates,
   startServer,
   stopServer,
@@ -108,9 +109,16 @@ export function registerBrowserIPC(): void {
   );
 
   // ── Declared dev servers ────────────────────────────────────────────
-  ipcMain.handle("servers:list", (): Promise<ServerState[]> =>
-    serverStates(getWorkspacePath()),
-  );
+  // Declared entries PLUS whatever else is listening, so a server the agent
+  // started in a shell shows up like any other.
+  ipcMain.handle("servers:list", async (): Promise<ServerState[]> => {
+    const workspace = getWorkspacePath();
+    const [declared, detected] = await Promise.all([
+      serverStates(workspace),
+      detectDevServers(workspace),
+    ]);
+    return mergeDetected(declared, detected);
+  });
   ipcMain.handle("servers:save", (_e, servers: ServerConfig[]): void =>
     writeServers(getWorkspacePath(), servers),
   );

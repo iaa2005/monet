@@ -13,9 +13,11 @@
  */
 
 import {
+  mergeDetected,
   parseServers,
   portOf,
   suggestFromPackage,
+  type ServerState,
 } from "../src/main/browser/servers";
 
 let failures = 0;
@@ -144,6 +146,62 @@ const check = (name: string, ok: boolean, detail?: unknown): void => {
   );
   check("no scripts, no suggestions", suggestFromPackage("{}").length === 0);
   check("junk json, no suggestions", suggestFromPackage("nope").length === 0);
+}
+
+// ── 7. A server nobody declared still shows up ────────────────────────
+//
+// The list used to be only what the project file declared, so a server the
+// AGENT started did not appear at all — it ran `npm run dev` through a shell,
+// which knows nothing about .monet/servers.json. A list of dev servers that
+// omits the running ones answers a question nobody asked.
+{
+  const declared: ServerState[] = [
+    {
+      id: "web",
+      name: "lk-dev",
+      command: "npm run dev",
+      port: 3000,
+      declared: true,
+      status: "stopped",
+    },
+  ];
+  const detected = [
+    { port: 3000, url: "http://localhost:3000/", title: "Portfolio" },
+    { port: 5173, url: "http://localhost:5173/", title: "Vite app" },
+  ];
+
+  const merged = mergeDetected(declared, detected);
+  check("the undeclared one is added", merged.length === 2, merged.length);
+  check(
+    "a declared port is not duplicated by detecting it",
+    merged.filter((s) => s.port === 3000).length === 1,
+    merged.filter((s) => s.port === 3000).length,
+  );
+  check(
+    "and that row keeps its own command, not the detected blank",
+    merged.find((s) => s.port === 3000)?.command === "npm run dev",
+  );
+
+  const found = merged.find((s) => s.port === 5173);
+  check("the found one is marked as not declared", found?.declared === false);
+  check("it is running, by definition", found?.status === "running");
+  check("and is somebody else's process", found?.externallyRunning === true);
+  check(
+    "it has no command, because there is none to know",
+    found?.command === "",
+    JSON.stringify(found?.command),
+  );
+  check("it is named by the page", found?.name === "Vite app", found?.name);
+
+  const nameless = mergeDetected([], [{ port: 8080, url: "u", title: "" }]);
+  check(
+    "a nameless one falls back to its port",
+    nameless[0]?.name === ":8080",
+    nameless[0]?.name,
+  );
+
+  check("nothing detected changes nothing", mergeDetected(declared, []).length === 1);
+  check("nothing declared still lists what is up", mergeDetected([], detected).length === 2);
 }
 
 console.log(failures === 0 ? "\nservers probe OK" : `\n${failures} FAILED`);

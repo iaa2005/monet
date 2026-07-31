@@ -100,14 +100,19 @@ export function ServersMenu({
     // here, from the list it is no longer in, or from anywhere else.
     if (!s.externallyRunning && s.status !== "stopped")
       await api().browser.servers.stop(s.id);
-    await save(servers.filter((x) => x.id !== s.id).map(asConfig));
+    await save(
+      servers.filter((x) => x.declared && x.id !== s.id).map(asConfig),
+    );
   };
 
   const add = async (): Promise<void> => {
     const port = Number(draft.port);
     if (!draft.command.trim() || !Number.isInteger(port)) return;
     await save([
-      ...servers.map(asConfig),
+      // Only the declared ones go back to the file — a found server has no
+      // command, and writing it down as a blank one would give it a start
+      // button that starts nothing.
+      ...servers.filter((x) => x.declared).map(asConfig),
       {
         id: `srv-${Date.now().toString(36)}`,
         name: draft.name.trim() || `:${port}`,
@@ -169,41 +174,62 @@ export function ServersMenu({
             <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
               :{s.port}
             </span>
-            {/* Removing is per row and needs no confirmation: it deletes a
-                line of config, and the process it might have been running is
-                stopped on the way out. */}
-            <button
-              type="button"
-              aria-label={`Remove ${s.name}`}
-              title="Remove from this project"
-              onClick={() => void remove(s)}
-              className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-            >
-              <Trash2 className="size-3" />
-            </button>
-            {/* Something we did not start gets no stop button: the port is
-                answering, but the process is somebody else's to kill. */}
-            {s.status === "running" && s.externallyRunning ? (
-              <span className="shrink-0 px-1 text-[10px] text-muted-foreground">
-                external
-              </span>
-            ) : (
+            {/* Found, not declared: something else is serving this port — the
+                agent's shell, or a terminal. There is no command to start it
+                with and nothing of ours to stop, so the only offer is to write
+                it down. */}
+            {!s.declared ? (
               <button
                 type="button"
-                aria-label={s.status === "stopped" ? "Start" : "Stop"}
-                onClick={() =>
-                  void (s.status === "stopped"
-                    ? api().browser.servers.start(s.id)
-                    : api().browser.servers.stop(s.id))
-                }
+                aria-label={`Declare ${s.name}`}
+                title="Add to this project so it has a start button"
+                onClick={() => {
+                  setDraft({ name: s.name, command: "", port: String(s.port) });
+                  setAdding(true);
+                }}
                 className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
               >
-                {s.status === "stopped" ? (
-                  <Play className="size-3" />
-                ) : (
-                  <Square className="size-3 fill-current" />
-                )}
+                <Plus className="size-3.5" />
               </button>
+            ) : (
+              <>
+                {/* Removing is per row and needs no confirmation: it deletes a
+                    line of config, and the process it might have been running
+                    is stopped on the way out. */}
+                <button
+                  type="button"
+                  aria-label={`Remove ${s.name}`}
+                  title="Remove from this project"
+                  onClick={() => void remove(s)}
+                  className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <Trash2 className="size-3" />
+                </button>
+                {/* Answering, but started by somebody else: the port is up and
+                    the process is not ours to kill. */}
+                {s.status === "running" && s.externallyRunning ? (
+                  <span className="shrink-0 px-1 text-[10px] text-muted-foreground">
+                    external
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={s.status === "stopped" ? "Start" : "Stop"}
+                    onClick={() =>
+                      void (s.status === "stopped"
+                        ? api().browser.servers.start(s.id)
+                        : api().browser.servers.stop(s.id))
+                    }
+                    className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+                  >
+                    {s.status === "stopped" ? (
+                      <Play className="size-3" />
+                    ) : (
+                      <Square className="size-3 fill-current" />
+                    )}
+                  </button>
+                )}
+              </>
             )}
           </div>
         ))}

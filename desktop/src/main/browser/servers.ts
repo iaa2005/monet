@@ -39,6 +39,12 @@ export interface ServerState extends ServerConfig {
   startedAt?: number;
   /** True when something answers on the port, whoever started it. */
   externallyRunning?: boolean;
+  /**
+   * False for a server we merely FOUND — the agent ran `npm run dev`, or you
+   * did in a terminal. It has no entry in the project file, so there is no
+   * command to start it with and nothing of ours to stop.
+   */
+  declared: boolean;
 }
 
 // ─── Config file ──────────────────────────────────────────────────────────
@@ -193,12 +199,14 @@ export async function serverStates(workspace: string): Promise<ServerState[]> {
       if (!live) {
         return {
           ...c,
+          declared: true,
           status: answering ? ("running" as const) : ("stopped" as const),
           externallyRunning: answering,
         };
       }
       return {
         ...c,
+        declared: true,
         status: answering ? ("running" as const) : live.status,
         error: live.error,
         startedAt: live.startedAt,
@@ -322,4 +330,38 @@ export function serverOutput(id: string): string {
 
 export function serversConfigPath(workspace: string): string {
   return configPath(workspace);
+}
+
+/**
+ * Everything listening, declared or not.
+ *
+ * The list used to show only what the project file declared, which meant a
+ * server the AGENT started did not appear at all — it ran `npm run dev` through
+ * a shell, which knows nothing about .monet/servers.json. The same was true of
+ * one you started in a terminal. A list of dev servers that omits the running
+ * ones is answering a question nobody asked.
+ *
+ * Matched by port, because that is the only thing the two sides share: a
+ * declared entry whose port is answering IS that server, however it was
+ * started.
+ */
+export function mergeDetected(
+  declared: ServerState[],
+  detected: { port: number; url: string; title: string }[],
+): ServerState[] {
+  const claimed = new Set(declared.map((d) => d.port));
+  const found: ServerState[] = detected
+    .filter((d) => !claimed.has(d.port))
+    .map((d) => ({
+      id: `found-${d.port}`,
+      name: d.title || `:${d.port}`,
+      // Nothing to put here: we did not start it and cannot know how. The UI
+      // reads this as "no start button", which is the truth.
+      command: "",
+      port: d.port,
+      declared: false,
+      status: "running" as const,
+      externallyRunning: true,
+    }));
+  return [...declared, ...found];
 }
