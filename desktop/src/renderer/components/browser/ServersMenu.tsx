@@ -17,6 +17,7 @@ import {
   Plus,
   Server,
   Square,
+  Trash2,
   TriangleAlert,
 } from "lucide-react";
 import {
@@ -84,17 +85,29 @@ export function ServersMenu({
     await refresh();
   };
 
+  /** A row back to what the file stores — the live status is not config. */
+  const asConfig = ({ id, name, command, cwd, port }: ServerState): ServerConfig => ({
+    id,
+    name,
+    command,
+    ...(cwd ? { cwd } : {}),
+    port,
+  });
+
+  const remove = async (s: ServerState): Promise<void> => {
+    // Stop it first. Deleting the entry deletes the only handle anything had
+    // on that process — an orphan left holding the port cannot be stopped from
+    // here, from the list it is no longer in, or from anywhere else.
+    if (!s.externallyRunning && s.status !== "stopped")
+      await api().browser.servers.stop(s.id);
+    await save(servers.filter((x) => x.id !== s.id).map(asConfig));
+  };
+
   const add = async (): Promise<void> => {
     const port = Number(draft.port);
     if (!draft.command.trim() || !Number.isInteger(port)) return;
     await save([
-      ...servers.map(({ id, name, command, cwd, port: p }) => ({
-        id,
-        name,
-        command,
-        ...(cwd ? { cwd } : {}),
-        port: p,
-      })),
+      ...servers.map(asConfig),
       {
         id: `srv-${Date.now().toString(36)}`,
         name: draft.name.trim() || `:${port}`,
@@ -137,7 +150,7 @@ export function ServersMenu({
         {servers.map((s) => (
           <div
             key={s.id}
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm"
+            className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm"
           >
             <StatusDot state={s} />
             <button
@@ -156,6 +169,18 @@ export function ServersMenu({
             <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
               :{s.port}
             </span>
+            {/* Removing is per row and needs no confirmation: it deletes a
+                line of config, and the process it might have been running is
+                stopped on the way out. */}
+            <button
+              type="button"
+              aria-label={`Remove ${s.name}`}
+              title="Remove from this project"
+              onClick={() => void remove(s)}
+              className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              <Trash2 className="size-3" />
+            </button>
             {/* Something we did not start gets no stop button: the port is
                 answering, but the process is somebody else's to kill. */}
             {s.status === "running" && s.externallyRunning ? (

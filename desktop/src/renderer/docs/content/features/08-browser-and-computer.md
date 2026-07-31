@@ -23,7 +23,8 @@ with their scroll position and their login.
 
 The **server** button in the toolbar lists the dev servers this project
 declares, with a play button each. Start one, stop it, click its name to open
-it — no remembering which port today's project uses.
+it — no remembering which port today's project uses. Hovering a row shows a bin
+to drop it from the project; if it was running, it is stopped on the way out.
 
 The list lives in the workspace at `.monet/servers.json`, so it belongs to the
 project rather than to your machine, and committing it hands the same buttons
