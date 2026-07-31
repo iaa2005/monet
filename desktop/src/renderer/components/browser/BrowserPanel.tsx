@@ -497,7 +497,7 @@ export function BrowserPanel(): JSX.Element {
       </div>
 
       {/* Pages */}
-      <div className="relative min-h-0 flex-1 bg-white dark:bg-[#1b1b1c]">
+      <div className="relative min-h-0 flex-1 bg-transparent">
         {partition &&
           tabs.map((t) => (
             <BrowserView
@@ -510,7 +510,7 @@ export function BrowserPanel(): JSX.Element {
         {/* Shown for no tabs at all AND for a new (about:blank) tab — "the
             empty tab" is both, and a blank webview answers neither. */}
         {(tabs.length === 0 || active?.url === BLANK) && (
-          <div className="absolute inset-0 bg-white dark:bg-[#1b1b1c]">
+          <div className="absolute inset-0 bg-transparent">
             <BrowserEmptyState onOpen={(u) => navigate(u)} />
           </div>
         )}

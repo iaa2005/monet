@@ -320,7 +320,7 @@ function GroupActions(props: IDockviewHeaderActionsProps): JSX.Element {
 function DockTab(props: IDockviewPanelHeaderProps): JSX.Element {
   const closable = props.api.id !== "main";
   return (
-    <div className="flex h-full items-center gap-1.5 px-2.5 text-xs font-medium">
+    <div className="flex h-full items-center gap-1.5 px-0 text-xs font-medium">
       <span className="truncate">{props.api.title}</span>
       {closable && (
         <button

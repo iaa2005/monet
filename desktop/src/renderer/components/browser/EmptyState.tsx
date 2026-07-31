@@ -134,8 +134,8 @@ export function BrowserEmptyState({ onOpen }: EmptyStateProps): JSX.Element {
   };
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="w-full max-w-[360px] space-y-6 px-4 py-6">
+    <div className="h-full overflow-y-auto grid">
+      <div className="w-full max-w-[360px] space-y-6 px-4 py-6 m-auto">
         {servers.length > 0 && (
           <section>
             <SectionHead label="Servers" />

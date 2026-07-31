@@ -14,9 +14,19 @@
   --dv-tabs-and-actions-container-height: 32px;
   --dv-tabs-and-actions-container-font-size: 12px;
 
-  --dv-activegroup-visiblepanel-tab-background-color: var(--accent);
+  /* The app's ghost-button tint, same recipe Tailwind emits for
+     bg-black/[0.06] — the selected tab looks like every active control. */
+  --dv-activegroup-visiblepanel-tab-background-color: color-mix(
+    in oklab,
+    var(--color-black, #000) 6%,
+    transparent
+  );
   --dv-activegroup-hiddenpanel-tab-background-color: transparent;
-  --dv-inactivegroup-visiblepanel-tab-background-color: var(--muted);
+  --dv-inactivegroup-visiblepanel-tab-background-color: color-mix(
+    in oklab,
+    var(--color-black, #000) 4%,
+    transparent
+  );
   --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
   --dv-activegroup-visiblepanel-tab-color: var(--foreground);
   --dv-activegroup-hiddenpanel-tab-color: var(--muted-foreground);
@@ -46,6 +56,20 @@
 
   --dv-paneview-active-outline-color: hsl(var(--link));
   --dv-tabs-container-scrollbar-color: var(--border);
+}
+
+/* Dark theme: the same ghost tint, white over dark (bg-white/[0.08]). */
+.dark .monet-dock {
+  --dv-activegroup-visiblepanel-tab-background-color: color-mix(
+    in oklab,
+    var(--color-white, #fff) 8%,
+    transparent
+  );
+  --dv-inactivegroup-visiblepanel-tab-background-color: color-mix(
+    in oklab,
+    var(--color-white, #fff) 5%,
+    transparent
+  );
 }
 
 /* The canvas between the cards is the app's background, not a panel. */
