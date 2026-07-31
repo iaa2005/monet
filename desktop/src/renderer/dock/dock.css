@@ -39,7 +39,7 @@
   --dv-separator-border: var(--border);
   --dv-paneview-header-border-color: var(--border);
 
-  --dv-tab-border-radius: 6px;
+  --dv-tab-border-radius: 4px;
   --dv-tab-margin: 0px 0 0px 0px;
   --dv-border-radius: 0px;
 
@@ -104,11 +104,11 @@
 
 /* Floating windows are NOT part of the grid — they keep their card shape. */
 .monet-dock .dv-resize-container {
-  border-radius: 12px;
+  border-radius: 6px;
   overflow: hidden;
 }
 .monet-dock .dv-resize-container .dv-groupview {
-  border-radius: 12px;
+  border-radius: 6px;
 }
 
 /* Tab strip gets the same hairline the app's panel headers use. */

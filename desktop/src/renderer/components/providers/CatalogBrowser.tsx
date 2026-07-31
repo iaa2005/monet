@@ -146,7 +146,7 @@ export function CatalogBrowser({
       onClick={onClose}
     >
       <div
-        className="flex h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
+        className="flex h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xl"
         // Without this every click inside reached the provider editor's own
         // backdrop — which closes on any bubbled click — so clicking anything
         // in the catalog shut the whole editor. The editor now also ignores

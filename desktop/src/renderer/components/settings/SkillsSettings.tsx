@@ -263,7 +263,7 @@ function ModalShell({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl border border-border bg-card p-5 shadow-xl"
+        className="w-full max-w-lg rounded-lg border border-border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -371,7 +371,7 @@ function SkillDetailModal({
       onClick={onClose}
     >
       <div
-        className="flex h-[82vh] w-full max-w-3xl flex-col rounded-2xl border border-border bg-card shadow-xl"
+        className="flex h-[82vh] w-full max-w-3xl flex-col rounded-lg border border-border bg-card shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between px-5 pb-2 pt-5">

@@ -271,7 +271,7 @@ export function OpenRouterBrowser({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[88vh] w-full max-w-7xl flex-col rounded-2xl border border-border bg-card shadow-xl"
+        className="flex max-h-[88vh] w-full max-w-7xl flex-col rounded-lg border border-border bg-card shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

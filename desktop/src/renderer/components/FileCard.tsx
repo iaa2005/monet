@@ -390,14 +390,14 @@ export function FileCard({
   return (
     <div
       className={cn(
-        "group glass-panel rounded-2xl border border-border",
+        "group glass-panel rounded-lg border border-border",
         surface === "panel" ? "bg-card" : "bg-card",
       )}
     >
     {/* overflow-hidden here is the crop: the sheet is taller than its box and
         the row's own rounded bottom edge cuts it off. On the row rather than the
         outer card so the versions list below keeps its square corners. */}
-    <div className="flex items-center gap-3 overflow-hidden rounded-2xl px-3 py-2.5">
+    <div className="flex items-center gap-3 overflow-hidden rounded-lg px-3 py-2.5">
       <button
         type="button"
         onClick={() => viewArtifact(a)}

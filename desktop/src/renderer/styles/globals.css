@@ -20,7 +20,10 @@
  * brand color is reserved for the logo mark; links are blue.
  */
 :root {
-    --radius: 12px;
+    /* Strict corners, Cursor-style: everything in the app derives from this
+       one number (see the --radius-* scale below), so 5px turns every card,
+       menu, button and input from soft to precise in one place. */
+    --radius: 5px;
 
     --bg-000: 0 0% 100%;
     --bg-100: 220 5% 99%;
@@ -36,8 +39,12 @@
        4.96 on a card and 4.64 on a muted surface. */
     --text-400: 210 3.1% 43%;
 
-    --brand: 15 63.1% 59.6%; /* terracotta — logo mark only */
-    --link: 210 73.7% 40.2%; /* blue — links / file refs */
+    /* Cursor's orange, carrying both roles: the mark AND the accent. The
+       link value is darker than the mark so it clears AA on white
+       (4.84:1, measured by scripts/palette-probe.cjs); the mark only ever
+       sits on large glyphs and fills. */
+    --brand: 18 92% 52%;
+    --link: 18 88% 42%;
 
     --background: hsl(var(--bg-100));
     --foreground: hsl(var(--text-000));
@@ -107,9 +114,9 @@
        50.2% lightness. 62% gives 6.6:1 there and 7.1:1 on the deep surface. */
     --text-400: 0 0% 62%;
 
-    --brand: 15 63.1% 59.6%;
-    /* VS Code / Cursor's link blue (#569cd6), a shade lighter for contrast. */
-    --link: 207 61% 64%;
+    /* The same orange, lifted for the deep surfaces: 6.0:1 on #121212. */
+    --brand: 20 95% 62%;
+    --link: 20 95% 62%;
 
     --background: hsl(var(--bg-100));
     --foreground: hsl(var(--text-000));

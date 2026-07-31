@@ -185,7 +185,7 @@ export function SkillPreview({
       onClick={onClose}
     >
       <div
-        className="flex h-[86vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
+        className="flex h-[86vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-2.5 border-b border-border px-5 py-3.5">

@@ -232,6 +232,91 @@ app.whenReady().then(async () => {
     `${side.rowLeft} vs ${side.asideLeft}`,
   );
 
+  // ── The accent, and how sharp the corners are ──────────────────────
+  //
+  // One orange carries links, focus rings and the mark; one --radius drives
+  // every corner in the app. Both are single tokens, which is exactly why
+  // they are worth measuring: a change here lands everywhere at once, and a
+  // link that fails contrast fails on every screen.
+  const accent = await js(`(() => {
+    const root = getComputedStyle(document.documentElement);
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;left:-9999px;color:hsl(var(--link));background:hsl(var(--brand));border-radius:var(--radius)';
+    probe.className = 'rounded-md';
+    document.body.appendChild(probe);
+    const cs = getComputedStyle(probe);
+    const out = {
+      link: cs.color,
+      brand: cs.backgroundColor,
+      radius: root.getPropertyValue('--radius').trim(),
+      roundedMd: cs.borderTopLeftRadius,
+    };
+    probe.remove();
+    return out;
+  })()`);
+
+  const hue = (css) => {
+    const c = rgb(css);
+    if (!c) return null;
+    const [r, g, b] = c.map((v) => v / 255);
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    if (d === 0) return null;
+    let h;
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    return ((h * 60) + 360) % 360;
+  };
+
+  check(
+    "links are orange, not blue",
+    (() => {
+      const h = hue(accent.link);
+      return h !== null && h >= 10 && h <= 40;
+    })(),
+    `${accent.link} (hue ${Math.round(hue(accent.link) ?? -1)}°)`,
+  );
+  check(
+    "the mark shares that hue",
+    Math.abs((hue(accent.brand) ?? 0) - (hue(accent.link) ?? 99)) < 12,
+    `${accent.brand} vs ${accent.link}`,
+  );
+  check(
+    "and links still clear AA on the surface they sit on",
+    contrast(accent.link, p.content) >= 4.5,
+    `${contrast(accent.link, p.content).toFixed(2)}:1`,
+  );
+  check(
+    "corners are strict — the radius token is small",
+    parseFloat(accent.radius) <= 6,
+    accent.radius,
+  );
+  check(
+    "and the whole scale follows it",
+    parseFloat(accent.roundedMd) <= 5,
+    `rounded-md = ${accent.roundedMd}`,
+  );
+
+  // ── Light theme: the same accent has to survive white ──────────────
+  {
+    await js(`document.documentElement.classList.remove('dark'); true`);
+    await new Promise((r) => setTimeout(r, 600));
+    const light = await js(`(() => {
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:fixed;left:-9999px;color:hsl(var(--link))';
+      document.body.appendChild(probe);
+      const link = getComputedStyle(probe).color;
+      probe.remove();
+      const group = document.querySelector('.dv-groupview');
+      return { link, surface: group ? getComputedStyle(group).backgroundColor : null };
+    })()`);
+    check(
+      "in light, the orange link clears AA on the surface",
+      contrast(light.link, light.surface) >= 4.5,
+      `${contrast(light.link, light.surface).toFixed(2)}:1 — ${light.link}`,
+    );
+  }
+
   srv.close();
   win.destroy();
   console.log(failures === 0 ? "\nALL PALETTE CHECKS PASSED" : `\n${failures} FAILED`);

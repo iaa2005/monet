@@ -368,7 +368,7 @@ const MessageRow = memo(
       return (
         <Message align="end">
           <MessageContent>
-            <div className="w-full min-w-[18rem] rounded-2xl border border-border bg-card p-4">
+            <div className="w-full min-w-[18rem] rounded-lg border border-border bg-card p-4">
               <textarea
                 autoFocus
                 value={draft}
@@ -1018,7 +1018,7 @@ export function ChatView({
       }}
     >
       {dragOver && (
-        <div className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-link bg-link/5">
+        <div className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded-lg border-2 border-dashed border-link bg-link/5">
           <span className="rounded-lg bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-sm">
             Drop files to attach
           </span>

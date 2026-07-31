@@ -204,8 +204,8 @@ export function DirCard({
         "flex flex-col transition-colors",
         // A fixed height keeps a two-column grid's cells even. In one column it
         // only adds empty space under a one-line description.
-        look === "card" && "min-h-[7.5rem] rounded-2xl border border-border bg-card/60 p-4",
-        look === "wide" && "rounded-2xl border border-border bg-card/60 p-4",
+        look === "card" && "min-h-[7.5rem] rounded-lg border border-border bg-card/60 p-4",
+        look === "wide" && "rounded-lg border border-border bg-card/60 p-4",
         // Inside a group: no border of its own, no rounding, no gap. The group is
         // the card; these are its rows, and a row that looks like a card inside a
         // card reads as two things when it is one.

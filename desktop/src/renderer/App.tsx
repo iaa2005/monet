@@ -1004,7 +1004,7 @@ export default function App(): JSX.Element {
       {/* ── Custom title bar ── */}
       <header
         className={cn(
-          "app-drag flex h-11 shrink-0 items-center gap-2 pl-2",
+          "app-drag flex h-9 shrink-0 items-center gap-2 pl-1.5",
           incognito && "bg-card text-card-foreground rounded-t-xl",
         )}
       >

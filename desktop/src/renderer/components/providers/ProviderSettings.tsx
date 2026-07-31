@@ -242,7 +242,7 @@ function ProviderModal({
       }}
     >
       <div
-        className="flex max-h-[88vh] w-full max-w-2xl flex-col rounded-2xl border border-border bg-card shadow-xl"
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col rounded-lg border border-border bg-card shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 pb-3 pt-5">

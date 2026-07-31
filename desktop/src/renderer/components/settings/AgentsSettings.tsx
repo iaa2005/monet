@@ -43,7 +43,7 @@ function ModalShell({
     >
       <div
         className={cn(
-          "flex max-h-[88vh] w-full flex-col rounded-2xl border border-border bg-card p-5 shadow-xl",
+          "flex max-h-[88vh] w-full flex-col rounded-lg border border-border bg-card p-5 shadow-xl",
           width,
         )}
         onClick={(e) => e.stopPropagation()}

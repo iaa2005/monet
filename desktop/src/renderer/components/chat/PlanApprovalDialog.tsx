@@ -57,7 +57,7 @@ export function PlanApprovalHost(): JSX.Element | null {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
-      <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-2xl border border-border bg-background shadow-xl">
+      <div className="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-lg border border-border bg-background shadow-xl">
         <div className="border-b border-border px-5 py-3">
           <h2 className="text-sm font-semibold">Ready to start?</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">

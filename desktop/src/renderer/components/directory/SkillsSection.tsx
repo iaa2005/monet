@@ -648,7 +648,7 @@ function RepoGroupCard({
   renderCard: (s: StoreSkill, look?: CardLook) => JSX.Element;
 }): JSX.Element {
   return (
-    <div className="rounded-2xl border border-border">
+    <div className="rounded-lg border border-border">
       <button
         type="button"
         onClick={onToggle}
