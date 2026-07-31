@@ -78,9 +78,23 @@ export const useDockStore = create<DockState>((set, get) => ({
   setApi: (api) => {
     set({ api });
     if (!api) return;
-    const { pending, pendingExtra } = get();
+    // The desk this fresh dockview instance should show. Not just `pending`:
+    // React StrictMode mounts, unmounts and remounts the DockArea in dev,
+    // and the first (throwaway) instance consumes the queue — the second,
+    // real one then arrived to nothing, emptied `open`, and the wing
+    // unmounted itself. Found live: prod build fine, dev build "ничего не
+    // открывается". The last serialized layout (or failing that, the open
+    // list) rebuilds the desk on ANY remount, StrictMode's included.
+    const { pending, pendingExtra, layoutJson, open } = get();
+    const desk: DockDesk | null =
+      pending ??
+      (layoutJson
+        ? { kind: "layout", layout: layoutJson }
+        : open.length > 0
+          ? { kind: "open", open }
+          : null);
     set({ pending: null, pendingExtra: [] });
-    if (pending) applyToApi(api, pending);
+    if (desk) applyToApi(api, desk);
     for (const id of pendingExtra) if (!api.getPanel(id)) addPanel(api, id);
     get().syncFromApi();
   },
