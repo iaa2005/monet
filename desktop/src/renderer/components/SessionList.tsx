@@ -275,7 +275,7 @@ export function SessionList({
                         ? "animate-pulse bg-green-text"
                         : active
                           ? "bg-link"
-                          : "bg-transparent",
+                          : "bg-transparent border-2 border-border",
                     )}
                     title={runningIds.has(s.id) ? "Running…" : undefined}
                   />

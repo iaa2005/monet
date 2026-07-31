@@ -413,7 +413,7 @@ const MessageRow = memo(
                 <AttachmentChips attachments={ownAttachments} />
               )}
               <Bubble variant="secondary" align="end">
-                <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.08] glass-panel rounded-xl">
+                <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.08] glass-panel">
                   <SelectionText content={msg.content} crops={cropAttachments} />
                 </BubbleContent>
               </Bubble>

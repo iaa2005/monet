@@ -193,7 +193,7 @@ export function RoutinesList({
                             <span
                               className={cn(
                                 "size-1.5 shrink-0 rounded-full",
-                                active ? "bg-link" : "bg-transparent",
+                                active ? "bg-link" : "bg-transparent border-2 border-border",
                               )}
                             />
                             <span

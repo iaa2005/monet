@@ -22,6 +22,7 @@ import {
 
 export const DOCK_TITLES: Record<DockPanelId, string> = {
   main: "Chat",
+  viewer: "Viewer",
   files: "Files",
   artifacts: "Artifacts",
   changes: "Changes",
@@ -31,6 +32,16 @@ export const DOCK_TITLES: Record<DockPanelId, string> = {
 };
 
 export const DOCK_PANEL_IDS = Object.keys(DOCK_TITLES) as DockPanelId[];
+
+/**
+ * Panels a SAVED desk may bring back.
+ *
+ * The viewer is excluded: it is a window onto one file, opened by clicking
+ * that file, and a viewer restored with nothing in it is an empty panel the
+ * user has to close. Which file was open belongs to the conversation, not to
+ * the furniture.
+ */
+export const RESTORABLE_PANEL_IDS = DOCK_PANEL_IDS.filter((id) => id !== "viewer");
 
 function addPanel(api: DockviewApi, id: DockPanelId): void {
   api.addPanel({
@@ -43,16 +54,27 @@ function addPanel(api: DockviewApi, id: DockPanelId): void {
     ...(id === "browser" ? { renderer: "always" as const } : {}),
     // Everything else opens BESIDE the chat, not on top of it: a panel that
     // arrives as a tab in the chat's group hides the conversation.
-    ...(id !== "main" ? positionBesideMain(api) : {}),
+    ...(id !== "main" ? positionBesideMain(api, id) : {}),
   });
 }
 
-/** Where a non-main panel lands: the first group that isn't the chat's. */
+/**
+ * Where a non-main panel lands.
+ *
+ * The viewer always takes its own group immediately right of the chat: you
+ * clicked a file to READ it beside the conversation, and joining whatever
+ * group happens to exist would bury it as a tab behind the browser. Every
+ * other panel joins the first group that isn't the chat's, so opening three
+ * of them does not slice the window into three.
+ */
 function positionBesideMain(
   api: DockviewApi,
+  id: DockPanelId,
 ): { position?: AddPanelPositionOptions } {
   const main = api.getPanel("main");
   if (!main) return {};
+  if (id === "viewer")
+    return { position: { referencePanel: "main", direction: "right" } };
   const other = api.groups.find((g) => g !== main.group);
   if (other) return { position: { referenceGroup: other.id, direction: "within" } };
   return { position: { referencePanel: "main", direction: "right" } };
@@ -105,6 +127,8 @@ interface DockState {
   openPanel: (id: DockPanelId) => void;
   closePanel: (id: DockPanelId) => void;
   togglePanel: (id: DockPanelId) => void;
+  /** Rename a tab — the viewer wears the name of the file it holds. */
+  setPanelTitle: (id: DockPanelId, title: string) => void;
   /** Replace the whole desk (session switch). Null closes everything. */
   applyDesk: (desk: DockDesk | null) => void;
 }
@@ -210,6 +234,11 @@ export const useDockStore = create<DockState>((set, get) => ({
     get().syncFromApi();
   },
 
+  setPanelTitle: (id, title) => {
+    const panel = get().api?.getPanel(id);
+    if (panel && title && panel.title !== title) panel.api.setTitle(title);
+  },
+
   togglePanel: (id) => {
     const { api, open, pending, pendingExtra } = get();
     const isOpen = api
@@ -236,6 +265,17 @@ export const useDockStore = create<DockState>((set, get) => ({
  * react to the storm of add/remove events it fires. */
 let applying = false;
 
+/**
+ * Is a whole-desk mutation in flight?
+ *
+ * For listeners that treat a panel's removal as a USER action: clear() and
+ * fromJSON() remove every panel on their way through, and reading those as
+ * "the user closed the viewer" would wipe the open file on every restore.
+ */
+export function isApplyingDesk(): boolean {
+  return applying;
+}
+
 function applyToApi(api: DockviewApi, desk: DockDesk | null): void {
   applying = true;
   try {
@@ -250,7 +290,7 @@ function applyToApi(api: DockviewApi, desk: DockDesk | null): void {
         if (id !== "main" && !api.getPanel(id)) addPanel(api, id);
       return;
     }
-    const clean = sanitizeDockLayout(desk.layout, DOCK_PANEL_IDS);
+    const clean = sanitizeDockLayout(desk.layout, RESTORABLE_PANEL_IDS);
     if (!clean) {
       api.clear();
       ensureMain(api);
@@ -277,7 +317,16 @@ function applyToApi(api: DockviewApi, desk: DockDesk | null): void {
   }
 }
 
-// Dev-only hook: lets a debugging session (or a live probe through the
-// browser pane) drive the desk exactly the way App does.
-if (import.meta.env.DEV)
+/**
+ * Test seam: lets a debugging session (or a probe) drive the desk exactly
+ * the way App does.
+ *
+ * Two hosts qualify — the dev server, and a harness that loads the BUILT
+ * renderer with NO preload bridge (scripts/dock-click-probe.cjs). The real
+ * app never matches: contextBridge has published electronAPI long before
+ * this module evaluates. A page that can run this line could reach these
+ * stores through React anyway; the condition is about keeping the global
+ * out of the shipped app, not about secrecy.
+ */
+if (import.meta.env.DEV || !(window as { electronAPI?: unknown }).electronAPI)
   (window as unknown as { __monetDock?: unknown }).__monetDock = useDockStore;

@@ -49,10 +49,12 @@ import { ChangesPanel } from "@/components/ChangesPanel";
 import { SandboxFilesPanel } from "@/components/SandboxFilesPanel";
 import { BackgroundTasksPanel } from "@/components/BackgroundTasks";
 import { FileTree } from "@/components/FileTree";
+import { FileViewer } from "@/components/FileViewer";
+import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
 import { BrowserPanel } from "@/components/browser/BrowserPanel";
 import { useBrowserStore } from "@/components/browser/browser-store";
 import { useChatStore } from "@/stores/chatStore";
-import { useDockStore } from "./dock-store";
+import { isApplyingDesk, useDockStore } from "./dock-store";
 
 const Terminal = lazy(() =>
   import("@/components/Terminal").then((m) => ({ default: m.Terminal })),
@@ -120,6 +122,39 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
         className="h-full min-h-0 overflow-hidden"
         ref={(el) => useDockStore.getState().setMainHost(el)}
       />
+    );
+  },
+  /**
+   * The file preview — a panel like any other, so a document can sit beside
+   * the conversation, stack with Files, or float in its own window.
+   *
+   * It follows chatStore.viewer rather than owning it: the same click that
+   * opens a file from a tool result, the file tree or an artifact lands here.
+   * The `key` remounts on a new file, which is what makes a broken preview
+   * recoverable by simply opening something else.
+   */
+  viewer: function ViewerDockPanel() {
+    const viewer = useChatStore((s) => s.viewer);
+    const close = (): void => useChatStore.getState().openViewer(null);
+    if (!viewer)
+      return (
+        <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
+          Open a file to preview it here.
+        </div>
+      );
+    return (
+      <div className="h-full min-h-0 overflow-hidden">
+        <ViewerErrorBoundary
+          key={`viewer:${viewer.path ?? viewer.name}`}
+          onClose={close}
+        >
+          <FileViewer
+            path={viewer.source === "file" ? viewer.path : undefined}
+            item={viewer.source !== "file" ? viewer : undefined}
+            onClose={close}
+          />
+        </ViewerErrorBoundary>
+      </div>
     );
   },
   files: function FilesDockPanel() {
@@ -359,6 +394,22 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
     else if (api.hasMaximizedGroup()) api.exitMaximizedGroup();
   }, [browserLayout]);
 
+  // The file preview and its panel are one thing seen twice: a file opened
+  // anywhere in the app raises the panel and names its tab; closing the
+  // panel's tab clears the file. Without the second half the panel would
+  // reopen the instant it was closed.
+  const viewer = useChatStore((s) => s.viewer);
+  const viewerOpen = useDockStore((s) => s.open.includes("viewer"));
+  useEffect(() => {
+    const dock = useDockStore.getState();
+    if (viewer) {
+      dock.openPanel("viewer");
+      dock.setPanelTitle("viewer", viewer.name || "Viewer");
+    } else if (viewerOpen) {
+      dock.closePanel("viewer");
+    }
+  }, [viewer, viewerOpen]);
+
   const onReady = useMemo(
     () =>
       (event: DockviewReadyEvent): void => {
@@ -367,7 +418,14 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
         const sync = (): void => useDockStore.getState().syncFromApi();
         api.onDidLayoutChange(sync);
         api.onDidAddPanel(sync);
-        api.onDidRemovePanel(sync);
+        api.onDidRemovePanel((panel) => {
+          sync();
+          // Closing the tab IS closing the file — but only when a person did
+          // it. A desk restore removes every panel on its way through, and
+          // reading that as a close would drop the open file on every switch.
+          if (panel.id === "viewer" && !isApplyingDesk())
+            useChatStore.getState().openViewer(null);
+        });
       },
     [],
   );

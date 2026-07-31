@@ -1033,7 +1033,7 @@ export function MessageInput({
           </div>
         )}
         
-        <div className="glass-panel p-3 rounded-2xl border border-border bg-card transition-colors focus-within:border-foreground/25">
+        <div className="mb-2">
           
           <div className="flex gap-2.5 w-full items-end">
             <TokenInput
@@ -1186,7 +1186,7 @@ export function MessageInput({
           </div>
 
           {/* Controls inside the composer card */}
-          <div className="mt-2.5 flex items-center justify-between gap-2">
+          <div className="mt-2.5 flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-0.5">
               <button
                 type="button"

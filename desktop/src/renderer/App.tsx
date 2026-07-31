@@ -5,9 +5,6 @@ import {
   useRef,
   lazy,
   Suspense,
-  Component,
-  Fragment,
-  type ErrorInfo,
   type ReactNode,
 } from "react";
 import {
@@ -57,7 +54,6 @@ import { useBrowserStore } from "@/components/browser/browser-store";
 import { DockArea } from "@/dock/DockArea";
 import { useDockStore } from "@/dock/dock-store";
 import type { DockPanelId } from "@/dock/dock-layout";
-import { FileViewer } from "@/components/FileViewer";
 import { SubAgentTranscript } from "@/components/chat/ToolCallBubble";
 import { WindowControls } from "@/components/WindowControls";
 import { BetaBadge } from "@/components/BetaBadge";
@@ -97,58 +93,6 @@ type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
-}
-
-class ViewerErrorBoundary extends Component<
-  { children: ReactNode; onClose: () => void },
-  { error: Error | null; retryKey: number }
-> {
-  state: { error: Error | null; retryKey: number } = {
-    error: null,
-    retryKey: 0,
-  };
-
-  static getDerivedStateFromError(error: Error): { error: Error } {
-    return { error };
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error("[renderer] FileViewer render error", error, info.componentStack);
-  }
-
-  private retry = (): void => {
-    this.setState(({ retryKey }) => ({ error: null, retryKey: retryKey + 1 }));
-  };
-
-  render(): ReactNode {
-    if (this.state.error) {
-      return (
-        <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-          <p className="text-sm font-medium text-destructive">File preview failed</p>
-          <p className="max-w-md text-xs text-muted-foreground">
-            {this.state.error.message || "The file preview could not be rendered."}
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={this.retry}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-            >
-              Retry
-            </button>
-            <button
-              type="button"
-              onClick={this.props.onClose}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      );
-    }
-    return <Fragment key={this.state.retryKey}>{this.props.children}</Fragment>;
-  }
 }
 
 function useTheme(): {
@@ -238,7 +182,7 @@ function NavRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-[13px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]",
+        "flex h-7 w-full items-center gap-2.5 rounded-md px-2 text-[13px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]",
         active && "bg-black/[0.06] text-foreground dark:bg-white/[0.08]",
       )}
     >
@@ -323,12 +267,7 @@ export default function App(): JSX.Element {
   const incognito = useChatStore((s) => s.incognito);
   const openFileRequest = useChatStore((s) => s.openFileRequest);
   const openChangesRequest = useChatStore((s) => s.openChangesRequest);
-  const viewer = useChatStore((s) => s.viewer);
   const expandedSubAgent = useChatStore((s) => s.expandedSubAgent);
-  const closeViewer = useCallback(
-    () => useChatStore.getState().openViewer(null),
-    [],
-  );
   const closeExpandedSubAgent = useCallback(
     () => useChatStore.getState().openExpandedSubAgent(null),
     [],
@@ -1403,9 +1342,9 @@ export default function App(): JSX.Element {
                 className="min-w-[280px]"
                 style={{ overflow: "visible" }}
               >
-                <aside className="glass-panel flex h-full flex-col rounded-xl border border-border bg-card shadow-sm">
+                <aside className="glass-panel flex h-full flex-col rounded-lg border border-border bg-card shadow-sm">
                   {/* Home / Code tabs */}
-                  <div className="flex items-center gap-1 px-2 pt-2">
+                  <div className="flex items-center gap-1 px-1 py-1">
                     <div className="flex flex-1 items-center rounded-md bg-black/[0.05] p-0.5 dark:bg-white/[0.06] border">
                       <button
                         onClick={() => {
@@ -1440,7 +1379,7 @@ export default function App(): JSX.Element {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-0.5 px-2 pt-1">
+                  <div className="flex flex-col gap-0.5 px-1 pt-1">
                     <NavRow
                       icon={Plus}
                       label="New session"
@@ -1474,7 +1413,7 @@ export default function App(): JSX.Element {
                     space={appMode}
                   />
 
-                  <div className="flex min-h-0 flex-1 flex-col px-2">
+                  <div className="flex min-h-0 flex-1 flex-col px-1">
                     <div className="flex items-center justify-between px-2 pb-1 pt-3">
                       <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
                         Recents
@@ -1498,7 +1437,7 @@ export default function App(): JSX.Element {
                     </div>
                   </div>
 
-                  <div className="p-2">
+                  <div className="p-1">
                     <AccountMenu
                       onOpenSettings={() => setSettingsOpen(true)}
                       onOpenAbout={() => setAboutOpen(true)}
@@ -1573,20 +1512,8 @@ export default function App(): JSX.Element {
                       )}
                     </>
                   )}
-                  {viewer && (
-                    <div className="!absolute inset-0 z-10">
-                      <ViewerErrorBoundary
-                        key={`viewer:${viewer.path ?? viewer.name}`}
-                        onClose={closeViewer}
-                      >
-                        <FileViewer
-                          path={viewer.source === "file" ? viewer.path : undefined}
-                          item={viewer.source !== "file" ? viewer : undefined}
-                          onClose={closeViewer}
-                        />
-                      </ViewerErrorBoundary>
-                    </div>
-                  )}
+                  {/* The file preview is a dock panel now (see DockArea) —
+                      it opens beside the chat instead of covering it. */}
                   {expandedSubAgent && (
                     <div className="!absolute inset-0 z-10 flex h-full flex-col glass-panel rounded-xl border border-border bg-card overflow-hidden">
                       <div className="relative shrink-0 border-b border-border px-4 py-3">

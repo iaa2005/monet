@@ -16,6 +16,7 @@
 
 export type DockPanelId =
   | "main"
+  | "viewer"
   | "files"
   | "artifacts"
   | "changes"

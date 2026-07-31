@@ -95,8 +95,8 @@
 
 /* Tab strip gets the same hairline the app's panel headers use. */
 .monet-dock .dv-tabs-and-actions-container {
-  border-bottom: 1px solid var(--border);
-  padding: 0 4px;
+  /*border-bottom: 1px solid var(--border);*/
+  /*padding: 0 4px;*/
 }
 
 /* Tabs: pill-shaped, quiet until active — the app's tab grammar. */

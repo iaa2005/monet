@@ -19,6 +19,10 @@ import {
   deskPanelIds,
   sanitizeDockLayout,
 } from "../src/renderer/dock/dock-layout";
+import {
+  DOCK_PANEL_IDS,
+  RESTORABLE_PANEL_IDS,
+} from "../src/renderer/dock/dock-store";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {
@@ -179,6 +183,53 @@ const desk = () => ({
       "browser,terminal",
   );
   check("no desk, no panels", deskPanelIds(null).length === 0);
+}
+
+// ── 8. The viewer is furniture nobody saved ───────────────────────────
+//
+// The file preview is a dock panel, but WHICH file was open belongs to the
+// conversation, not to the layout. Restoring the panel would put an empty
+// "Viewer" tab in front of the user on every switch, with nothing in it and
+// a tab to close. So it is a panel the app opens and never restores.
+{
+  check(
+    "the viewer is a real panel",
+    DOCK_PANEL_IDS.includes("viewer"),
+    DOCK_PANEL_IDS.join(", "),
+  );
+  check(
+    "but not a restorable one",
+    !RESTORABLE_PANEL_IDS.includes("viewer"),
+    RESTORABLE_PANEL_IDS.join(", "),
+  );
+  check(
+    "every other panel still restores",
+    RESTORABLE_PANEL_IDS.length === DOCK_PANEL_IDS.length - 1,
+    `${RESTORABLE_PANEL_IDS.length} of ${DOCK_PANEL_IDS.length}`,
+  );
+
+  // A desk saved while a file was open: the viewer's group goes, the rest
+  // of the layout survives around it.
+  const d = desk();
+  (d.panels as Record<string, unknown>)["viewer"] = {
+    id: "viewer",
+    contentComponent: "viewer",
+    title: "notes.md",
+  };
+  d.grid.root.data.push(leaf("gv", ["viewer"]));
+  const out = sanitizeDockLayout(d, RESTORABLE_PANEL_IDS)!;
+  check("a saved viewer does not come back", !("viewer" in (out.panels as object)));
+  const root = (out.grid as { root: { data: { data: { id: string } }[] } }).root;
+  check(
+    "and its group leaves with it",
+    !root.data.some((n) => n.data.id === "gv"),
+    root.data.length,
+  );
+  check(
+    "while the rest of the desk survives",
+    Object.keys(out.panels as object).length === 5,
+    Object.keys(out.panels as object).join(", "),
+  );
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL DOCK-LAYOUT CHECKS PASSED");

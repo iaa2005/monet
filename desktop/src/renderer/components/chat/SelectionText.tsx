@@ -47,7 +47,7 @@ function Chip({
     <span
       title={refHit ? tooltipFor(refHit) : label}
       style={{ color: c.fg, background: c.bg }}
-      className="mx-0.5 inline-flex items-center gap-1 rounded-full py-px pl-1.5 pr-2 align-baseline font-medium"
+      className="mx-0.5 inline-flex items-center gap-1 rounded-sm pl-1 pr-1 align-baseline font-medium translate-y-1 -mt-1"
     >
       {/* The crop lives ON the chip: the browser tool made it, so it is part
           of the reference rather than a file anyone chose to attach. */}

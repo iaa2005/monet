@@ -259,7 +259,7 @@ export function BrowserPanel(): JSX.Element {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Tab strip */}
-      <div className="flex items-center gap-1 border-b border-border px-1.5 py-1">
+      <div className="flex items-center gap-1 px-1.5 py-1">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
           {tabs.map((t) => (
             <button
@@ -515,7 +515,7 @@ export function BrowserPanel(): JSX.Element {
           </div>
         )}
         {designError && (
-          <div className="absolute inset-x-0 top-0 border-b border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+          <div className="absolute inset-x-0 top-0 border-b border-border px-3 py-2 text-xs text-muted-foreground">
             {designError}
           </div>
         )}

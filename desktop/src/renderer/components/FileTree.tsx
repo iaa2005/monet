@@ -448,13 +448,13 @@ export function FileTree({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b p-2">
+      <div className="border-b">
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search files…"
-          className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+          className="w-full px-2 py-1 text-xs"
         />
       </div>
 

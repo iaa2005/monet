@@ -1267,3 +1267,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
     },
   };
 });
+
+/**
+ * Test seam — see the note in dock-store.ts.
+ *
+ * The dev server, and any harness that loads the BUILT renderer without the
+ * preload bridge (scripts/dock-click-probe.cjs). Never the real app: there,
+ * contextBridge has published electronAPI before this module evaluates.
+ */
+if (import.meta.env.DEV || !(window as { electronAPI?: unknown }).electronAPI)
+  (window as unknown as { __monetChat?: unknown }).__monetChat = useChatStore;

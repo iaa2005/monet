@@ -391,7 +391,7 @@ export function FileCard({
     <div
       className={cn(
         "group glass-panel rounded-2xl border border-border",
-        surface === "panel" ? "bg-card" : "bg-background",
+        surface === "panel" ? "bg-card" : "bg-card",
       )}
     >
     {/* overflow-hidden here is the crop: the sheet is taller than its box and

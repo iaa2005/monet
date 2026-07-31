@@ -152,6 +152,52 @@ app.whenReady().then(async () => {
     );
   }
 
+  // ── 4b. Opening a file raises the viewer panel ──────────────────────
+  //
+  // The file preview used to cover the conversation; it is a dock panel now,
+  // opened beside the chat. Both directions are the contract: a file opened
+  // anywhere raises and names the panel, and closing the panel's tab clears
+  // the file — without that second half the panel reopens the instant it is
+  // closed, which is the loop this replays.
+  {
+    await js(`window.__monetChat.getState().openViewer({
+      name: 'notes.md', path: 'D:/tmp/notes.md',
+      mediaType: 'text/markdown', kind: 'file', source: 'file',
+    })`);
+    await new Promise((r) => setTimeout(r, 1200));
+    const opened = await js(`(() => ({
+      tabs: [...document.querySelectorAll('.dv-tab')].map(t => t.textContent.trim()),
+      groups: document.querySelectorAll('.dv-groupview').length,
+    }))()`);
+    check(
+      "opening a file raises a viewer panel named after it",
+      opened.tabs.some((t) => t.includes("notes.md")),
+      JSON.stringify(opened),
+    );
+    check(
+      "beside the chat, not on top of it",
+      opened.groups >= 2 && opened.tabs.some((t) => t.includes("Chat")),
+      JSON.stringify(opened),
+    );
+
+    // Closing the tab closes the file — and it stays closed.
+    await js(`(() => {
+      const tab = [...document.querySelectorAll('.dv-tab')].find(t => t.textContent.includes('notes.md'));
+      tab.querySelector('button').click();
+    })()`);
+    await new Promise((r) => setTimeout(r, 1000));
+    const closed = await js(`(() => ({
+      tabs: [...document.querySelectorAll('.dv-tab')].map(t => t.textContent.trim()),
+      viewer: !!window.__monetChat.getState().viewer,
+    }))()`);
+    check(
+      "closing the tab clears the open file",
+      !closed.viewer && !closed.tabs.some((t) => t.includes("notes.md")),
+      JSON.stringify(closed),
+    );
+    check("and the chat is still there", closed.tabs.some((t) => t.includes("Chat")));
+  }
+
   // ── 5. Detach opens a REAL window, dressed in the app's theme ───────
   //
   // The probe window has no window-open handler, so window.open is allowed —
