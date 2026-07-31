@@ -73,19 +73,17 @@ Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>, or the cursor button in the
 browser toolbar. Now clicking an element on the page picks it instead of
 activating it.
 
-| | |
-|---|---|
-| click | select an element |
-| <kbd>Ctrl</kbd>+click | add another to the selection |
-| <kbd>Alt</kbd>+click | select and send to the composer in one gesture |
-| <kbd>Shift</kbd>+drag | mark a region |
-| <kbd>Enter</kbd> | send what is selected |
-| <kbd>Esc</kbd> | clear the selection, then leave design mode |
+Hover outlines what is under the cursor. **Click it, and it is in your message.**
+Click another and that one joins it. Click a picked element again to take it
+back off, and press the button (or <kbd>Esc</kbd>) when you are done.
+
+There is nothing else to learn — no modifier keys, no separate "add to chat"
+step. Each picked element keeps its outline in its own colour, and that colour
+is the chip's, so you can see at a glance which box became which reference.
 
 What you picked lands **in the message box**, at the cursor, as a reference:
-`сделать align center у ⟨Hero⟩`. It is ordinary text — write around it, select
-it, copy it, delete it. Backspace just after one removes the whole reference in
-a single press.
+`сделать align center у ⟨Hero⟩`. The chip is a single object: write around it,
+select it, copy it, and delete it with one press of Backspace.
 
 The reference is what carries the element, so deleting it is how you change
 your mind: no reference, no context sent. Behind it travels a **description** —
@@ -98,12 +96,13 @@ grepping your workspace. Visible text is searched for before component names,
 because a build can rename `SaveButton` to `t` while "Save changes" stays in the
 source exactly as it is on screen.
 
-Selecting two elements and asking for one to match the other works: the message
-says they were chosen together, so the change is read as being about the
-relationship.
+Picking two and asking for one to match the other works: both references travel
+in the same message, so the change reads as being about the pair.
 
-Marking a region grabs the frame at the moment you start dragging, so an
-annotation on an animated page describes the state you were looking at.
+One gesture beyond the click survives, unadvertised because it is rarely what
+you want: <kbd>Shift</kbd>+drag marks an *area* rather than an element, for
+"this bit is too crowded". It grabs the frame at the moment the drag starts, so
+an annotation on an animated page describes the state you were looking at.
 
 ## What the agent can do
 

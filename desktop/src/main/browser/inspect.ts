@@ -102,14 +102,6 @@ const OVERLAY_CSS = `
   font: 500 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
   box-shadow: 0 1px 4px rgba(0,0,0,.25);
 }
-.hint {
-  position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
-  pointer-events: none; background: rgba(17,17,19,.92); color: #f4f6f8;
-  border-radius: 7px; padding: 5px 11px;
-  font: 500 11px/1.5 ui-sans-serif, system-ui, sans-serif;
-  box-shadow: 0 2px 10px rgba(0,0,0,.35);
-}
-.hint b { color: #a5b4fc; font-weight: 600; }
 `;
 
 /**
@@ -132,7 +124,7 @@ const OVERLAY_SCRIPT = `
   function tone(i) { return PALETTE[Math.abs(toneBase + i) % PALETTE.length]; }
 
   var enabled = false;
-  var host = null, root = null, hover = null, label = null, marquee = null, hint = null;
+  var host = null, root = null, hover = null, label = null, marquee = null;
   var hoverEl = null;
   var selected = [];
   var drag = null;
@@ -345,14 +337,14 @@ const OVERLAY_SCRIPT = `
     };
   }
 
-  function payload(extra) {
+  function payloadFor(els, extra) {
     var p = {
       url: location.href,
       title: document.title,
       viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio || 1 },
-      elements: selected.map(describe)
+      elements: els.map(describe)
     };
-    for (var k in extra) p[k] = extra[k];
+    for (var k in extra || {}) p[k] = extra[k];
     return p;
   }
 
@@ -370,11 +362,8 @@ const OVERLAY_SCRIPT = `
     hover = document.createElement('div'); hover.className = 'box';
     label = document.createElement('div'); label.className = 'label';
     marquee = document.createElement('div'); marquee.className = 'marquee';
-    hint = document.createElement('div'); hint.className = 'hint';
-    hint.innerHTML = '<b>click</b> select · <b>ctrl+click</b> add · ' +
-      '<b>alt+click</b> send · <b>shift+drag</b> region · <b>enter</b> send · <b>esc</b> exit';
     root.appendChild(hover); root.appendChild(label);
-    root.appendChild(marquee); root.appendChild(hint);
+    root.appendChild(marquee);
     document.documentElement.appendChild(host);
   }
 
@@ -408,9 +397,9 @@ const OVERLAY_SCRIPT = `
     }
     for (var i = 0; i < boxes.length; i++) {
       if (i < selected.length) {
-        var sr = selected[i].getBoundingClientRect();
+        var sr = selected[i].el.getBoundingClientRect();
         place(boxes[i], { x: sr.x, y: sr.y, w: sr.width, h: sr.height });
-        var c = tone(i);
+        var c = PALETTE[Math.abs(selected[i].tone) % PALETTE.length];
         boxes[i].style.borderColor = c.border;
         boxes[i].style.background = c.fill;
       } else {
@@ -418,10 +407,14 @@ const OVERLAY_SCRIPT = `
       }
     }
 
-    if (hoverEl && selected.indexOf(hoverEl) < 0) {
+    var picked = false;
+    for (var k = 0; k < selected.length; k++) {
+      if (selected[k].el === hoverEl) { picked = true; break; }
+    }
+    if (hoverEl && !picked) {
       var r = hoverEl.getBoundingClientRect();
       place(hover, { x: r.x, y: r.y, w: r.width, h: r.height });
-      var hc = tone(selected.length);
+      var hc = tone(0);
       hover.style.borderColor = hc.border;
       hover.style.background = hc.fill;
       label.style.background = hc.label;
@@ -494,7 +487,7 @@ const OVERLAY_SCRIPT = `
           x: Math.min(d.x0, d.x1), y: Math.min(d.y0, d.y1),
           w: Math.abs(d.x1 - d.x0), h: Math.abs(d.y1 - d.y0)
         };
-        send({ type: 'selection', target: 'composer', data: payload({ region: region }) });
+        send({ type: 'selection', target: 'composer', data: payloadFor([], { region: region }) });
       }
       schedule();
     }
@@ -507,17 +500,20 @@ const OVERLAY_SCRIPT = `
     var el = elementAt(e);
     if (!el) return;
 
-    if (e.ctrlKey || e.metaKey) {
-      var at = selected.indexOf(el);
-      if (at >= 0) selected.splice(at, 1); else selected.push(el);
-    } else {
-      selected = [el];
+    // Already picked: clicking it again takes it back off.
+    for (var i = 0; i < selected.length; i++) {
+      if (selected[i].el === el) {
+        selected.splice(i, 1);
+        schedule();
+        return;
+      }
     }
-    schedule();
 
-    if (e.altKey && selected.length) {
-      send({ type: 'selection', target: 'composer', data: payload({}) });
-    }
+    // One click, one chip. The box stays so you can see what you picked, and
+    // it keeps the colour it was given — a later pick must not recolour it.
+    selected.push({ el: el, tone: toneBase });
+    schedule();
+    send({ type: 'selection', target: 'composer', data: payloadFor([el]) });
   }
 
   function onKey(e) {
@@ -527,10 +523,6 @@ const OVERLAY_SCRIPT = `
       if (selected.length) { selected = []; schedule(); }
       else { disable(); send({ type: 'exit' }); }
       return;
-    }
-    if (e.key === 'Enter' || (e.key === 'l' && (e.ctrlKey || e.metaKey))) {
-      e.preventDefault(); e.stopPropagation();
-      if (selected.length) send({ type: 'selection', target: 'composer', data: payload({}) });
     }
   }
 
