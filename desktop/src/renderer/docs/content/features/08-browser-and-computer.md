@@ -55,9 +55,13 @@ as `external` and gets no stop button — the port is answering, but the process
 is not ours to kill. Anything the panel did start is stopped when the app
 quits, along with everything it spawned.
 
-The agent is told what is declared and whether it is up, so "check the page"
-turns into "your lk-dev server isn't running" rather than a second copy of it
-on the next free port.
+The agent has a **DevServer** tool for the same list — list, start, stop, or
+declare a new one. It is told to use that instead of the shell, because a dev
+server never exits: started from a shell it either hangs the turn or leaves a
+process nothing owns — missing from this list, unstoppable, still holding the
+port after the chat ends. Started through the tool it is one of these rows,
+and starting waits for the port to answer rather than being followed by a
+guess at how long it takes.
 
 ### Links in the chat
 

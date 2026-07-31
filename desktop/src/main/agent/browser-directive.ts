@@ -80,10 +80,19 @@ export function browserDirective(): string {
   if (idle.length > 0) {
     lines.push(
       "",
-      "Declared in this project but NOT running (the user starts these from the Browser panel):",
+      "Declared in this project but NOT running — start with DevServer, not the shell:",
     );
     for (const d of idle) lines.push(`  ${d.name} — \`${d.command}\` on :${d.port}`);
   }
+
+  // Said outright, because the shell is the obvious wrong answer: a dev server
+  // never exits, so a shell call either hangs the turn or leaves a process
+  // nothing owns — invisible in the panel, unstoppable, still holding the port.
+  lines.push(
+    "",
+    "Use the DevServer tool to start or stop a dev server. Never start one with",
+    "the shell: it will not exit, and nothing will be able to stop it.",
+  );
 
   return `<browser>\n${lines.join("\n")}\n</browser>`;
 }

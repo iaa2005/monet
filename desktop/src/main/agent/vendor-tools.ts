@@ -85,6 +85,7 @@ import {
   BrowserTabsTool,
   BrowserTypeTool,
 } from "./browser-tools.js";
+import { DevServerTool } from "./dev-server-tool.js";
 import { getBrowserConfig } from "../browser/config.js";
 import { currentPageUrl } from "../browser/page.js";
 import { ComputerTool } from "./computer-tools.js";
@@ -106,6 +107,9 @@ const BROWSER_TOOL_NAMES = new Set([
   "BrowserEval",
   "BrowserResize",
   "BrowserTabs",
+  // Same gate: a tool that spawns processes belongs with the browser it exists
+  // to serve, not on by default.
+  "DevServer",
 ]);
 import {
   callMcpTool,
@@ -258,6 +262,7 @@ const ALL_TOOLS = [
   BrowserEvalTool,
   BrowserResizeTool,
   BrowserTabsTool,
+  DevServerTool,
   ComputerTool,
   ...CONNECTOR_TOOLS,
   CreateRoutineTool,

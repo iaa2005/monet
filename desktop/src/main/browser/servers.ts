@@ -215,6 +215,48 @@ export async function serverStates(workspace: string): Promise<ServerState[]> {
   );
 }
 
+/** Find one by id, or by the name a person (or a model) would use. */
+export function findServer(workspace: string, key: string): ServerConfig | null {
+  const list = readServers(workspace);
+  const k = key.trim().toLowerCase();
+  return (
+    list.find((s) => s.id.toLowerCase() === k) ??
+    list.find((s) => s.name.toLowerCase() === k) ??
+    null
+  );
+}
+
+/**
+ * Start it and wait until the port actually answers.
+ *
+ * The awaitable version exists for the agent. Without it the model starts a
+ * server, immediately navigates to a port nothing is listening on yet, gets a
+ * connection refused, and concludes the site is broken — which is why a model
+ * with only a shell ends up writing `sleep 5` and hoping.
+ */
+export async function startAndWait(
+  workspace: string,
+  id: string,
+  timeoutMs = 60_000,
+): Promise<{ ok: boolean; error?: string }> {
+  const config = readServers(workspace).find((s) => s.id === id);
+  if (!config) return { ok: false, error: `No server ${id}` };
+  if (await portOpen(config.port))
+    return { ok: false, error: `Something is already on :${config.port}.` };
+
+  startServer(workspace, id);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 400));
+    if (await portOpen(config.port)) return { ok: true };
+    const live = running.get(id);
+    if (live?.status === "failed")
+      return { ok: false, error: live.error ?? "it exited" };
+    if (!live) return { ok: false, error: "the process exited" };
+  }
+  return { ok: false, error: `nothing came up on :${config.port} in time` };
+}
+
 export function startServer(workspace: string, id: string): void {
   if (running.has(id)) return;
   const config = readServers(workspace).find((s) => s.id === id);

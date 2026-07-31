@@ -25,7 +25,8 @@ export interface DevServer {
 
 /** Ports the popular toolchains pick when nothing says otherwise. */
 const COMMON_PORTS = [
-  3000, 3001, 4200, 4321, 5000, 5173, 5174, 8000, 8080, 8081, 1313,
+  // 4173 is `vite preview`, which is what an agent reaches for after a build.
+  3000, 3001, 4173, 4200, 4321, 5000, 5173, 5174, 8000, 8080, 8081, 1313,
 ];
 
 /** True when something is listening on 127.0.0.1:port. */
