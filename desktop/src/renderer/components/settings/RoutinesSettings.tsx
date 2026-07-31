@@ -1,7 +1,13 @@
 /**
  * Routines — templated agent tasks kicked off on a schedule (cron), manually,
- * or (later) by webhook/connector event. Draft one from natural language, start
- * from a template, or hand-edit. Each run produces a new chat.
+ * or by webhook/connector event. Draft one from natural language, start from a
+ * template, or hand-edit. Each run produces a new chat.
+ *
+ * The shape is Cursor's automations editor, deliberately: a LIST of routines,
+ * and a DETAIL page that replaces it inside the same panel — never a modal.
+ * The detail page reads as sections (Triggers / Instructions / Tools /
+ * Output), with the trigger written as a human sentence whose blanks are the
+ * controls, and a Run History tab with the last runs and their outcomes.
  */
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -20,13 +26,23 @@ import {
   Trash2,
   Loader2,
   ExternalLink,
+  ArrowLeft,
+  ChevronRight,
+  CalendarClock,
+  Webhook,
+  Radio,
+  Hand,
   type LucideIcon,
 } from "lucide-react";
-import { Modal } from "@/components/ui/modal";
 import { Switch } from "@/components/ui/switch";
 import { MicButton } from "@/components/chat/MicButton";
 import { cn } from "@/lib/utils";
-import type { ElectronAPI, Routine, UiConnectorService } from "@/types/electron";
+import type {
+  ElectronAPI,
+  Routine,
+  RoutineRun,
+  UiConnectorService,
+} from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -86,6 +102,53 @@ const TEMPLATES: Template[] = [
 function emptyDraft(): Draft {
   return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", eventConnector: "", eventType: "", eventInterval: 15, eventFilter: "", connectors: [], grants: [], providerId: "", model: "", outputKind: "chat", outputConnector: "", condition: "", enabled: true };
 }
+
+function draftFromRoutine(r: RoutineRow): Draft {
+  return {
+    id: r.id,
+    name: r.name,
+    prompt: r.prompt,
+    space: r.space,
+    triggerKind:
+      r.trigger.kind === "webhook"
+        ? "webhook"
+        : r.trigger.kind === "manual"
+          ? "manual"
+          : r.trigger.kind === "event"
+            ? "event"
+            : "schedule",
+    cron: r.trigger.cron ?? "0 9 * * 1-5",
+    webhookId: r.trigger.webhookId,
+    eventConnector: r.trigger.event?.connector ?? "",
+    eventType: r.trigger.event?.type ?? "",
+    eventInterval: r.trigger.event?.intervalMinutes ?? 15,
+    eventFilter: r.trigger.event?.filter ?? "",
+    connectors: r.connectors ?? [],
+    grants: r.grants ?? [],
+    providerId: r.providerId ?? "",
+    model: r.model ?? "",
+    outputKind: r.output?.kind ?? "chat",
+    outputConnector: r.output?.connector ?? "",
+    condition: r.condition?.prompt ?? "",
+    enabled: r.enabled,
+  };
+}
+
+/** The one-line description a routine row shows for its trigger. */
+function triggerSentence(r: RoutineRow): string {
+  if (r.trigger.kind === "schedule")
+    return r.humanSchedule ?? r.trigger.cron ?? "on a schedule";
+  if (r.trigger.kind === "event")
+    return `every ${r.trigger.event?.intervalMinutes ?? 15}m · ${r.trigger.event?.type || r.trigger.event?.connector || "connector event"}`;
+  if (r.trigger.kind === "webhook") return "on webhook";
+  return "manual";
+}
+
+const SECTION =
+  "text-[11px] font-medium uppercase tracking-wider text-muted-foreground";
+const CARD = "rounded-lg border border-border bg-card";
+const FIELD =
+  "rounded-md border border-border bg-transparent px-2 py-1 text-xs outline-none focus:border-foreground/30";
 
 export function RoutinesSettings({
   onOpenChat,
@@ -148,9 +211,6 @@ export function RoutinesSettings({
     }
   };
 
-  const fromTemplate = (t: Template): void =>
-    setEditor({ ...emptyDraft(), name: t.name, prompt: t.prompt, cron: t.cron, space: t.space });
-
   const runNow = async (id: string): Promise<void> => {
     setRunningId(id);
     try {
@@ -164,13 +224,29 @@ export function RoutinesSettings({
     }
   };
 
-  const openLastResult = async (id: string): Promise<void> => {
-    const runs = (await api()?.routines.listRuns(id)) as
-      | { sessionId?: string }[]
-      | undefined;
-    const last = runs?.find((r) => r.sessionId);
-    if (last?.sessionId && onOpenChat) onOpenChat(last.sessionId);
-  };
+  // ── Detail page replaces the list inside the same panel ─────────────
+  if (editor)
+    return (
+      <RoutineDetail
+        draft={editor}
+        onBack={() => {
+          setEditor(null);
+          load();
+        }}
+        onSaved={(saved) => {
+          setEditor(saved);
+          setDesc("");
+          load();
+        }}
+        onDeleted={() => {
+          setEditor(null);
+          load();
+        }}
+        onOpenChat={onOpenChat}
+        runningId={runningId}
+        onRunNow={runNow}
+      />
+    );
 
   return (
     <div className="space-y-6">
@@ -181,8 +257,8 @@ export function RoutinesSettings({
             Routines
           </h3>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Templated routines that run on a schedule, webhook, or connector
-            event. Each run opens a new chat with the result.
+            Agent tasks that run on a schedule, webhook, or connector event.
+            Each run opens a chat with the result.
           </p>
         </div>
         <button
@@ -196,7 +272,7 @@ export function RoutinesSettings({
       </div>
 
       {/* What do you want automated? */}
-      <div className="glass-panel rounded-xl border border-border p-3 bg-card">
+      <div className={cn(CARD, "glass-panel p-3")}>
         <textarea
           value={desc}
           onChange={(e) => setDesc(e.target.value)}
@@ -237,19 +313,16 @@ export function RoutinesSettings({
         )}
       </div>
 
-      {/* Existing routines / empty */}
+      {/* Existing routines */}
       {routines.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-1 py-10 text-muted-foreground">
           <Clock className="size-6" />
           <span className="text-sm">No routines yet.</span>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className={cn(CARD, "glass-panel divide-y divide-border")}>
           {routines.map((r) => (
-            <div
-              key={r.id}
-              className="glass-panel flex items-center gap-3 rounded-xl border border-border p-3 bg-card"
-            >
+            <div key={r.id} className="group flex items-center gap-3 px-3 py-2.5">
               <Switch
                 checked={r.enabled}
                 onChange={(v) => {
@@ -261,78 +334,22 @@ export function RoutinesSettings({
               />
               <button
                 type="button"
-                onClick={() =>
-                  setEditor({
-                    id: r.id,
-                    name: r.name,
-                    prompt: r.prompt,
-                    space: r.space,
-                    triggerKind:
-                      r.trigger.kind === "webhook"
-                        ? "webhook"
-                        : r.trigger.kind === "manual"
-                          ? "manual"
-                          : r.trigger.kind === "event"
-                            ? "event"
-                            : "schedule",
-                    cron: r.trigger.cron ?? "0 9 * * 1-5",
-                    webhookId: r.trigger.webhookId,
-                    eventConnector: r.trigger.event?.connector ?? "",
-                    eventType: r.trigger.event?.type ?? "",
-                    eventInterval: r.trigger.event?.intervalMinutes ?? 15,
-                    eventFilter: r.trigger.event?.filter ?? "",
-                    connectors: r.connectors ?? [],
-                    grants: r.grants ?? [],
-                    providerId: r.providerId ?? "",
-                    model: r.model ?? "",
-                    outputKind: r.output?.kind ?? "chat",
-                    outputConnector: r.output?.connector ?? "",
-                    condition: r.condition?.prompt ?? "",
-                    enabled: r.enabled,
-                  })
-                }
+                onClick={() => setEditor(draftFromRoutine(r))}
                 className="min-w-0 flex-1 text-left"
               >
                 <div className="truncate text-sm font-medium">{r.name}</div>
                 <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Clock className="size-3" />
-                  {r.trigger.kind === "schedule"
-                    ? (r.humanSchedule ?? r.trigger.cron ?? "schedule")
-                    : r.trigger.kind === "event"
-                      ? `every ${r.trigger.event?.intervalMinutes ?? 15}m · ${r.trigger.event?.type || r.trigger.event?.connector || "event"}`
-                      : r.trigger.kind === "webhook"
-                        ? "webhook"
-                        : "manual"}
-                  {r.lastStatus && (
-                    <span
-                      className={cn(
-                        "ml-1 rounded px-1 py-0.5 text-[10px]",
-                        r.lastStatus === "ok" && "bg-green-bg text-green-text",
-                        r.lastStatus === "error" && "bg-red-bg text-red-text",
-                        r.lastStatus === "skipped" && "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      {r.lastStatus}
-                    </span>
-                  )}
+                  {triggerSentence(r)}
+                  {r.lastStatus && <StatusPill status={r.lastStatus} />}
                 </div>
               </button>
-              {r.lastStatus === "ok" && onOpenChat && (
-                <button
-                  type="button"
-                  onClick={() => void openLastResult(r.id)}
-                  title="Open last result chat"
-                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
-                >
-                  <ExternalLink className="size-4" />
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => void runNow(r.id)}
                 disabled={runningId === r.id}
                 title="Run now"
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all hover:bg-black/[0.05] hover:text-foreground group-hover:opacity-100 dark:hover:bg-white/[0.06]"
               >
                 {runningId === r.id ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -347,10 +364,11 @@ export function RoutinesSettings({
                   setRoutines((prev) => prev.filter((x) => x.id !== r.id));
                 }}
                 title="Delete"
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
               >
                 <Trash2 className="size-4" />
               </button>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground/50" />
             </div>
           ))}
         </div>
@@ -358,16 +376,19 @@ export function RoutinesSettings({
 
       {/* Templates */}
       <div>
-        <div className="mb-2 text-sm text-muted-foreground">
-          Or start from a template
-        </div>
+        <div className={cn(SECTION, "mb-2")}>Start from a template</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {TEMPLATES.map((t) => (
             <button
               key={t.name}
               type="button"
-              onClick={() => fromTemplate(t)}
-              className="glass-panel glass-hover rounded-xl border border-border p-3 text-left transition-colors min-h-30 flex flex-col justify-between bg-card"
+              onClick={() =>
+                setEditor({ ...emptyDraft(), name: t.name, prompt: t.prompt, cron: t.cron, space: t.space })
+              }
+              className={cn(
+                CARD,
+                "glass-panel glass-hover flex min-h-24 flex-col justify-between p-3 text-left transition-colors",
+              )}
             >
               <div>
                 <div className="flex items-center gap-2 text-sm font-medium">
@@ -385,35 +406,61 @@ export function RoutinesSettings({
           ))}
         </div>
       </div>
-
-      {editor && (
-        <RoutineEditor
-          draft={editor}
-          onClose={() => setEditor(null)}
-          onSaved={() => {
-            setEditor(null);
-            setDesc("");
-            load();
-          }}
-        />
-      )}
     </div>
   );
 }
 
-function RoutineEditor({
+function StatusPill({ status }: { status: RoutineRun["status"] }): JSX.Element {
+  return (
+    <span
+      className={cn(
+        "rounded-full px-2 py-0.5 text-[10px] font-medium",
+        status === "ok" && "bg-green-bg text-green-text",
+        status === "error" && "bg-red-bg text-red-text",
+        status === "running" && "bg-link/10 text-link",
+        status === "skipped" && "bg-muted text-muted-foreground",
+      )}
+    >
+      {status === "ok" ? "Succeeded" : status === "error" ? "Failed" : status}
+    </span>
+  );
+}
+
+// ─── Detail page: Settings | Run History, Cursor-style ─────────────────────
+
+const TRIGGER_META: Record<
+  Draft["triggerKind"],
+  { icon: LucideIcon; label: string }
+> = {
+  schedule: { icon: CalendarClock, label: "Schedule" },
+  event: { icon: Radio, label: "Connector event" },
+  webhook: { icon: Webhook, label: "Webhook" },
+  manual: { icon: Hand, label: "Manual" },
+};
+
+function RoutineDetail({
   draft,
-  onClose,
+  onBack,
   onSaved,
+  onDeleted,
+  onOpenChat,
+  runningId,
+  onRunNow,
 }: {
   draft: Draft;
-  onClose: () => void;
-  onSaved: () => void;
+  onBack: () => void;
+  onSaved: (saved: Draft) => void;
+  onDeleted: () => void;
+  onOpenChat?: (sessionId: string) => void;
+  runningId: string | null;
+  onRunNow: (id: string) => Promise<void>;
 }): JSX.Element {
   const [d, setD] = useState<Draft>(draft);
+  const [tab, setTab] = useState<"settings" | "history">("settings");
   const [preview, setPreview] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [dirty, setDirty] = useState(!draft.id);
   const [trig, setTrig] = useState<{ baseUrl: string; apiKey: string } | null>(null);
   // Connector accounts AND raw MCP servers — mcp.list() alone went blank once
   // connectors moved out of mcp-servers.json into the encrypted store.
@@ -424,7 +471,16 @@ function RoutineEditor({
   const [providers, setProviders] = useState<
     { id: string; name: string; model: string; models: { name: string; label?: string }[] }[]
   >([]);
+
+  const set = (patch: Partial<Draft>): void => {
+    setDirty(true);
+    setD((p) => ({ ...p, ...patch }));
+  };
+
   useEffect(() => {
+    void api()?.routines.triggerInfo().then(setTrig);
+    void api()?.connectors.options().then(setServers).catch(() => {});
+    void api()?.connectors.presets().then(setPresets).catch(() => {});
     void api()
       ?.providers.list()
       .then((list) =>
@@ -442,7 +498,24 @@ function RoutineEditor({
       )
       .catch(() => {});
   }, []);
-  const set = (patch: Partial<Draft>): void => setD((p) => ({ ...p, ...patch }));
+
+  useEffect(() => {
+    let cancelled = false;
+    void api()
+      ?.routines.cronPreview(d.cron)
+      .then((r) => {
+        if (cancelled) return;
+        setPreview(
+          r.valid
+            ? `${r.human}${r.next ? ` · next ${new Date(r.next).toLocaleString()}` : ""}`
+            : "Invalid cron expression",
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [d.cron]);
+
   const grantOptions = useMemo(() => {
     const connected = new Map(servers.map((server) => [server.id, server]));
     const options = new Map<
@@ -491,29 +564,6 @@ function RoutineEditor({
     return [...options.values()];
   }, [presets, servers]);
 
-  useEffect(() => {
-    void api()?.routines.triggerInfo().then(setTrig);
-    void api()?.connectors.options().then(setServers).catch(() => {});
-    void api()?.connectors.presets().then(setPresets).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void api()
-      ?.routines.cronPreview(d.cron)
-      .then((r) => {
-        if (cancelled) return;
-        setPreview(
-          r.valid
-            ? `${r.human}${r.next ? ` · next ${new Date(r.next).toLocaleString()}` : ""}`
-            : "Invalid cron expression",
-        );
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [d.cron]);
-
   const save = async (): Promise<void> => {
     setError("");
     if (d.outputKind === "connector" && !d.outputConnector.trim()) {
@@ -556,9 +606,12 @@ function RoutineEditor({
       enabled: d.enabled,
     };
     try {
-      if (d.id) await api()?.routines.update(d.id, input);
-      else await api()?.routines.create(input);
-      onSaved();
+      const saved = d.id
+        ? await api()?.routines.update(d.id, input)
+        : await api()?.routines.create(input);
+      setDirty(false);
+      if (saved)
+        onSaved(draftFromRoutine(saved as RoutineRow));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save routine.");
     } finally {
@@ -566,358 +619,539 @@ function RoutineEditor({
     }
   };
 
+  const TriggerIcon = TRIGGER_META[d.triggerKind].icon;
+
   return (
-    <Modal open onClose={onClose} title={d.id ? "Edit routine" : "New routine"}>
-      <div className="space-y-3">
+    <div className="mx-auto max-w-3xl space-y-4">
+      {/* ── Header: back, title, status line ── */}
+      <div>
+        <button
+          type="button"
+          onClick={onBack}
+          className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-3.5" />
+          Routines
+        </button>
         <input
           value={d.name}
           onChange={(e) => set({ name: e.target.value })}
-          placeholder="Routine name"
-          className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/30"
+          placeholder="New routine"
+          className="w-full bg-transparent text-xl font-semibold outline-none placeholder:text-muted-foreground/60"
         />
-        <div>
-          <label className="text-xs text-muted-foreground">Instruction (runs each time)</label>
-          <textarea
-            value={d.prompt}
-            onChange={(e) => set({ prompt: e.target.value })}
-            rows={4}
-            placeholder="e.g. Summarize my open PRs and what needs attention."
-            className="mt-1 w-full resize-none rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/30"
-          />
-        </div>
-        <div className="flex items-center gap-4">
-          <div>
-            <label className="text-xs text-muted-foreground">Trigger</label>
-            <div className="mt-1 flex rounded-md border border-border p-0.5">
-              {(["schedule", "event", "webhook", "manual"] as const).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => set({ triggerKind: k })}
-                  className={cn(
-                    "rounded px-2.5 py-1.5 text-xs font-medium capitalize",
-                    d.triggerKind === k ? "bg-card shadow-sm" : "text-muted-foreground",
-                  )}
-                >
-                  {k}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground">Model</label>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <select
-                value={d.providerId}
-                onChange={(e) => set({ providerId: e.target.value, model: "" })}
-                className="rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none"
+        <div className="mt-1.5 flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <Switch checked={d.enabled} onChange={(v) => set({ enabled: v })} />
+            <span className={d.enabled ? "" : "text-muted-foreground"}>
+              {d.enabled ? "Active" : "Paused"}
+            </span>
+          </label>
+          <span className="text-muted-foreground">·</span>
+          <span className="text-sm capitalize text-muted-foreground">{d.space} space</span>
+          {d.id && (
+            <>
+              <span className="text-muted-foreground">·</span>
+              <button
+                type="button"
+                onClick={() => void onRunNow(d.id!)}
+                disabled={runningId === d.id}
+                className="flex items-center gap-1 text-sm text-link transition-opacity hover:opacity-80 disabled:opacity-50"
               >
-                <option value="">Whatever is active when it runs</option>
-                {providers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              {d.providerId && (
-                <select
-                  value={d.model}
-                  onChange={(e) => set({ model: e.target.value })}
-                  className="min-w-[12rem] flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none"
-                >
-                  <option value="">
-                    {providers.find((p) => p.id === d.providerId)?.model
-                      ? `Default (${providers.find((p) => p.id === d.providerId)?.model})`
-                      : "That provider's default"}
-                  </option>
-                  {(providers.find((p) => p.id === d.providerId)?.models ?? []).map(
-                    (m) => (
-                      <option key={m.name} value={m.name}>
-                        {m.label || m.name}
-                      </option>
-                    ),
-                  )}
-                </select>
-              )}
-            </div>
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground">Space</label>
-            <div className="mt-1 flex rounded-md border border-border p-0.5">
-              {(["code", "home"] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => set({ space: s })}
-                  className={cn(
-                    "rounded px-2.5 py-1.5 text-xs font-medium capitalize",
-                    d.space === s ? "bg-card shadow-sm" : "text-muted-foreground",
-                  )}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
+                {runningId === d.id ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Play className="size-3.5" />
+                )}
+                Run now
+              </button>
+            </>
+          )}
         </div>
+      </div>
 
-        {d.triggerKind === "schedule" && (
-          <SchedulePicker
-            cron={d.cron}
-            human={preview}
-            onChange={(c) => set({ cron: c })}
-          />
-        )}
-        {d.triggerKind === "webhook" && (
-          <div className="rounded-md border border-border bg-muted/40 p-2.5 text-[12px]">
-            {d.webhookId && trig ? (
-              <>
-                <div className="text-muted-foreground">POST this URL to run it:</div>
-                <code className="mt-1 block break-all font-mono text-[11px]">
-                  {trig.baseUrl}/webhook/{d.webhookId}
-                </code>
-              </>
-            ) : (
-              <span className="text-muted-foreground">
-                Save first — the webhook URL is generated on create. External
-                services need a tunnel (ngrok/cloudflared) to reach it.
-              </span>
+      {/* ── Tabs ── */}
+      <div className="flex items-center gap-1 border-b border-border">
+        {(["settings", "history"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            disabled={t === "history" && !d.id}
+            onClick={() => setTab(t)}
+            className={cn(
+              "-mb-px border-b-2 px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-40",
+              tab === t
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
-          </div>
-        )}
-        {d.triggerKind === "event" && (
-          <div className="space-y-2 rounded-md border border-border bg-muted/40 p-2.5">
-            <p className="text-[12px] text-muted-foreground">
-              Polls a connector and runs only when something new appears
-              (otherwise it skips). Needs the connector selected below.
-            </p>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="text-xs text-muted-foreground">Connector</label>
+          >
+            {t === "settings" ? "Settings" : "Run History"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "history" && d.id ? (
+        <RunHistory routineId={d.id} onOpenChat={onOpenChat} />
+      ) : (
+        <div className="space-y-5">
+          {/* ── Triggers ── */}
+          <section>
+            <div className={cn(SECTION, "mb-1.5")}>Triggers</div>
+            <div className={cn(CARD, "space-y-3 p-3")}>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <TriggerIcon className="size-4 shrink-0 text-muted-foreground" />
                 <select
-                  value={d.eventConnector}
-                  onChange={(e) => set({ eventConnector: e.target.value })}
-                  className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-2 text-sm outline-none focus:border-foreground/30"
+                  value={d.triggerKind}
+                  onChange={(e) =>
+                    set({ triggerKind: e.target.value as Draft["triggerKind"] })
+                  }
+                  className={FIELD}
                 >
-                  <option value="">Any connected</option>
-                  {servers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.label}
+                  {(Object.keys(TRIGGER_META) as Draft["triggerKind"][]).map((k) => (
+                    <option key={k} value={k}>
+                      {TRIGGER_META[k].label}
                     </option>
                   ))}
                 </select>
+                {d.triggerKind === "schedule" && (
+                  <ScheduleSentence cron={d.cron} onChange={(c) => set({ cron: c })} />
+                )}
+                <span className="text-muted-foreground">in</span>
+                <select
+                  value={d.space}
+                  onChange={(e) => set({ space: e.target.value as "home" | "code" })}
+                  className={FIELD}
+                >
+                  <option value="code">code</option>
+                  <option value="home">home</option>
+                </select>
               </div>
-              <div className="w-24">
-                <label className="text-xs text-muted-foreground">Every (min)</label>
+              {d.triggerKind === "schedule" && (
+                <p className="pl-6 text-xs text-muted-foreground">{preview}</p>
+              )}
+
+              {d.triggerKind === "event" && (
+                <div className="space-y-2 pl-6">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">Watch</span>
+                    <select
+                      value={d.eventConnector}
+                      onChange={(e) => set({ eventConnector: e.target.value })}
+                      className={FIELD}
+                    >
+                      <option value="">any connected</option>
+                      {servers.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-muted-foreground">every</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={d.eventInterval}
+                      onChange={(e) => set({ eventInterval: Number(e.target.value) || 15 })}
+                      className={cn(FIELD, "w-16")}
+                    />
+                    <span className="text-muted-foreground">minutes</span>
+                  </div>
+                  <input
+                    value={d.eventType}
+                    onChange={(e) => set({ eventType: e.target.value })}
+                    placeholder="Event to watch — e.g. merged pull request, new critical error"
+                    className={cn(FIELD, "w-full px-3 py-2 text-sm")}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Runs only when something new appears; otherwise the run is skipped.
+                  </p>
+                </div>
+              )}
+              {d.triggerKind === "webhook" && (
+                <div className="pl-6 text-xs">
+                  {d.webhookId && trig ? (
+                    <>
+                      <span className="text-muted-foreground">POST this URL to run it: </span>
+                      <code className="break-all font-mono text-[11px]">
+                        {trig.baseUrl}/webhook/{d.webhookId}
+                      </code>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      Save first — the webhook URL is generated on create. External
+                      services need a tunnel (ngrok/cloudflared) to reach it.
+                    </span>
+                  )}
+                </div>
+              )}
+              {d.triggerKind === "manual" && (
+                <p className="pl-6 text-xs text-muted-foreground">
+                  Runs only when you press Run, or via the API below.
+                </p>
+              )}
+
+              {/* Condition is part of WHEN it runs, so it lives with the trigger. */}
+              <div className="flex items-center gap-2 border-t border-border pt-2.5 text-sm">
+                <span className="shrink-0 pl-6 text-muted-foreground">only if</span>
                 <input
-                  type="number"
-                  min={1}
-                  value={d.eventInterval}
-                  onChange={(e) => set({ eventInterval: Number(e.target.value) || 15 })}
-                  className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-2 text-sm outline-none focus:border-foreground/30"
+                  value={d.condition}
+                  onChange={(e) => set({ condition: e.target.value })}
+                  placeholder="always — or e.g. there are new critical Sentry errors"
+                  className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
                 />
               </div>
             </div>
-            <input
-              value={d.eventType}
-              onChange={(e) => set({ eventType: e.target.value })}
-              placeholder="Event to watch — e.g. merged pull request, new critical error"
-              className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/30"
-            />
-          </div>
-        )}
-        {d.triggerKind === "manual" && (
-          <p className="text-[12px] text-muted-foreground">
-            Runs only when you press Run, or via the API below.
-          </p>
-        )}
-        {d.id && trig && (
-          <div className="rounded-md border border-border bg-muted/40 p-2.5 text-[11px] text-muted-foreground">
-            API: <code className="font-mono">POST {trig.baseUrl}/run/{d.id}</code>{" "}
-            with header{" "}
-            <code className="font-mono">Authorization: Bearer {trig.apiKey}</code>
-          </div>
-        )}
-        <div>
-          <label className="text-xs text-muted-foreground">Output</label>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <div className="flex rounded-md border border-border p-0.5">
-              {(["chat", "notification", "connector"] as const).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => set({ outputKind: k })}
-                  className={cn(
-                    "rounded px-2.5 py-1.5 text-xs font-medium capitalize",
-                    d.outputKind === k ? "bg-card shadow-sm" : "text-muted-foreground",
-                  )}
+          </section>
+
+          {/* ── Instructions ── */}
+          <section>
+            <div className={cn(SECTION, "mb-1.5")}>Instructions</div>
+            <div className={CARD}>
+              <textarea
+                value={d.prompt}
+                onChange={(e) => set({ prompt: e.target.value })}
+                rows={6}
+                placeholder="What should the agent do each time? e.g. Summarize my open PRs and what needs attention."
+                className="w-full resize-none bg-transparent px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground/60"
+              />
+              <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
+                <select
+                  value={d.providerId}
+                  onChange={(e) => set({ providerId: e.target.value, model: "" })}
+                  className="max-w-[16rem] bg-transparent text-xs text-muted-foreground outline-none"
                 >
-                  {k}
-                </button>
-              ))}
-            </div>
-            {d.outputKind === "connector" && (
-              <select
-                value={d.outputConnector}
-                onChange={(e) => set({ outputConnector: e.target.value })}
-                className="rounded-md border border-border bg-transparent px-2 py-2 text-sm outline-none focus:border-foreground/30"
-              >
-                <option value="">Pick a connector</option>
-                {servers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            {d.outputKind === "chat"
-              ? "Each run opens a new chat with the result."
-              : d.outputKind === "notification"
-                ? "A native notification with the result (a chat is still saved)."
-                : "The agent posts the result to the connector (a chat is still saved)."}
-          </p>
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">
-            Condition (optional) — run only if this holds; the agent checks it first
-          </label>
-          <input
-            value={d.condition}
-            onChange={(e) => set({ condition: e.target.value })}
-            placeholder="e.g. there are new critical Sentry errors"
-            className="mt-1 w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/30"
-          />
-        </div>
-        {servers.length > 0 && (
-          <div>
-            <label className="text-xs text-muted-foreground">
-              Connectors — tools this routine may use (none selected = all)
-            </label>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {servers.map((s) => {
-                const on = d.connectors.includes(s.id);
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    title={s.kind === "mcp" ? "Raw MCP server" : "Connector"}
-                    onClick={() =>
-                      set({
-                        connectors: on
-                          ? d.connectors.filter((x) => x !== s.id)
-                          : [...d.connectors, s.id],
-                      })
-                    }
-                    className={cn(
-                      "rounded-md border px-2 py-1 text-xs transition-colors",
-                      on
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border text-muted-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
-                    )}
+                  <option value="">Whatever model is active when it runs</option>
+                  {providers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                {d.providerId && (
+                  <select
+                    value={d.model}
+                    onChange={(e) => set({ model: e.target.value })}
+                    className="max-w-[16rem] bg-transparent text-xs text-muted-foreground outline-none"
                   >
-                    {s.label}
-                  </button>
-                );
-              })}
+                    <option value="">
+                      {providers.find((p) => p.id === d.providerId)?.model
+                        ? `Default (${providers.find((p) => p.id === d.providerId)?.model})`
+                        : "That provider's default"}
+                    </option>
+                    {(providers.find((p) => p.id === d.providerId)?.models ?? []).map(
+                      (m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.label || m.name}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-        {grantOptions.some((option) => option.access !== "read") && (
-          <div>
-            <label className="text-xs text-muted-foreground">
-              Unattended permissions — allow write actions when nobody is watching
-            </label>
-            <div className="mt-1 space-y-1 rounded-md border border-border p-2">
-              {grantOptions
-                .filter((option) => option.access !== "read")
-                .map((option) => {
-                  const checked = d.grants.includes(option.actionId);
-                  const destructive = option.access === "destructive";
+          </section>
+
+          {/* ── Tools ── */}
+          {servers.length > 0 && (
+            <section>
+              <div className={cn(SECTION, "mb-1.5")}>Tools</div>
+              <div className={cn(CARD, "divide-y divide-border")}>
+                {servers.map((s) => {
+                  const on = d.connectors.includes(s.id);
                   return (
                     <label
-                      key={option.actionId}
-                      className={cn(
-                        "flex items-center gap-2 text-xs",
-                        destructive && "text-muted-foreground",
-                      )}
-                      title={
-                        destructive
-                          ? "Destructive actions cannot be granted to unattended runs"
-                          : undefined
-                      }
+                      key={s.id}
+                      className="flex cursor-pointer items-center gap-2.5 px-3 py-2"
+                      title={s.kind === "mcp" ? "Raw MCP server" : "Connector"}
                     >
-                      <input
-                        type="checkbox"
-                        checked={checked && !destructive}
-                        disabled={destructive}
-                        onChange={(e) =>
+                      <span className="min-w-0 flex-1 truncate text-sm">{s.label}</span>
+                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
+                        {s.kind}
+                      </span>
+                      <Switch
+                        checked={on}
+                        onChange={() =>
                           set({
-                            grants: e.target.checked
-                              ? [...d.grants, option.actionId]
-                              : d.grants.filter((id) => id !== option.actionId),
+                            connectors: on
+                              ? d.connectors.filter((x) => x !== s.id)
+                              : [...d.connectors, s.id],
                           })
                         }
                       />
-                      <span>
-                        {option.connectorLabel}: {option.actionLabel}
-                        {destructive ? " (never unattended)" : ""}
-                      </span>
                     </label>
                   );
                 })}
+                <p className="px-3 py-2 text-xs text-muted-foreground">
+                  Nothing selected = the default toolset. Read actions are always
+                  available; writes below need a grant.
+                </p>
+              </div>
+            </section>
+          )}
+
+          {/* ── Unattended permissions ── */}
+          {grantOptions.some((option) => option.access !== "read") && (
+            <section>
+              <div className={cn(SECTION, "mb-1.5")}>Unattended permissions</div>
+              <div className={cn(CARD, "divide-y divide-border")}>
+                {grantOptions
+                  .filter((option) => option.access !== "read")
+                  .map((option) => {
+                    const checked = d.grants.includes(option.actionId);
+                    const destructive = option.access === "destructive";
+                    return (
+                      <label
+                        key={option.actionId}
+                        className={cn(
+                          "flex items-center gap-2.5 px-3 py-2 text-sm",
+                          destructive ? "text-muted-foreground" : "cursor-pointer",
+                        )}
+                        title={
+                          destructive
+                            ? "Destructive actions cannot be granted to unattended runs"
+                            : undefined
+                        }
+                      >
+                        <span className="min-w-0 flex-1 truncate">
+                          {option.connectorLabel}: {option.actionLabel}
+                          {destructive ? " (never unattended)" : ""}
+                        </span>
+                        <Switch
+                          checked={checked && !destructive}
+                          disabled={destructive}
+                          onChange={(v) =>
+                            set({
+                              grants: v
+                                ? [...d.grants, option.actionId]
+                                : d.grants.filter((id) => id !== option.actionId),
+                            })
+                          }
+                        />
+                      </label>
+                    );
+                  })}
+                <p className="px-3 py-2 text-xs text-muted-foreground">
+                  Connector-level Deny still takes precedence over a routine grant.
+                </p>
+              </div>
+            </section>
+          )}
+
+          {/* ── Output ── */}
+          <section>
+            <div className={cn(SECTION, "mb-1.5")}>Output</div>
+            <div className={cn(CARD, "space-y-2 p-3")}>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex rounded-md border border-border p-0.5">
+                  {(["chat", "notification", "connector"] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => set({ outputKind: k })}
+                      className={cn(
+                        "rounded px-2.5 py-1 text-xs font-medium capitalize",
+                        d.outputKind === k
+                          ? "bg-black/[0.06] dark:bg-white/[0.08]"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      {k}
+                    </button>
+                  ))}
+                </div>
+                {d.outputKind === "connector" && (
+                  <select
+                    value={d.outputConnector}
+                    onChange={(e) => set({ outputConnector: e.target.value })}
+                    className={FIELD}
+                  >
+                    <option value="">Pick a connector</option>
+                    {servers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {d.outputKind === "chat"
+                  ? "Each run opens a new chat with the result."
+                  : d.outputKind === "notification"
+                    ? "A native notification with the result (a chat is still saved)."
+                    : "The agent posts the result to the connector (a chat is still saved)."}
+              </p>
             </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Read actions are available automatically. Connector-level Deny still
-              takes precedence over a routine grant.
+          </section>
+
+          {/* ── API access ── */}
+          {d.id && trig && (
+            <section>
+              <div className={cn(SECTION, "mb-1.5")}>API</div>
+              <div className={cn(CARD, "p-3 text-[11px] text-muted-foreground")}>
+                <code className="font-mono">POST {trig.baseUrl}/run/{d.id}</code> with
+                header <code className="font-mono">Authorization: Bearer {trig.apiKey}</code>
+              </div>
+            </section>
+          )}
+
+          {error && (
+            <p role="alert" className="text-xs text-destructive">
+              {error}
             </p>
-          </div>
-        )}
-        {error && (
-          <p role="alert" className="text-xs text-destructive">
-            {error}
-          </p>
-        )}
-        <div className="flex items-center justify-between border-t border-border pt-3">
-          <label className="flex items-center gap-2 text-sm">
-            <Switch checked={d.enabled} onChange={(v) => set({ enabled: v })} />
-            Enabled
-          </label>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={busy || !d.prompt.trim()}
-              className="flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:opacity-90 disabled:opacity-60"
-            >
-              {busy && <Loader2 className="size-4 animate-spin" />}
-              Save
-            </button>
+          )}
+
+          {/* ── Footer: save / delete ── */}
+          <div className="flex items-center justify-between border-t border-border pt-3">
+            {d.id ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void api()?.routines.delete(d.id!);
+                  onDeleted();
+                }}
+                className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="size-4" />
+                Delete routine
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="flex items-center gap-2">
+              {dirty && (
+                <span className="text-xs text-muted-foreground">Unsaved changes</span>
+              )}
+              <button
+                type="button"
+                onClick={() => void save()}
+                disabled={busy || !d.prompt.trim() || !dirty}
+                className="flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:opacity-90 disabled:opacity-60"
+              >
+                {busy && <Loader2 className="size-4 animate-spin" />}
+                {d.id ? "Save changes" : "Create routine"}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    </Modal>
+      )}
+    </div>
   );
 }
 
-// ─── Schedule picker (human-friendly cron) ─────────────────────────────────
+// ─── Run history tab ───────────────────────────────────────────────────────
+
+function RunHistory({
+  routineId,
+  onOpenChat,
+}: {
+  routineId: string;
+  onOpenChat?: (sessionId: string) => void;
+}): JSX.Element {
+  const [runs, setRuns] = useState<RoutineRun[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = (): void => {
+      void api()
+        ?.routines.listRuns(routineId)
+        .then((r) => {
+          if (!cancelled) setRuns(r ?? []);
+        })
+        .catch(() => {});
+    };
+    load();
+    const off = api()?.routines.onRan(() => load());
+    return () => {
+      cancelled = true;
+      off?.();
+    };
+  }, [routineId]);
+
+  const stats = useMemo(() => {
+    const now = Date.now();
+    const ok = (ms: number): number =>
+      (runs ?? []).filter(
+        (r) => r.status === "ok" && now - new Date(r.at).getTime() <= ms,
+      ).length;
+    return [
+      { label: "Last 1h", value: ok(3600_000) },
+      { label: "Last 24h", value: ok(24 * 3600_000) },
+      { label: "Last 7d", value: ok(7 * 24 * 3600_000) },
+    ];
+  }, [runs]);
+
+  if (runs === null)
+    return <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-2">
+        {stats.map((s) => (
+          <div key={s.label} className={cn(CARD, "p-3")}>
+            <div className="text-xs text-muted-foreground">{s.label}</div>
+            <div className="mt-1 text-xl font-semibold tabular-nums">{s.value}</div>
+            <div className="text-xs text-muted-foreground">Succeeded</div>
+          </div>
+        ))}
+      </div>
+
+      {runs.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          No runs yet — press Run now, or wait for the trigger.
+        </p>
+      ) : (
+        <div className={cn(CARD, "divide-y divide-border")}>
+          <div className="grid grid-cols-[8.5rem_6rem_1fr_2rem] items-center gap-2 px-3 py-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            <span>Date</span>
+            <span>Status</span>
+            <span>Result</span>
+            <span />
+          </div>
+          {runs.map((run) => (
+            <button
+              key={run.id}
+              type="button"
+              disabled={!run.sessionId || !onOpenChat}
+              onClick={() => {
+                if (run.sessionId && onOpenChat) onOpenChat(run.sessionId);
+              }}
+              className="grid w-full grid-cols-[8.5rem_6rem_1fr_2rem] items-center gap-2 px-3 py-2 text-left text-sm transition-colors enabled:hover:bg-black/[0.03] enabled:dark:hover:bg-white/[0.04]"
+            >
+              <span className="tabular-nums text-muted-foreground">
+                {new Date(run.at).toLocaleString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+              <span>
+                <StatusPill status={run.status} />
+              </span>
+              <span className="min-w-0 truncate text-xs text-muted-foreground">
+                {run.error ?? run.summary ?? (run.sessionId ? "Open the chat" : "—")}
+              </span>
+              <span className="text-muted-foreground/50">
+                {run.sessionId && onOpenChat && <ExternalLink className="size-3.5" />}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Schedule sentence (human-friendly cron, inline) ───────────────────────
 
 type SchedMode = "hourly" | "daily" | "weekdays" | "weekly" | "custom";
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const SCHED_LABEL: Record<SchedMode, string> = {
-  hourly: "Hourly",
-  daily: "Daily",
-  weekdays: "Weekdays",
-  weekly: "Weekly",
-  custom: "Custom",
+  hourly: "Every hour",
+  daily: "Every day",
+  weekdays: "Every weekday",
+  weekly: "Every week",
+  custom: "Custom (cron)",
 };
 const pad = (n: number): string => String(n).padStart(2, "0");
 
@@ -960,13 +1194,15 @@ function cronToSched(cron: string): {
   return { mode: "custom", time, weekday: 1 };
 }
 
-function SchedulePicker({
+/**
+ * The schedule as a SENTENCE whose blanks are the controls —
+ * "[Every day] at [06:00]" — the way Cursor writes its trigger row.
+ */
+function ScheduleSentence({
   cron,
-  human,
   onChange,
 }: {
   cron: string;
-  human: string;
   onChange: (cron: string) => void;
 }): JSX.Element {
   const init = cronToSched(cron);
@@ -982,68 +1218,53 @@ function SchedulePicker({
   };
 
   return (
-    <div>
-      <label className="text-xs text-muted-foreground">Schedule</label>
-      <div className="mt-1 flex flex-wrap gap-1.5">
-        {(["hourly", "daily", "weekdays", "weekly", "custom"] as SchedMode[]).map(
-          (k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => apply(k, time, weekday)}
-              className={cn(
-                "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
-                mode === k
-                  ? "border-primary bg-primary/10 text-foreground"
-                  : "border-border text-muted-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
-              )}
-            >
-              {SCHED_LABEL[k]}
-            </button>
-          ),
-        )}
-      </div>
-
-      {mode !== "hourly" && mode !== "custom" && (
-        <div className="mt-2 flex items-end gap-2">
-          <div>
-            <label className="text-xs text-muted-foreground">Time</label>
-            <input
-              type="time"
-              value={time}
-              onChange={(e) => apply(mode, e.target.value, weekday)}
-              className="mt-1 block rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-foreground/30"
-            />
-          </div>
-          {mode === "weekly" && (
-            <div>
-              <label className="text-xs text-muted-foreground">Day</label>
-              <select
-                value={weekday}
-                onChange={(e) => apply(mode, time, Number(e.target.value))}
-                className="mt-1 block rounded-md border border-border bg-transparent px-2 py-2 text-sm outline-none focus:border-foreground/30"
-              >
-                {DOW.map((d, i) => (
-                  <option key={d} value={i}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
+    <>
+      <select
+        value={mode}
+        onChange={(e) => apply(e.target.value as SchedMode, time, weekday)}
+        className={FIELD}
+      >
+        {(Object.keys(SCHED_LABEL) as SchedMode[]).map((k) => (
+          <option key={k} value={k}>
+            {SCHED_LABEL[k]}
+          </option>
+        ))}
+      </select>
+      {mode === "weekly" && (
+        <>
+          <span className="text-muted-foreground">on</span>
+          <select
+            value={weekday}
+            onChange={(e) => apply(mode, time, Number(e.target.value))}
+            className={FIELD}
+          >
+            {DOW.map((day, i) => (
+              <option key={day} value={i}>
+                {day}
+              </option>
+            ))}
+          </select>
+        </>
       )}
-
+      {mode !== "hourly" && mode !== "custom" && (
+        <>
+          <span className="text-muted-foreground">at</span>
+          <input
+            type="time"
+            value={time}
+            onChange={(e) => apply(mode, e.target.value, weekday)}
+            className={FIELD}
+          />
+        </>
+      )}
       {mode === "custom" && (
         <input
           value={cron}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="minute hour day month weekday"
-          className="mt-2 w-full rounded-md border border-border bg-transparent px-3 py-2 font-mono text-sm outline-none focus:border-foreground/30"
+          placeholder="min hour day month weekday"
+          className={cn(FIELD, "font-mono")}
         />
       )}
-
-      <p className="mt-1.5 text-[11px] text-muted-foreground">{human}</p>
-    </div>
+    </>
   );
 }

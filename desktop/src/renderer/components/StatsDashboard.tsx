@@ -245,7 +245,6 @@ export function StatsDashboard(): JSX.Element {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4">
-      <div className="glass-panel rounded-lg bg-card p-4 border border-border">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex gap-1">
             {(["overview", "models"] as const).map((t) => (
@@ -349,7 +348,6 @@ export function StatsDashboard(): JSX.Element {
             </p>
           </div>
         )}
-      </div>
     </div>
   );
 }
