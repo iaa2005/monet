@@ -6,6 +6,7 @@ import { EventEmitter } from "node:events";
 import { registerAllIPC } from "./ipc/index.js";
 import { createTray } from "./tray.js";
 import { applyDataDirEnv } from "./data-dir.js";
+import { recordTitle, recordVisit } from "./browser/bookmarks.js";
 import { purgeIncognitoLeftovers } from "./incognito.js";
 import { ensureBuiltinSkills } from "./builtin-skills.js";
 import { initPowerSaveBlocker } from "./power.js";
@@ -141,6 +142,19 @@ function installWebviewGuards(win: BrowserWindow): void {
         win.webContents.send("browser:openTab", url);
       return { action: "deny" };
     });
+
+    // The visit log behind the empty tab's "Recent" section. Recorded here
+    // rather than in the renderer because every page the panel shows IS a
+    // webview guest attaching to some window — one hook covers every tab in
+    // every window, including ones the agent navigates. Titles arrive on
+    // their own event, usually a beat after the navigation.
+    guest.on("did-navigate", (_e, url) => recordVisit(url));
+    guest.on("did-navigate-in-page", (_e, url, isMainFrame) => {
+      if (isMainFrame) recordVisit(url);
+    });
+    guest.on("page-title-updated", (_e, title) =>
+      recordTitle(guest.getURL(), title),
+    );
   });
 
   // The same rule for the app's OWN window. Without a handler, any stray

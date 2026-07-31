@@ -13,11 +13,13 @@ import type { UiConnectorService } from "../main/connectors/services/types.js";
 import type { BrowserConfig } from "../main/browser/config.js";
 import type { DevServer } from "../main/browser/dev-servers.js";
 import type { BrowserSelection } from "../main/browser/selection.js";
+import type { Bookmark, Visit } from "../main/browser/bookmark-store.js";
 import type { ServerConfig, ServerState } from "../main/browser/servers.js";
 import type { SessionUiState } from "../main/ui-state.js";
 import type { ChatMessage } from "./chat";
 
 export type { BrowserConfig, DevServer, BrowserSelection, ServerConfig, ServerState };
+export type { Bookmark, Visit };
 export type { SessionUiState };
 export type {
   BrowserEngine,
@@ -876,6 +878,14 @@ export interface ElectronAPI {
       stop: (id: string) => Promise<void>;
       output: (id: string) => Promise<string>;
       suggest: () => Promise<ServerConfig[]>;
+      onChanged: (cb: () => void) => () => void;
+    };
+    bookmarks: {
+      list: () => Promise<Bookmark[]>;
+      toggle: (url: string, title: string) => Promise<{ bookmarked: boolean }>;
+      remove: (id: string) => Promise<void>;
+      isBookmarked: (url: string) => Promise<boolean>;
+      recent: (limit?: number) => Promise<Visit[]>;
       onChanged: (cb: () => void) => () => void;
     };
     setDesignMode: (on: boolean) => Promise<{ ok: boolean; error?: string }>;

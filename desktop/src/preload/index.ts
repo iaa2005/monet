@@ -16,6 +16,7 @@ import type { UiConnectorService } from "../main/connectors/services/types.js";
 import type { BrowserConfig } from "../main/browser/config.js";
 import type { DevServer } from "../main/browser/dev-servers.js";
 import type { BrowserSelection } from "../main/browser/selection.js";
+import type { Bookmark, Visit } from "../main/browser/bookmark-store.js";
 import type { ServerConfig, ServerState } from "../main/browser/servers.js";
 import type { SessionUiState } from "../main/ui-state.js";
 
@@ -778,6 +779,23 @@ const electronAPI = {
         const handler = (): void => cb();
         ipcRenderer.on("browser:serversChanged", handler);
         return () => ipcRenderer.off("browser:serversChanged", handler);
+      },
+    },
+    /** Bookmarks + visit history behind the empty tab and the toolbar star. */
+    bookmarks: {
+      list: (): Promise<Bookmark[]> => ipcRenderer.invoke("bookmarks:list"),
+      toggle: (url: string, title: string): Promise<{ bookmarked: boolean }> =>
+        ipcRenderer.invoke("bookmarks:toggle", url, title),
+      remove: (id: string): Promise<void> =>
+        ipcRenderer.invoke("bookmarks:remove", id),
+      isBookmarked: (url: string): Promise<boolean> =>
+        ipcRenderer.invoke("bookmarks:isBookmarked", url),
+      recent: (limit?: number): Promise<Visit[]> =>
+        ipcRenderer.invoke("bookmarks:recent", limit),
+      onChanged: (cb: () => void): (() => void) => {
+        const handler = (): void => cb();
+        ipcRenderer.on("browser:bookmarksChanged", handler);
+        return () => ipcRenderer.off("browser:bookmarksChanged", handler);
       },
     },
     setDesignMode: (on: boolean): Promise<{ ok: boolean; error?: string }> =>

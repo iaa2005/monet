@@ -28,6 +28,14 @@ import {
   type ServerConfig,
   type ServerState,
 } from "../browser/servers.js";
+import {
+  listBookmarks,
+  pageIsBookmarked,
+  recentVisits,
+  removeBookmark,
+  togglePageBookmark,
+} from "../browser/bookmarks.js";
+import { recentForDisplay } from "../browser/bookmark-store.js";
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { resetVendorTools } from "../agent/vendor-tools.js";
@@ -133,6 +141,22 @@ export function registerBrowserIPC(): void {
   );
   ipcMain.handle("servers:stop", (_e, id: string): void => stopServer(id));
   ipcMain.handle("servers:output", (_e, id: string): string => serverOutput(id));
+
+  // ── Bookmarks + recent pages (the empty tab, and the toolbar star) ──
+  ipcMain.handle("bookmarks:list", () => listBookmarks());
+  ipcMain.handle("bookmarks:toggle", (_e, url: string, title: string) =>
+    togglePageBookmark(url, title),
+  );
+  ipcMain.handle("bookmarks:remove", (_e, id: string): void => removeBookmark(id));
+  ipcMain.handle("bookmarks:isBookmarked", (_e, url: string): boolean =>
+    pageIsBookmarked(url),
+  );
+  // Filtered against the bookmarks here, where both lists live: a page the
+  // user starred already has a row, and showing it again under Recent is the
+  // same page pretending to be two.
+  ipcMain.handle("bookmarks:recent", (_e, limit?: number) =>
+    recentForDisplay(recentVisits(60), listBookmarks(), limit ?? 20),
+  );
   // What to offer when the list is empty: the project's own npm scripts, but
   // only the ones that name a port — see suggestFromPackage.
   ipcMain.handle("servers:suggest", (): ServerConfig[] => {

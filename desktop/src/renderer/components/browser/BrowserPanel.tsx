@@ -28,6 +28,7 @@ import {
   MousePointerClick,
   Plus,
   RotateCw,
+  Star,
   X,
 } from "lucide-react";
 
@@ -62,6 +63,66 @@ const api = (): ElectronAPI =>
   (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
 
 const BLANK = "about:blank";
+
+/**
+ * The toolbar star: filled when the page it is looking at is bookmarked.
+ *
+ * State is re-read on every URL change and on the change broadcast, never
+ * kept locally — the same page can be starred from the empty tab's Recent
+ * list or un-starred in a second window, and a star that disagrees with the
+ * list it feeds is worse than no star.
+ */
+function BookmarkStar({
+  url,
+  title,
+}: {
+  url: string | null;
+  title: string;
+}): JSX.Element {
+  const [starred, setStarred] = useState(false);
+
+  useEffect(() => {
+    if (!url) {
+      setStarred(false);
+      return;
+    }
+    let gone = false;
+    const check = (): void => {
+      void api()
+        .browser.bookmarks.isBookmarked(url)
+        .then((v) => {
+          if (!gone) setStarred(v);
+        });
+    };
+    check();
+    const off = api().browser.bookmarks.onChanged(check);
+    return () => {
+      gone = true;
+      off();
+    };
+  }, [url]);
+
+  return (
+    <button
+      type="button"
+      disabled={!url}
+      onClick={() => {
+        if (url) void api().browser.bookmarks.toggle(url, title);
+      }}
+      title={starred ? "Remove bookmark" : "Bookmark this page"}
+      aria-label={starred ? "Remove bookmark" : "Bookmark this page"}
+      aria-pressed={starred}
+      className={cn(
+        "flex size-6 items-center justify-center rounded-md transition-colors disabled:opacity-30 disabled:hover:bg-transparent",
+        starred
+          ? "text-link hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+          : "text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]",
+      )}
+    >
+      <Star className={cn("size-3.5", starred && "fill-current")} />
+    </button>
+  );
+}
 
 export function BrowserPanel(): JSX.Element {
   const tabs = useBrowserStore((s) => s.tabs);
@@ -299,6 +360,8 @@ export function BrowserPanel(): JSX.Element {
           className="min-w-0 flex-1 rounded-md bg-black/[0.04] px-2.5 py-1 text-xs outline-none placeholder:text-muted-foreground focus:bg-black/[0.06] dark:bg-white/[0.06] dark:focus:bg-white/[0.09]"
         />
 
+        <BookmarkStar url={active && active.url !== BLANK ? active.url : null} title={active?.title ?? ""} />
+
         <ServersMenu
           onOpen={(url) => {
             const view = getView(activeId);
@@ -444,7 +507,13 @@ export function BrowserPanel(): JSX.Element {
               active={t.id === activeId}
             />
           ))}
-        {tabs.length === 0 && <BrowserEmptyState onOpen={(u) => openTab(u)} />}
+        {/* Shown for no tabs at all AND for a new (about:blank) tab — "the
+            empty tab" is both, and a blank webview answers neither. */}
+        {(tabs.length === 0 || active?.url === BLANK) && (
+          <div className="absolute inset-0 bg-white dark:bg-[#1b1b1c]">
+            <BrowserEmptyState onOpen={(u) => navigate(u)} />
+          </div>
+        )}
         {designError && (
           <div className="absolute inset-x-0 top-0 border-b border-border bg-background px-3 py-2 text-xs text-muted-foreground">
             {designError}
