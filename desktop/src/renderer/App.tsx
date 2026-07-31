@@ -205,7 +205,7 @@ export default function App(): JSX.Element {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<
-    "general" | "sandbox" | "providers" | "automation"
+    "general" | "sandbox" | "providers" | "automation" | "memory"
   >("general");
   const [aboutOpen, setAboutOpen] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
@@ -486,7 +486,8 @@ export default function App(): JSX.Element {
       openSettingsRequest === "general" ||
       openSettingsRequest === "sandbox" ||
       openSettingsRequest === "providers" ||
-      openSettingsRequest === "automation"
+      openSettingsRequest === "automation" ||
+      openSettingsRequest === "memory"
     )
       setSettingsSection(openSettingsRequest);
     setSettingsOpen(true);

@@ -13,6 +13,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Zap,
   Plus,
+  Brain,
+  Blocks,
   Clock,
   Sun,
   Mail,
@@ -36,6 +38,8 @@ import {
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { MicButton } from "@/components/chat/MicButton";
+import { ServiceIcon } from "@/components/directory/shared";
+import { useChatStore } from "@/stores/chatStore";
 import { cn } from "@/lib/utils";
 import type {
   ElectronAPI,
@@ -851,42 +855,62 @@ function RoutineDetail({
           </section>
 
           {/* ── Tools ── */}
-          {servers.length > 0 && (
-            <section>
-              <div className={cn(SECTION, "mb-1.5")}>Tools</div>
-              <div className={cn(CARD, "divide-y divide-border")}>
-                {servers.map((s) => {
-                  const on = d.connectors.includes(s.id);
-                  return (
-                    <label
-                      key={s.id}
-                      className="flex cursor-pointer items-center gap-2.5 px-3 py-2"
-                      title={s.kind === "mcp" ? "Raw MCP server" : "Connector"}
-                    >
-                      <span className="min-w-0 flex-1 truncate text-sm">{s.label}</span>
-                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
-                        {s.kind}
-                      </span>
-                      <Switch
-                        checked={on}
-                        onChange={() =>
-                          set({
-                            connectors: on
-                              ? d.connectors.filter((x) => x !== s.id)
-                              : [...d.connectors, s.id],
-                          })
-                        }
-                      />
-                    </label>
-                  );
-                })}
-                <p className="px-3 py-2 text-xs text-muted-foreground">
-                  Nothing selected = the default toolset. Read actions are always
-                  available; writes below need a grant.
-                </p>
+          <section>
+            <div className={cn(SECTION, "mb-1.5")}>Tools</div>
+            <div className={cn(CARD, "divide-y divide-border")}>
+              {/* Memory is part of every run — the routine reads and writes
+                  the same long-term memory the chats do. */}
+              <div className="flex items-center gap-2.5 px-3 py-2">
+                <Brain className="size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate text-sm">Memories</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    useChatStore.getState().requestOpenSettings("memory")
+                  }
+                  className="rounded-md border border-border px-2 py-0.5 text-xs font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+                >
+                  Manage
+                </button>
               </div>
-            </section>
-          )}
+              {servers.map((s) => {
+                const on = d.connectors.includes(s.id);
+                const svg = presets.find((p) => p.id === s.id)?.iconSvg;
+                return (
+                  <label
+                    key={s.id}
+                    className="flex cursor-pointer items-center gap-2.5 px-3 py-2"
+                    title={s.kind === "mcp" ? "Raw MCP server" : "Connector"}
+                  >
+                    {s.kind === "mcp" && !svg ? (
+                      <Blocks className="size-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ServiceIcon svg={svg} className="size-4" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-sm">{s.label}</span>
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
+                      {s.kind}
+                    </span>
+                    <Switch
+                      checked={on}
+                      onChange={() =>
+                        set({
+                          connectors: on
+                            ? d.connectors.filter((x) => x !== s.id)
+                            : [...d.connectors, s.id],
+                        })
+                      }
+                    />
+                  </label>
+                );
+              })}
+              <p className="px-3 py-2 text-xs text-muted-foreground">
+                {servers.length > 0
+                  ? "Nothing selected = the default toolset. Read actions are always available; writes below need a grant."
+                  : "Connect services in Settings → Connectors to give routines more tools."}
+              </p>
+            </div>
+          </section>
 
           {/* ── Unattended permissions ── */}
           {grantOptions.some((option) => option.access !== "read") && (
