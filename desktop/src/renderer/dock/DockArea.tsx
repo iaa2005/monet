@@ -198,6 +198,50 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
  * works for the dev server (http) and the packaged build (file:) alike. */
 const popoutUrl = (): string => new URL("popout.html", location.href).toString();
 
+/**
+ * Make a popout window wear the app's skin.
+ *
+ * dockview copies every stylesheet into the popout document, but the theme
+ * lives one level higher: the `dark` class on the ROOT element is what picks
+ * which token values those stylesheets resolve to. Without it a popout came
+ * out half-and-half — dark dockview chrome over light-token content. The
+ * classes are mirrored on open and kept in sync while the window lives, so
+ * toggling the theme re-dresses every popout too.
+ *
+ * `monet-glass` is deliberately dropped: the painted backdrop lives in the
+ * main window, and glass over nothing is a white sheet.
+ */
+function dressPopout(w: Window): void {
+  // NOT unload-based cleanup: window.open starts on about:blank and the
+  // navigation to popout.html fires an unload of its own — an observer
+  // disconnected there went deaf before the window even finished opening
+  // (caught by the click probe: theme changes never reached the popout).
+  const obs = new MutationObserver(() => sync());
+  const sync = (): void => {
+    if (w.closed) {
+      obs.disconnect();
+      return;
+    }
+    try {
+      w.document.documentElement.className = document.documentElement.className
+        .split(/\s+/)
+        .filter((c) => c && c !== "monet-glass")
+        .join(" ");
+      w.document.body.style.background = "var(--background)";
+    } catch {
+      /* mid-navigation; the load listener below runs it again */
+    }
+  };
+  // Once now, and again on load — the navigation replaces the document this
+  // first call ran against.
+  sync();
+  w.addEventListener("load", sync);
+  obs.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+}
+
 /** Maximize / detach-to-OS-window / dock-back — the group's own controls. */
 function GroupActions(props: IDockviewHeaderActionsProps): JSX.Element {
   const { group, containerApi } = props;
@@ -255,7 +299,10 @@ function GroupActions(props: IDockviewHeaderActionsProps): JSX.Element {
           title="Detach into its own window"
           className={btn}
           onClick={() =>
-            void containerApi.addPopoutGroup(group, { popoutUrl: popoutUrl() })
+            void containerApi.addPopoutGroup(group, {
+              popoutUrl: popoutUrl(),
+              onDidOpen: ({ window: w }) => dressPopout(w),
+            })
           }
         >
           <ExternalLink className="size-3.5" />

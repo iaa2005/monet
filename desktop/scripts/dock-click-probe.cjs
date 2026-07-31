@@ -152,6 +152,69 @@ app.whenReady().then(async () => {
     );
   }
 
+  // ── 5. Detach opens a REAL window, dressed in the app's theme ───────
+  //
+  // The probe window has no window-open handler, so window.open is allowed —
+  // which stands in for the app's allowlist (that path is main-process code
+  // reviewed separately). What THIS holds is the renderer side: the popout
+  // opens, the group's DOM survives adoption, and dressPopout mirrors the
+  // root classes — the exact half-dark-half-light bug reported from use.
+  {
+    await js(`document.documentElement.classList.add('dark')`);
+    await js(`document.querySelector('button[title="Files"]').click()`);
+    await new Promise((r) => setTimeout(r, 1000));
+    const clicked = await js(`(() => {
+      const btn = [...document.querySelectorAll('button[title="Detach into its own window"]')][0];
+      if (!btn) return false;
+      btn.click();
+      return true;
+    })()`);
+    check("a non-chat group offers Detach", clicked);
+    if (clicked) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const child = BrowserWindow.getAllWindows().find((w) => w !== win);
+      check("an OS window actually opens", !!child);
+      if (child) {
+        const childState = await child.webContents.executeJavaScript(
+          `JSON.stringify({
+            cls: document.documentElement.className,
+            groups: document.querySelectorAll('.dv-groupview').length,
+            files: [...document.querySelectorAll('.dv-tab')].some(t => t.textContent.includes('Files')),
+          })`,
+          true,
+        );
+        const c = JSON.parse(childState);
+        check("the adopted group lives in it", c.groups >= 1 && c.files, childState);
+        check(
+          "and wears the app's root classes",
+          c.cls.split(/\s+/).includes("dark"),
+          c.cls || "(none)",
+        );
+
+        // The theme toggled in the main window re-dresses the popout.
+        await js(`document.documentElement.classList.remove('dark')`);
+        await new Promise((r) => setTimeout(r, 400));
+        const cls2 = await child.webContents.executeJavaScript(
+          "document.documentElement.className",
+          true,
+        );
+        check(
+          "a theme change reaches the open popout",
+          !cls2.split(/\s+/).includes("dark"),
+          cls2 || "(none)",
+        );
+
+        // Closing the window returns the panel to the grid, not to nowhere.
+        child.close();
+        await new Promise((r) => setTimeout(r, 1500));
+        const back = await js(
+          `[...document.querySelectorAll('.dv-tab')].some(t => t.textContent.includes('Files'))`,
+        );
+        check("closing the popout returns the panel to the grid", back);
+      }
+    }
+  }
+
   srv.close();
   console.log(failures === 0 ? "\nALL DOCK-CLICK CHECKS PASSED" : `\n${failures} FAILED`);
   app.exit(failures === 0 ? 0 : 1);
