@@ -18,6 +18,7 @@ import type {
   ToolCall,
 } from "@/types/chat";
 import type { BrowserSelection, ElectronAPI } from "@/types/electron";
+import { splitSelections } from "@/lib/selection-marks";
 import { mergeForSave } from "./merge-for-save";
 import { useTaskStore } from "./taskStore";
 
@@ -1005,7 +1006,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
       const msgs = state.messages;
       const idx = msgs.findIndex((m) => m.id === messageId);
       if (idx < 0 || msgs[idx].role !== "user") return;
-      const text = msgs[idx].content;
+      // The sentence goes back in the box; the element descriptions do not.
+      // Putting the raw blocks in the composer was how forty lines of selectors
+      // and computed styles ended up staring back at the user after a rewind.
+      const { text, refs } = splitSelections(msgs[idx].content);
       const bridge = electron();
 
       // Restore files to the checkpoint from BEFORE this turn — the most recent
@@ -1050,8 +1054,27 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // Put the turn's files back in the composer too. Without this the prompt
       // comes back for editing but its attachments do not, and the resend goes
       // out missing them — with the user seeing no sign that it happened.
-      const restaged = await restageAttachments(msgs[idx].attachments);
+      const metas = msgs[idx].attachments ?? [];
+      const crops = metas.filter((a) => a.origin === "selection");
+      const restaged = await restageAttachments(
+        metas.filter((a) => a.origin !== "selection"),
+      );
       get().setStagedFiles(sessionId, restaged);
+      // The references come back as references. Their ⟨tokens⟩ are already in
+      // the text we just restored, so they are marked pretokenised — inserting
+      // them again would double every chip.
+      set({
+        pendingContext: refs.map((r, i) => ({
+          id: generateId(),
+          label: r.label,
+          count: 1,
+          tone: i,
+          pretokenised: true,
+          context: r.raw,
+          imageDataUrl: crops[i]?.dataUrl,
+          url: r.url,
+        })),
+      });
     },
 
     deliverBackgroundResults: async () => {

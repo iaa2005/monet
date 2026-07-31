@@ -12,7 +12,11 @@
  * behaviour changes while design mode is off.
  */
 
+import { boxColors } from "@shared/selection-tones.js";
 import type { BrowserTransport } from "./transport.js";
+
+/** Inlined into the page so the boxes and the chips share one palette. */
+const BOX_PALETTE = Array.from({ length: 6 }, (_, i) => boxColors(i));
 
 /** Computed styles worth carrying — layout, type, colour. Not all 340. */
 const STYLE_KEYS = [
@@ -40,6 +44,29 @@ const STYLE_KEYS = [
   "opacity",
   "overflow",
   "text-align",
+];
+
+/**
+ * Component names that are the framework talking, not the app.
+ *
+ * A Next.js tree puts a dozen of these between the DOM node and the component
+ * somebody actually wrote, so the nearest named fibre is reliably
+ * `InnerLayoutRouter` — a true answer and a useless one. Walking past them is
+ * the difference between a chip that says ⟨Hero⟩ and one that says
+ * ⟨OuterLayoutRouter⟩ on every element of the page.
+ */
+const FRAMEWORK_NAMES = [
+  // Next.js app router
+  "AppRouter", "InnerLayoutRouter", "OuterLayoutRouter", "RedirectBoundary",
+  "RedirectErrorBoundary", "NotFoundBoundary", "NotFoundErrorBoundary",
+  "LoadingBoundary", "ClientPageRoot", "ClientSegmentRoot", "ServerRoot",
+  "RootLayout", "HTTPAccessFallbackBoundary", "MetadataTree", "ViewportBoundary",
+  "OutletBoundary", "AsyncMetadata", "DevRootHTTPAccessFallbackBoundary",
+  "PathnameContextProviderAdapter", "HotReload", "Router", "ReactDevOverlay",
+  "ErrorBoundaryHandler", "ErrorBoundary", "Head", "PathnameProvider",
+  // Generic plumbing
+  "Suspense", "Fragment", "StrictMode", "Profiler", "Provider", "Consumer",
+  "QueryClientProvider", "ThemeProvider", "Hydrate", "SafeHydrate",
 ];
 
 /** Attributes that say what an element IS, as opposed to how it looks. */
@@ -97,7 +124,12 @@ const OVERLAY_SCRIPT = `
 
   var STYLE_KEYS = ${JSON.stringify(STYLE_KEYS)};
   var ATTR_KEYS = ${JSON.stringify(ATTR_KEYS)};
+  var FRAMEWORK_NAMES = ${JSON.stringify(FRAMEWORK_NAMES)};
   var CSS = ${JSON.stringify(OVERLAY_CSS)};
+  var PALETTE = ${JSON.stringify(BOX_PALETTE)};
+  // Where the palette stands, so a box matches the chip it is about to become.
+  var toneBase = 0;
+  function tone(i) { return PALETTE[Math.abs(toneBase + i) % PALETTE.length]; }
 
   var enabled = false;
   var host = null, root = null, hover = null, label = null, marquee = null, hint = null;
@@ -183,18 +215,39 @@ const OVERLAY_SCRIPT = `
     return null;
   }
 
+  function usefulName(n) {
+    if (!n || n.length < 2 || n === 'Unknown') return false;
+    if (FRAMEWORK_NAMES.indexOf(n) >= 0) return false;
+    // Minified builds hand out single letters and _c3; a Provider or a
+    // Boundary is somebody's plumbing whatever the prefix.
+    if (/^[_$]/.test(n)) return false;
+    if (/(Provider|Consumer|Boundary|Context)$/.test(n)) return false;
+    // withRouter(Foo) / memo(Foo) — take the inner name, which is the answer.
+    return true;
+  }
+
+  function unwrapName(n) {
+    var m = /^[A-Za-z]+\((.+)\)$/.exec(n || '');
+    return m ? m[1] : n;
+  }
+
   function reactInfo(el) {
     var f = fiberOf(el);
     var depth = 0;
-    while (f && depth++ < 30) {
-      var n = nameOfType(f.type);
-      // Skip the anonymous wrappers a build leaves behind.
-      if (n && n.length > 1 && n !== 'Unknown') {
+    var fallback = null;
+    while (f && depth++ < 40) {
+      var n = unwrapName(nameOfType(f.type));
+      if (usefulName(n)) {
         return { framework: 'react', component: n, props: f.memoizedProps };
+      }
+      // Keep the first named thing as a last resort: a page built entirely out
+      // of framework wrappers should still name something.
+      if (!fallback && n && n.length > 1) {
+        fallback = { framework: 'react', component: n, props: f.memoizedProps };
       }
       f = f.return;
     }
-    return null;
+    return fallback;
   }
 
   function vueInfo(el) {
@@ -357,6 +410,9 @@ const OVERLAY_SCRIPT = `
       if (i < selected.length) {
         var sr = selected[i].getBoundingClientRect();
         place(boxes[i], { x: sr.x, y: sr.y, w: sr.width, h: sr.height });
+        var c = tone(i);
+        boxes[i].style.borderColor = c.border;
+        boxes[i].style.background = c.fill;
       } else {
         boxes[i].style.display = 'none';
       }
@@ -365,6 +421,10 @@ const OVERLAY_SCRIPT = `
     if (hoverEl && selected.indexOf(hoverEl) < 0) {
       var r = hoverEl.getBoundingClientRect();
       place(hover, { x: r.x, y: r.y, w: r.width, h: r.height });
+      var hc = tone(selected.length);
+      hover.style.borderColor = hc.border;
+      hover.style.background = hc.fill;
+      label.style.background = hc.label;
       label.style.display = 'block';
       label.textContent = labelFor(hoverEl);
       // Above the element, unless that would be off the top of the screen.
@@ -509,6 +569,7 @@ const OVERLAY_SCRIPT = `
   }
 
   window.__monetDesign = {
+    setToneBase: function (n) { toneBase = n | 0; schedule(); },
     enable: enable,
     disable: disable,
     clear: function () { selected = []; schedule(); },
@@ -597,6 +658,14 @@ export async function setDesignMode(
     on
       ? "window.__monetDesign && window.__monetDesign.enable()"
       : "window.__monetDesign && window.__monetDesign.disable()",
+  );
+}
+
+/** Tell the page where the palette stands, so its next box matches its chip. */
+export async function setToneBase(t: BrowserTransport, base: number): Promise<void> {
+  await evaluate(
+    t,
+    `window.__monetDesign && window.__monetDesign.setToneBase(${Math.max(0, base | 0)})`,
   );
 }
 

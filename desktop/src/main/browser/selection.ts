@@ -22,7 +22,7 @@ import { ripGrep } from "../agent/ripgrep.js";
 import { getWorkspacePath } from "../ipc/workspace.js";
 import { getTransport } from "./transport.js";
 import type { BrowserTransport } from "./transport.js";
-import type { InspectMessage } from "./inspect.js";
+import { setToneBase, type InspectMessage } from "./inspect.js";
 
 /** What the renderer receives — one chip in the composer. */
 export interface BrowserSelection {
@@ -31,6 +31,14 @@ export interface BrowserSelection {
   label: string;
   /** How many elements it covers, for a "+2" badge. */
   count: number;
+  /**
+   * Which colour this element wears — the SAME number the box on the page is
+   * drawn with, so the chip and the outline are recognisably one thing. See
+   * shared/selection-tones.ts.
+   */
+  tone: number;
+  /** Restored by a rewind: its ⟨token⟩ is already in the text. */
+  pretokenised?: boolean;
   /** The block appended to the user's message. */
   context: string;
   /** PNG data URL of the crop, shown on the chip and attached on send. */
@@ -42,6 +50,14 @@ export interface BrowserSelection {
 const frozen = new Map<string, Buffer>();
 
 let seq = 0;
+/**
+ * Where the palette stands.
+ *
+ * Colour is per SELECTION, not per selection-event: click three elements one
+ * after another and you want three different chips, which means the counter has
+ * to outlive the payload that produced it.
+ */
+let toneCursor = 0;
 
 /** Keep a frame from the moment the user started annotating. */
 export async function freezeFrame(t: BrowserTransport): Promise<void> {
@@ -199,10 +215,15 @@ export async function handleSelection(
     id: `sel-${Date.now().toString(36)}-${++seq}`,
     label: payload.region && !first ? "marked region" : first ? summarizeElement(first) : "page",
     count: payload.elements.length,
+    tone: toneCursor,
     context,
     imageDataUrl,
     url: payload.url,
   };
+  // Each selection takes the next colour, and the page is told where the
+  // palette now stands so the box it draws next matches the chip it becomes.
+  toneCursor += Math.max(1, payload.elements.length);
+  void setToneBase(t, toneCursor);
 
   for (const win of BrowserWindow.getAllWindows())
     win.webContents.send("browser:selection", selection);

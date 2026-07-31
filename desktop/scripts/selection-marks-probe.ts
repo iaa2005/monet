@@ -17,14 +17,12 @@
 
 import {
   hasSelections,
-  insertRefToken,
+
   joinSelections,
   labelOf,
   refToken,
-  snapSelection,
   splitSelections,
-  tokenBefore,
-  tokenSpans,
+  tokenize,
   usedRefs,
 } from "../src/renderer/lib/selection-marks";
 
@@ -158,95 +156,32 @@ const block = (opts: { component?: string; element?: string; url?: string }) =>
   );
 }
 
-// ── 6. Inserting a token reads like a word ────────────────────────────
+// ── 8. Tokenising, which both the editor and the transcript draw from ─
 {
-  const empty = insertRefToken("", "Hero", 0);
-  check("into an empty box, no stray spaces", empty.text === "⟨Hero⟩", empty.text);
-  check("caret lands after it", empty.caret === "⟨Hero⟩".length);
-
-  const after = insertRefToken("сделать", "Hero", 7);
-  check("a space is added before it", after.text === "сделать ⟨Hero⟩", after.text);
-
-  const between = insertRefToken("до после", "Hero", 3);
-  check("and after it, mid-sentence", between.text === "до ⟨Hero⟩ после", between.text);
+  const pieces = tokenize("до ⟨Hero⟩ и ⟨Row⟩ после");
+  check("text and chips alternate", pieces.length === 5, pieces.length);
   check(
-    "the caret sits just past the token",
-    between.text.slice(0, between.caret) === "до ⟨Hero⟩",
-    between.text.slice(0, between.caret),
-  );
-
-  const spaced = insertRefToken("до ", "Hero", 3);
-  check("an existing space is not doubled", spaced.text === "до ⟨Hero⟩", spaced.text);
-
-  const clamped = insertRefToken("abc", "Hero", 999);
-  check("a caret past the end is clamped", clamped.text === "abc ⟨Hero⟩", clamped.text);
-}
-
-// ── 7. Backspace eats the whole token ─────────────────────────────────
-{
-  const text = "до ⟨Hero⟩ после";
-  const end = text.indexOf("⟩") + 1;
-  const hit = tokenBefore(text, end);
-  check("just past a token, the whole token is found", !!hit, JSON.stringify(hit));
-  check(
-    "removing it leaves the rest intact",
-    hit ? text.slice(0, hit.start) + text.slice(hit.end) === "до  после" : false,
-  );
-  check("in the middle of a word, nothing is found", tokenBefore(text, 2) === null);
-  check("at position zero, nothing is found", tokenBefore(text, 0) === null);
-  check(
-    "brackets across a newline are not a pair",
-    tokenBefore("⟨Hero\nstuff⟩", "⟨Hero\nstuff⟩".length) === null,
+    "chips carry only the label",
+    pieces[1]?.type === "chip" && pieces[1].label === "Hero",
+    JSON.stringify(pieces[1]),
   );
   check(
-    "a lone closing bracket is not a token",
-    tokenBefore("just ⟩", 6) === null,
-    JSON.stringify(tokenBefore("just ⟩", 6)),
+    "the text between them is kept exactly",
+    pieces[2]?.type === "text" && pieces[2].value === " и ",
+    JSON.stringify(pieces[2]),
   );
-}
-
-// ── 8. A chip is selected whole, or not at all ────────────────────────
-//
-// Half of ⟨HeroImage⟩ on the clipboard refers to nothing, and pasting it back
-// leaves a message mentioning an element nobody can resolve.
-{
-  const text = "до ⟨Hero⟩ после";
-  const open = text.indexOf("⟨");
-  const close = text.indexOf("⟩") + 1;
-
-  const cut = snapSelection(text, open + 2, close + 2);
   check(
-    "a selection starting inside a token is widened left",
-    cut.start === open,
-    JSON.stringify(cut),
+    "joining the pieces gives the string back",
+    pieces
+      .map((p) => (p.type === "chip" ? refToken(p.label) : p.value))
+      .join("") === "до ⟨Hero⟩ и ⟨Row⟩ после",
   );
-  check("and its end is left alone outside", cut.end === close + 2);
-
-  const inside = snapSelection(text, open + 1, close - 1);
+  check("plain text is one piece", tokenize("ничего").length === 1);
+  check("empty text is no pieces", tokenize("").length === 0);
   check(
-    "a selection wholly inside becomes the whole token",
-    inside.start === open && inside.end === close,
-    JSON.stringify(inside),
+    "a chip at the very start has no empty text before it",
+    tokenize("⟨A⟩ x")[0]?.type === "chip",
   );
-
-  const around = snapSelection(text, 0, text.length);
-  check(
-    "a selection already containing it is untouched",
-    around.start === 0 && around.end === text.length,
-  );
-
-  const outside = snapSelection(text, 0, 2);
-  check("a selection nowhere near one is untouched", outside.end === 2);
-
-  const caretOnly = snapSelection(text, open + 2, open + 2);
-  check(
-    "a caret is not a selection and never grows",
-    caretOnly.start === caretOnly.end && caretOnly.start === open + 2,
-  );
-
-  const spans = tokenSpans("⟨A⟩ и ⟨B⟩");
-  check("every token is found", spans.length === 2, JSON.stringify(spans));
-  check("with the right bounds", spans[0]?.start === 0 && spans[0]?.end === 3);
 }
 
 // ── 9. A message with no selections is left completely alone ──────────

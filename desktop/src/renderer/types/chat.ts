@@ -14,6 +14,13 @@ export interface ChatAttachmentMeta {
   kind: 'text' | 'image' | 'audio' | 'video' | 'file'
   dataUrl?: string
   path?: string
+  /**
+   * The browser tool produced this, not the user — a crop of an element they
+   * pointed at. It still travels to the model as an image, but it belongs to
+   * the ⟨chip⟩ that stands for that element, so the transcript draws it there
+   * instead of beside the message as a file somebody chose to attach.
+   */
+  origin?: 'selection'
 }
 
 export interface ChatMessage {

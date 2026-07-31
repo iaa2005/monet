@@ -525,3 +525,28 @@ pre.diff-hl.show-ln {
 pre.diff-hl.show-ln code {
     display: block;
 }
+
+/*
+ * The composer is a contenteditable, so a ⟨reference⟩ can be a real chip
+ * rather than a run of characters that merely looks like one. Three things a
+ * textarea gave for free have to be asked for here.
+ */
+.composer-input {
+    /* Newlines and runs of spaces survive, and a long URL wraps instead of
+       widening the whole panel. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    /* A contenteditable has no placeholder attribute. */
+}
+.composer-input:empty::before {
+    content: attr(data-placeholder);
+    color: hsl(var(--muted-foreground));
+    pointer-events: none;
+}
+/* Chrome leaves a stray <br> behind when you delete the last character, so
+   :empty stops matching and the placeholder never comes back. */
+.composer-input:has(> br:only-child)::before {
+    content: attr(data-placeholder);
+    color: hsl(var(--muted-foreground));
+    pointer-events: none;
+}

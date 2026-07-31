@@ -119,69 +119,29 @@ export function usedRefs<T>(
   return out;
 }
 
-/**
- * Where a token sits, if the caret is just past the end of one.
- *
- * So Backspace removes a reference in one press instead of eating it a
- * character at a time — the one thing a real pill would give for free.
- */
-export function tokenBefore(
-  text: string,
-  caret: number,
-): { start: number; end: number } | null {
-  if (caret <= 0 || text[caret - 1] !== REF_CLOSE) return null;
-  const start = text.lastIndexOf(REF_OPEN, caret - 1);
-  if (start < 0) return null;
-  // A newline between the brackets means these are not a pair.
-  if (text.slice(start, caret).includes("\n")) return null;
-  return { start, end: caret };
-}
+/** One piece of a message: literal text, or a reference to an element. */
+export type Piece =
+  | { type: "text"; value: string }
+  | { type: "chip"; label: string };
 
-/** Every token's bounds in the text, in order. */
-export function tokenSpans(text: string): { start: number; end: number }[] {
-  const out: { start: number; end: number }[] = [];
+/**
+ * Split text into pieces, for anything that has to DRAW it.
+ *
+ * The composer builds DOM from this and reads DOM back into text; the bubble
+ * builds React nodes from it. One splitter for both, because "what counts as a
+ * reference" drifting between the editor and the transcript is the sort of
+ * thing nobody notices until a chip survives a send and dies on reload.
+ */
+export function tokenize(text: string): Piece[] {
+  const out: Piece[] = [];
+  let last = 0;
   REF_TOKEN.lastIndex = 0;
   for (const m of text.matchAll(REF_TOKEN)) {
-    const start = m.index ?? 0;
-    out.push({ start, end: start + m[0].length });
+    const at = m.index ?? 0;
+    if (at > last) out.push({ type: "text", value: text.slice(last, at) });
+    out.push({ type: "chip", label: m[1] ?? "" });
+    last = at + m[0].length;
   }
+  if (last < text.length) out.push({ type: "text", value: text.slice(last) });
   return out;
-}
-
-/**
- * Widen a selection so it never cuts a reference in half.
- *
- * A chip should copy as a chip. Half of ⟨HeroImage⟩ on the clipboard is not a
- * reference to anything, and pasting it back would leave a message that
- * mentions an element nobody can resolve.
- */
-export function snapSelection(
-  text: string,
-  start: number,
-  end: number,
-): { start: number; end: number } {
-  if (start === end) return { start, end };
-  let s = start;
-  let e = end;
-  for (const span of tokenSpans(text)) {
-    if (s > span.start && s < span.end) s = span.start;
-    if (e > span.start && e < span.end) e = span.end;
-  }
-  return { start: s, end: e };
-}
-
-/** Insert a reference at the caret, spacing it like a word. */
-export function insertRefToken(
-  text: string,
-  label: string,
-  caret: number,
-): { text: string; caret: number } {
-  const at = Math.max(0, Math.min(caret, text.length));
-  const before = text.slice(0, at);
-  const after = text.slice(at);
-  const token = refToken(label);
-  const lead = before && !/\s$/.test(before) ? " " : "";
-  const tail = after && !/^\s/.test(after) ? " " : "";
-  const next = `${before}${lead}${token}${tail}${after}`;
-  return { text: next, caret: before.length + lead.length + token.length };
 }

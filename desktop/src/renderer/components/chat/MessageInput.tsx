@@ -30,13 +30,8 @@ import { ModalityBadges } from "@/components/providers/ModalityBadges";
 import type { Modality } from "@/stores/providerStore";
 import { StagedFileTile } from "@/components/FileCard";
 import { GoalStrip } from "./GoalStrip";
-import {
-  insertRefToken,
-  snapSelection,
-  tokenBefore,
-  usedRefs,
-} from "@/lib/selection-marks";
-import { COMPOSER_TEXT, TokenHighlight } from "./TokenHighlight";
+import { usedRefs } from "@/lib/selection-marks";
+import { TokenInput, type TokenInputHandle } from "./TokenInput";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -300,9 +295,23 @@ export function MessageInput({
   } | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState(false);
-  const taRef = useRef<HTMLTextAreaElement>(null);
-  /** The chip layer behind the textarea — scrolled in step with it. */
-  const highlightRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<TokenInputHandle>(null);
+
+  /**
+   * Put text INTO the box.
+   *
+   * TokenInput is uncontrolled on purpose (React re-rendering a contenteditable
+   * fights the caret and breaks IME), so anything writing from outside — a
+   * draft, a slash expansion, dictation — has to tell both the state and the
+   * element.
+   */
+  const applyText = useCallback(
+    (next: string): void => {
+      setInput(next);
+      taRef.current?.setText(next);
+    },
+    [setInput],
+  );
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -324,19 +333,11 @@ export function MessageInput({
   // A Home suggestion chip (or anything else) can push text into the composer.
   useEffect(() => {
     if (composerDraft) {
-      setInput(composerDraft);
+      applyText(composerDraft);
       setComposerDraft("");
       taRef.current?.focus();
     }
   }, [composerDraft, setComposerDraft]);
-
-  useEffect(() => {
-    const ta = taRef.current;
-    if (ta) {
-      ta.style.height = "auto";
-      ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
-    }
-  }, [input]);
 
   const loadProviders = (): void => {
     const bridge = api();
@@ -567,33 +568,21 @@ export function MessageInput({
   // followed by name characters only). A space closes it (arguments begin).
   const [caret, setCaret] = useState(0);
 
-  // An element picked in the Browser panel becomes a token in the text, at the
-  // caret. Plain text on purpose: you can write around it, select it, copy it,
-  // and delete it with the cursor like any other word — none of which a chip
-  // parked above the box would let you do.
+  // An element picked in the Browser panel becomes a chip at the caret. The
+  // input owns its own DOM, so this hands it the chip rather than rewriting
+  // the text around it — rewriting would take the caret with it.
   useEffect(() => {
     const fresh = pendingContext.filter((c) => !tokenised.current.has(c.id));
-    if (fresh.length === 0) return;
-    let text = input;
-    let pos = caret;
     for (const c of fresh) {
       tokenised.current.add(c.id);
-      const next = insertRefToken(text, c.label, pos);
-      text = next.text;
-      pos = next.caret;
+      // Restored by a rewind: its ⟨token⟩ came back with the sentence, so
+      // inserting again would double it.
+      if (c.pretokenised) continue;
+      taRef.current?.insertChip(c.label, c.tone ?? 0);
     }
-    setInput(text);
-    setCaret(pos);
-    // After React has written the value, or setSelectionRange lands in the old
-    // string and the caret jumps to the end.
-    requestAnimationFrame(() => {
-      const ta = taRef.current;
-      if (!ta) return;
-      ta.focus();
-      ta.setSelectionRange(pos, pos);
-    });
-  }, [pendingContext, input, caret]);
+  }, [pendingContext]);
 
+  /** The "/" word the caret is sitting in, if any. */
   const slashTok = useMemo(() => {
     const upto = input.slice(0, caret);
     const m = /(?:^|\s)\/([A-Za-z0-9_:./-]*)$/.exec(upto);
@@ -664,11 +653,10 @@ export function MessageInput({
     if (!slashTok) return;
     const before = input.slice(0, slashTok.start);
     const after = input.slice(caret);
-    setInput(`${before}/${name} ${after}`);
     const pos = before.length + name.length + 2;
+    applyText(`${before}/${name} ${after}`);
     requestAnimationFrame(() => {
       taRef.current?.focus();
-      taRef.current?.setSelectionRange(pos, pos);
       setCaret(pos);
     });
   };
@@ -843,6 +831,11 @@ export function MessageInput({
 
     // Show what was attached on the user bubble (image thumbnails come from
     // the already-encoded base64; other kinds render as chips).
+    // A crop the browser tool made is marked as such: the model still gets the
+    // image, but the transcript hangs it on the chip that stands for the
+    // element rather than beside the message, where it reads as a file the
+    // user chose to attach.
+    const cropNames = new Set(cropFiles.map((f) => f.file.name));
     const displayAttachments = attachments?.map((a) => ({
       name: a.name,
       mediaType: a.mediaType,
@@ -852,6 +845,7 @@ export function MessageInput({
           ? `data:${a.mediaType || "image/png"};base64,${a.dataBase64}`
           : undefined,
       path: undefined as string | undefined,
+      ...(cropNames.has(a.name) ? { origin: "selection" as const } : {}),
     }));
     // Persist binaries as artifacts on disk so previews survive chat
     // switches/reloads and files can be opened later (incognito excluded).
@@ -1038,57 +1032,14 @@ export function MessageInput({
         <div className="glass-panel p-3 rounded-2xl border border-border bg-card transition-colors focus-within:border-foreground/25">
           
           <div className="flex gap-2.5 w-full items-end">
-            {/* The chip layer sits behind the textarea and shares its metrics;
-                see TokenHighlight for why it does not draw the text itself. */}
-            <div className="relative min-w-0 flex-1">
-            <TokenHighlight ref={highlightRef} text={input} />
-            <textarea
+            <TokenInput
               ref={taRef}
-              onScroll={(e) => {
-                const h = highlightRef.current;
-                if (h) h.scrollTop = e.currentTarget.scrollTop;
-              }}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                setCaret(e.target.selectionStart ?? e.target.value.length);
-              }}
-              onSelect={(e) => {
-                const ta = e.currentTarget;
-                // A chip copies as a chip: half of ⟨HeroImage⟩ refers to
-                // nothing, so a selection that cuts one is widened to its edges.
-                const snapped = snapSelection(
-                  ta.value,
-                  ta.selectionStart ?? 0,
-                  ta.selectionEnd ?? 0,
-                );
-                if (
-                  snapped.start !== ta.selectionStart ||
-                  snapped.end !== ta.selectionEnd
-                )
-                  ta.setSelectionRange(snapped.start, snapped.end);
-                setCaret(ta.selectionStart ?? 0);
+              initialText={input}
+              onChange={(text) => {
+                setInput(text);
+                setCaret(taRef.current?.caretOffset() ?? text.length);
               }}
               onKeyDown={(e) => {
-                // Backspace just past a ⟨reference⟩ removes the whole thing,
-                // the one thing a real pill would give for free.
-                if (e.key === "Backspace" && !slashOpen) {
-                  const ta = e.currentTarget;
-                  if (ta.selectionStart === ta.selectionEnd) {
-                    const hit = tokenBefore(ta.value, ta.selectionStart ?? 0);
-                    if (hit) {
-                      e.preventDefault();
-                      const next =
-                        ta.value.slice(0, hit.start) + ta.value.slice(hit.end);
-                      setInput(next);
-                      setCaret(hit.start);
-                      requestAnimationFrame(() =>
-                        taRef.current?.setSelectionRange(hit.start, hit.start),
-                      );
-                      return;
-                    }
-                  }
-                }
                 // "/" menu navigation takes priority while it's open.
                 if (slashOpen) {
                   if (e.key === "ArrowDown") {
@@ -1143,13 +1094,8 @@ export function MessageInput({
                 }
               }}
               placeholder="Type / for commands"
-              rows={1}
-              className={cn(
-                COMPOSER_TEXT,
-                "relative max-h-50 min-h-7 w-full resize-none bg-transparent outline-none placeholder:text-muted-foreground",
-              )}
+              className="composer-input min-w-0 flex-1 max-h-50 min-h-7 overflow-y-auto pt-1 pl-1 text-sm leading-relaxed outline-none"
             />
-            </div>
 
             <input
               ref={fileRef}
@@ -1253,7 +1199,7 @@ export function MessageInput({
               />
               <MicButton
                 onText={(t) =>
-                  setInput((prev) => (prev ? prev.trimEnd() + " " : "") + t)
+                  applyText((input ? input.trimEnd() + " " : "") + t)
                 }
               />
             </div>

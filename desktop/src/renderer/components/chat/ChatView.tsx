@@ -325,6 +325,12 @@ const MessageRow = memo(
     // element — but the description has to survive the edit, so it is put back
     // on save. Stripping it for real would silently drop the context.
     const editable = splitSelections(msg.content);
+    const ownAttachments = (msg.attachments ?? []).filter(
+      (a) => a.origin !== "selection",
+    );
+    const cropAttachments = (msg.attachments ?? []).filter(
+      (a) => a.origin === "selection",
+    );
 
     if (isUser && editing) {
       return (
@@ -368,12 +374,15 @@ const MessageRow = memo(
         <MessageContent>
           {isUser ? (
             <div className="group flex flex-col items-end">
-              {msg.attachments && msg.attachments.length > 0 && (
-                <AttachmentChips attachments={msg.attachments} />
+              {/* Element crops are left out: they belong to the ⟨chip⟩ that
+                  stands for the element, not to the row of files the user
+                  attached. The browser tool made them, nobody picked them. */}
+              {ownAttachments.length > 0 && (
+                <AttachmentChips attachments={ownAttachments} />
               )}
               <Bubble variant="secondary" align="end">
                 <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.08] glass-panel rounded-xl">
-                  <SelectionText content={msg.content} />
+                  <SelectionText content={msg.content} crops={cropAttachments} />
                 </BubbleContent>
               </Bubble>
               {canAct && (
