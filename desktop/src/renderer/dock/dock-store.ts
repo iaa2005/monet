@@ -143,6 +143,11 @@ export const useDockStore = create<DockState>((set, get) => ({
   },
 
   syncFromApi: () => {
+    // Mid-mutation events: clear() and fromJSON() fire remove/add events for
+    // every panel they touch, and this listener runs INSIDE that cascade.
+    // Re-adding the chat panel while dockview is half-way through clearing
+    // itself corrupted the desk — which read as "new session has no chat".
+    if (applying) return;
     const api = get().api;
     if (!api) {
       set({ open: [], layoutJson: null });
@@ -227,34 +232,52 @@ export const useDockStore = create<DockState>((set, get) => ({
   },
 }));
 
+/** True while a whole-desk mutation runs — the event listeners must not
+ * react to the storm of add/remove events it fires. */
+let applying = false;
+
 function applyToApi(api: DockviewApi, desk: DockDesk | null): void {
-  if (!desk) {
-    api.clear();
-    ensureMain(api);
-    return;
-  }
-  if (desk.kind === "open") {
-    ensureMain(api);
-    for (const id of desk.open)
-      if (id !== "main" && !api.getPanel(id)) addPanel(api, id);
-    return;
-  }
-  const clean = sanitizeDockLayout(desk.layout, DOCK_PANEL_IDS);
-  if (!clean) {
-    api.clear();
-    ensureMain(api);
-    return;
-  }
+  applying = true;
   try {
-    api.fromJSON(clean as never);
-    // The renderer is part of the panel's stored state, but a layout written
-    // by an older build may predate it — the browser must never come back as
-    // a display:none panel.
-    api.getPanel("browser")?.api.setRenderer("always");
-  } catch {
-    // A desk that will not load is a desk the user no longer has.
-    api.clear();
+    if (!desk) {
+      api.clear();
+      ensureMain(api);
+      return;
+    }
+    if (desk.kind === "open") {
+      ensureMain(api);
+      for (const id of desk.open)
+        if (id !== "main" && !api.getPanel(id)) addPanel(api, id);
+      return;
+    }
+    const clean = sanitizeDockLayout(desk.layout, DOCK_PANEL_IDS);
+    if (!clean) {
+      api.clear();
+      ensureMain(api);
+      return;
+    }
+    try {
+      api.fromJSON(clean as never);
+      // The renderer is part of the panel's stored state, but a layout
+      // written by an older build may predate it — the browser must never
+      // come back as a display:none panel.
+      api.getPanel("browser")?.api.setRenderer("always");
+    } catch {
+      // A desk that will not load is a desk the user no longer has.
+      try {
+        api.clear();
+      } catch {
+        /* even the clear can throw mid-corruption; main is re-added below */
+      }
+    }
+    // A desk saved before the chat became a panel restores without it.
+    ensureMain(api);
+  } finally {
+    applying = false;
   }
-  // A desk saved before the chat became a panel restores without it.
-  ensureMain(api);
 }
+
+// Dev-only hook: lets a debugging session (or a live probe through the
+// browser pane) drive the desk exactly the way App does.
+if (import.meta.env.DEV)
+  (window as unknown as { __monetDock?: unknown }).__monetDock = useDockStore;

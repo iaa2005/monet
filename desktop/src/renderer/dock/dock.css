@@ -91,3 +91,36 @@
 .monet-dock .dv-tab:not(:hover):not(.dv-active-tab) .dv-default-tab-action {
   visibility: hidden;
 }
+
+/* ── Monet background: the cards go glass ─────────────────────────────
+   Same recipe as .glass-panel in globals.css — a ::before layer carrying
+   the tint and the backdrop blur, so the painting shows through every
+   group exactly as it does through the sidebar. Panel content must stay
+   transparent for this to work; only the browser's page area keeps a real
+   background, because a web page needs one. */
+.monet-glass .monet-dock .dv-groupview {
+  background: transparent !important;
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+}
+.monet-glass .monet-dock .dv-groupview::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-color: hsl(var(--bg-000) / 0.55);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-radius: inherit;
+}
+/* Floating cards hover over other panels — a stronger tint keeps their
+   content readable against whatever is behind them. */
+.monet-glass .monet-dock .dv-resize-container .dv-groupview::before {
+  background-color: hsl(var(--bg-000) / 0.75);
+}
+/* The terminal inside a dock group, same as inside a glass panel. */
+.monet-glass .monet-dock .xterm-viewport,
+.monet-glass .monet-dock .xterm-screen {
+  background-color: transparent !important;
+}

@@ -94,8 +94,10 @@ class PanelBoundary extends Component<
   }
 }
 
+// No background of its own: the group card paints it, and under the Monet
+// backdrop the card is GLASS — an opaque wrapper here would blind it.
 const scrollWrap = (children: ReactNode): JSX.Element => (
-  <div className="h-full min-h-0 overflow-auto bg-card">
+  <div className="h-full min-h-0 overflow-auto">
     <PanelBoundary>{children}</PanelBoundary>
   </div>
 );
@@ -155,7 +157,7 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
   },
   browser: function BrowserDockPanel() {
     return (
-      <div className="relative h-full min-h-0 overflow-hidden bg-card">
+      <div className="relative h-full min-h-0 overflow-hidden">
         <PanelBoundary>
           <BrowserPanel />
         </PanelBoundary>
@@ -165,7 +167,7 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
   terminal: function TerminalDockPanel() {
     const home = latest.space === "home";
     return (
-      <div className="h-full min-h-0 bg-card">
+      <div className="h-full min-h-0">
         <PanelBoundary>
           <Suspense
             fallback={
@@ -292,7 +294,7 @@ function DockTab(props: IDockviewPanelHeaderProps): JSX.Element {
 }
 
 function Watermark(): JSX.Element {
-  return <div className="h-full bg-card" />;
+  return <div className="h-full" />;
 }
 
 export function DockArea(ctx: DockAreaContext): JSX.Element {
