@@ -428,6 +428,10 @@ export function startServer(workspace: string, id: string): void {
  * the child we hold kills the shell and leaves the bundler holding the port —
  * so the panel says stopped, the page still loads, and the next start dies on
  * EADDRINUSE. tree-kill walks the actual process tree.
+ *
+ * Fire-and-forget, for the quit path. Anything user-facing goes through
+ * stopServerAndWait, which can also stop a server this app never started and
+ * refuses to claim success while the port still answers.
  */
 export function stopServer(id: string): void {
   const live = running.get(id);
@@ -445,6 +449,139 @@ export function stopServer(id: string): void {
 /** App quit: nothing we started outlives us. */
 export function stopAllServers(): void {
   for (const id of [...running.keys()]) stopServer(id);
+}
+
+/** One short-lived command, its stdout collected. */
+function run(cmd: string, args: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { windowsHide: true });
+    let out = "";
+    child.stdout?.on("data", (b: Buffer) => (out += b.toString("utf-8")));
+    child.once("error", () => resolve(""));
+    child.once("close", () => resolve(out));
+  });
+}
+
+/**
+ * The listener PIDs in a `netstat -ano` dump, for one port.
+ *
+ * Filtered by a FOREIGN address of `:0` — that is what a listening socket
+ * shows, and unlike the "LISTENING" state column it is not localised (a
+ * German Windows prints ABHÖREN there). TIME_WAIT ghosts carry pid 0 and a
+ * real foreign port, so both filters exclude them; pid 4 is the kernel's
+ * System process, which a bug here must never nominate for killing.
+ */
+export function listenerPidsFromNetstat(out: string, port: number): number[] {
+  const pids = new Set<number>();
+  for (const line of out.split("\n")) {
+    const parts = line.trim().split(/\s+/);
+    if (parts[0] !== "TCP") continue;
+    if (!parts[1]?.endsWith(`:${port}`)) continue;
+    if (!parts[2]?.endsWith(":0")) continue;
+    const pid = Number(parts[parts.length - 1]);
+    if (Number.isInteger(pid) && pid > 4) pids.add(pid);
+  }
+  return [...pids];
+}
+
+/**
+ * The processes LISTENING on a local port.
+ *
+ * Windows: netstat without a `-p` filter — `-p TCP` would hide the IPv6
+ * listener, and Vite on Windows IS the IPv6 listener. POSIX: lsof.
+ */
+async function pidsOnPort(port: number): Promise<number[]> {
+  const pids = new Set<number>();
+  if (process.platform === "win32") {
+    for (const pid of listenerPidsFromNetstat(await run("netstat", ["-ano"]), port))
+      pids.add(pid);
+  } else {
+    const out = await run("lsof", [`-nP`, `-iTCP:${port}`, "-sTCP:LISTEN", "-t"]);
+    for (const line of out.split("\n")) {
+      const pid = Number(line.trim());
+      if (Number.isInteger(pid) && pid > 1) pids.add(pid);
+    }
+  }
+  // Never the app itself: the main process listens on ports of its own (the
+  // dev API), and "stop the server" must not be able to mean "quit".
+  pids.delete(process.pid);
+  return [...pids];
+}
+
+function killPid(pid: number, force: boolean): Promise<void> {
+  if (process.platform === "win32")
+    // /T for the tree: the listener is usually node under an npm shell, and
+    // the shell would otherwise restart nothing but keep the console handle.
+    return run("taskkill", ["/T", "/F", "/PID", String(pid)]).then(() => {});
+  try {
+    process.kill(pid, force ? "SIGKILL" : "SIGTERM");
+  } catch {
+    /* already gone */
+  }
+  return Promise.resolve();
+}
+
+async function portClosed(port: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!(await portOpen(port))) return true;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return !(await portOpen(port));
+}
+
+/**
+ * Stop whatever serves the port, and only then say so.
+ *
+ * The old path had a hole a user fell straight into: stop a server that this
+ * app did not start (a terminal, a previous app run, the agent's shell) and
+ * there is no child to kill — the map entry vanished, the tool said
+ * "stopped", and the page kept loading. Found in use, reported with a
+ * screenshot of the lie.
+ *
+ * So: kill our own tree when we have one, then measure the port, and if it
+ * still answers, find the actual listener and kill that. Success is defined
+ * by the port going silent — never by our bookkeeping.
+ */
+export async function stopServerAndWait(
+  port: number,
+  id?: string,
+): Promise<{ ok: boolean; error?: string; external?: boolean }> {
+  const live = id ? running.get(id) : undefined;
+  // Where it actually listens beats where it was declared.
+  const target = live?.actualPort ?? port;
+
+  if (live?.child.pid) {
+    await new Promise<void>((resolve) =>
+      treeKill(live.child.pid!, "SIGTERM", () => resolve()),
+    );
+    if (id) running.delete(id);
+    notify();
+    if (await portClosed(target, 4_000)) return { ok: true };
+  } else if (!(await portOpen(target))) {
+    // Nothing to do — but that is a fact worth stating over a fake success.
+    if (id) running.delete(id);
+    notify();
+    return { ok: true };
+  }
+
+  // Ours is gone (or never existed) and the port still answers: somebody
+  // else's process. Find it and stop it too.
+  const pids = await pidsOnPort(target);
+  if (pids.length === 0)
+    return {
+      ok: false,
+      error: `:${target} still answers but no local listener was found — it may be a proxy or a container port mapping.`,
+    };
+  for (const pid of pids) await killPid(pid, false);
+  if (await portClosed(target, 4_000)) return { ok: true, external: true };
+  // A TERM that was ignored gets a KILL, once.
+  for (const pid of await pidsOnPort(target)) await killPid(pid, true);
+  if (await portClosed(target, 3_000)) return { ok: true, external: true };
+  return {
+    ok: false,
+    error: `:${target} is still answering after killing pid(s) ${pids.join(", ")}.`,
+  };
 }
 
 /** The tail of a server's output, for the panel's failure message. */

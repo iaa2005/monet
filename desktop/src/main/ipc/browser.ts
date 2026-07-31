@@ -21,7 +21,7 @@ import {
   mergeDetected,
   serverStates,
   startServer,
-  stopServer,
+  stopServerAndWait,
   suggestFromPackage,
   watchServers,
   writeServers,
@@ -139,7 +139,15 @@ export function registerBrowserIPC(): void {
   ipcMain.handle("servers:start", (_e, id: string): void =>
     startServer(getWorkspacePath(), id),
   );
-  ipcMain.handle("servers:stop", (_e, id: string): void => stopServer(id));
+  // The verified stop: kills by port when the process is not ours, succeeds
+  // only once the port is silent. `found-<port>` ids are the detected rows.
+  ipcMain.handle("servers:stop", async (_e, id: string) => {
+    const declared = readServers(getWorkspacePath()).find((s) => s.id === id);
+    const foundPort = /^found-(\d+)$/.exec(id)?.[1];
+    const port = declared?.port ?? (foundPort ? Number(foundPort) : null);
+    if (!port) return { ok: false, error: `Unknown server ${id}` };
+    return stopServerAndWait(port, declared?.id);
+  });
   ipcMain.handle("servers:output", (_e, id: string): string => serverOutput(id));
 
   // ── Bookmarks + recent pages (the empty tab, and the toolbar star) ──

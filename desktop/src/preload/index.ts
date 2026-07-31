@@ -771,7 +771,8 @@ const electronAPI = {
       save: (servers: ServerConfig[]): Promise<void> =>
         ipcRenderer.invoke("servers:save", servers),
       start: (id: string): Promise<void> => ipcRenderer.invoke("servers:start", id),
-      stop: (id: string): Promise<void> => ipcRenderer.invoke("servers:stop", id),
+      stop: (id: string): Promise<{ ok: boolean; error?: string }> =>
+        ipcRenderer.invoke("servers:stop", id),
       output: (id: string): Promise<string> =>
         ipcRenderer.invoke("servers:output", id),
       suggest: (): Promise<ServerConfig[]> => ipcRenderer.invoke("servers:suggest"),

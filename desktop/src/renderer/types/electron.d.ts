@@ -875,7 +875,7 @@ export interface ElectronAPI {
       list: () => Promise<ServerState[]>;
       save: (servers: ServerConfig[]) => Promise<void>;
       start: (id: string) => Promise<void>;
-      stop: (id: string) => Promise<void>;
+      stop: (id: string) => Promise<{ ok: boolean; error?: string }>;
       output: (id: string) => Promise<string>;
       suggest: () => Promise<ServerConfig[]>;
       onChanged: (cb: () => void) => () => void;

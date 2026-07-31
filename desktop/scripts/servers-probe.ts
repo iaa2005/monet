@@ -19,6 +19,7 @@ import {
   portOf,
   suggestFromPackage,
   type ServerState,
+  listenerPidsFromNetstat,
 } from "../src/main/browser/servers";
 
 let failures = 0;
@@ -262,6 +263,54 @@ const check = (name: string, ok: boolean, detail?: unknown): void => {
   );
   check("nothing to find is null", portFromOutput("compiling...") === null);
   check("empty output is null", portFromOutput("") === null);
+}
+
+// ── Netstat: who actually holds the port ──────────────────────────────
+//
+// The honest stop kills by port when the process is not ours, and the pid
+// list comes from parsing `netstat -ano`. The traps are all in the sample:
+// a localised state column (German ABHÖREN), TIME_WAIT ghosts with pid 0,
+// established rows naming the same port, UDP rows, and the kernel's System
+// process (pid 4) — nominate the wrong pid here and "stop the dev server"
+// kills somebody's process.
+{
+  const dump = [
+    "Aktive Verbindungen",
+    "",
+    "  Proto  Lokale Adresse         Remoteadresse          Status          PID",
+    "  TCP    0.0.0.0:135            0.0.0.0:0              ABHÖREN         1204",
+    "  TCP    127.0.0.1:5173         0.0.0.0:0              ABHÖREN         31337",
+    "  TCP    [::1]:5173             [::]:0                 ABHÖREN         31337",
+    "  TCP    127.0.0.1:5173         127.0.0.1:52344        HERGESTELLT     31337",
+    "  TCP    127.0.0.1:52344        127.0.0.1:5173         HERGESTELLT     9001",
+    "  TCP    [::1]:5173             [::1]:52999            WARTEND         0",
+    "  TCP    0.0.0.0:445            0.0.0.0:0              ABHÖREN         4",
+    "  TCP    127.0.0.1:51730        0.0.0.0:0              ABHÖREN         7777",
+    "  UDP    0.0.0.0:5173           *:*                                    2222",
+  ].join("\r\n");
+
+  const pids = listenerPidsFromNetstat(dump, 5173);
+  check(
+    "both stacks' listeners, once",
+    pids.length === 1 && pids[0] === 31337,
+    pids.join(", "),
+  );
+  check(
+    "the CLIENT of the port is not its owner",
+    !pids.includes(9001),
+  );
+  check("TIME_WAIT's pid 0 is not a target", !pids.includes(0));
+  check("a longer port is not a suffix match", !pids.includes(7777));
+  check("UDP rows are not TCP listeners", !pids.includes(2222));
+  check(
+    "the kernel's System process is never nominated",
+    listenerPidsFromNetstat(dump, 445).length === 0,
+    listenerPidsFromNetstat(dump, 445).join(", "),
+  );
+  check(
+    "a port nobody listens on is empty",
+    listenerPidsFromNetstat(dump, 3000).length === 0,
+  );
 }
 
 console.log(failures === 0 ? "\nservers probe OK" : `\n${failures} FAILED`);

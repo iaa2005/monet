@@ -17,13 +17,15 @@ import { buildTool } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import {
   findServer,
+  mergeDetected,
   readServers,
   serverOutput,
   serverStates,
   startAndWait,
-  stopServer,
+  stopServerAndWait,
   writeServers,
 } from "../browser/servers.js";
+import { detectDevServers } from "../browser/dev-servers.js";
 import { getWorkspacePath } from "../ipc/workspace.js";
 
 interface TextOutput {
@@ -56,7 +58,7 @@ const schema = lazySchema(() =>
     name: z
       .string()
       .optional()
-      .describe("Which server (its name). Required for start/stop/add."),
+      .describe("Which server (its name). Required for start/add."),
     command: z
       .string()
       .optional()
@@ -64,7 +66,9 @@ const schema = lazySchema(() =>
     port: z
       .number()
       .optional()
-      .describe("action=add: the port it will listen on."),
+      .describe(
+        "action=add: the port it will listen on. action=stop: stop whatever serves this port (works for servers started outside this app too).",
+      ),
   }),
 );
 type Schema = ReturnType<typeof schema>;
@@ -94,7 +98,8 @@ export const DevServerTool = buildTool({
       "action=list  — what this project declares, and what is already up.",
       "action=start — start one by name. Waits until the port answers, so you",
       "               can open the page immediately afterwards. No sleeping.",
-      "action=stop  — stop one you started.",
+      "action=stop  — stop by name or by port. Also stops servers started",
+      "               outside this app; succeeds only once the port is silent.",
       "action=add   — declare a new one (name, command, port) and start it. The",
       "               entry is saved in the project, so it is there next time.",
       "",
@@ -111,10 +116,16 @@ export const DevServerTool = buildTool({
 
     try {
       if (action === "list") {
-        const states = await serverStates(workspace);
+        // Declared AND detected: a server somebody started in a terminal is
+        // exactly the one "stop 5173" is usually about.
+        const [declared, detected] = await Promise.all([
+          serverStates(workspace),
+          detectDevServers(workspace),
+        ]);
+        const states = mergeDetected(declared, detected);
         if (states.length === 0)
           return ok(
-            "This project declares no dev servers. Use action=add with a name, a command and a port.",
+            "This project declares no dev servers and nothing is serving on the usual ports. Use action=add with a name, a command and a port.",
           );
         return ok(
           states
@@ -122,9 +133,9 @@ export const DevServerTool = buildTool({
               (s) =>
                 `${s.name} — ${s.status}${
                   s.externallyRunning ? " (started outside this app)" : ""
-                } · \`${s.command}\` on http://localhost:${s.port}/${
-                  s.error ? `\n  last error: ${s.error}` : ""
-                }`,
+                }${s.command ? ` · \`${s.command}\`` : ""} on http://localhost:${
+                  s.actualPort ?? s.port
+                }/${s.error ? `\n  last error: ${s.error}` : ""}`,
             )
             .join("\n"),
         );
@@ -153,15 +164,40 @@ export const DevServerTool = buildTool({
             );
       }
 
+      if (action === "stop") {
+        // Resolve generously: a name, a bare port in the name field ("5173"),
+        // or the explicit port parameter. The user says "stop 5173" about
+        // whatever serves 5173 — declared or not.
+        const named = name ? findServer(workspace, name) : null;
+        const portArg =
+          port ?? (name && /^:?\d{2,5}$/.test(name.trim()) ? Number(name.trim().replace(":", "")) : null);
+        const config =
+          named ??
+          (portArg ? (readServers(workspace).find((s) => s.port === portArg) ?? null) : null);
+        const targetPort = config?.port ?? portArg;
+        if (!targetPort)
+          return fail(
+            name
+              ? `No server called "${name}". Call action=list, or pass the port.`
+              : "action=stop needs a name or a port.",
+          );
+
+        const r = await stopServerAndWait(targetPort, config?.id);
+        const label = config?.name ?? `:${targetPort}`;
+        return r.ok
+          ? ok(
+              `Stopped ${label} — nothing is listening on :${targetPort} now.` +
+                (r.external
+                  ? " (It was started outside this app; its process was killed by port.)"
+                  : ""),
+            )
+          : fail(`Could not stop ${label}: ${r.error}`);
+      }
+
       if (!name) return fail(`action=${action} needs a name (see action=list).`);
       const config = findServer(workspace, name);
       if (!config)
         return fail(`No server called "${name}". Call action=list for the names.`);
-
-      if (action === "stop") {
-        stopServer(config.id);
-        return ok(`Stopped ${config.name}.`);
-      }
 
       const started = await startAndWait(workspace, config.id);
       return started.ok
