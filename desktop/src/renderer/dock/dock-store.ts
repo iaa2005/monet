@@ -328,5 +328,10 @@ function applyToApi(api: DockviewApi, desk: DockDesk | null): void {
  * stores through React anyway; the condition is about keeping the global
  * out of the shipped app, not about secrecy.
  */
-if (import.meta.env.DEV || !(window as { electronAPI?: unknown }).electronAPI)
+// `typeof window` first: node probes import this module for its constants,
+// and both halves of the condition below reach for browser globals.
+if (
+  typeof window !== "undefined" &&
+  (import.meta.env.DEV || !(window as { electronAPI?: unknown }).electronAPI)
+)
   (window as unknown as { __monetDock?: unknown }).__monetDock = useDockStore;

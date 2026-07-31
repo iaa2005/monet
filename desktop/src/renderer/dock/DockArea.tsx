@@ -351,12 +351,25 @@ function GroupActions(props: IDockviewHeaderActionsProps): JSX.Element {
  * The tab, app-styled — and the reason it is custom at all: the chat panel
  * gets NO close button. The conversation is the dock's anchor; every other
  * panel closes like a tab anywhere else.
+ *
+ * The title is SUBSCRIBED, not read once. dockview's own tab does this and
+ * a custom one has to as well: the viewer renames itself for every file it
+ * opens, and a plain `props.api.title` read froze the tab on the first
+ * file's name — reported from use.
  */
 function DockTab(props: IDockviewPanelHeaderProps): JSX.Element {
   const closable = props.api.id !== "main";
+  const [title, setTitle] = useState(props.api.title);
+  useEffect(() => {
+    setTitle(props.api.title);
+    const d = props.api.onDidTitleChange((e) => setTitle(e.title));
+    return () => d.dispose();
+  }, [props.api]);
   return (
     <div className="flex h-full items-center gap-1.5 px-0 text-xs font-medium">
-      <span className="truncate">{props.api.title}</span>
+      <span className="truncate" title={title}>
+        {title}
+      </span>
       {closable && (
         <button
           type="button"

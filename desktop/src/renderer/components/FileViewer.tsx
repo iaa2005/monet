@@ -20,8 +20,6 @@ import {
   Download,
   ExternalLink,
   FileText,
-  Maximize2,
-  Minimize2,
   RefreshCw,
   X,
 } from "lucide-react";
@@ -235,7 +233,6 @@ export function FileViewer({
   const [loading, setLoading] = useState(false);
 
   // --- Rich state ---
-  const [expanded, setExpanded] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -431,7 +428,7 @@ export function FileViewer({
   };
 
   return (
-    <div className="glass-panel flex h-full flex-col rounded-xl border border-border bg-background">
+    <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-1">
         <span className="flex min-w-0 items-center gap-1.5">
@@ -453,11 +450,6 @@ export function FileViewer({
                 <ExternalLink className="size-3.5" />
               </IconBtn>
             </>
-          )}
-          {isRich && (
-            <IconBtn title={expanded ? "Shrink" : "Expand"} onClick={() => setExpanded((v) => !v)}>
-              {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-            </IconBtn>
           )}
           <IconBtn title="Close" onClick={onClose}>
             <X className="size-3.5" />

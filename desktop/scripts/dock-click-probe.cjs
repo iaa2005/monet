@@ -180,6 +180,36 @@ app.whenReady().then(async () => {
       JSON.stringify(opened),
     );
 
+    // Opening a SECOND file renames the tab. Reported from use: it kept the
+    // first file's name, because a custom tab component has to subscribe to
+    // title changes — reading api.title once freezes it.
+    await js(`window.__monetChat.getState().openViewer({
+      name: 'report.pdf', path: 'D:/tmp/report.pdf',
+      mediaType: 'application/pdf', kind: 'file', source: 'file',
+    })`);
+    await new Promise((r) => setTimeout(r, 900));
+    const renamed = await js(
+      `[...document.querySelectorAll('.dv-tab')].map(t => t.textContent.trim())`,
+    );
+    check(
+      "opening another file renames the tab",
+      renamed.some((t) => t.includes("report.pdf")) &&
+        !renamed.some((t) => t.includes("notes.md")),
+      JSON.stringify(renamed),
+    );
+    check(
+      "and does not open a second viewer",
+      renamed.filter((t) => t.includes(".pdf") || t.includes(".md")).length === 1,
+      JSON.stringify(renamed),
+    );
+
+    // Back to the first file, so the close checks below read as written.
+    await js(`window.__monetChat.getState().openViewer({
+      name: 'notes.md', path: 'D:/tmp/notes.md',
+      mediaType: 'text/markdown', kind: 'file', source: 'file',
+    })`);
+    await new Promise((r) => setTimeout(r, 700));
+
     // Closing the tab closes the file — and it stays closed.
     await js(`(() => {
       const tab = [...document.querySelectorAll('.dv-tab')].find(t => t.textContent.includes('notes.md'));

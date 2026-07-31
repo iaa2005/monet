@@ -1275,5 +1275,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
  * preload bridge (scripts/dock-click-probe.cjs). Never the real app: there,
  * contextBridge has published electronAPI before this module evaluates.
  */
-if (import.meta.env.DEV || !(window as { electronAPI?: unknown }).electronAPI)
+// `typeof window` first: node probes import this module for its constants,
+// and both halves of the condition below reach for browser globals.
+if (
+  typeof window !== "undefined" &&
+  (import.meta.env.DEV || !(window as { electronAPI?: unknown }).electronAPI)
+)
   (window as unknown as { __monetChat?: unknown }).__monetChat = useChatStore;
