@@ -44,6 +44,7 @@ import { setDesignMode } from "../browser/inspect.js";
 import { onInspectMessage } from "../browser/selection.js";
 import { getWorkspacePath } from "./workspace.js";
 import { getUiState, setUiState, type SessionUiState } from "../ui-state.js";
+import { BROWSER_PARTITION_PREFIX } from "@shared/brand.js";
 
 export function registerBrowserIPC(): void {
   // The panel redraws whenever a server changes state, rather than polling —
@@ -85,7 +86,10 @@ export function registerBrowserIPC(): void {
   );
 
   ipcMain.handle("browser:clearData", async (_e, partition: string): Promise<void> => {
-    if (!partition.startsWith("monet-browser") && !partition.startsWith("persist:monet-browser"))
+    if (
+      !partition.startsWith(BROWSER_PARTITION_PREFIX) &&
+      !partition.startsWith(`persist:${BROWSER_PARTITION_PREFIX}`)
+    )
       return;
     const ses = session.fromPartition(partition);
     await ses.clearStorageData();

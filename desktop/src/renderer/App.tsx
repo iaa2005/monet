@@ -524,6 +524,55 @@ export default function App(): JSX.Element {
     return () => clearTimeout(t);
   }, [currentSessionId, rightTab, terminalOpen, browserTabsLive, browserActiveLive, browserLayout]);
 
+  // "Branch from here" on a user message: a fork cut at that point. The
+  // non-destructive sibling of Rewind — the original keeps its whole history,
+  // and the branch starts as if the messages after this one never happened,
+  // with the clicked prompt waiting in the composer.
+  const forkRequest = useChatStore((s) => s.forkRequest);
+  useEffect(() => {
+    if (!forkRequest) return;
+    useChatStore.getState().requestFork(null);
+    void (async () => {
+      const store = useChatStore.getState();
+      const fromId = store.currentSessionId;
+      const msgs = store.messages;
+      const idx = msgs.findIndex((m) => m.id === forkRequest);
+      if (idx < 0 || msgs[idx].role !== "user" || !fromId) return;
+      const newId = (): string =>
+        crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
+      const prior = msgs.slice(0, idx).map((m) => ({ ...m, id: newId() }));
+      const keepUserTurns = msgs
+        .slice(0, idx)
+        .filter((m) => m.role === "user").length;
+      const totalUserTurns = msgs.filter((m) => m.role === "user").length;
+      try {
+        const title = `${sessionTitle || "Chat"} (branch)`;
+        const s = (await api()?.sessions.create(title, store.space)) as
+          | { id: string }
+          | undefined;
+        if (!s?.id) return;
+        await api()?.sessions.save({ id: s.id, title, messages: prior });
+        await api()?.chat.forkTranscript(
+          fromId,
+          s.id,
+          keepUserTurns,
+          totalUserTurns,
+        );
+        await adoptForkExtras(fromId, s.id);
+        store.loadSessionMessages(s.id, prior);
+        store.setCurrentSessionId(s.id);
+        setCurrentSessionId(s.id);
+        setSessionTitle(title);
+        store.bumpSessions();
+        // The clicked prompt lands in the composer, ready to edit — the same
+        // hand-off rewindAndEdit makes, minus the destruction.
+        store.setComposerDraft(msgs[idx].content);
+      } catch {
+        /* offline */
+      }
+    })();
+  }, [forkRequest, sessionTitle]);
+
   // The Browser panel's "Manage allowed sites" opens Settings → Automation.
   const openSettingsRequest = useChatStore((s) => s.openSettingsRequest);
   useEffect(() => {
@@ -864,6 +913,7 @@ export default function App(): JSX.Element {
       crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
     const forked = msgs.map((m) => ({ ...m, id: newId() }));
     try {
+      const fromId = store.currentSessionId;
       const s = (await api()?.sessions.create()) as { id: string } | undefined;
       if (s?.id) {
         await api()?.sessions.save({
@@ -871,6 +921,11 @@ export default function App(): JSX.Element {
           title: `${sessionTitle || "Chat"} (fork)`,
           messages: forked,
         });
+        // The display copy above is the surface; this copies the model-facing
+        // transcript (tool calls and results), which is what makes the fork
+        // continue with real context instead of a text-only reconstruction.
+        if (fromId) await api()?.chat.forkTranscript(fromId, s.id);
+        await adoptForkExtras(fromId, s.id);
         store.loadSessionMessages(s.id, forked);
         store.setCurrentSessionId(s.id);
         setCurrentSessionId(s.id);
@@ -880,6 +935,25 @@ export default function App(): JSX.Element {
       /* offline */
     }
   }, [sessionTitle]);
+
+  /** What rides along with any fork: the workspace binding and the desk. */
+  const adoptForkExtras = async (
+    fromId: string | undefined,
+    toId: string,
+  ): Promise<void> => {
+    const bridge = api();
+    if (!bridge) return;
+    try {
+      const ws = await bridge.workspace.get();
+      if (ws) await bridge.sessions.setWorkspace(toId, ws);
+      if (fromId) {
+        const desk = await bridge.browser.uiState.get(fromId);
+        if (desk) await bridge.browser.uiState.set(toId, desk);
+      }
+    } catch {
+      /* the fork itself already succeeded */
+    }
+  };
 
   const handleRename = useCallback(async () => {
     const id = renameTargetId ?? useChatStore.getState().currentSessionId;
@@ -917,6 +991,8 @@ export default function App(): JSX.Element {
         )) as { id: string } | undefined;
         if (s?.id) {
           await api()?.sessions.save({ id: s.id, title, messages: forked });
+          await api()?.chat.forkTranscript(id, s.id);
+          await adoptForkExtras(id, s.id);
           useChatStore.getState().bumpSessions();
           handleSelectSession({ id: s.id, title, messages: forked });
         }

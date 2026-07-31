@@ -532,6 +532,62 @@ function isEmptyUserContent(content: string | LLMContentBlock[]): boolean {
  * clear so the renderer's already-truncated text `seed` applies on the next
  * send. Returns which fidelity was used.
  */
+/**
+ * Copy a session's full-fidelity transcript into a NEW session.
+ *
+ * This is what makes a fork a real fork. The renderer already copied the
+ * display messages, but those are the text-only surface; without this the
+ * forked chat re-seeds the model from bubbles, and every tool call and result
+ * from the original — the context that made the conversation worth branching —
+ * is gone. Claude Code forks by rewriting the transcript under a new id; same
+ * move here.
+ *
+ * Read from the DB, not from the in-memory conversation: the DB carries the
+ * hidden flags (background-delivery turns), and forking is only offered while
+ * the session is idle, so the DB is current.
+ *
+ * `keepUserTurns` cuts at a user-turn boundary for "branch from here"; the
+ * same divergence check as rewind applies — a compacted transcript's turn
+ * indexes cannot be trusted, so the fork falls back to text fidelity.
+ */
+export function forkTranscriptToSession(
+  fromSessionId: string,
+  toSessionId: string,
+  keepUserTurns?: number,
+  totalUserTurns?: number,
+): { fidelity: "full" | "text" } {
+  const { messages, hidden } = loadTranscriptWithMeta(fromSessionId);
+  if (messages.length === 0) return { fidelity: "text" };
+
+  const hiddenSet = new Set(messages.filter((_m, i) => hidden[i]));
+  const isBoundary = (m: LLMMessage): boolean => {
+    if (m.role !== "user" || hiddenSet.has(m)) return false;
+    if (typeof m.content === "string") return true;
+    return m.content.some((b) => b.type !== "tool_result");
+  };
+
+  let cut = messages.length;
+  if (keepUserTurns != null) {
+    const boundaries = messages.filter(isBoundary).length;
+    if (totalUserTurns != null && boundaries !== totalUserTurns)
+      return { fidelity: "text" };
+    let seen = 0;
+    for (let i = 0; i < messages.length; i++) {
+      if (isBoundary(messages[i])) {
+        if (seen === keepUserTurns) {
+          cut = i;
+          break;
+        }
+        seen++;
+      }
+    }
+  }
+
+  const copy = messages.slice(0, cut);
+  replaceTranscript(toSessionId, copy, hidden.slice(0, cut));
+  return { fidelity: "full" };
+}
+
 export async function rewindTranscriptToUserTurn(
   sessionId: string,
   keepUserTurns: number,
@@ -835,7 +891,7 @@ export async function computeContextBreakdown(
       memoryItems = [
         { label: "Profile", tokens: tok(getProfilePrompt()) },
         { label: "User memory", tokens: tok(buildMemoryPrompt()) },
-        { label: "CLAUDE.md", tokens: tok(md) },
+        { label: "Project memory (MONET.md)", tokens: tok(md) },
       ].filter((i) => i.tokens > 0);
       memoryTokens = memoryItems.reduce((n, i) => n + i.tokens, 0);
     } catch {

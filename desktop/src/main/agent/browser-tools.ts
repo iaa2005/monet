@@ -2,7 +2,7 @@
  * Browser tools — one page, ten verbs.
  *
  * DOM-first, not pixel-first: BrowserReadPage indexes interactive elements with
- * stable refs (data-monet-ref) and returns them with the page text; the model
+ * stable refs (REF_ATTR in shared/brand.ts) and returns them with the page text; the model
  * clicks and types BY REF. Coordinates are an implementation detail of making
  * the click look human.
  *
@@ -44,6 +44,7 @@ import { listTabs, setActiveTab, tabContents } from "../browser/registry.js";
 import { getBrowserConfig } from "../browser/config.js";
 import { activeModelAccepts } from "./model-modalities.js";
 import { artifactReference, saveArtifactBuffer } from "../ipc/artifacts.js";
+import { REF_ATTR } from "@shared/brand.js";
 
 interface TextOutput {
   text: string;
@@ -94,7 +95,7 @@ async function refRect(
 ): Promise<{ x: number; y: number; w: number; h: number } | null> {
   const raw = await pageEvaluate(`
     (() => {
-      const el = document.querySelector('[data-monet-ref=${JSON.stringify(ref)}]');
+      const el = document.querySelector('[${REF_ATTR}=${JSON.stringify(ref)}]');
       if (!el) return 'STALE';
       el.scrollIntoView({ block: 'center' });
       const r = el.getBoundingClientRect();
@@ -217,7 +218,7 @@ const READ_PAGE_SCRIPT = `
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) continue;
     const ref = 'ref' + (++n);
-    el.setAttribute('data-monet-ref', ref);
+    el.setAttribute('${REF_ATTR}', ref);
     const tag = el.tagName.toLowerCase();
     const type = el.getAttribute('type');
     const label = (el.innerText || el.value || el.placeholder ||
@@ -356,7 +357,7 @@ export const BrowserClickTool = buildTool({
         // Invisible/zero-size target — fall back to a synthetic click.
         await pageEvaluate(`
           (() => {
-            const el = document.querySelector('[data-monet-ref=${JSON.stringify(ref)}]');
+            const el = document.querySelector('[${REF_ATTR}=${JSON.stringify(ref)}]');
             if (el) el.click();
             return 'OK';
           })()
@@ -429,7 +430,7 @@ export const BrowserTypeTool = buildTool({
       // Clear the existing value (React-compatible native setter), keep focus.
       const cleared = await pageEvaluate(`
         (() => {
-          const el = document.querySelector('[data-monet-ref=${JSON.stringify(ref)}]');
+          const el = document.querySelector('[${REF_ATTR}=${JSON.stringify(ref)}]');
           if (!el) return 'STALE';
           el.focus();
           if (el.isContentEditable) {

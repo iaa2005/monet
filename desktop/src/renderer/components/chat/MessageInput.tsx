@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { STORAGE_PREFIX } from "@shared/brand";
 import {
   ArrowUp,
   ChevronDown,
@@ -519,15 +520,15 @@ export function MessageInput({
   // Reasoning effort (Faster ↔ Smarter). A global composer preference, only
   // sent when the active model supports it. null = off (provider default).
   const [effort, setEffort] = useState<EffortValue>(() => {
-    const v = localStorage.getItem("monet.effort");
+    const v = localStorage.getItem(`${STORAGE_PREFIX}effort`);
     return v &&
       ["minimal", "low", "medium", "high", "xhigh", "max"].includes(v)
       ? (v as EffortValue)
       : null;
   });
   useEffect(() => {
-    if (effort) localStorage.setItem("monet.effort", effort);
-    else localStorage.removeItem("monet.effort");
+    if (effort) localStorage.setItem(`${STORAGE_PREFIX}effort`, effort);
+    else localStorage.removeItem(`${STORAGE_PREFIX}effort`);
   }, [effort]);
 
   // Files dropped anywhere over the chat window (ChatView catches the drop).

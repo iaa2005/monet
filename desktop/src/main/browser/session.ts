@@ -13,6 +13,7 @@
 
 import { createHash } from "crypto";
 import type { BrowserPersist } from "./config.js";
+import { BROWSER_PARTITION_PREFIX } from "@shared/brand.js";
 
 /** Stable id for a workspace path, insensitive to case and slash direction. */
 export function workspaceKey(workspace: string): string {
@@ -37,16 +38,16 @@ export function partitionFor(opts: {
   const key = workspaceKey(opts.workspace);
   switch (opts.mode) {
     case "none":
-      return "monet-browser-ephemeral";
+      return `${BROWSER_PARTITION_PREFIX}-ephemeral`;
     case "perChat":
       // No chat yet (blank composer) still needs a store; falling back to the
       // shared one would leak that browsing into every later chat, so give the
       // unsaved chat its own ephemeral store instead.
       return opts.sessionId
-        ? `persist:monet-browser-${key}-${opts.sessionId}`
-        : "monet-browser-ephemeral";
+        ? `persist:${BROWSER_PARTITION_PREFIX}-${key}-${opts.sessionId}`
+        : `${BROWSER_PARTITION_PREFIX}-ephemeral`;
     case "shared":
     default:
-      return `persist:monet-browser-${key}`;
+      return `persist:${BROWSER_PARTITION_PREFIX}-${key}`;
   }
 }

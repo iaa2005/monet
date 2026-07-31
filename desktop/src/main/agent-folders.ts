@@ -24,6 +24,8 @@
  * are byte-identical. Ranking settles it — a plain folder beats another agent's.
  */
 
+
+import { APP_NAME, DOT_DIR } from "@shared/brand.js";
 export interface AgentFolder {
   /** Stable id, matching the icon file name. */
   id: string;
@@ -41,7 +43,7 @@ export interface AgentFolder {
  * agent's copy: installable on request, never the automatic answer.
  */
 export const AGENT_FOLDERS: AgentFolder[] = [
-  { id: "monet", label: "Code Monet", dir: ".monet" },
+  { id: "monet", label: APP_NAME, dir: DOT_DIR },
   { id: "claude-code", label: "Claude Code", dir: ".claude" },
   { id: "agents", label: "Any agent", dir: ".agents" },
   { id: "cursor", label: "Cursor", dir: ".cursor" },

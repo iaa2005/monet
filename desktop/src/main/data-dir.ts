@@ -8,6 +8,7 @@
  * the override is stored in a tiny bootstrap file in userData.
  */
 import { app } from "electron";
+import { DOT_DIR } from "@shared/brand.js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 
@@ -17,9 +18,9 @@ const BOOTSTRAP_FILE = (): string =>
 function defaultDataDir(): string {
   if (!app.isPackaged) {
     // Dev: sibling of the desktop/ folder → <repo>/.monet
-    return join(dirname(app.getAppPath()), ".monet");
+    return join(dirname(app.getAppPath()), DOT_DIR);
   }
-  return join(app.getPath("userData"), ".monet");
+  return join(app.getPath("userData"), DOT_DIR);
 }
 
 let cached: string | null = null;

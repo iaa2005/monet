@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu } from "electron";
+import { APP_NAME } from "@shared/brand.js";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { EventEmitter } from "node:events";
@@ -160,7 +161,7 @@ function createWindow(): void {
     minWidth: 800,
     minHeight: 600,
     show: false,
-    title: "Code Monet",
+    title: APP_NAME,
     // Hide the native title bar but keep the resizable window frame so we can
     // draw a custom header + window controls (looks native, not Electron).
     titleBarStyle: "hidden",
@@ -237,7 +238,7 @@ function openSecondaryWindow(): void {
     minWidth: 800,
     minHeight: 600,
     show: false,
-    title: "Code Monet",
+    title: APP_NAME,
     titleBarStyle: "hidden",
     backgroundColor: "#f7f6f1",
     webPreferences: {

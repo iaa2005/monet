@@ -4,8 +4,11 @@
  *
  * Dependency-free on purpose. Every claim here is about what GIT does with these
  * strings, so the probe has to be able to hand them to real git — and
- * checkpoints.ts reaches electron through data-dir.
+ * checkpoints.ts reaches electron through data-dir. shared/brand is fine: it is
+ * as pure as this file.
  */
+
+import { DOT_DIR, DOT_DIR_PROD } from "@shared/brand.js";
 
 /**
  * A session id as a directory name.
@@ -67,8 +70,8 @@ export function withPackConfig(currentConfig: string): string {
 export const DEFAULT_EXCLUDES = [
   ".git/",
   // Ours. A checkpoint of the checkpoints is the one that grows without bound.
-  ".monet/",
-  ".monet-prod/",
+  `${DOT_DIR}/`,
+  `${DOT_DIR_PROD}/`,
   "node_modules/",
   "bower_components/",
   ".pnpm-store/",

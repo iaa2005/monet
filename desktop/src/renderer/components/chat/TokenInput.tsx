@@ -24,6 +24,7 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
+import { CHIP_ATTR } from "@shared/brand";
 import { chipColors, toneForLabel } from "@shared/selection-tones";
 import { refToken, tokenize } from "@/lib/selection-marks";
 import { useIsDark } from "./highlight";
@@ -49,7 +50,7 @@ interface TokenInputProps {
   className?: string;
 }
 
-const CHIP_ATTR = "data-monet-chip";
+
 
 /**
  * lucide's square-mouse-pointer, inline.

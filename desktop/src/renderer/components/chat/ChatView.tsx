@@ -27,6 +27,7 @@ import {
   Copy,
   FileSearch,
   FlaskConical,
+  GitFork,
   GitPullRequest,
   History,
   Loader2,
@@ -165,7 +166,14 @@ function AttachmentChips({
  * the state BEFORE this turn and drops the prompt back into the composer to edit
  * and resend. Previews how much the revert would undo (files, +ins/-del) on
  * hover. */
-function RewindControl({ messageId }: { messageId: string }): JSX.Element {
+function RewindControl({
+  messageId,
+  bare = false,
+}: {
+  messageId: string;
+  /** Rendered inside a shared action row that owns hover visibility. */
+  bare?: boolean;
+}): JSX.Element {
   const rewindAndEdit = useChatStore((s) => s.rewindAndEdit);
   const sessionId = useChatStore((s) => s.currentSessionId);
   // The checkpoint to restore to = the most recent assistant checkpoint BEFORE
@@ -199,7 +207,11 @@ function RewindControl({ messageId }: { messageId: string }): JSX.Element {
   const hasChanges = !!stat && stat.files > 0;
   return (
     <div
-      className="mt-0.5 flex opacity-0 transition-opacity group-hover:opacity-100"
+      className={
+        bare
+          ? "flex"
+          : "mt-0.5 flex opacity-0 transition-opacity group-hover:opacity-100"
+      }
       onMouseEnter={loadStat}
     >
       <button
@@ -409,8 +421,23 @@ const MessageRow = memo(
                 </div>
               )}
               {/* Code: filesystem-aware rewind lives under the user message —
-                  revert the workspace to before this turn and edit the prompt. */}
-              {!home && !isStreaming && <RewindControl messageId={msg.id} />}
+                  revert the workspace to before this turn and edit the prompt.
+                  Branch is its non-destructive sibling: same cut point, but as
+                  a NEW chat, with this history and the original untouched. */}
+              {!home && !isStreaming && (
+                <div className="mt-0.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <RewindControl messageId={msg.id} bare />
+                  <button
+                    type="button"
+                    title="Branch from here — a new chat with the history up to this point; this one keeps everything"
+                    onClick={() => useChatStore.getState().requestFork(msg.id)}
+                    className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+                  >
+                    <GitFork className="size-3" />
+                    Branch
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="group">

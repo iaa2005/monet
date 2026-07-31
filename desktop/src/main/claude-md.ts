@@ -1,17 +1,22 @@
 /**
- * CLAUDE.md loader — reads project instructions on workspace change.
- * Used by both main and renderer processes.
+ * Project memory loader — reads project instructions on workspace change.
+ *
+ * MONET.md is ours and wins when both exist; CLAUDE.md is read because it is
+ * the ecosystem's format and most repos carry that one. Interop, not legacy.
+ * The name list lives in shared/brand.ts with every other branded name.
  */
 
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
+import { DOT_DIR, MEMORY_FILENAMES } from '@shared/brand.js'
 
 export function loadClaudeMd(workspacePath: string): string | null {
-  const paths = [
-    join(workspacePath, 'CLAUDE.md'),
-    join(workspacePath, '.claude', 'CLAUDE.md'),
-    join(workspacePath, '.agents', 'CLAUDE.md'),
-  ]
+  const paths = MEMORY_FILENAMES.flatMap((name) => [
+    join(workspacePath, name),
+    join(workspacePath, DOT_DIR, name),
+    join(workspacePath, '.claude', name),
+    join(workspacePath, '.agents', name),
+  ])
 
   for (const p of paths) {
     if (existsSync(p)) {

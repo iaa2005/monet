@@ -11,6 +11,7 @@
  */
 
 import { type as osType, version as osVersion, release as osRelease } from 'os'
+import { MEMORY_FILENAMES } from '@shared/brand.js'
 import { execSync } from 'child_process'
 import { getWorkspacePath } from '../ipc/workspace.js'
 import { loadClaudeMd } from '../claude-md.js'

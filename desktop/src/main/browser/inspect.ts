@@ -13,6 +13,11 @@
  */
 
 import { boxColors } from "@shared/selection-tones.js";
+import {
+  OVERLAY_ATTR,
+  PAGE_BINDING,
+  PAGE_GLOBAL,
+} from "@shared/brand.js";
 import type { BrowserTransport } from "./transport.js";
 
 /** Inlined into the page so the boxes and the chips share one palette. */
@@ -112,7 +117,7 @@ const OVERLAY_CSS = `
  */
 const OVERLAY_SCRIPT = `
 (function () {
-  if (window.__monetDesign) return;
+  if (window.${PAGE_GLOBAL}) return;
 
   var STYLE_KEYS = ${JSON.stringify(STYLE_KEYS)};
   var ATTR_KEYS = ${JSON.stringify(ATTR_KEYS)};
@@ -132,7 +137,7 @@ const OVERLAY_SCRIPT = `
 
   function send(payload) {
     try {
-      if (window.__monetBrowserEvent) window.__monetBrowserEvent(JSON.stringify(payload));
+      if (window.${PAGE_BINDING}) window.${PAGE_BINDING}(JSON.stringify(payload));
     } catch (e) { /* binding not installed */ }
   }
 
@@ -353,7 +358,7 @@ const OVERLAY_SCRIPT = `
   function ensureOverlay() {
     if (host && document.documentElement.contains(host)) return;
     host = document.createElement('div');
-    host.setAttribute('data-monet-overlay', '');
+    host.setAttribute('${OVERLAY_ATTR}', '');
     host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647';
     root = host.attachShadow({ mode: 'closed' });
     var style = document.createElement('style');
@@ -560,7 +565,7 @@ const OVERLAY_SCRIPT = `
     host = null; root = null;
   }
 
-  window.__monetDesign = {
+  window.${PAGE_GLOBAL} = {
     setToneBase: function (n) { toneBase = n | 0; schedule(); },
     enable: enable,
     disable: disable,
@@ -570,7 +575,7 @@ const OVERLAY_SCRIPT = `
 })();
 `;
 
-const BINDING = "__monetBrowserEvent";
+const BINDING = PAGE_BINDING;
 
 /** What the page sends back on the binding. */
 export type InspectMessage =
@@ -618,7 +623,7 @@ export async function installInspector(
     // but its `enabled` flag starts false, so design mode has to be re-armed.
     if (method === "Page.loadEventFired") {
       const state = installed.get(t.targetId);
-      if (state?.designOn) void evaluate(t, "window.__monetDesign && window.__monetDesign.enable()");
+      if (state?.designOn) void evaluate(t, `window.${PAGE_GLOBAL} && window.${PAGE_GLOBAL}.enable()`);
     }
   });
 
@@ -648,8 +653,8 @@ export async function setDesignMode(
   await evaluate(
     t,
     on
-      ? "window.__monetDesign && window.__monetDesign.enable()"
-      : "window.__monetDesign && window.__monetDesign.disable()",
+      ? `window.${PAGE_GLOBAL} && window.${PAGE_GLOBAL}.enable()`
+      : `window.${PAGE_GLOBAL} && window.${PAGE_GLOBAL}.disable()`,
   );
 }
 
@@ -657,7 +662,7 @@ export async function setDesignMode(
 export async function setToneBase(t: BrowserTransport, base: number): Promise<void> {
   await evaluate(
     t,
-    `window.__monetDesign && window.__monetDesign.setToneBase(${Math.max(0, base | 0)})`,
+    `window.${PAGE_GLOBAL} && window.${PAGE_GLOBAL}.setToneBase(${Math.max(0, base | 0)})`,
   );
 }
 

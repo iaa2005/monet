@@ -13,6 +13,7 @@ import {
   ensureTranscriptLoaded,
   compactSessionNow,
   undoCompaction,
+  forkTranscriptToSession,
   rewindTranscriptToUserTurn,
   estimateSessionTokens,
   computeContextBreakdown,
@@ -480,6 +481,23 @@ export function registerChatIPC(): void {
 
   // Full-fidelity rewind: truncate the durable transcript to keep the first N
   // user turns (tool blocks intact), instead of clearing + reseeding as text.
+  ipcMain.handle(
+    "chat:forkTranscript",
+    (
+      _e,
+      fromSessionId: string,
+      toSessionId: string,
+      keepUserTurns?: number,
+      totalUserTurns?: number,
+    ) =>
+      forkTranscriptToSession(
+        fromSessionId || "default",
+        toSessionId,
+        keepUserTurns,
+        totalUserTurns,
+      ),
+  );
+
   ipcMain.handle(
     "chat:rewindTranscript",
     async (

@@ -1,4 +1,5 @@
 import { app, Tray, Menu, nativeImage, BrowserWindow } from "electron";
+import { APP_NAME } from "@shared/brand.js";
 import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
@@ -54,7 +55,7 @@ function trayImage(): Electron.NativeImage {
 
 export function createTray(mainWindow: BrowserWindow): void {
   tray = new Tray(trayImage());
-  tray.setToolTip("Code Monet");
+  tray.setToolTip(APP_NAME);
 
   const contextMenu = Menu.buildFromTemplate([
     {

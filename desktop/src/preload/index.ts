@@ -67,6 +67,20 @@ const electronAPI = {
       ipcRenderer.invoke("chat:undoableTurns", sessionId),
     reset: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:reset", sessionId),
+    /** Copy the full-fidelity transcript into a fork's session. */
+    forkTranscript: (
+      fromSessionId: string,
+      toSessionId: string,
+      keepUserTurns?: number,
+      totalUserTurns?: number,
+    ): Promise<{ fidelity: "full" | "text" }> =>
+      ipcRenderer.invoke(
+        "chat:forkTranscript",
+        fromSessionId,
+        toSessionId,
+        keepUserTurns,
+        totalUserTurns,
+      ),
     rewindTranscript: (
       sessionId: string,
       keepUserTurns: number,

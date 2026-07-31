@@ -19,6 +19,7 @@ import { createConnection } from "net";
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import treeKill from "tree-kill";
+import { DOT_DIR } from "@shared/brand.js";
 
 export interface ServerConfig {
   id: string;
@@ -57,7 +58,7 @@ export interface ServerState extends ServerConfig {
 // ─── Config file ──────────────────────────────────────────────────────────
 
 function configPath(workspace: string): string {
-  return join(workspace, ".monet", "servers.json");
+  return join(workspace, DOT_DIR, "servers.json");
 }
 
 /**

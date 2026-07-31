@@ -10,6 +10,7 @@
  */
 
 import { create } from "zustand";
+import { STORAGE_PREFIX } from "@shared/brand";
 import type {
   ChatAttachmentMeta,
   ChatMessage,
@@ -334,6 +335,9 @@ interface ChatStore {
   openChangesRequest: boolean;
   /** Open Settings at a section (the panel menu's "Manage allowed sites"). */
   openSettingsRequest: string | null;
+  /** Branch the chat from this user message. Consumed by App, which owns
+   * session switching. */
+  forkRequest: string | null;
   /** Unified file/artifact viewer state (null = closed).
    * source "artifact" → reads via artifacts:* IPC, pass as item prop.
    * source "file" → reads via files:* IPC, pass as path prop. */
@@ -369,6 +373,7 @@ interface ChatStore {
   requestOpenFile: (path: string | null) => void;
   requestOpenChanges: () => void;
   requestOpenSettings: (section: string | null) => void;
+  requestFork: (messageId: string | null) => void;
   openViewer: (
     item: {
       name: string;
@@ -794,6 +799,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     openFileRequest: null,
     openChangesRequest: false,
     openSettingsRequest: null,
+    forkRequest: null,
     viewer: null,
     expandedSubAgent: null,
     space: "home",
@@ -840,6 +846,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     requestOpenFile: (path) => set({ openFileRequest: path }),
     requestOpenChanges: () => set({ openChangesRequest: true }),
     requestOpenSettings: (section) => set({ openSettingsRequest: section }),
+    requestFork: (messageId) => set({ forkRequest: messageId }),
     openViewer: (item) =>
       set({ viewer: item, ...(item ? { expandedSubAgent: null } : {}) }),
     openExpandedSubAgent: (sa) =>
@@ -953,7 +960,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
       get().addUserMessage(text, carried);
       get().startStreaming();
-      const eff = localStorage.getItem("monet.effort");
+      const eff = localStorage.getItem(`${STORAGE_PREFIX}effort`);
       const effort =
         eff === "low" || eff === "medium" || eff === "high" ? eff : undefined;
       await bridge?.chat.send({

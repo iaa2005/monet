@@ -14,14 +14,15 @@
 
 import { watch, type FSWatcher } from "fs";
 import { BrowserWindow } from "electron";
+import { DOT_DIR, DOT_DIR_PROD } from "@shared/brand.js";
 
 /** Paths whose churn is never worth a redraw. Matched per segment, so
  * `src/node_modules/x` is caught as surely as `node_modules/x`. */
 const NOISE = new Set([
   "node_modules",
   ".git",
-  ".monet",
-  ".monet-prod",
+  DOT_DIR,
+  DOT_DIR_PROD,
   "dist",
   "out",
   "target",

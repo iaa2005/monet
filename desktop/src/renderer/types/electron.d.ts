@@ -358,6 +358,12 @@ export interface ElectronAPI {
     ) => Promise<{ removed: number; turnsLeft: number; messagesDropped: number }>;
     undoableTurns: (sessionId: string) => Promise<number>;
     reset: (sessionId?: string) => Promise<{ ok: boolean }>;
+    forkTranscript: (
+      fromSessionId: string,
+      toSessionId: string,
+      keepUserTurns?: number,
+      totalUserTurns?: number,
+    ) => Promise<{ fidelity: "full" | "text" }>;
     rewindTranscript: (
       sessionId: string,
       keepUserTurns: number,
