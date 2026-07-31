@@ -49,6 +49,12 @@ interface DockState {
   open: DockPanelId[];
   /** A desk waiting for the wing to mount. */
   pending: DockDesk | null;
+  /**
+   * Panels asked for WHILE a layout desk is pending — "restore the desk,
+   * and also reveal the browser". Applied on top after the restore, so the
+   * click does not have to choose between itself and the saved layout.
+   */
+  pendingExtra: DockPanelId[];
   /** The serialized desk, refreshed on every layout change. */
   layoutJson: Record<string, unknown> | null;
 
@@ -66,14 +72,16 @@ export const useDockStore = create<DockState>((set, get) => ({
   api: null,
   open: [],
   pending: null,
+  pendingExtra: [],
   layoutJson: null,
 
   setApi: (api) => {
     set({ api });
     if (!api) return;
-    const desk = get().pending;
-    set({ pending: null });
-    if (desk) applyToApi(api, desk);
+    const { pending, pendingExtra } = get();
+    set({ pending: null, pendingExtra: [] });
+    if (pending) applyToApi(api, pending);
+    for (const id of pendingExtra) if (!api.getPanel(id)) addPanel(api, id);
     get().syncFromApi();
   },
 
@@ -97,16 +105,13 @@ export const useDockStore = create<DockState>((set, get) => ({
   },
 
   openPanel: (id) => {
-    const { api, pending } = get();
+    const { api, pending, pendingExtra } = get();
     if (!api) {
       // The wing is down. Merge into whatever desk is already queued so
       // "restore the layout, and also reveal the browser" keeps both.
       if (pending?.kind === "layout") {
-        const has = Object.keys(
-          (pending.layout as { panels?: object }).panels ?? {},
-        ).includes(id);
-        if (!has)
-          set({ pending: { kind: "open", open: [id] } });
+        if (!pendingExtra.includes(id))
+          set({ pendingExtra: [...pendingExtra, id] });
         return;
       }
       const open = pending?.kind === "open" ? pending.open : [];
@@ -123,17 +128,29 @@ export const useDockStore = create<DockState>((set, get) => ({
   },
 
   closePanel: (id) => {
-    const { api } = get();
-    const panel = api?.getPanel(id);
-    if (panel && api) api.removePanel(panel);
+    const { api, pending, pendingExtra } = get();
+    if (!api) {
+      // Toggling something back off before the wing has even mounted.
+      const extra = pendingExtra.filter((x) => x !== id);
+      let desk = pending;
+      if (desk?.kind === "open") {
+        const open = desk.open.filter((x) => x !== id);
+        desk = open.length > 0 ? { kind: "open", open } : null;
+      }
+      set({ pending: desk, pendingExtra: extra });
+      return;
+    }
+    const panel = api.getPanel(id);
+    if (panel) api.removePanel(panel);
     get().syncFromApi();
   },
 
   togglePanel: (id) => {
-    const { api, open, pending } = get();
+    const { api, open, pending, pendingExtra } = get();
     const isOpen = api
       ? !!api.getPanel(id)
       : open.includes(id) ||
+        pendingExtra.includes(id) ||
         (pending?.kind === "open" && pending.open.includes(id));
     if (isOpen) get().closePanel(id);
     else get().openPanel(id);
@@ -142,7 +159,7 @@ export const useDockStore = create<DockState>((set, get) => ({
   applyDesk: (desk) => {
     const { api } = get();
     if (!api) {
-      set({ pending: desk, open: [], layoutJson: null });
+      set({ pending: desk, pendingExtra: [], open: [], layoutJson: null });
       return;
     }
     applyToApi(api, desk);

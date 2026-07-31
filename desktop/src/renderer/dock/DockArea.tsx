@@ -268,16 +268,21 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
 
   useEffect(() => () => useDockStore.getState().setApi(null), []);
 
+  // dockview ships NO height of its own — it measures its container, and a
+  // flex-col parent gives an unsized child 0px. Without this wrapper the wing
+  // mounts as an invisible sliver and every header click looks like a no-op.
   return (
-    <DockviewReact
-      className={`${dark ? "dockview-theme-dark" : "dockview-theme-light"} monet-dock`}
-      components={components}
-      onReady={onReady}
-      rightHeaderActionsComponent={GroupActions}
-      watermarkComponent={Watermark}
-      floatingGroupBounds="boundedWithinViewport"
-      disableDnd={false}
-    />
+    <div className="min-h-0 w-full flex-1">
+      <DockviewReact
+        className={`${dark ? "dockview-theme-dark" : "dockview-theme-light"} monet-dock h-full w-full`}
+        components={components}
+        onReady={onReady}
+        rightHeaderActionsComponent={GroupActions}
+        watermarkComponent={Watermark}
+        floatingGroupBounds="boundedWithinViewport"
+        disableDnd={false}
+      />
+    </div>
   );
 }
 
