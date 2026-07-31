@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { FolderOpen, RotateCcw, Check, History, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import type { ElectronAPI } from "@/types/electron";
+import { Select } from "@/components/ui/select";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -175,35 +176,34 @@ export function AdvancedSettings(): JSX.Element {
           API key.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <select
+          <Select
+            ariaLabel="Background provider"
             value={bgProvider}
-            onChange={(e) => saveRouting(e.target.value, "")}
-            className="rounded-lg border border-border bg-background px-2 py-1 text-sm outline-none"
-          >
-            <option value="">Same as the active provider</option>
-            {providers.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => saveRouting(v, "")}
+            className="py-1.5 text-sm"
+            options={[
+              { value: "", label: "Same as the active provider" },
+              ...providers.map((p) => ({ value: p.id, label: p.name })),
+            ]}
+          />
           {bgProvider && (
-            <select
+            <Select
+              ariaLabel="Background model"
               value={bgModel}
-              onChange={(e) => saveRouting(bgProvider, e.target.value)}
-              className="min-w-[16rem] flex-1 rounded-lg border border-border bg-background px-2 py-1 text-sm outline-none"
-            >
-              <option value="">
-                {providers.find((p) => p.id === bgProvider)?.model
-                  ? `Default (${providers.find((p) => p.id === bgProvider)?.model})`
-                  : "That provider's default"}
-              </option>
-              {(providers.find((p) => p.id === bgProvider)?.models ?? []).map((m) => (
-                <option key={m.name} value={m.name}>
-                  {m.label || m.name}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => saveRouting(bgProvider, v)}
+              className="min-w-[16rem] py-1.5 text-sm"
+              options={[
+                {
+                  value: "",
+                  label: providers.find((p) => p.id === bgProvider)?.model
+                    ? `Default (${providers.find((p) => p.id === bgProvider)?.model})`
+                    : "That provider's default",
+                },
+                ...(providers.find((p) => p.id === bgProvider)?.models ?? []).map(
+                  (m) => ({ value: m.name, label: m.label || m.name }),
+                ),
+              ]}
+            />
           )}
         </div>
       </section>

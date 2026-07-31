@@ -3,6 +3,7 @@ import { Bot, Code, Eye, Lock, Plus, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownViewer } from "@/components/chat/MarkdownViewer";
 import type { AgentSummary, ElectronAPI } from "@/types/electron";
+import { Select } from "@/components/ui/select";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -179,18 +180,16 @@ function NewAgentModal({
         </div>
 
         <label className="mt-4 block text-sm font-medium">Model</label>
-        <select
+        <Select
+          ariaLabel="Model"
           value={model}
-          onChange={(e) => setModel(e.target.value)}
-          className={INPUT}
-        >
-          <option value="">Inherit — use the chat’s model</option>
-          {models.map((m) => (
-            <option key={m.name} value={m.name}>
-              {m.label}
-            </option>
-          ))}
-        </select>
+          onChange={setModel}
+          className="w-full justify-between py-2 text-sm"
+          options={[
+            { value: "", label: "Inherit — use the chat’s model" },
+            ...models.map((m) => ({ value: m.name, label: m.label })),
+          ]}
+        />
 
         <label className="mt-4 block text-sm font-medium">System prompt</label>
         <textarea

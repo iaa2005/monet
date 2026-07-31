@@ -675,7 +675,7 @@ function RoutineDetail({
           placeholder="New routine"
           className="w-full bg-transparent text-xl font-semibold outline-none placeholder:text-muted-foreground/60"
         />
-        <div className="mt-1.5 flex items-center gap-3">
+        <div className="mt-3 flex items-center gap-3">
           <label className="flex items-center gap-2 text-sm">
             <Switch checked={d.enabled} onChange={(v) => set({ enabled: v })} />
             <span className={d.enabled ? "" : "text-muted-foreground"}>

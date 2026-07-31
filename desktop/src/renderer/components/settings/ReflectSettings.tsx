@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, ReflectDigest } from "@/types/electron";
+import { Select } from "@/components/ui/select";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -163,15 +164,17 @@ export function ReflectSettings(): JSX.Element {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={days}
-            onChange={(e) => setDays(Number(e.target.value))}
-            className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none"
-          >
-            <option value={7}>Past week</option>
-            <option value={30}>Past month</option>
-            <option value={90}>Past 3 months</option>
-          </select>
+          <Select
+            ariaLabel="Time range"
+            value={String(days)}
+            onChange={(v) => setDays(Number(v))}
+            className="py-1.5 text-sm"
+            options={[
+              { value: "7", label: "Past week" },
+              { value: "30", label: "Past month" },
+              { value: "90", label: "Past 3 months" },
+            ]}
+          />
           <button
             type="button"
             title="Regenerate"

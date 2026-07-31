@@ -12,6 +12,7 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Palette, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, PaintingInfo } from "@/types/electron";
+import { Select } from "@/components/ui/select";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -389,20 +390,16 @@ export function ProfileSection(): JSX.Element {
         </Row>
 
         <Row label="What best describes your work?">
-          <select
+          <Select
+            ariaLabel="Work"
             value={work}
-            onChange={(e) => {
-              setWork(e.target.value);
-              void persist({ work: e.target.value });
+            onChange={(v) => {
+              setWork(v);
+              void persist({ work: v });
             }}
-            className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none"
-          >
-            {WORK_OPTIONS.map((w) => (
-              <option key={w} value={w}>
-                {w || "Select"}
-              </option>
-            ))}
-          </select>
+            className="py-1.5 text-sm"
+            options={WORK_OPTIONS.map((w) => ({ value: w, label: w || "Select" }))}
+          />
         </Row>
 
         <div className="py-3.5">

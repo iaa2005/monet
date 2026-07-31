@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { ArrowUp, Trash2, X } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import type { ElectronAPI, MemoryFileInfo } from "@/types/electron";
+import { Select } from "@/components/ui/select";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -258,22 +259,23 @@ export function MemorySettings(): JSX.Element {
             <span className="text-sm text-muted-foreground">
               Run extraction at most once per…
             </span>
-            <select
-              value={config.extractEveryMinutes}
-              onChange={(e) =>
+            <Select
+              ariaLabel="Extract every"
+              value={String(config.extractEveryMinutes)}
+              onChange={(v) =>
                 void api()
-                  ?.memory.setConfig({ extractEveryMinutes: Number(e.target.value) })
+                  ?.memory.setConfig({ extractEveryMinutes: Number(v) })
                   .then((next) => next && setConfig(next))
               }
-              className="rounded-lg border border-border bg-background px-2 py-1 text-sm outline-none"
-            >
-              <option value={0}>Never</option>
-              {[1, 3, 10, 30, 60].map((m) => (
-                <option key={m} value={m}>
-                  {m} min
-                </option>
-              ))}
-            </select>
+              className="py-1.5 text-sm"
+              options={[
+                { value: "0", label: "Never" },
+                ...[1, 3, 10, 30, 60].map((m) => ({
+                  value: String(m),
+                  label: `${m} min`,
+                })),
+              ]}
+            />
           </div>
           {config.extractEveryMinutes === 0 && (
             <p className="mt-1 text-xs text-muted-foreground">

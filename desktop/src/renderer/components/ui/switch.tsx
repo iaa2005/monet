@@ -25,7 +25,9 @@ export function Switch({
       onClick={() => onChange(!checked)}
       className={cn(
         "relative h-6 w-10 shrink-0 rounded-full transition-colors",
-        checked ? "bg-[#6896dc]" : "bg-black/[0.15] dark:bg-white/[0.2]",
+        // The accent, same orange as links and focus rings — this used to be
+        // a hardcoded blue that belonged to no palette.
+        checked ? "bg-brand" : "bg-black/[0.15] dark:bg-white/[0.2]",
         disabled && "opacity-50",
         className,
       )}

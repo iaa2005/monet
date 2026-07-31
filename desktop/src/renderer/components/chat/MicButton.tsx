@@ -20,6 +20,7 @@ import type { ElectronAPI } from "@/types/electron";
 // Vite-native worker import — more dependable than `new Worker(new URL(...))`
 // in electron-vite dev mode (a worker that fails to LOAD dies silently).
 import SttWorker from "../../workers/stt-worker?worker";
+import { Select } from "@/components/ui/select";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -579,30 +580,27 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
           {engine === "local" ? (
             <div className="flex flex-col gap-1.5 px-1 pb-1">
               <div className="flex gap-1.5">
-                <select
+                <Select
+                  ariaLabel="Local model"
                   value={localModel}
-                  onChange={(e) =>
-                    saveSetting(LS_LOCAL_MODEL, e.target.value, setLocalModel)
-                  }
-                  className="w-3/5 rounded-md border border-border bg-background px-1.5 py-1 text-[12px] outline-none focus:border-link"
-                >
-                  {LOCAL_MODELS.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-                <select
+                  onChange={(v) => saveSetting(LS_LOCAL_MODEL, v, setLocalModel)}
+                  className="w-3/5 justify-between"
+                  options={LOCAL_MODELS.map((m) => ({
+                    value: m.id,
+                    label: m.label,
+                  }))}
+                />
+                <Select
+                  ariaLabel="Language"
                   value={language}
-                  onChange={(e) =>
-                    saveSetting(LS_LANGUAGE, e.target.value, setLanguage)
-                  }
-                  className="w-2/5 rounded-md border border-border bg-background px-1.5 py-1 text-[12px] outline-none focus:border-link"
-                >
-                  <option value="">Auto language</option>
-                  <option value="ru">Русский</option>
-                  <option value="en">English</option>
-                </select>
+                  onChange={(v) => saveSetting(LS_LANGUAGE, v, setLanguage)}
+                  className="w-2/5 justify-between"
+                  options={[
+                    { value: "", label: "Auto language" },
+                    { value: "ru", label: "Русский" },
+                    { value: "en", label: "English" },
+                  ]}
+                />
               </div>
               <div className="text-[11px] leading-snug text-muted-foreground">
                 The model downloads on first use and is cached — after that it

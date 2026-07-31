@@ -351,6 +351,60 @@ app.whenReady().then(async () => {
     );
   }
 
+  // ── The toggle wears the accent, and no native select survives ─────
+  //
+  // Two app-wide claims that only a running window can settle: the switch's
+  // ON colour used to be a hardcoded blue belonging to no palette, and a
+  // native <select> paints its list with the OS widget — the one control
+  // whose popup ignores every token in this file.
+  {
+    // Raise a surface that HAS a switch: the routine editor's Active toggle,
+    // on by default. A check that silently skips when it finds nothing is a
+    // check nobody is running.
+    await js(`(() => {
+      const btn = [...document.querySelectorAll('button')].find(
+        (b) => b.textContent.trim() === 'Routines',
+      );
+      btn && btn.click();
+      return true;
+    })()`);
+    await new Promise((r) => setTimeout(r, 900));
+    await js(`(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) =>
+        b.textContent.includes('New routine'),
+      );
+      btn && btn.click();
+      return true;
+    })()`);
+    await new Promise((r) => setTimeout(r, 900));
+
+    const ui = await js(`(() => {
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:fixed;left:-9999px';
+      probe.className = 'bg-brand';
+      document.body.appendChild(probe);
+      const brand = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      // Render a switch offscreen? Cheaper: find one in the open settings.
+      const sw = document.querySelector('[role="switch"][aria-checked="true"]');
+      return {
+        brand,
+        switchOn: sw ? getComputedStyle(sw).backgroundColor : null,
+        nativeSelects: document.querySelectorAll('select').length,
+      };
+    })()`);
+    check(
+      "no native select is left in the app",
+      ui.nativeSelects === 0,
+      `${ui.nativeSelects} found`,
+    );
+    check(
+      "an ON switch is painted with the accent",
+      !!ui.switchOn && ui.switchOn === ui.brand,
+      `${ui.switchOn ?? "(no switch on screen)"} vs brand ${ui.brand}`,
+    );
+  }
+
   srv.close();
   win.destroy();
   console.log(failures === 0 ? "\nALL PALETTE CHECKS PASSED" : `\n${failures} FAILED`);

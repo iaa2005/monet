@@ -35,6 +35,7 @@ import { ModalityBadges, ModalityToggles } from "./ModalityBadges";
 import { OpenRouterBrowser } from "./OpenRouterBrowser";
 import { CatalogBrowser } from "./CatalogBrowser";
 import type { ORKeyInfo } from "@/types/electron";
+import { Select } from "@/components/ui/select";
 
 const KIND_LABELS: Record<ProviderKind, string> = {
   anthropic: "Anthropic",
@@ -273,21 +274,20 @@ function ProviderModal({
             </div>
             <div>
               <label className="text-sm font-medium">Type</label>
-              <select
+              <Select
+                ariaLabel="Provider kind"
                 value={kind}
-                onChange={(e) => {
-                  const k = e.target.value as ProviderKind;
+                onChange={(v) => {
+                  const k = v as ProviderKind;
                   setKind(k);
                   if (!isEdit) setBaseURL(KIND_URLS[k]);
                 }}
-                className={inputCls}
-              >
-                {(Object.keys(KIND_LABELS) as ProviderKind[]).map((k) => (
-                  <option key={k} value={k}>
-                    {KIND_LABELS[k]}
-                  </option>
-                ))}
-              </select>
+                className="w-full justify-between py-2 text-sm"
+                options={(Object.keys(KIND_LABELS) as ProviderKind[]).map((k) => ({
+                  value: k,
+                  label: KIND_LABELS[k],
+                }))}
+              />
             </div>
           </div>
 

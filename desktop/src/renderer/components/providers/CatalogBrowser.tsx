@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import type { CatalogModelInfo, CatalogProviderInfo } from "@/types/electron";
 import type { ProviderModel } from "@/stores/providerStore";
 import { ModalityBadges } from "./ModalityBadges";
+import { Select } from "@/components/ui/select";
 
 function api(): Window["electronAPI"] {
   return (window as unknown as { electronAPI: Window["electronAPI"] })
@@ -181,17 +182,16 @@ export function CatalogBrowser({
         </div>
 
         <div className="flex items-center gap-2 border-b border-border px-5 py-2.5">
-          <select
+          <Select
+            ariaLabel="Provider"
             value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-            className="max-w-56 shrink-0 rounded-lg border border-border bg-card px-2 py-1.5 text-sm"
-          >
-            {providers.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label} ({p.modelCount})
-              </option>
-            ))}
-          </select>
+            onChange={setSelected}
+            className="max-w-56 shrink-0 py-1.5 text-sm"
+            options={providers.map((p) => ({
+              value: p.id,
+              label: `${p.label} (${p.modelCount})`,
+            }))}
+          />
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <input
