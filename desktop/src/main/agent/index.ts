@@ -550,12 +550,12 @@ function isEmptyUserContent(content: string | LLMContentBlock[]): boolean {
  * same divergence check as rewind applies — a compacted transcript's turn
  * indexes cannot be trusted, so the fork falls back to text fidelity.
  */
-export function forkTranscriptToSession(
+export async function forkTranscriptToSession(
   fromSessionId: string,
   toSessionId: string,
   keepUserTurns?: number,
   totalUserTurns?: number,
-): { fidelity: "full" | "text" } {
+): Promise<{ fidelity: "full" | "text" }> {
   const { messages, hidden } = loadTranscriptWithMeta(fromSessionId);
   if (messages.length === 0) return { fidelity: "text" };
 
@@ -585,6 +585,25 @@ export function forkTranscriptToSession(
 
   const copy = messages.slice(0, cut);
   replaceTranscript(toSessionId, copy, hidden.slice(0, cut));
+
+  // The checkpoints come too. The copied messages carry checkpointSha values
+  // that name commits in the ORIGINAL chat's shadow repo — without the repo,
+  // every Rewind in the fork answers "no checkpoints exist for this chat",
+  // which reads as Rewind being broken. A shadow store is a plain directory
+  // of git objects; copying it makes those shas resolvable under the new id.
+  try {
+    const { shadowDir } = await import("./checkpoints.js");
+    const { cpSync, existsSync } = await import("fs");
+    const from = shadowDir(fromSessionId);
+    const to = shadowDir(toSessionId);
+    if (existsSync(from) && !existsSync(to))
+      cpSync(from, to, { recursive: true });
+  } catch (err) {
+    console.error(
+      "[fork] checkpoint store copy failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
   return { fidelity: "full" };
 }
 

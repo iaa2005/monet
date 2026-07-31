@@ -97,13 +97,13 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>probe page</title>
 <script>window.__probeMarker = 'main-world-only';</script>`;
 
 /** The host, with the guest parked off-screen exactly as BrowserPanel parks one. */
-const HOST = (guestUrl) => `<!doctype html><meta charset="utf-8">
+const HOST = (guestUrl, extraAttrs = "") => `<!doctype html><meta charset="utf-8">
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; }
   #wrap { position: absolute; inset: 0; transform: translateX(-200%); }
   webview { width: 100%; height: 100%; }
 </style>
-<div id="wrap"><webview id="w" src="${guestUrl}"></webview></div>`;
+<div id="wrap"><webview id="w" src="${guestUrl}" ${extraAttrs}></webview></div>`;
 
 async function openHost(hostPath, size) {
   const win = new BrowserWindow({
@@ -353,6 +353,64 @@ app.whenReady().then(async () => {
     } catch (err) {
       note("CDP Page.reload on a guest", String(err));
     }
+  }
+
+  // ── 8. Links that ask for a NEW window ──────────────────────────────
+  //
+  // The panel's design for target=_blank / window.open: the <webview> carries
+  // `allowpopups`, and installWebviewGuards routes the guest's request into a
+  // browser:openTab message (deny + open our own tab). Both halves rest on
+  // platform behaviour that fails SILENTLY when it shifts:
+  //   - WITH allowpopups, setWindowOpenHandler is consulted and deny opens
+  //     nothing — the request is ours to turn into a tab;
+  //   - WITHOUT it, Chromium blocks the open BEFORE the handler is asked, so
+  //     dropping the attribute kills every target=_blank link with no error
+  //     anywhere. "Links on sites don't work", and nothing to grep for.
+  const popPath = join(dir, "host-popups.html");
+  writeFileSync(popPath, HOST(pathToFileURL(guestPath).href, "allowpopups"), "utf-8");
+  const fourth = await openHost(popPath, { width: 600, height: 400 });
+  open.push(fourth.win);
+  if (fourth.guest) {
+    const asked = [];
+    fourth.guest.setWindowOpenHandler(({ url }) => {
+      asked.push(url);
+      return { action: "deny" };
+    });
+    const windowsBefore = BrowserWindow.getAllWindows().length;
+    await fourth.guest
+      .executeJavaScript("window.open('https://example.com/from-probe'); true", true)
+      .catch(() => {});
+    await sleep(600);
+    check(
+      "with allowpopups, window.open consults the handler",
+      asked[0] === "https://example.com/from-probe",
+      asked.join(", ") || "(never asked)",
+    );
+    check(
+      "and deny opens no stray OS window",
+      BrowserWindow.getAllWindows().length === windowsBefore,
+      `${windowsBefore} then ${BrowserWindow.getAllWindows().length}`,
+    );
+  } else {
+    check("a guest with allowpopups attaches", false);
+  }
+
+  // The control: the same call in a guest WITHOUT the attribute.
+  if (second.guest && !second.guest.isDestroyed()) {
+    const askedBare = [];
+    second.guest.setWindowOpenHandler(({ url }) => {
+      askedBare.push(url);
+      return { action: "deny" };
+    });
+    await second.guest
+      .executeJavaScript("window.open('https://example.com/blocked'); true", true)
+      .catch(() => {});
+    await sleep(600);
+    check(
+      "without allowpopups the handler is never asked — the attribute is load-bearing",
+      askedBare.length === 0,
+      askedBare.join(", ") || "blocked before the handler",
+    );
   }
 
   finish(open);

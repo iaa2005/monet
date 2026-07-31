@@ -666,6 +666,19 @@ export async function setToneBase(t: BrowserTransport, base: number): Promise<vo
   );
 }
 
+/**
+ * The page turned design mode off itself (Escape).
+ *
+ * Without this, main still believes designOn and re-arms the overlay on the
+ * next Page.loadEventFired — so the user pressed Escape, browsed on, and the
+ * FIRST navigation silently re-enabled an overlay whose whole job is to
+ * swallow clicks. The symptom reads as "links on websites don't work".
+ */
+export function clearDesignOn(targetId: string): void {
+  const state = installed.get(targetId);
+  if (state) state.designOn = false;
+}
+
 export function forgetInspector(targetId: string): void {
   installed.get(targetId)?.off();
   installed.delete(targetId);

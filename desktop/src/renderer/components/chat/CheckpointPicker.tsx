@@ -81,6 +81,11 @@ export function CheckpointPicker({
           This will restore the workspace to before the selected turn and put its
           prompt back in the composer for editing and resubmission.
         </p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          The project folder is shared by every chat and branch of this project.
+          Reverting files also undoes changes made from other chats after this
+          point.
+        </p>
         {pendingTurn && (
           <p className="mt-3 truncate rounded-lg bg-muted px-3 py-2 text-sm">
             {pendingTurn.content || "(empty)"}

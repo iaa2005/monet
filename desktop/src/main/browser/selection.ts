@@ -23,7 +23,7 @@ import { getBrowserConfig } from "./config.js";
 import { getWorkspacePath } from "../ipc/workspace.js";
 import { getTransport } from "./transport.js";
 import type { BrowserTransport } from "./transport.js";
-import { setToneBase, type InspectMessage } from "./inspect.js";
+import { clearDesignOn, setToneBase, type InspectMessage } from "./inspect.js";
 
 /** What the renderer receives — one chip in the composer. */
 export interface BrowserSelection {
@@ -237,7 +237,11 @@ export async function onInspectMessage(msg: InspectMessage): Promise<void> {
   const t = await getTransport();
   if (msg.type === "freeze") return freezeFrame(t);
   if (msg.type === "selection") return handleSelection(t, msg.data);
-  if (msg.type === "exit")
+  if (msg.type === "exit") {
+    // Main's flag too — not just the renderer's. Leaving it set re-arms the
+    // overlay on the next navigation, which then swallows every click.
+    clearDesignOn(t.targetId);
     for (const win of BrowserWindow.getAllWindows())
       win.webContents.send("browser:designMode", false);
+  }
 }

@@ -226,5 +226,67 @@ const ignored = (rel: string): boolean => {
   }
 }
 
+// ── 8. A copied store still answers for its shas ──────────────────────
+//
+// Fork copies the shadow directory so Rewind works in the branch: the copied
+// messages carry checkpointShas minted in the ORIGINAL chat's store, and the
+// fork's own store starts empty. The claim that makes a plain `cpSync` a
+// correct implementation is that nothing in the store is tied to its path —
+// objects are content-addressed, and our git() passes --git-dir/--work-tree
+// explicitly on every call. This section holds exactly the two commands
+// rewindWorkspace runs (`cat-file -e`, `reset --hard`) against a copy.
+{
+  const { cpSync } = await import("fs");
+  const ws = mkdtempSync(join(tmpdir(), "monet-fork-ws-"));
+  const storeA = mkdtempSync(join(tmpdir(), "monet-fork-a-"));
+  const g = (gitDir: string, ...args: string[]): string =>
+    execFileSync(
+      "git",
+      ["--git-dir", gitDir, "--work-tree", ws, "-c", "user.name=P", "-c", "user.email=p@p", ...args],
+      { encoding: "utf8" },
+    );
+
+  g(storeA, "init", "-q");
+  writeFileSync(join(ws, "app.ts"), "turn one");
+  g(storeA, "add", "-A");
+  g(storeA, "commit", "-q", "--allow-empty", "-m", "t1");
+  const sha = g(storeA, "rev-parse", "HEAD").trim();
+  writeFileSync(join(ws, "app.ts"), "turn two");
+  g(storeA, "add", "-A");
+  g(storeA, "commit", "-q", "--allow-empty", "-m", "t2");
+
+  // The fork: a directory copy, exactly what forkTranscriptToSession does.
+  const storeB = join(mkdtempSync(join(tmpdir(), "monet-fork-b-")), "copy");
+  cpSync(storeA, storeB, { recursive: true });
+
+  let resolves = true;
+  try {
+    g(storeB, "cat-file", "-e", `${sha}^{commit}`);
+  } catch {
+    resolves = false;
+  }
+  check("the copy resolves the original chat's sha", resolves);
+
+  writeFileSync(join(ws, "app.ts"), "later work");
+  g(storeB, "reset", "--hard", sha, "-q");
+  check(
+    "and rewinds the workspace through it",
+    readFileSync(join(ws, "app.ts"), "utf8") === "turn one",
+    readFileSync(join(ws, "app.ts"), "utf8"),
+  );
+
+  // The control — the bug this fix removes: WITHOUT the copy, a fresh store
+  // knows nothing of the sha, which is what every Rewind in a fork ran into.
+  const storeC = mkdtempSync(join(tmpdir(), "monet-fork-c-"));
+  g(storeC, "init", "-q");
+  let fresh = true;
+  try {
+    g(storeC, "cat-file", "-e", `${sha}^{commit}`);
+  } catch {
+    fresh = false;
+  }
+  check("without the copy the sha is unknown — the fork bug", !fresh);
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nALL CHECKPOINT-STORE CHECKS PASSED");
 process.exit(failures ? 1 : 0);

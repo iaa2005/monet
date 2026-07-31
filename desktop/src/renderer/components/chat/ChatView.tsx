@@ -217,9 +217,11 @@ function RewindControl({
       <button
         type="button"
         title={
-          hasChanges
-            ? `Rewind to here — reverts the workspace (undoing ${stat!.files} changed ${stat!.files === 1 ? "file" : "files"}, +${stat!.insertions}/-${stat!.deletions}) and puts this prompt back in the composer to edit and resend`
-            : "Rewind to here — revert the workspace to before this turn and put this prompt back in the composer to edit and resend"
+          !sha
+            ? "Rewind to here — rewinds the conversation only (no file checkpoint exists for this turn)"
+            : hasChanges
+              ? `Rewind to here — reverts the workspace (undoing ${stat!.files} changed ${stat!.files === 1 ? "file" : "files"}, +${stat!.insertions}/-${stat!.deletions}) and puts this prompt back in the composer to edit and resend`
+              : "Rewind to here — revert the workspace to before this turn and put this prompt back in the composer to edit and resend"
         }
         onClick={() => setConfirmOpen(true)}
         className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
@@ -240,12 +242,30 @@ function RewindControl({
         title="Rewind to checkpoint?"
       >
         <p className="text-sm text-muted-foreground">
-          This will restore the workspace to before this turn and put the prompt
-          back in the composer for editing and resubmission.
-          {hasChanges && (
-            <> This will undo {stat!.files} changed {stat!.files === 1 ? "file" : "files"} (+{stat!.insertions}/-{stat!.deletions}).</>
+          {sha ? (
+            <>
+              This will restore the workspace to before this turn and put the
+              prompt back in the composer for editing and resubmission.
+              {hasChanges && (
+                <> This will undo {stat!.files} changed {stat!.files === 1 ? "file" : "files"} (+{stat!.insertions}/-{stat!.deletions}).</>
+              )}
+            </>
+          ) : (
+            <>
+              Only the conversation will rewind — no file checkpoint exists for
+              this turn (it is the first turn, or checkpoints could not be
+              taken), so your files stay exactly as they are.
+            </>
           )}
         </p>
+        {sha && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            The project folder is shared by every chat and branch of this
+            project. Reverting files also undoes changes made from other chats
+            after this point — their conversations keep describing files that no
+            longer look that way.
+          </p>
+        )}
         <div className="mt-4 flex justify-end gap-2">
           <button
             type="button"

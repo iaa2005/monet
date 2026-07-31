@@ -124,12 +124,25 @@ export async function snapshotWorkspace(
     if (!existsSync(gitDir)) mkdirSync(gitDir, { recursive: true });
     if (!isInited(gitDir)) {
       const init = await git(workspace, gitDir, ["init", "-q"]);
-      if (init.code !== 0) return null;
+      if (init.code !== 0) {
+        // Once per session is enough, but silence was worse: every failure
+        // here quietly costs the user their Rewind for the turn, and "git is
+        // not installed" was indistinguishable from "worked fine".
+        console.error(
+          `[checkpoint] git init failed (${sessionId}): ${(init.stderr || "git not available?").slice(-300)}`,
+        );
+        return null;
+      }
     }
     ensureExcludes(gitDir);
     ensurePacking(gitDir);
     const add = await git(workspace, gitDir, ["add", "-A"]);
-    if (add.code !== 0) return null;
+    if (add.code !== 0) {
+      console.error(
+        `[checkpoint] add failed (${sessionId}): ${(add.stderr || add.stdout).slice(-300)}`,
+      );
+      return null;
+    }
     // --allow-empty so an unchanged turn still yields a distinct checkpoint.
     const commit = await git(workspace, gitDir, [
       "commit",
