@@ -14,9 +14,11 @@ import type { BrowserConfig } from "../main/browser/config.js";
 import type { DevServer } from "../main/browser/dev-servers.js";
 import type { BrowserSelection } from "../main/browser/selection.js";
 import type { ServerConfig, ServerState } from "../main/browser/servers.js";
+import type { SessionUiState } from "../main/ui-state.js";
 import type { ChatMessage } from "./chat";
 
 export type { BrowserConfig, DevServer, BrowserSelection, ServerConfig, ServerState };
+export type { SessionUiState };
 export type {
   BrowserEngine,
   BrowserApproval,
@@ -854,6 +856,12 @@ export interface ElectronAPI {
     unregisterTab: (tabId: string) => Promise<void>;
     activateTab: (tabId: string) => Promise<void>;
     onOpenTab: (cb: (url: string) => void) => () => void;
+    uiState: {
+      get: (sessionId: string) => Promise<SessionUiState | null>;
+      set: (sessionId: string, state: SessionUiState) => Promise<void>;
+    };
+    pickFile: () => Promise<string | null>;
+    saveScreenshot: () => Promise<{ ok: boolean; error?: string }>;
     onReveal: (cb: () => void) => () => void;
     servers: {
       list: () => Promise<ServerState[]>;

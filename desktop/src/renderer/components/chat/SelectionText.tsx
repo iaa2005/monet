@@ -20,6 +20,50 @@ import {
 } from "@/lib/selection-marks";
 import type { ChatAttachmentMeta } from "@/types/chat";
 import { useIsDark } from "./highlight";
+import { useArtifactImage } from "@/components/FileCard";
+
+/**
+ * One chip. Its own component because the crop needs a hook: in a live session
+ * the image is a dataUrl, but the DB stores only the artifact path — after a
+ * reload the picture has to be read back from disk, or every chip silently
+ * degrades to the fallback icon.
+ */
+function Chip({
+  label,
+  refHit,
+  crop,
+  dark,
+}: {
+  label: string;
+  refHit?: SelectionRef;
+  crop?: ChatAttachmentMeta;
+  dark: boolean;
+}): JSX.Element {
+  const c = chipColors(toneForLabel(label), dark);
+  const thumb = useArtifactImage(
+    crop ?? { mediaType: "image/png" },
+  );
+  return (
+    <span
+      title={refHit ? tooltipFor(refHit) : label}
+      style={{ color: c.fg, background: c.bg }}
+      className="mx-0.5 inline-flex items-center gap-1 rounded-full py-px pl-1.5 pr-2 align-baseline font-medium"
+    >
+      {/* The crop lives ON the chip: the browser tool made it, so it is part
+          of the reference rather than a file anyone chose to attach. */}
+      {thumb ? (
+        <img
+          src={thumb}
+          alt=""
+          className="size-4 shrink-0 rounded-[3px] object-cover"
+        />
+      ) : (
+        <SquareMousePointer className="size-3 shrink-0" />
+      )}
+      {label}
+    </span>
+  );
+}
 
 /** The bits of a block worth showing on hover — not all forty lines of it. */
 function tooltipFor(ref: SelectionRef): string {
@@ -61,28 +105,14 @@ export function SelectionText({
     if (at > last) parts.push(text.slice(last, at));
     const label = m[1] ?? "";
     const hit = byLabel(label);
-    const c = chipColors(toneForLabel(label), dark);
-    const thumb = hit?.crop?.dataUrl;
     parts.push(
-      <span
+      <Chip
         key={`${at}-${label}`}
-        title={hit ? tooltipFor(hit.ref) : label}
-        style={{ color: c.fg, background: c.bg }}
-        className="mx-0.5 inline-flex items-center gap-1 rounded-full py-px pl-1.5 pr-2 align-baseline font-medium"
-      >
-        {/* The crop lives ON the chip: the browser tool made it, so it is part
-            of the reference rather than a file anyone chose to attach. */}
-        {thumb ? (
-          <img
-            src={thumb}
-            alt=""
-            className="size-4 shrink-0 rounded-[3px] object-cover"
-          />
-        ) : (
-          <SquareMousePointer className="size-3 shrink-0" />
-        )}
-        {label}
-      </span>,
+        label={label}
+        refHit={hit?.ref}
+        crop={hit?.crop}
+        dark={dark}
+      />,
     );
     last = at + m[0].length;
   }

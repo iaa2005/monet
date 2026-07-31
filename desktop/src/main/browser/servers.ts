@@ -209,9 +209,13 @@ export function watchServers(cb: () => void): void {
 
 const notify = (): void => onChange?.();
 
-function portOpen(port: number, timeoutMs = 250): Promise<boolean> {
+function portOpenOn(
+  host: string,
+  port: number,
+  timeoutMs: number,
+): Promise<boolean> {
   return new Promise((resolve) => {
-    const socket = createConnection({ port, host: "127.0.0.1" });
+    const socket = createConnection({ port, host });
     const done = (open: boolean): void => {
       socket.destroy();
       resolve(open);
@@ -221,6 +225,22 @@ function portOpen(port: number, timeoutMs = 250): Promise<boolean> {
     socket.once("timeout", () => done(false));
     socket.once("error", () => done(false));
   });
+}
+
+/**
+ * True when something local is listening on the port — on EITHER loopback.
+ *
+ * Vite on Windows binds ::1, not 127.0.0.1 (Node 17+ resolves localhost to
+ * IPv6 first). The browser reaches it, because the OS resolves localhost the
+ * same way — so probing only 127.0.0.1 reported "starting…" forever for a
+ * server that was already serving the page on screen.
+ */
+async function portOpen(port: number, timeoutMs = 250): Promise<boolean> {
+  const [v4, v6] = await Promise.all([
+    portOpenOn("127.0.0.1", port, timeoutMs),
+    portOpenOn("::1", port, timeoutMs),
+  ]);
+  return v4 || v6;
 }
 
 /**
@@ -379,7 +399,12 @@ export function startServer(workspace: string, id: string): void {
   const poll = async (): Promise<void> => {
     const live = running.get(id);
     if (live !== state || state.status !== "starting") return;
-    if (await portOpen(config.port)) {
+    // The port it announced beats the port it was asked for — Vite moves to
+    // the next free one and says so. This poll serves the panel's Play button;
+    // startAndWait (the tool's path) does the same dance itself.
+    const said = portFromOutput(state.output.join(""));
+    if (said && said !== config.port) state.actualPort = said;
+    if (await portOpen(said ?? config.port)) {
       state.status = "running";
       notify();
       return;

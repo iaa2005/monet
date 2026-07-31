@@ -332,6 +332,8 @@ interface ChatStore {
   openFileRequest: string | null;
   /** Request to open the Changes tab in the right panel. Consumed by App. */
   openChangesRequest: boolean;
+  /** Open Settings at a section (the panel menu's "Manage allowed sites"). */
+  openSettingsRequest: string | null;
   /** Unified file/artifact viewer state (null = closed).
    * source "artifact" → reads via artifacts:* IPC, pass as item prop.
    * source "file" → reads via files:* IPC, pass as path prop. */
@@ -366,6 +368,7 @@ interface ChatStore {
   clearPendingContext: () => void;
   requestOpenFile: (path: string | null) => void;
   requestOpenChanges: () => void;
+  requestOpenSettings: (section: string | null) => void;
   openViewer: (
     item: {
       name: string;
@@ -790,6 +793,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     droppedFiles: null,
     openFileRequest: null,
     openChangesRequest: false,
+    openSettingsRequest: null,
     viewer: null,
     expandedSubAgent: null,
     space: "home",
@@ -835,6 +839,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     clearPendingContext: () => set({ pendingContext: [] }),
     requestOpenFile: (path) => set({ openFileRequest: path }),
     requestOpenChanges: () => set({ openChangesRequest: true }),
+    requestOpenSettings: (section) => set({ openSettingsRequest: section }),
     openViewer: (item) =>
       set({ viewer: item, ...(item ? { expandedSubAgent: null } : {}) }),
     openExpandedSubAgent: (sa) =>
@@ -997,6 +1002,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
         keepUserTurns,
         totalUserTurns,
       );
+      // Write the truncation down NOW. A send would persist it as a side
+      // effect, but a rewind is complete without one — leave the DB unsaved
+      // and reopening the chat brings back everything just removed, which
+      // reads as the rewind never having happened.
+      await persistSession(sessionId);
     },
 
     rewindAndEdit: async (messageId) => {
@@ -1050,6 +1060,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
         keepUserTurns,
         totalUserTurns,
       );
+      // Same as rewindTo: the truncation is real only once it is in the DB.
+      // This path drops the prompt into the composer, and deciding not to
+      // resend it is a legitimate way to use it — the rewind must hold anyway.
+      await persistSession(sessionId);
       get().setComposerDraft(text);
       // Put the turn's files back in the composer too. Without this the prompt
       // comes back for editing but its attachments do not, and the resend goes
@@ -1063,6 +1077,24 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // The references come back as references. Their ⟨tokens⟩ are already in
       // the text we just restored, so they are marked pretokenised — inserting
       // them again would double every chip.
+      // The crop's dataUrl only exists in the session that made it; after a
+      // reload there is just the artifact path. Read it back, or the re-sent
+      // message silently goes out without the pictures.
+      const cropUrls = await Promise.all(
+        refs.map(async (_r, i) => {
+          const crop = crops[i];
+          if (crop?.dataUrl) return crop.dataUrl;
+          if (!crop?.path) return undefined;
+          try {
+            const r = await bridge?.artifacts.readBytes(crop.path);
+            return r?.ok && r.base64
+              ? `data:${crop.mediaType || "image/png"};base64,${r.base64}`
+              : undefined;
+          } catch {
+            return undefined;
+          }
+        }),
+      );
       set({
         pendingContext: refs.map((r, i) => ({
           id: generateId(),
@@ -1071,7 +1103,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           tone: i,
           pretokenised: true,
           context: r.raw,
-          imageDataUrl: crops[i]?.dataUrl,
+          imageDataUrl: cropUrls[i],
           url: r.url,
         })),
       });

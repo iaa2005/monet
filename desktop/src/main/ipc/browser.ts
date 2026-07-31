@@ -7,7 +7,7 @@
  * the external browser down.
  */
 
-import { BrowserWindow, ipcMain, session } from "electron";
+import { BrowserWindow, dialog, ipcMain, session } from "electron";
 import {
   getBrowserConfig,
   setBrowserConfig,
@@ -28,12 +28,13 @@ import {
   type ServerConfig,
   type ServerState,
 } from "../browser/servers.js";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { resetVendorTools } from "../agent/vendor-tools.js";
 import { shutdownBrowser } from "../browser/chrome.js";
 import { disconnectCdp } from "../browser/page.js";
 import {
+  activeContents,
   registerTab,
   setActiveTab,
   unregisterTab,
@@ -42,6 +43,7 @@ import { getTransport } from "../browser/transport.js";
 import { setDesignMode } from "../browser/inspect.js";
 import { onInspectMessage } from "../browser/selection.js";
 import { getWorkspacePath } from "./workspace.js";
+import { getUiState, setUiState, type SessionUiState } from "../ui-state.js";
 
 export function registerBrowserIPC(): void {
   // The panel redraws whenever a server changes state, rather than polling —
@@ -140,6 +142,63 @@ export function registerBrowserIPC(): void {
       return [];
     }
   });
+
+  // Per-chat workspace layout — which panel, which pages. See ui-state.ts.
+  ipcMain.handle("uistate:get", (_e, sessionId: string): SessionUiState | null =>
+    getUiState(sessionId),
+  );
+  ipcMain.handle(
+    "uistate:set",
+    (_e, sessionId: string, state: SessionUiState): void =>
+      setUiState(sessionId, state),
+  );
+
+  // "Open file" in the panel menu — a local page, previewed without a server.
+  ipcMain.handle("browser:pickFile", async (): Promise<string | null> => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    if (!win) return null;
+    const r = await dialog.showOpenDialog(win, {
+      title: "Open in the Browser panel",
+      properties: ["openFile"],
+      filters: [
+        { name: "Web pages", extensions: ["html", "htm", "svg", "pdf", "md"] },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+    const file = r.filePaths[0];
+    return file ? `file:///${file.replace(/\\/g, "/")}` : null;
+  });
+
+  // "Save screenshot" — the page as the user sees it, to wherever they say.
+  ipcMain.handle(
+    "browser:saveScreenshot",
+    async (): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const wc = activeContents();
+        if (!wc) return { ok: false, error: "No page is open." };
+        const image = await wc.capturePage();
+        const png = image.toPNG();
+        if (png.length === 0)
+          return { ok: false, error: "The page produced an empty frame." };
+        const win =
+          BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+        if (!win) return { ok: false, error: "No window." };
+        const r = await dialog.showSaveDialog(win, {
+          title: "Save screenshot",
+          defaultPath: `screenshot-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-")}.png`,
+          filters: [{ name: "PNG image", extensions: ["png"] }],
+        });
+        if (r.canceled || !r.filePath) return { ok: false };
+        writeFileSync(r.filePath, png);
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
 
   // Design mode. The overlay is injected through CDP rather than a webview
   // preload because it must run in the page's MAIN world — React's fibre is an

@@ -37,6 +37,9 @@ interface BrowserState {
   /** A link someone clicked, waiting for App to show the panel. Consumed and
    * cleared there — the same shape chatStore uses for openFileRequest. */
   pendingOpen: string | null;
+  /** Mirror of BrowserConfig.openLinksInPanel, so a click can decide
+   * synchronously. Loaded once by App, updated by the panel's menu. */
+  openLinksInPanel: boolean;
 
   openTab: (url?: string) => string;
   closeTab: (id: string) => void;
@@ -48,6 +51,9 @@ interface BrowserState {
   setPartition: (partition: string) => void;
   requestOpen: (url: string) => void;
   clearPendingOpen: () => void;
+  setOpenLinksInPanel: (v: boolean) => void;
+  /** Swap the whole tab set (chat switch). Empty list closes everything. */
+  restoreTabs: (urls: string[], activeIndex: number) => void;
 }
 
 const BLANK = "about:blank";
@@ -62,6 +68,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   designMode: false,
   partition: null,
   pendingOpen: null,
+  openLinksInPanel: true,
 
   openTab: (url) => {
     const target = url ? (normalizeUrl(url) ?? BLANK) : BLANK;
@@ -112,6 +119,27 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   setPartition: (partition) => set({ partition }),
   requestOpen: (url) => set({ pendingOpen: url }),
   clearPendingOpen: () => set({ pendingOpen: null }),
+  setOpenLinksInPanel: (v) => set({ openLinksInPanel: v }),
+
+  restoreTabs: (urls, activeIndex) => {
+    const tabs = urls.map((url) => {
+      const target = normalizeUrl(url) ?? BLANK;
+      return {
+        id: nextId(),
+        url: target,
+        title: "",
+        favicon: null,
+        loading: target !== BLANK,
+        canGoBack: false,
+        canGoForward: false,
+        error: null,
+      };
+    });
+    set({
+      tabs,
+      activeId: tabs[Math.min(Math.max(activeIndex, 0), tabs.length - 1)]?.id ?? null,
+    });
+  },
 }));
 
 /** The showing tab, or null when the panel is empty. */

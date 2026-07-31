@@ -289,7 +289,9 @@ export default function App(): JSX.Element {
   const [sessionTitle, setSessionTitle] = useState("New session");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<"general" | "sandbox" | "providers">("general");
+  const [settingsSection, setSettingsSection] = useState<
+    "general" | "sandbox" | "providers" | "automation"
+  >("general");
   const [aboutOpen, setAboutOpen] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
   const [directoryOpen, setDirectoryOpen] = useState(false);
@@ -435,6 +437,107 @@ export default function App(): JSX.Element {
     if (rightTab !== "browser") return;
     rightPanelRef.current?.resize(browserLayout === "expanded" ? 68 : 34);
   }, [browserLayout, rightTab]);
+
+  // ── The chat's desk ────────────────────────────────────────────────
+  //
+  // Which panel was up, whether the terminal was open, which pages the Browser
+  // tab held — saved per chat and put back on return. Without it every switch
+  // meant reassembling the workspace by hand, which is exactly the kind of
+  // thing nobody reports and everybody tires of.
+  //
+  // The snapshot of the chat being LEFT is taken inside the effect: when
+  // currentSessionId changes, the layout state still holds the old chat's
+  // values, because nothing else has run yet.
+  const restoredFor = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const bridge = api();
+    if (!bridge) return;
+    const leaving = restoredFor.current;
+    if (leaving && leaving !== currentSessionId && !leaving.startsWith("incognito")) {
+      const b = useBrowserStore.getState();
+      void bridge.browser.uiState.set(leaving, {
+        rightTab,
+        terminalOpen,
+        browserTabs: b.tabs.filter((t) => t.url !== "about:blank").map((t) => ({ url: t.url })),
+        activeTab: Math.max(0, b.tabs.findIndex((t) => t.id === b.activeId)),
+        browserExpanded: b.layout === "expanded",
+      });
+    }
+    restoredFor.current = currentSessionId;
+    if (!currentSessionId || currentSessionId.startsWith("incognito")) return;
+
+    let cancelled = false;
+    void bridge.browser.uiState.get(currentSessionId).then((saved) => {
+      if (cancelled || !saved) return;
+      // A saved desk is restored even when it is empty — closing everything
+      // WAS the state of that chat.
+      const b = useBrowserStore.getState();
+      b.restoreTabs(
+        (saved.browserTabs ?? []).map((t: { url: string }) => t.url),
+        saved.activeTab ?? 0,
+      );
+      b.setLayout(saved.browserExpanded ? "expanded" : "panel");
+      if ((saved.browserTabs ?? []).length > 0) setBrowserUsed(true);
+      setTerminalOpen(!!saved.terminalOpen);
+      const tab = saved.rightTab as RightTab;
+      if (
+        tab === null ||
+        tab === "files" ||
+        tab === "artifacts" ||
+        tab === "tasks" ||
+        tab === "changes" ||
+        tab === "browser"
+      ) {
+        if (tab === "browser") setBrowserUsed(true);
+        setRightTab(tab);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Only the chat switch drives this — layout states are read, not deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId]);
+
+  // The same desk, saved as it changes — a debounce, not on every keystroke of
+  // state, so quitting the app (which never fires a chat switch) loses at most
+  // half a second of layout.
+  const browserTabsLive = useBrowserStore((s) => s.tabs);
+  const browserActiveLive = useBrowserStore((s) => s.activeId);
+  useEffect(() => {
+    const bridge = api();
+    if (!bridge || !currentSessionId || currentSessionId.startsWith("incognito"))
+      return;
+    if (restoredFor.current !== currentSessionId) return;
+    const t = setTimeout(() => {
+      const b = useBrowserStore.getState();
+      void bridge.browser.uiState.set(currentSessionId, {
+        rightTab,
+        terminalOpen,
+        browserTabs: b.tabs
+          .filter((x) => x.url !== "about:blank")
+          .map((x) => ({ url: x.url })),
+        activeTab: Math.max(0, b.tabs.findIndex((x) => x.id === b.activeId)),
+        browserExpanded: b.layout === "expanded",
+      });
+    }, 600);
+    return () => clearTimeout(t);
+  }, [currentSessionId, rightTab, terminalOpen, browserTabsLive, browserActiveLive, browserLayout]);
+
+  // The Browser panel's "Manage allowed sites" opens Settings → Automation.
+  const openSettingsRequest = useChatStore((s) => s.openSettingsRequest);
+  useEffect(() => {
+    if (!openSettingsRequest) return;
+    if (
+      openSettingsRequest === "general" ||
+      openSettingsRequest === "sandbox" ||
+      openSettingsRequest === "providers" ||
+      openSettingsRequest === "automation"
+    )
+      setSettingsSection(openSettingsRequest);
+    setSettingsOpen(true);
+    useChatStore.getState().requestOpenSettings(null);
+  }, [openSettingsRequest]);
 
   // GitCard's "+N −M" button asks to open the Changes tab.
   useEffect(() => {

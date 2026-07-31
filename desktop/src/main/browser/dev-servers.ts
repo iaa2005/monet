@@ -30,9 +30,13 @@ const COMMON_PORTS = [
 ];
 
 /** True when something is listening on 127.0.0.1:port. */
-function portOpen(port: number, timeoutMs = 300): Promise<boolean> {
+function portOpenOn(
+  host: string,
+  port: number,
+  timeoutMs: number,
+): Promise<boolean> {
   return new Promise((resolve) => {
-    const socket = createConnection({ port, host: "127.0.0.1" });
+    const socket = createConnection({ port, host });
     const done = (open: boolean): void => {
       socket.destroy();
       resolve(open);
@@ -42,6 +46,22 @@ function portOpen(port: number, timeoutMs = 300): Promise<boolean> {
     socket.once("timeout", () => done(false));
     socket.once("error", () => done(false));
   });
+}
+
+/**
+ * True when something local is listening on the port — on EITHER loopback.
+ *
+ * Vite on Windows binds ::1, not 127.0.0.1 (Node 17+ resolves localhost to
+ * IPv6 first). The browser reaches it, because the OS resolves localhost the
+ * same way — so probing only 127.0.0.1 reported "starting…" forever for a
+ * server that was already serving the page on screen.
+ */
+async function portOpen(port: number, timeoutMs = 300): Promise<boolean> {
+  const [v4, v6] = await Promise.all([
+    portOpenOn("127.0.0.1", port, timeoutMs),
+    portOpenOn("::1", port, timeoutMs),
+  ]);
+  return v4 || v6;
 }
 
 /**

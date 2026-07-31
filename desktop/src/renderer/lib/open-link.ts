@@ -37,7 +37,8 @@ export interface OpenLinkOptions {
  */
 export function openLink(url: string, opts: OpenLinkOptions = {}): void {
   if (!url) return;
-  if (!isWebLink(url) || opts.external) {
+  const toPanel = useBrowserStore.getState().openLinksInPanel;
+  if (!isWebLink(url) || opts.external || !toPanel) {
     void api()?.shell.openExternal(url);
     return;
   }

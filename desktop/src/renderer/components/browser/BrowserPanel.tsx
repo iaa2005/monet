@@ -14,7 +14,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  Camera,
+  Check,
+  Code,
+  Eraser,
+  FolderOpen,
   Globe,
+  Hand,
   Loader2,
   Maximize2,
   Minimize2,
@@ -24,6 +30,13 @@ import {
   RotateCw,
   X,
 } from "lucide-react";
+
+/** What the trigger row shows for each mode. */
+const PERSIST_LABEL: Record<BrowserPersist, string> = {
+  none: "Don't keep",
+  shared: "Shared",
+  perChat: "Separate",
+};
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,6 +78,18 @@ export function BrowserPanel(): JSX.Element {
   const [designError, setDesignError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const designMode = useBrowserStore((s) => s.designMode);
+  const openLinksInPanel = useBrowserStore((s) => s.openLinksInPanel);
+  // The menu shows which mode is on, so it has to know — loaded once, then
+  // kept by the handlers that change it.
+  const [persistMode, setPersistMode] = useState<BrowserPersist>("shared");
+  useEffect(() => {
+    void api()
+      .browser.getConfig()
+      .then((c) => {
+        setPersistMode(c.persistSessions);
+        useBrowserStore.getState().setOpenLinksInPanel(c.openLinksInPanel);
+      });
+  }, []);
 
   const openTab = useCallback((url?: string): void => {
     useBrowserStore.getState().openTab(url);
@@ -135,6 +160,7 @@ export function BrowserPanel(): JSX.Element {
   };
 
   const setPersist = (mode: BrowserPersist): void => {
+    setPersistMode(mode);
     void api()
       .browser.setConfig({ persistSessions: mode })
       .then(() =>
@@ -146,6 +172,20 @@ export function BrowserPanel(): JSX.Element {
             store.setPartition(next);
           }),
       );
+  };
+
+  const toggleOpenLinks = (): void => {
+    const next = !openLinksInPanel;
+    useBrowserStore.getState().setOpenLinksInPanel(next);
+    void api().browser.setConfig({ openLinksInPanel: next });
+  };
+
+  const openLocalFile = (): void => {
+    void api()
+      .browser.pickFile()
+      .then((url) => {
+        if (url) openTab(url);
+      });
   };
 
   const clearData = (): void => {
@@ -307,50 +347,88 @@ export function BrowserPanel(): JSX.Element {
               <MoreVertical className="size-3.5" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuItem onClick={openLocalFile}>
+              <FolderOpen className="size-4 shrink-0" />
+              Open file
+            </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => act((v) => v.openDevTools())}
               disabled={!active}
+              onClick={() =>
+                void api()
+                  .browser.saveScreenshot()
+                  .then((r) => {
+                    if (!r.ok && r.error) setDesignError(r.error);
+                  })
+              }
             >
+              <Camera className="size-4 shrink-0" />
+              Save screenshot
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() =>
+                useChatStore.getState().requestOpenSettings("automation")
+              }
+            >
+              <Hand className="size-4 shrink-0" />
+              Manage allowed sites
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!active}
+              onClick={() => act((v) => v.openDevTools())}
+            >
+              <Code className="size-4 shrink-0" />
               Open DevTools
             </DropdownMenuItem>
+
             <DropdownMenuSeparator />
+
+            {/* Toggles read as a row with a check on the right, like the
+                official app's menu — a checkbox item, not a command. */}
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                toggleOpenLinks();
+              }}
+            >
+              <span className="min-w-0 flex-1">Open links in Browser panel</span>
+              {openLinksInPanel && <Check className="size-4 shrink-0 text-link" />}
+            </DropdownMenuItem>
+
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger>Persist sessions</DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-64">
-                <DropdownMenuItem onClick={() => setPersist("none")}>
-                  <div>
-                    <div>Don&apos;t keep</div>
-                    <div className="text-xs text-muted-foreground">
-                      Cleared when the app quits
-                    </div>
-                  </div>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setPersist("shared")}>
-                  <div>
-                    <div>Shared</div>
-                    <div className="text-xs text-muted-foreground">
-                      Same logins for every chat in this project
-                    </div>
-                  </div>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setPersist("perChat")}>
-                  <div>
-                    <div>Separate</div>
-                    <div className="text-xs text-muted-foreground">
-                      Each chat keeps its own
-                    </div>
-                  </div>
-                </DropdownMenuItem>
+              <DropdownMenuSubTrigger>
+                <span className="min-w-0 flex-1">Persist sessions</span>
+                <span className="mr-1 text-xs text-muted-foreground">
+                  {PERSIST_LABEL[persistMode]}
+                </span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-72">
+                {(
+                  [
+                    ["none", "Don't keep", "Cleared when the app quits"],
+                    ["shared", "Shared", "Same data for every chat in this project"],
+                    ["perChat", "Separate", "Each chat keeps its own"],
+                  ] as const
+                ).map(([value, label, hint]) => (
+                  <DropdownMenuItem key={value} onClick={() => setPersist(value)}>
+                    <span className="min-w-0 flex-1">
+                      <span className="block">{label}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {hint}
+                      </span>
+                    </span>
+                    {persistMode === value && (
+                      <Check className="size-4 shrink-0 text-link" />
+                    )}
+                  </DropdownMenuItem>
+                ))}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+
             <DropdownMenuItem onClick={clearData} disabled={!partition}>
+              <Eraser className="size-4 shrink-0" />
               Clear cookies and cache
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="font-normal text-xs text-muted-foreground">
-              {partition?.replace(/^persist:/, "") ?? "no session yet"}
-            </DropdownMenuLabel>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

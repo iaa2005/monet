@@ -47,6 +47,8 @@ export interface ChatMessage {
     mediaType: string;
     kind: string;
     path?: string;
+    /** "selection" = the browser tool made it; it renders on its chip. */
+    origin?: string;
   }[];
   isStreaming?: boolean;
   isError?: boolean;
@@ -180,6 +182,10 @@ function attachmentsJson(m: ChatMessage): string | null {
       mediaType: a.mediaType,
       kind: a.kind,
       ...(a.path ? { path: a.path } : {}),
+      // Which attachments the browser tool made, not the user. Dropped here
+      // once: after a reload the crops fell out of their chips and reappeared
+      // as ordinary attached files above the message.
+      ...(a.origin ? { origin: a.origin } : {}),
     })),
   );
 }

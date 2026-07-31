@@ -17,6 +17,7 @@ import type { BrowserConfig } from "../main/browser/config.js";
 import type { DevServer } from "../main/browser/dev-servers.js";
 import type { BrowserSelection } from "../main/browser/selection.js";
 import type { ServerConfig, ServerState } from "../main/browser/servers.js";
+import type { SessionUiState } from "../main/ui-state.js";
 
 const electronAPI = {
   platform: process.platform,
@@ -732,6 +733,17 @@ const electronAPI = {
       ipcRenderer.on("browser:openTab", handler);
       return () => ipcRenderer.off("browser:openTab", handler);
     },
+    /** Per-chat layout: panel, terminal, browser tabs. */
+    uiState: {
+      get: (sessionId: string): Promise<SessionUiState | null> =>
+        ipcRenderer.invoke("uistate:get", sessionId),
+      set: (sessionId: string, state: SessionUiState): Promise<void> =>
+        ipcRenderer.invoke("uistate:set", sessionId, state),
+    },
+    pickFile: (): Promise<string | null> =>
+      ipcRenderer.invoke("browser:pickFile"),
+    saveScreenshot: (): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("browser:saveScreenshot"),
     /** Main needs the panel on screen before a screenshot or a scroll. */
     onReveal: (cb: () => void): (() => void) => {
       const handler = (): void => cb();
