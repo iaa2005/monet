@@ -695,6 +695,8 @@ const electronAPI = {
 
   mcp: {
     list: (): Promise<unknown[]> => ipcRenderer.invoke("mcp:list"),
+    tools: (server: string): Promise<{ name: string; description: string }[]> =>
+      ipcRenderer.invoke("mcp:tools", server),
     add: (payload: { name: string; config: unknown }): Promise<unknown[]> =>
       ipcRenderer.invoke("mcp:add", payload),
     remove: (name: string): Promise<unknown[]> =>

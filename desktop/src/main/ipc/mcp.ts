@@ -15,6 +15,7 @@ import {
   saveConfig,
   type McpServerConfig,
   type McpServerStatus,
+  getServerTools,
 } from "../mcp/manager.js";
 
 async function refresh(): Promise<McpServerStatus[]> {
@@ -30,6 +31,9 @@ async function reconnect(name: string): Promise<McpServerStatus[]> {
 
 export function registerMcpIPC(): void {
   ipcMain.handle("mcp:list", () => refresh());
+  // A connected server's live tool list — permission UIs render one row per
+  // tool instead of one coarse "use the server" switch.
+  ipcMain.handle("mcp:tools", (_e, server: string) => getServerTools(server));
 
   ipcMain.handle(
     "mcp:add",

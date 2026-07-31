@@ -160,6 +160,8 @@ export async function executeRoutine(
         // Ask-level connector actions run unattended ONLY if granted at
         // creation; destructive is never grantable (the engine enforces both).
         connectorGrants: routine.grants,
+        // Off = the run's system prompt carries no long-term memory.
+        memory: routine.memory !== false,
         maxTurns: 30,
         // Scope to declared connectors plus every connector needed by the
         // trigger/output. An empty declared scope means the default toolset,

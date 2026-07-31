@@ -104,6 +104,7 @@ async function buildSystemPrompt(
   model: string,
   space?: string,
   sessionId?: string,
+  includeMemory = true,
 ): Promise<string> {
   initVendorRuntime();
   try {
@@ -118,14 +119,14 @@ async function buildSystemPrompt(
     const prompt = sections
       .filter(Boolean)
       .join("\n\n");
-    if (prompt.trim().length > 0) return withUserMemory(prompt);
+    if (prompt.trim().length > 0) return withUserMemory(prompt, includeMemory);
     throw new Error("vendor system prompt came back empty");
   } catch (err) {
     console.warn(
       "[agent] vendor getSystemPrompt failed, using fallback:",
       err instanceof Error ? err.message : err,
     );
-    return withUserMemory(await getFallbackSystemPrompt());
+    return withUserMemory(await getFallbackSystemPrompt(), includeMemory);
   }
 }
 
@@ -211,11 +212,13 @@ export function agentDisciplinePrompt(): string {
  * working-discipline block, a global user-tunable addendum, and — when caveman
  * mode is on — the terse-style directive. `system-append` is empty by default
  * and applies to BOTH the vendor and fallback prompts. */
-function withUserMemory(prompt: string): string {
+function withUserMemory(prompt: string, includeMemory = true): string {
   try {
     const extra = [
       getProfilePrompt(),
-      buildMemoryPrompt(),
+      // The switch a routine flips: everything else here is style and
+      // discipline, but THIS is the user's private notebook.
+      includeMemory ? buildMemoryPrompt() : "",
       tunablePrompt("method", METHOD_DEFAULT),
       tunablePrompt("discipline", DISCIPLINE_DEFAULT),
       tunablePrompt("system-append", ""),
@@ -362,6 +365,10 @@ export interface AgentRunOptions {
   /** Connector action ids the routine's creator granted for unattended use
    * (e.g. ["chat.send"]). Only consulted when unattended. */
   connectorGrants?: string[];
+  /** Include the user's long-term memory in the system prompt (default true).
+   * A routine can turn it off — a nightly digest has no business reading, or
+   * colouring itself with, personal memory. */
+  memory?: boolean;
 }
 
 /**
@@ -1105,6 +1112,7 @@ async function runAgentScoped(
     effort,
     connectors,
     unattended,
+    memory,
   } = options;
 
   let tools;
@@ -1112,7 +1120,7 @@ async function runAgentScoped(
   try {
     [tools, basePrompt] = await Promise.all([
       getVendorApiTools(space, sessionId, connectors),
-      buildSystemPrompt(runModel, space, sessionId),
+      buildSystemPrompt(runModel, space, sessionId, memory !== false),
     ]);
   } catch (err) {
     onEvent({

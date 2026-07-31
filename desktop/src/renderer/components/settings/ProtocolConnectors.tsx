@@ -102,6 +102,36 @@ function PermissionMatrix({
 }): JSX.Element {
   const overrides = account.permissions ?? {};
 
+  // MCP-backed services declare one coarse "mcp.use" action, because their
+  // tools are dynamic. The server is CONNECTED here though — so ask it, and
+  // render one row per real tool. The blanket row stays as the fallback the
+  // engine also honours: a per-tool override wins, else the blanket's.
+  const isMcp = service.actions.some((a) => a.id === "mcp.use");
+  const [mcpTools, setMcpTools] = useState<
+    { name: string; description: string }[] | null
+  >(null);
+  useEffect(() => {
+    if (!isMcp) return;
+    void api()
+      ?.mcp.tools(service.id)
+      .then((tools) => setMcpTools(tools ?? []))
+      .catch(() => setMcpTools([]));
+  }, [isMcp, service.id]);
+
+  const blanket = service.actions.find((a) => a.id === "mcp.use");
+  const actions =
+    isMcp && blanket
+      ? [
+          { ...blanket, label: "All tools on this server" },
+          ...(mcpTools ?? []).map((t) => ({
+            id: `mcp.use.${t.name}`,
+            access: blanket.access,
+            label: t.name,
+            defaultLevel: blanket.defaultLevel,
+          })),
+        ]
+      : service.actions;
+
   const set = async (actionId: string, level: PermLevel | null): Promise<void> => {
     const updated = await api()?.connectors.setPermission(
       account.id,
@@ -116,7 +146,7 @@ function PermissionMatrix({
   return (
     <div className="mt-2 space-y-2 rounded-lg border border-border/70 bg-black/[0.02] p-2.5 dark:bg-white/[0.03]">
       {ACCESS_GROUPS.map((g) => {
-        const rows = service.actions.filter((a) => a.access === g.access);
+        const rows = actions.filter((a) => a.access === g.access);
         if (rows.length === 0) return null;
         return (
           <div key={g.access}>
@@ -143,7 +173,11 @@ function PermissionMatrix({
             <div className="space-y-0.5">
               {rows.map((a) => {
                 const effective: PermLevel =
-                  (overrides[a.id] as PermLevel | undefined) ?? a.defaultLevel;
+                  (overrides[a.id] as PermLevel | undefined) ??
+                  (a.id.startsWith("mcp.use.")
+                    ? (overrides["mcp.use"] as PermLevel | undefined)
+                    : undefined) ??
+                  a.defaultLevel;
                 const overridden = overrides[a.id] != null;
                 return (
                   <div key={a.id} className="flex items-center gap-2 py-0.5">

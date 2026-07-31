@@ -358,6 +358,15 @@ export function getMcpTools(): McpTool[] {
   return out;
 }
 
+/** A connected server's tools — names and descriptions, for permission UIs. */
+export function getServerTools(
+  name: string,
+): { name: string; description: string }[] {
+  const s = servers.get(name);
+  if (!s) return [];
+  return s.tools.map((t) => ({ name: t.toolName, description: t.description }));
+}
+
 export function isMcpToolName(name: string): boolean {
   return name.startsWith("mcp__");
 }

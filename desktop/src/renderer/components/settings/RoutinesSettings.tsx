@@ -37,6 +37,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { MicButton } from "@/components/chat/MicButton";
 import { ServiceIcon } from "@/components/directory/shared";
 import { useChatStore } from "@/stores/chatStore";
@@ -73,6 +80,7 @@ interface Draft {
   outputKind: "chat" | "notification" | "connector";
   outputConnector: string;
   condition: string;
+  memory: boolean;
   enabled: boolean;
 }
 
@@ -104,7 +112,7 @@ const TEMPLATES: Template[] = [
 ];
 
 function emptyDraft(): Draft {
-  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", eventConnector: "", eventType: "", eventInterval: 15, eventFilter: "", connectors: [], grants: [], providerId: "", model: "", outputKind: "chat", outputConnector: "", condition: "", enabled: true };
+  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", eventConnector: "", eventType: "", eventInterval: 15, eventFilter: "", connectors: [], grants: [], providerId: "", model: "", outputKind: "chat", outputConnector: "", condition: "", memory: true, enabled: true };
 }
 
 function draftFromRoutine(r: RoutineRow): Draft {
@@ -134,6 +142,7 @@ function draftFromRoutine(r: RoutineRow): Draft {
     outputKind: r.output?.kind ?? "chat",
     outputConnector: r.output?.connector ?? "",
     condition: r.condition?.prompt ?? "",
+    memory: r.memory !== false,
     enabled: r.enabled,
   };
 }
@@ -368,7 +377,7 @@ export function RoutinesSettings({
                   setRoutines((prev) => prev.filter((x) => x.id !== r.id));
                 }}
                 title="Delete"
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
               >
                 <Trash2 className="size-4" />
               </button>
@@ -472,6 +481,11 @@ function RoutineDetail({
     { id: string; label: string; kind: "connector" | "mcp" }[]
   >([]);
   const [presets, setPresets] = useState<UiConnectorService[]>([]);
+  // Live tool lists for the routine's MCP servers, so grants can name the
+  // actual tools instead of one coarse "use the server" switch.
+  const [mcpTools, setMcpTools] = useState<
+    Record<string, { name: string; description: string }[]>
+  >({});
   const [providers, setProviders] = useState<
     { id: string; name: string; model: string; models: { name: string; label?: string }[] }[]
   >([]);
@@ -520,53 +534,69 @@ function RoutineDetail({
     };
   }, [d.cron]);
 
-  const grantOptions = useMemo(() => {
-    const connected = new Map(servers.map((server) => [server.id, server]));
-    const options = new Map<
-      string,
-      {
-        connectorLabel: string;
-        actionId: string;
-        actionLabel: string;
-        access: "read" | "write" | "destructive";
+  useEffect(() => {
+    const wanted = d.connectors.filter(
+      (id) => servers.find((x) => x.id === id)?.kind === "mcp" && !(id in mcpTools),
+    );
+    for (const id of wanted)
+      void api()
+        ?.mcp.tools(id)
+        .then((tools) => setMcpTools((prev) => ({ ...prev, [id]: tools ?? [] })))
+        .catch(() => setMcpTools((prev) => ({ ...prev, [id]: [] })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.connectors, servers]);
+
+  // Grants, grouped by the connectors THIS routine carries: offering a Slack
+  // write toggle on a routine that has no Slack was noise pretending to be
+  // security. Deselecting a tool hides (not silently deletes) its grants.
+  const grantGroups = useMemo(() => {
+    const byId = new Map(servers.map((server) => [server.id, server]));
+    const groups: {
+      id: string;
+      label: string;
+      svg?: string;
+      kind: "connector" | "mcp";
+      actions: { id: string; label: string; access: "write" | "destructive" }[];
+    }[] = [];
+    for (const id of d.connectors) {
+      const server = byId.get(id);
+      if (!server) continue;
+      if (server.kind === "mcp") {
+        const tools = mcpTools[id] ?? [];
+        groups.push({
+          id,
+          label: server.label,
+          kind: "mcp",
+          actions: [
+            { id: "mcp.use", label: "All tools on this server", access: "write" },
+            ...tools.map((t) => ({
+              id: `mcp.use.${t.name}`,
+              label: t.name,
+              access: "write" as const,
+            })),
+          ],
+        });
+        continue;
       }
-    >();
-    const addOption = (option: {
-      connectorLabel: string;
-      actionId: string;
-      actionLabel: string;
-      access: "read" | "write" | "destructive";
-    }): void => {
-      const existing = options.get(option.actionId);
-      options.set(
-        option.actionId,
-        existing
-          ? { ...existing, connectorLabel: `${existing.connectorLabel}, ${option.connectorLabel}` }
-          : option,
-      );
-    };
-    for (const preset of presets) {
-      const server = connected.get(preset.id);
-      if (!server || server.kind !== "connector") continue;
-      for (const action of preset.actions)
-        addOption({
-          connectorLabel: server.label,
-          actionId: action.id,
-          actionLabel: action.label,
-          access: action.access,
+      const preset = presets.find((p) => p.id === id);
+      const actions = (preset?.actions ?? [])
+        .filter((a: { access: string }) => a.access !== "read")
+        .map((a: { id: string; label: string; access: string }) => ({
+          id: a.id,
+          label: a.label,
+          access: a.access as "write" | "destructive",
+        }));
+      if (actions.length > 0)
+        groups.push({
+          id,
+          label: preset?.displayName ?? server.label,
+          svg: preset?.iconSvg,
+          kind: "connector",
+          actions,
         });
     }
-    for (const server of servers) {
-      if (server.kind !== "mcp") continue;
-      addOption({
-        connectorLabel: server.label,
-        actionId: "mcp.use",
-        actionLabel: "Use the service's MCP tools",
-        access: "write",
-      });
-    }
-    return [...options.values()];
-  }, [presets, servers]);
+    return groups;
+  }, [presets, servers, d.connectors, mcpTools]);
 
   const save = async (): Promise<void> => {
     setError("");
@@ -607,6 +637,7 @@ function RoutineDetail({
       grants: d.grants,
       providerId: d.providerId || undefined,
       model: d.model || undefined,
+      memory: d.memory,
       enabled: d.enabled,
     };
     try {
@@ -854,111 +885,185 @@ function RoutineDetail({
             </div>
           </section>
 
-          {/* ── Tools ── */}
+          {/* ── Tools & permissions ── */}
           <section>
-            <div className={cn(SECTION, "mb-1.5")}>Tools</div>
+            <div className={cn(SECTION, "mb-1.5")}>Tools &amp; permissions</div>
             <div className={cn(CARD, "divide-y divide-border")}>
-              {/* Memory is part of every run — the routine reads and writes
-                  the same long-term memory the chats do. */}
-              <div className="flex items-center gap-2.5 px-3 py-2">
-                <Brain className="size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate text-sm">Memories</span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    useChatStore.getState().requestOpenSettings("memory")
-                  }
-                  className="rounded-md border border-border px-2 py-0.5 text-xs font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-                >
-                  Manage
-                </button>
-              </div>
-              {servers.map((s) => {
-                const on = d.connectors.includes(s.id);
-                const svg = presets.find((p) => p.id === s.id)?.iconSvg;
-                return (
-                  <label
-                    key={s.id}
-                    className="flex cursor-pointer items-center gap-2.5 px-3 py-2"
-                    title={s.kind === "mcp" ? "Raw MCP server" : "Connector"}
+              {/* One card, Cursor's grammar: the rows are exactly what the
+                  routine HAS, and each tool carries its own unattended-write
+                  switches right under its name. No implicit "empty means
+                  everything", no second list to cross-reference. */}
+              {d.memory && (
+                <div className="flex items-center gap-2.5 px-3 py-2">
+                  <Brain className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate text-sm">Memories</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      useChatStore.getState().requestOpenSettings("memory")
+                    }
+                    className="rounded-md border border-border px-2 py-0.5 text-xs font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
                   >
-                    {s.kind === "mcp" && !svg ? (
-                      <Blocks className="size-4 shrink-0 text-muted-foreground" />
-                    ) : (
-                      <ServiceIcon svg={svg} className="size-4" />
+                    Manage
+                  </button>
+                  <button
+                    type="button"
+                    title="Run without long-term memory"
+                    onClick={() => set({ memory: false })}
+                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
+              )}
+              {d.connectors.map((id) => {
+                const server = servers.find((x) => x.id === id);
+                const preset = presets.find((p) => p.id === id);
+                const svg = preset?.iconSvg;
+                const group = grantGroups.find((g) => g.id === id);
+                return (
+                  <div key={id} className="px-3 py-2">
+                    <div className="flex items-center gap-2.5">
+                      {server?.kind === "mcp" && !svg ? (
+                        <Blocks className="size-4 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <ServiceIcon svg={svg} className="size-4" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-sm">
+                        {preset?.displayName ?? server?.label ?? id}
+                        {!server && (
+                          <span className="ml-1.5 text-xs text-destructive">
+                            not connected
+                          </span>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        title="Remove from this routine"
+                        onClick={() =>
+                          set({ connectors: d.connectors.filter((x) => x !== id) })
+                        }
+                        className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                    {group && group.actions.length > 0 && (
+                      <div className="mt-1 space-y-1 pl-[26px]">
+                        {group.actions.map((a) => {
+                          const destructive = a.access === "destructive";
+                          const blanketed =
+                            a.id.startsWith("mcp.use.") &&
+                            d.grants.includes("mcp.use");
+                          const on =
+                            (d.grants.includes(a.id) || blanketed) && !destructive;
+                          return (
+                            <label
+                              key={a.id}
+                              className={cn(
+                                "flex items-center gap-2 text-sm",
+                                destructive
+                                  ? "text-muted-foreground"
+                                  : "cursor-pointer",
+                              )}
+                              title={
+                                destructive
+                                  ? "Destructive actions cannot be granted to unattended runs"
+                                  : "Allow this write when nobody is watching"
+                              }
+                            >
+                              <span className="min-w-0 flex-1 truncate">
+                                {a.label}
+                              </span>
+                              <span
+                                className={cn(
+                                  "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                                  destructive
+                                    ? "bg-red-bg text-red-text"
+                                    : "bg-muted text-muted-foreground",
+                                )}
+                              >
+                                {destructive ? "never unattended" : "write"}
+                              </span>
+                              <Switch
+                                checked={on}
+                                disabled={destructive || blanketed}
+                                onChange={(v) =>
+                                  set({
+                                    grants: v
+                                      ? [...d.grants, a.id]
+                                      : d.grants.filter((x) => x !== a.id),
+                                  })
+                                }
+                              />
+                            </label>
+                          );
+                        })}
+                      </div>
                     )}
-                    <span className="min-w-0 flex-1 truncate text-sm">{s.label}</span>
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
-                      {s.kind}
-                    </span>
-                    <Switch
-                      checked={on}
-                      onChange={() =>
-                        set({
-                          connectors: on
-                            ? d.connectors.filter((x) => x !== s.id)
-                            : [...d.connectors, s.id],
-                        })
-                      }
-                    />
-                  </label>
+                  </div>
                 );
               })}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.04]"
+                  >
+                    <Plus className="size-4" />
+                    Add Connector or MCP
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-72">
+                  {!d.memory && (
+                    <DropdownMenuItem onClick={() => set({ memory: true })}>
+                      <Brain className="size-4 shrink-0" />
+                      Memories
+                    </DropdownMenuItem>
+                  )}
+                  {servers
+                    .filter((x) => !d.connectors.includes(x.id))
+                    .map((x) => {
+                      const preset = presets.find((p) => p.id === x.id);
+                      const svg = preset?.iconSvg;
+                      return (
+                        <DropdownMenuItem
+                          key={x.id}
+                          onClick={() =>
+                            set({ connectors: [...d.connectors, x.id] })
+                          }
+                        >
+                          {x.kind === "mcp" && !svg ? (
+                            <Blocks className="size-4 shrink-0" />
+                          ) : (
+                            <ServiceIcon svg={svg} className="size-4" />
+                          )}
+                          {preset?.displayName ?? x.label}
+                          <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground/60">
+                            {x.kind}
+                          </span>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  {(servers.filter((x) => !d.connectors.includes(x.id)).length > 0 ||
+                    !d.memory) && <DropdownMenuSeparator />}
+                  <DropdownMenuItem
+                    onClick={() =>
+                      useChatStore.getState().requestOpenSettings("connectors")
+                    }
+                  >
+                    <Plus className="size-4 shrink-0" />
+                    Connect a new service…
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <p className="px-3 py-2 text-xs text-muted-foreground">
-                {servers.length > 0
-                  ? "Nothing selected = the default toolset. Read actions are always available; writes below need a grant."
-                  : "Connect services in Settings → Connectors to give routines more tools."}
+                Reads are always allowed. Writes run unattended only when
+                switched on; destructive actions never do. Connector-level Deny
+                still takes precedence.
               </p>
             </div>
           </section>
-
-          {/* ── Unattended permissions ── */}
-          {grantOptions.some((option) => option.access !== "read") && (
-            <section>
-              <div className={cn(SECTION, "mb-1.5")}>Unattended permissions</div>
-              <div className={cn(CARD, "divide-y divide-border")}>
-                {grantOptions
-                  .filter((option) => option.access !== "read")
-                  .map((option) => {
-                    const checked = d.grants.includes(option.actionId);
-                    const destructive = option.access === "destructive";
-                    return (
-                      <label
-                        key={option.actionId}
-                        className={cn(
-                          "flex items-center gap-2.5 px-3 py-2 text-sm",
-                          destructive ? "text-muted-foreground" : "cursor-pointer",
-                        )}
-                        title={
-                          destructive
-                            ? "Destructive actions cannot be granted to unattended runs"
-                            : undefined
-                        }
-                      >
-                        <span className="min-w-0 flex-1 truncate">
-                          {option.connectorLabel}: {option.actionLabel}
-                          {destructive ? " (never unattended)" : ""}
-                        </span>
-                        <Switch
-                          checked={checked && !destructive}
-                          disabled={destructive}
-                          onChange={(v) =>
-                            set({
-                              grants: v
-                                ? [...d.grants, option.actionId]
-                                : d.grants.filter((id) => id !== option.actionId),
-                            })
-                          }
-                        />
-                      </label>
-                    );
-                  })}
-                <p className="px-3 py-2 text-xs text-muted-foreground">
-                  Connector-level Deny still takes precedence over a routine grant.
-                </p>
-              </div>
-            </section>
-          )}
 
           {/* ── Output ── */}
           <section>

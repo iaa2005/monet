@@ -52,8 +52,16 @@ export function resolveActionLevel(
   acct: ResolvedAccount,
   actionId: string,
 ): PermissionLevel {
+  // MCP tools gate per tool ("mcp.use.<tool>"), but an override the user set
+  // on the blanket "mcp.use" still covers every tool without its own row —
+  // the specific always wins when both exist.
+  const blanket =
+    actionId.startsWith("mcp.use.") && actionId !== "mcp.use"
+      ? acct.account.permissions?.["mcp.use"]
+      : undefined;
   return (
     acct.account.permissions?.[actionId] ??
+    blanket ??
     actionDefaultLevel(acct.service, actionId)
   );
 }
@@ -92,8 +100,12 @@ export async function gateConnectorAction(
 
   // level === "ask"
   if (ctx.unattended) {
-    if (access !== "destructive" && ctx.connectorGrants?.includes(actionId))
-      return { ok: true };
+    // A routine's blanket "mcp.use" grant covers each per-tool id too.
+    const granted =
+      ctx.connectorGrants?.includes(actionId) ||
+      (actionId.startsWith("mcp.use.") &&
+        ctx.connectorGrants?.includes("mcp.use"));
+    if (access !== "destructive" && granted) return { ok: true };
     return {
       ok: false,
       message:

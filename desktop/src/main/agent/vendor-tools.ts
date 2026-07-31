@@ -453,10 +453,12 @@ export async function getVendorApiTools(
   }
 
   // Routine scoping for the connector TOOLS: a routine that declares ["gmail"]
-  // gets Mail and not Telegram. Filtering here (not in the cached build) keeps
-  // one cache entry serving every routine. MCP-backed connectors are scoped by
-  // server name below instead.
-  if (allowedMcpServers && allowedMcpServers.length > 0) {
+  // gets Mail and not Telegram. The scope is EXPLICIT: an empty array means no
+  // connector tools at all — the editor lists what a routine has, and a list
+  // with nothing on it that quietly meant "everything" was a trap. Undefined
+  // (a normal chat) stays unrestricted. Filtering here (not in the cached
+  // build) keeps one cache entry serving every routine.
+  if (allowedMcpServers) {
     const allowedTools = connectorToolNames(allowedMcpServers);
     base = base.filter(
       (t) => !CONNECTOR_TOOL_NAMES.has(t.name) || allowedTools.has(t.name),
@@ -472,10 +474,7 @@ export async function getVendorApiTools(
     // small. When disabled, behave exactly as before (advertise all).
     const deferMcp = getToolSearchConfig().enabled;
     const revealed = deferMcp ? getRevealedTools(sessionId ?? "default") : null;
-    const allow =
-      allowedMcpServers && allowedMcpServers.length > 0
-        ? new Set(allowedMcpServers)
-        : null;
+    const allow = allowedMcpServers ? new Set(allowedMcpServers) : null;
     // Home may use MCP, but only the servers a CONNECTOR supplies: those talk
     // to one signed-in service. A hand-written server is arbitrary — it could
     // be a filesystem or shell server, and that is the machine, which is
@@ -624,7 +623,9 @@ export async function executeVendorTool(opts: {
       );
       const r = await gateConnectorAction(
         acct,
-        "mcp.use",
+        // Per-tool id, so Settings and routine grants can be precise; the
+        // blanket "mcp.use" override/grant still covers all of them.
+        `mcp.use.${name.split("__")[2] ?? "tool"}`,
         {
           summary: `${acct.service.name}: run ${name.split("__")[2] ?? "tool"}`,
           detail: JSON.stringify(input).slice(0, 300),

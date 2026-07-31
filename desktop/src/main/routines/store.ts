@@ -49,6 +49,9 @@ export interface Routine {
    * grant, ask-level actions are denied when nobody is watching; destructive
    * actions are never grantable at all (the engine enforces both). */
   grants?: string[];
+  /** Long-term memory in the run's system prompt (default true). Off = the
+   * routine works from its instructions alone. */
+  memory?: boolean;
   /** Pin this routine to a provider+model. Empty = whatever is active when it
    * fires — which is what most routines want, but a nightly digest may want a
    * cheap or local model regardless of what the user is chatting with. */
@@ -126,6 +129,12 @@ function db(): ReturnType<typeof getSessionDb> {
     } catch {
       /* column already exists */
     }
+    // Per-routine memory switch. NULL (older rows) reads as ON.
+    try {
+      d.exec(`ALTER TABLE routines ADD COLUMN memory INTEGER`);
+    } catch {
+      /* column already exists */
+    }
     // Backfill chats that predate sessions.routine_id, from the run history —
     // done here because routine_runs is guaranteed to exist by this point.
     // Chats whose routine was already deleted are unrecoverable: their runs went
@@ -156,6 +165,7 @@ interface Row {
   grants: string | null;
   provider_id: string | null;
   model: string | null;
+  memory: number | null;
   trigger: string;
   condition: string | null;
   output: string;
@@ -177,6 +187,7 @@ function rowToRoutine(r: Row): Routine {
     grants: r.grants ? (JSON.parse(r.grants) as string[]) : undefined,
     providerId: r.provider_id ?? undefined,
     model: r.model ?? undefined,
+    memory: r.memory === 0 ? false : true,
     trigger: JSON.parse(r.trigger) as RoutineTrigger,
     condition: r.condition ? (JSON.parse(r.condition) as RoutineCondition) : undefined,
     output: JSON.parse(r.output) as Routine["output"],
@@ -214,8 +225,8 @@ export function createRoutine(input: RoutineInput): Routine {
   const r: Routine = { ...input, id: randomUUID(), createdAt: now, updatedAt: now };
   db()
     .prepare(
-      `INSERT INTO routines (id, name, prompt, space, connectors, grants, provider_id, model, trigger, condition, output, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO routines (id, name, prompt, space, connectors, grants, provider_id, model, memory, trigger, condition, output, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       r.id,
@@ -226,6 +237,7 @@ export function createRoutine(input: RoutineInput): Routine {
       r.grants?.length ? JSON.stringify(r.grants) : null,
       r.providerId || null,
       r.model || null,
+      r.memory === false ? 0 : 1,
       JSON.stringify(r.trigger),
       r.condition ? JSON.stringify(r.condition) : null,
       JSON.stringify(r.output),
@@ -242,7 +254,7 @@ export function updateRoutine(id: string, patch: Partial<Routine>): Routine | nu
   const next: Routine = { ...cur, ...patch, id, updatedAt: new Date().toISOString() };
   db()
     .prepare(
-      `UPDATE routines SET name=?, prompt=?, space=?, connectors=?, grants=?, provider_id=?, model=?, trigger=?, condition=?, output=?, enabled=?, updated_at=?, last_run=?, next_run=?, last_status=? WHERE id=?`,
+      `UPDATE routines SET name=?, prompt=?, space=?, connectors=?, grants=?, provider_id=?, model=?, memory=?, trigger=?, condition=?, output=?, enabled=?, updated_at=?, last_run=?, next_run=?, last_status=? WHERE id=?`,
     )
     .run(
       next.name,
@@ -252,6 +264,7 @@ export function updateRoutine(id: string, patch: Partial<Routine>): Routine | nu
       next.grants?.length ? JSON.stringify(next.grants) : null,
       next.providerId || null,
       next.model || null,
+      next.memory === false ? 0 : 1,
       JSON.stringify(next.trigger),
       next.condition ? JSON.stringify(next.condition) : null,
       JSON.stringify(next.output),

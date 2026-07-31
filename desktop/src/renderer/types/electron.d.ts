@@ -827,6 +827,7 @@ export interface ElectronAPI {
   };
   mcp: {
     list: () => Promise<McpServerStatus[]>;
+    tools: (server: string) => Promise<{ name: string; description: string }[]>;
     add: (payload: {
       name: string;
       config: McpServerConfig;
