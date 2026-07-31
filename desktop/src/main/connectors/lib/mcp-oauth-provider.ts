@@ -10,6 +10,7 @@
  * secret store — the same safeStorage-backed persistence Google OAuth uses.
  */
 
+import { APP_NAME } from "@shared/brand.js";
 import { createServer, type Server } from "node:http";
 import { randomBytes } from "node:crypto";
 import { shell } from "electron";
@@ -25,7 +26,7 @@ import type {
 import { patchSecret, getSecret } from "../store.js";
 
 const CLIENT_METADATA: OAuthClientMetadata = {
-  client_name: "Code Monet",
+  client_name: APP_NAME,
   redirect_uris: ["http://127.0.0.1:0"],
   grant_types: ["authorization_code", "refresh_token"],
   token_endpoint_auth_method: "none",

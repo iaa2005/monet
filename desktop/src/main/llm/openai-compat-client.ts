@@ -10,6 +10,7 @@
  * JSON.stringify'd block content — unusable for agentic runs.
  */
 
+import { APP_NAME } from "@shared/brand.js";
 import type { LLMProvider } from "../provider/types.js";
 import type {
   LLMAdapter,
@@ -182,7 +183,7 @@ export class OpenAICompatClient implements LLMAdapter {
     if (this.isOpenRouter) {
       // Attribution headers OpenRouter asks apps to send.
       h["HTTP-Referer"] = "https://github.com/iaa2005/monet";
-      h["X-Title"] = "Code Monet";
+      h["X-Title"] = APP_NAME;
     }
     return h;
   }

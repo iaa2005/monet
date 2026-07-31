@@ -12,6 +12,7 @@
  * that have no connector row behind them.
  */
 
+import { APP_NAME } from "@shared/brand.js";
 import { shell } from "electron";
 import {
   auth,
@@ -74,7 +75,7 @@ class FileMcpOAuthProvider implements OAuthClientProvider {
 
   get clientMetadata(): OAuthClientMetadata {
     return {
-      client_name: "Code Monet",
+      client_name: APP_NAME,
       redirect_uris: this.redirect ? [this.redirect] : [],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
