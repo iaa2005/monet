@@ -19,6 +19,14 @@ The expand button widens the panel when a page needs the room. Switching to
 another tab in the right panel does not reload anything — pages keep running,
 with their scroll position and their login.
 
+### Links in the chat
+
+Clicking a link the agent wrote opens it here, in a new tab — so you can look
+at the page and then point the agent at it, instead of describing it. Hold
+<kbd>Ctrl</kbd> (<kbd>Cmd</kbd> on macOS) to send it to your real browser
+instead, which is what you want for signing into something you would rather
+keep out of the workspace's cookie jar.
+
 ### Sessions
 
 Cookies and local storage are kept **per project**, so signing into your staging

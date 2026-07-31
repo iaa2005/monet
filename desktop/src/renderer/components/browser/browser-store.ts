@@ -34,6 +34,9 @@ interface BrowserState {
   designMode: boolean;
   /** Chromium partition, resolved from main once per workspace. */
   partition: string | null;
+  /** A link someone clicked, waiting for App to show the panel. Consumed and
+   * cleared there — the same shape chatStore uses for openFileRequest. */
+  pendingOpen: string | null;
 
   openTab: (url?: string) => string;
   closeTab: (id: string) => void;
@@ -43,6 +46,8 @@ interface BrowserState {
   toggleLayout: () => void;
   setDesignMode: (on: boolean) => void;
   setPartition: (partition: string) => void;
+  requestOpen: (url: string) => void;
+  clearPendingOpen: () => void;
 }
 
 const BLANK = "about:blank";
@@ -56,6 +61,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   layout: "panel",
   designMode: false,
   partition: null,
+  pendingOpen: null,
 
   openTab: (url) => {
     const target = url ? (normalizeUrl(url) ?? BLANK) : BLANK;
@@ -104,6 +110,8 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
 
   setDesignMode: (on) => set({ designMode: on }),
   setPartition: (partition) => set({ partition }),
+  requestOpen: (url) => set({ pendingOpen: url }),
+  clearPendingOpen: () => set({ pendingOpen: null }),
 }));
 
 /** The showing tab, or null when the panel is empty. */

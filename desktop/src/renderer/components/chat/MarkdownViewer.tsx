@@ -13,6 +13,7 @@ import "katex/dist/katex.min.css";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./CodeBlock";
 import { ArtifactThumb, viewArtifact } from "@/components/ArtifactsPanel";
+import { isWebLink, openLink, wantsExternal } from "@/lib/open-link";
 
 interface MarkdownViewerProps {
   content: string;
@@ -89,7 +90,27 @@ export function MarkdownViewer({
       if (item) {
         return <button type="button" onClick={() => viewArtifact(item)} className="rounded-[4px] bg-link/10 px-1 py-px font-mono text-[0.9em] text-link hover:bg-link/15">{children}</button>;
       }
-      return <a className="font-medium text-link underline underline-offset-2 hover:opacity-80" target="_blank" rel="noreferrer" href={href}>{children}</a>;
+      // Not target="_blank": with no window-open handler that gives you a bare
+      // Electron window. Plain click opens the Browser panel, where the agent
+      // sees the same page you do; Ctrl/Cmd-click hands it to your real browser.
+      return (
+        <a
+          className="font-medium text-link underline underline-offset-2 hover:opacity-80"
+          href={href}
+          title={
+            isWebLink(href)
+              ? `${href}\nCtrl+click to open in your browser`
+              : href
+          }
+          onClick={(e) => {
+            if (!href) return;
+            e.preventDefault();
+            openLink(href, { external: wantsExternal(e) });
+          }}
+        >
+          {children}
+        </a>
+      );
     },
     strong: ({ node: _n, ...p }: any) => <strong className="font-semibold" {...p} />,
     // GitHub-style alerts: "> [!NOTE]" / "> [!WARNING]" etc. render as callout

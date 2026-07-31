@@ -368,6 +368,15 @@ export default function App(): JSX.Element {
       setRightTab("browser");
       useBrowserStore.getState().openTab(url);
     });
+    // A link clicked somewhere in the app — chat, docs, a tool result.
+    const offPending = useBrowserStore.subscribe((s) => {
+      if (!s.pendingOpen) return;
+      const url = s.pendingOpen;
+      useBrowserStore.getState().clearPendingOpen();
+      setBrowserUsed(true);
+      setRightTab("browser");
+      useBrowserStore.getState().openTab(url);
+    });
     // Something visual is about to happen to the page. A parked guest produces
     // no frames at all — a screenshot of one never even returns — so the panel
     // has to be on screen before it, not after.
@@ -378,6 +387,7 @@ export default function App(): JSX.Element {
     return () => {
       offOpen();
       offReveal();
+      offPending();
     };
   }, []);
 

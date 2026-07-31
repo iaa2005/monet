@@ -141,6 +141,16 @@ function installWebviewGuards(win: BrowserWindow): void {
       return { action: "deny" };
     });
   });
+
+  // The same rule for the app's OWN window. Without a handler, any stray
+  // target="_blank" that survives review opens a bare Electron window: no
+  // address bar, no tabs, no way to tell what you are looking at. The renderer
+  // routes clicks itself (lib/open-link.ts); this is the floor under that.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url) && !win.isDestroyed())
+      win.webContents.send("browser:openTab", url);
+    return { action: "deny" };
+  });
 }
 
 function createWindow(): void {
