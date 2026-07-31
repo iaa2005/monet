@@ -1,5 +1,4 @@
 import * as React from "react";
-import { GripVertical } from "lucide-react";
 import * as ResizablePrimitive from "react-resizable-panels";
 
 import { cn } from "@/lib/utils";
@@ -22,8 +21,21 @@ function ResizablePanelGroup({
 
 const ResizablePanel = ResizablePrimitive.Panel;
 
+/**
+ * The divider IS the border.
+ *
+ * One shared hairline between two panes, and that same hairline is what you
+ * grab — no gap, no floating grip. The line itself is 1px (the element's own
+ * background); the HIT area is widened to 7px with a transparent ::after
+ * that overhangs both sides, because a 1px grab target is a coordination
+ * test, not an interface. Hovering (or dragging) tints the line so it is
+ * clear the border is a control.
+ *
+ * `withHandle` is accepted and ignored — the line is the handle now, and
+ * every call site said `withHandle` when it meant "resizable here".
+ */
 function ResizableHandle({
-  withHandle,
+  withHandle: _withHandle,
   className,
   ...props
 }: React.ComponentProps<typeof ResizablePrimitive.PanelResizeHandle> & {
@@ -33,17 +45,16 @@ function ResizableHandle({
     <ResizablePrimitive.PanelResizeHandle
       data-slot="resizable-handle"
       className={cn(
-        "group/resize relative flex w-px items-center justify-center transition-colors after:absolute after:inset-y-0 after:left-0 after:w-0.5 after:bg-transparent after:transition-colors hover:after:bg-border focus-visible:outline-none data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:after:left-0 data-[panel-group-direction=vertical]:after:top-0 data-[panel-group-direction=vertical]:after:h-0.5 data-[panel-group-direction=vertical]:after:w-full [&[data-panel-group-direction=vertical]>div]:rotate-90",
+        "group/resize relative w-px shrink-0 bg-border transition-colors",
+        "after:absolute after:inset-y-0 after:-left-[3px] after:z-10 after:w-[7px] after:content-['']",
+        "hover:bg-ring/60 data-[resize-handle-state=drag]:bg-ring",
+        "focus-visible:outline-none",
+        "data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full",
+        "data-[panel-group-direction=vertical]:after:inset-x-0 data-[panel-group-direction=vertical]:after:-top-[3px] data-[panel-group-direction=vertical]:after:h-[7px] data-[panel-group-direction=vertical]:after:w-full",
         className,
       )}
       {...props}
-    >
-      {withHandle && (
-        <div className="z-10 flex h-7 w-2.5 items-center justify-center rounded-md border border-border/50 bg-card opacity-0 transition-opacity group-hover/resize:opacity-100">
-          <GripVertical className="size-3 text-muted-foreground" />
-        </div>
-      )}
-    </ResizablePrimitive.PanelResizeHandle>
+    />
   );
 }
 

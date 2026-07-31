@@ -152,6 +152,67 @@ app.whenReady().then(async () => {
     );
   }
 
+  // ── 4a. One continuous grid, and the border is the handle ──────────
+  //
+  // The dock reads as a single surface: groups touch, share one hairline,
+  // and that hairline is the sash. Three ways this silently regresses — a
+  // theme gap creeping back, a radius on the group, or a second border on
+  // each side doubling the line — so all three are measured, in pixels.
+  {
+    // Two groups, because an edge needs two sides.
+    await js(`document.querySelector('button[title="Files"]').click()`);
+    await new Promise((r) => setTimeout(r, 1000));
+    const grid = await js(`(() => {
+      const gs = [...document.querySelectorAll('.dv-groupview')].map(g => {
+        const r = g.getBoundingClientRect();
+        const cs = getComputedStyle(g);
+        return { left: Math.round(r.left), right: Math.round(r.right),
+                 radius: cs.borderTopLeftRadius, border: cs.borderLeftWidth };
+      });
+      let sep = null;
+      for (const c of document.querySelectorAll('.dv-split-view-container.dv-separator-border')) {
+        const views = [...c.querySelectorAll(':scope > .dv-view-container > .dv-view')];
+        for (let i = 1; i < views.length; i++) {
+          const b = getComputedStyle(views[i], '::before');
+          if (b.content && b.content !== 'none') sep = { w: b.width, bg: b.backgroundColor };
+        }
+      }
+      const sash = document.querySelector('.dv-sash');
+      return {
+        gs, sep,
+        gap: gs.length > 1 ? Math.round(gs[1].left - gs[0].right) : null,
+        sashWidth: sash ? getComputedStyle(sash).width : null,
+        sashClasses: sash ? sash.className : null,
+      };
+    })()`);
+
+    check("two groups sit flush — no gap", grid.gap === 0, `${grid.gap}px`);
+    check(
+      "and carry no radius of their own",
+      grid.gs.every((g) => g.radius === "0px"),
+      grid.gs.map((g) => g.radius).join(", "),
+    );
+    check(
+      "nor their own borders — the line between them is shared",
+      grid.gs.every((g) => g.border === "0px"),
+      grid.gs.map((g) => g.border).join(", "),
+    );
+    check(
+      "the splitview draws that line, once, 1px wide",
+      !!grid.sep && grid.sep.w === "1px",
+      JSON.stringify(grid.sep),
+    );
+    check(
+      "the sash covers it with a grabbable 4px",
+      grid.sashWidth === "4px",
+      `${grid.sashWidth} (${grid.sashClasses})`,
+    );
+
+    // Leave the desk as this section found it.
+    await js(`document.querySelector('button[title="Files"]').click()`);
+    await new Promise((r) => setTimeout(r, 700));
+  }
+
   // ── 4b. Opening a file raises the viewer panel ──────────────────────
   //
   // The file preview used to cover the conversation; it is a dock panel now,

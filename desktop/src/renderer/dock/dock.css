@@ -1,11 +1,12 @@
 /*
  * Dockview, dressed as the app.
  *
- * Groups are CARDS: each carries its own border, radius and surface, and the
- * theme's `gap` keeps them apart — the canvas shows through between them,
- * matching the rest of the app's panel grammar. The library ships whole
- * themes; this class only overrides what shows, mapped onto the app's own
- * tokens, so a theme change (or a rebrand) lands here for free.
+ * One continuous grid, not a tray of cards: no gap between groups, no
+ * radius, and the hairline between two panels is a SINGLE shared border —
+ * which is also the sash you grab to resize. Denser, and nothing to align.
+ * The library ships whole themes; this class only overrides what shows,
+ * mapped onto the app's own tokens, so a theme change (or a rebrand) lands
+ * here for free.
  */
 
 .monet-dock {
@@ -34,12 +35,13 @@
   --dv-inactivegroup-hiddenpanel-tab-color: var(--muted-foreground);
 
   --dv-tab-divider-color: transparent;
-  --dv-separator-border: transparent;
+  /* The line between two groups — drawn once, by the splitview. */
+  --dv-separator-border: var(--border);
   --dv-paneview-header-border-color: var(--border);
 
-  --dv-tab-border-radius: 8px;
+  --dv-tab-border-radius: 6px;
   --dv-tab-margin: 3px 0 3px 3px;
-  --dv-border-radius: 12px;
+  --dv-border-radius: 0px;
 
   --dv-drag-over-background-color: hsl(var(--link) / 0.10);
   --dv-drag-over-border-color: hsl(var(--link) / 0.45);
@@ -78,19 +80,35 @@
   background: transparent;
 }
 
-/* ── Each group is its own card ───────────────────────────────────── */
+/* ── Groups are cells in one grid, not cards on a tray ─────────────── */
 .monet-dock .dv-groupview {
-  border-radius: 12px;
-  border: 1px solid var(--border);
+  border-radius: 0;
+  border: none;
   background: var(--card);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
   overflow: hidden;
 }
 
-/* Floating windows read as heavier cards. */
+/*
+ * The sash sits ON the shared border and is 4px of hit area (dockview's own
+ * size). It shows nothing until you reach for it — then the line it covers
+ * lights up, which is the whole affordance: the border IS the control.
+ */
+.monet-dock .dv-sash {
+  background: transparent;
+  transition: background-color 0.12s ease;
+}
+.monet-dock .dv-sash.dv-enabled:hover,
+.monet-dock .dv-sash.dv-enabled:active {
+  background: hsl(var(--link) / 0.55);
+}
+
+/* Floating windows are NOT part of the grid — they keep their card shape. */
 .monet-dock .dv-resize-container {
   border-radius: 12px;
   overflow: hidden;
+}
+.monet-dock .dv-resize-container .dv-groupview {
+  border-radius: 12px;
 }
 
 /* Tab strip gets the same hairline the app's panel headers use. */

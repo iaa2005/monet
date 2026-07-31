@@ -445,14 +445,15 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
 
   useEffect(() => () => useDockStore.getState().setApi(null), []);
 
-  // Groups are separate cards: the theme's gap keeps them apart and the
-  // canvas shows through between them (see dock.css).
+  // One continuous grid: no gap between groups, so the hairline BETWEEN two
+  // panels is a single shared border — and that border is the sash you grab
+  // to resize (see dock.css). Denser, and nothing to align.
   const theme: DockviewTheme = useMemo(
     () => ({
       name: "monet",
       className: `${dark ? "dockview-theme-dark" : "dockview-theme-light"} monet-dock`,
       colorScheme: dark ? "dark" : "light",
-      gap: 8,
+      gap: 0,
     }),
     [dark],
   );

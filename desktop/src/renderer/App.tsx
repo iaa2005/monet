@@ -192,26 +192,6 @@ function NavRow({
   );
 }
 
-/** Rounded floating "window" card that panels live in. */
-function Panel({
-  className,
-  children,
-}: {
-  className?: string;
-  children: ReactNode;
-}): JSX.Element {
-  return (
-    <div
-      className={cn(
-        "glass-panel flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-
 export default function App(): JSX.Element {
   // First-run intro: shown until the user completes (or skips) onboarding.
   const [showOnboarding, setShowOnboarding] = useState(
@@ -1322,16 +1302,13 @@ export default function App(): JSX.Element {
       {/* ── Body ── */}
       <div
         className={cn(
-          "flex min-h-0 flex-1 p-2",
+          "flex min-h-0 flex-1 border-t border-border",
           incognito && "bg-card text-card-foreground",
         )}
       >
         <ResizablePanelGroup
           direction="horizontal"
-          className={cn(
-            "gap-1",
-            incognito && "rounded-xl bg-sidebar p-1",
-          )}
+          className={cn(incognito && "bg-sidebar")}
         >
           {sidebarOpen && !incognito && (
               <ResizablePanel
@@ -1342,7 +1319,7 @@ export default function App(): JSX.Element {
                 className="min-w-[280px]"
                 style={{ overflow: "visible" }}
               >
-                <aside className="glass-panel flex h-full flex-col rounded-lg border border-border bg-card shadow-sm">
+                <aside className="glass-panel flex h-full flex-col bg-card">
                   {/* Home / Code tabs */}
                   <div className="flex items-center gap-1 px-1 py-1">
                     <div className="flex flex-1 items-center rounded-md bg-black/[0.05] p-0.5 dark:bg-white/[0.06] border">
@@ -1515,7 +1492,7 @@ export default function App(): JSX.Element {
                   {/* The file preview is a dock panel now (see DockArea) —
                       it opens beside the chat instead of covering it. */}
                   {expandedSubAgent && (
-                    <div className="!absolute inset-0 z-10 flex h-full flex-col glass-panel rounded-xl border border-border bg-card overflow-hidden">
+                    <div className="!absolute inset-0 z-10 flex h-full flex-col glass-panel bg-card overflow-hidden">
                       <div className="relative shrink-0 border-b border-border px-4 py-3">
                         <div className="mx-auto max-w-3xl flex items-center gap-2">
                           <span className="text-sm font-medium text-foreground">Sub-agent</span>
