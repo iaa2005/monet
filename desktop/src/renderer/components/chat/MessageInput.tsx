@@ -1033,7 +1033,7 @@ export function MessageInput({
           </div>
         )}
         
-        <div className="mb-2">
+        <div className="mb-2 glass-panel p-3 pb-2 rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25">
           
           <div className="flex gap-2.5 w-full items-end">
             <TokenInput
