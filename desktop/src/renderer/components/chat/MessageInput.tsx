@@ -1098,7 +1098,7 @@ export function MessageInput({
                 }
               }}
               placeholder="Type / for commands"
-              className="composer-input min-w-0 flex-1 max-h-50 min-h-7 overflow-y-auto pt-1 pl-1 text-sm leading-relaxed outline-none"
+              className="composer-input min-w-0 flex-1 max-h-50 min-h-7 overflow-y-auto pl-1 text-sm leading-relaxed outline-none"
             />
 
             <input
