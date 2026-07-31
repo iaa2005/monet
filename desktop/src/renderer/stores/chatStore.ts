@@ -374,6 +374,12 @@ interface ChatStore {
   requestOpenChanges: () => void;
   requestOpenSettings: (section: string | null) => void;
   requestFork: (messageId: string | null) => void;
+  /** Hand a sent message back to the composer: sentence as text, references as
+   * chips, files re-staged under `stagedKey`. Rewind-and-edit and Branch. */
+  stageMessageForComposer: (
+    message: ChatMessage,
+    stagedKey: string,
+  ) => Promise<void>;
   openViewer: (
     item: {
       name: string;
@@ -1016,6 +1022,58 @@ export const useChatStore = create<ChatStore>((set, get) => {
       await persistSession(sessionId);
     },
 
+    stageMessageForComposer: async (message, stagedKey) => {
+      // The sentence goes into the box; the machine-collected element blocks
+      // do not. Every path that hands a sent message back for editing has to
+      // make this split — Rewind learned it first, then Branch shipped without
+      // it and the raw <selected-from-browser> text was back in the composer.
+      const bridge = electron();
+      const { text, refs } = splitSelections(message.content);
+
+      // The turn's files come back too, minus the crops: those belong to the
+      // chips, not to the attachment row.
+      const metas = message.attachments ?? [];
+      const crops = metas.filter((a) => a.origin === "selection");
+      const restaged = await restageAttachments(
+        metas.filter((a) => a.origin !== "selection"),
+      );
+      get().setStagedFiles(stagedKey, restaged);
+
+      // References return as references. Their ⟨tokens⟩ are already in the
+      // restored text, so they are pretokenised — inserting again would double
+      // every chip. Crop dataUrls only exist in the session that made them;
+      // after a reload there is just the artifact path, so read it back or the
+      // re-sent message silently goes out without the pictures.
+      const cropUrls = await Promise.all(
+        refs.map(async (_r, i) => {
+          const crop = crops[i];
+          if (crop?.dataUrl) return crop.dataUrl;
+          if (!crop?.path) return undefined;
+          try {
+            const r = await bridge?.artifacts.readBytes(crop.path);
+            return r?.ok && r.base64
+              ? `data:${crop.mediaType || "image/png"};base64,${r.base64}`
+              : undefined;
+          } catch {
+            return undefined;
+          }
+        }),
+      );
+      set({
+        pendingContext: refs.map((r, i) => ({
+          id: generateId(),
+          label: r.label,
+          count: 1,
+          tone: i,
+          pretokenised: true,
+          context: r.raw,
+          imageDataUrl: cropUrls[i],
+          url: r.url,
+        })),
+      });
+      get().setComposerDraft(text);
+    },
+
     rewindAndEdit: async (messageId) => {
       const state = get();
       const sessionId = state.currentSessionId;
@@ -1023,10 +1081,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
       const msgs = state.messages;
       const idx = msgs.findIndex((m) => m.id === messageId);
       if (idx < 0 || msgs[idx].role !== "user") return;
-      // The sentence goes back in the box; the element descriptions do not.
-      // Putting the raw blocks in the composer was how forty lines of selectors
-      // and computed styles ended up staring back at the user after a rewind.
-      const { text, refs } = splitSelections(msgs[idx].content);
       const bridge = electron();
 
       // Restore files to the checkpoint from BEFORE this turn — the most recent
@@ -1071,49 +1125,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // This path drops the prompt into the composer, and deciding not to
       // resend it is a legitimate way to use it — the rewind must hold anyway.
       await persistSession(sessionId);
-      get().setComposerDraft(text);
-      // Put the turn's files back in the composer too. Without this the prompt
-      // comes back for editing but its attachments do not, and the resend goes
-      // out missing them — with the user seeing no sign that it happened.
-      const metas = msgs[idx].attachments ?? [];
-      const crops = metas.filter((a) => a.origin === "selection");
-      const restaged = await restageAttachments(
-        metas.filter((a) => a.origin !== "selection"),
-      );
-      get().setStagedFiles(sessionId, restaged);
-      // The references come back as references. Their ⟨tokens⟩ are already in
-      // the text we just restored, so they are marked pretokenised — inserting
-      // them again would double every chip.
-      // The crop's dataUrl only exists in the session that made it; after a
-      // reload there is just the artifact path. Read it back, or the re-sent
-      // message silently goes out without the pictures.
-      const cropUrls = await Promise.all(
-        refs.map(async (_r, i) => {
-          const crop = crops[i];
-          if (crop?.dataUrl) return crop.dataUrl;
-          if (!crop?.path) return undefined;
-          try {
-            const r = await bridge?.artifacts.readBytes(crop.path);
-            return r?.ok && r.base64
-              ? `data:${crop.mediaType || "image/png"};base64,${r.base64}`
-              : undefined;
-          } catch {
-            return undefined;
-          }
-        }),
-      );
-      set({
-        pendingContext: refs.map((r, i) => ({
-          id: generateId(),
-          label: r.label,
-          count: 1,
-          tone: i,
-          pretokenised: true,
-          context: r.raw,
-          imageDataUrl: cropUrls[i],
-          url: r.url,
-        })),
-      });
+      await get().stageMessageForComposer(msgs[idx], sessionId);
     },
 
     deliverBackgroundResults: async () => {

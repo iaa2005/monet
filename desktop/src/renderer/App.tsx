@@ -564,9 +564,9 @@ export default function App(): JSX.Element {
         setCurrentSessionId(s.id);
         setSessionTitle(title);
         store.bumpSessions();
-        // The clicked prompt lands in the composer, ready to edit — the same
-        // hand-off rewindAndEdit makes, minus the destruction.
-        store.setComposerDraft(msgs[idx].content);
+        // The clicked prompt lands in the composer the same way Rewind hands
+        // one back: sentence as text, references as chips — not the raw blocks.
+        await store.stageMessageForComposer(msgs[idx], s.id);
       } catch {
         /* offline */
       }
