@@ -101,6 +101,15 @@ export default defineConfig({
     // shows the ranges; a winnat restart clears them only until the next boot,
     // so a port far outside the reserved clusters is the durable fix.
     server: { port: 17173 },
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve('src/renderer/index.html'),
+          // The empty host page a popped-out dock group adopts its DOM into.
+          popout: resolve('src/renderer/popout.html'),
+        },
+      },
+    },
     resolve: {
       alias: [
         { find: '@', replacement: resolve('src/renderer') },

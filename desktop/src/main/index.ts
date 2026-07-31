@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu } from "electron";
 import { APP_NAME } from "@shared/brand.js";
 import { dirname, join } from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import { EventEmitter } from "node:events";
 import { registerAllIPC } from "./ipc/index.js";
 import { createTray } from "./tray.js";
@@ -161,11 +161,59 @@ function installWebviewGuards(win: BrowserWindow): void {
   // target="_blank" that survives review opens a bare Electron window: no
   // address bar, no tabs, no way to tell what you are looking at. The renderer
   // routes clicks itself (lib/open-link.ts); this is the floor under that.
+  //
+  // ONE exception: the dock's popout — our own popout.html, same origin. That
+  // window must share the renderer's process (dockview ADOPTS the group's
+  // live DOM into it), which window.open gives and a BrowserWindow would not.
   win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isPopoutUrl(url)) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          autoHideMenuBar: true,
+          backgroundColor: "#f7f6f1",
+          webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: false,
+            // The Browser panel can be popped out too, webviews and all.
+            webviewTag: true,
+          },
+        },
+      };
+    }
     if (/^https?:/i.test(url) && !win.isDestroyed())
       win.webContents.send("browser:openTab", url);
     return { action: "deny" };
   });
+
+  // A popout is a real BrowserWindow: it needs the same webview hardening and
+  // the same window-open floor as the window it came from — a page inside a
+  // popped-out Browser panel calling window.open must land in a tab, not in
+  // an unguarded OS window.
+  win.webContents.on("did-create-window", (child) => {
+    installWebviewGuards(child);
+  });
+}
+
+/**
+ * Only the app's own popout host page may become a real window.
+ *
+ * Dev: the vite origin. Packaged: a file: URL inside our renderer output.
+ * Everything else stays denied — this must never widen into "any file:".
+ */
+function isPopoutUrl(url: string): boolean {
+  if (!/popout\.html(\?|#|$)/.test(url)) return false;
+  const devOrigin = process.env["ELECTRON_RENDERER_URL"];
+  if (devOrigin) {
+    try {
+      return new URL(url).origin === new URL(devOrigin).origin;
+    } catch {
+      return false;
+    }
+  }
+  const rendererRoot = pathToFileURL(join(__dirname, "../renderer/")).href;
+  return url.startsWith(rendererRoot);
 }
 
 function createWindow(): void {

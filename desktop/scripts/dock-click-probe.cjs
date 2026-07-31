@@ -93,39 +93,63 @@ app.whenReady().then(async () => {
     errors.slice(0, 3).join(" | ") || "clean",
   );
 
-  // ── 2. The header's Files button exists and a click opens the wing ──
+  // ── 2. The dock IS the content area: the chat anchors it at boot ────
+  const boot = await js(`(() => {
+    const el = document.querySelector('.dv-dockview');
+    if (!el) return { present: false };
+    const r = el.getBoundingClientRect();
+    return { present: true, w: Math.round(r.width), h: Math.round(r.height),
+             tabs: [...document.querySelectorAll('.dv-tab')].map(t => t.textContent.trim()) };
+  })()`);
+  check("the dock is present at boot", boot.present, JSON.stringify(boot));
+  if (boot.present) {
+    // Pixels, not presence — the original bug WAS a dock at 0px tall.
+    check("with real size", boot.h > 300 && boot.w > 300, `${boot.w}×${boot.h}`);
+    check("anchored by the Chat tab", boot.tabs.some((t) => t.includes("Chat")), boot.tabs.join(", "));
+    check(
+      "the chat tab carries no close button",
+      await js(`(() => {
+        const tab = [...document.querySelectorAll('.dv-tab')].find(t => t.textContent.includes('Chat'));
+        return tab ? !tab.querySelector('button') : false;
+      })()`),
+    );
+  }
+
+  // ── 3. Files opens BESIDE the chat, not over it ─────────────────────
   const hasBtn = await js(`!!document.querySelector('button[title="Files"]')`);
   check("the header has a Files button", hasBtn);
   if (hasBtn) {
     await js(`document.querySelector('button[title="Files"]').click()`);
     await new Promise((r) => setTimeout(r, 1200));
-
-    const dock = await js(`(() => {
-      const el = document.querySelector('.dv-dockview');
-      if (!el) return { present: false };
-      const r = el.getBoundingClientRect();
-      return { present: true, w: Math.round(r.width), h: Math.round(r.height),
-               tabs: document.querySelectorAll('.dv-tab').length };
-    })()`);
-    check("the dock appears after the click", dock.present, JSON.stringify(dock));
-    if (dock.present) {
-      // Pixels, not presence — the bug this probe exists for WAS a dock that
-      // existed at 0px tall.
-      check("and it has real height", dock.h > 150, `${dock.w}×${dock.h}`);
-      check("and real width", dock.w > 150, `${dock.w}×${dock.h}`);
-      check("with the Files tab in it", dock.tabs >= 1, `${dock.tabs} tabs`);
-    }
+    const after = await js(`(() => ({
+      groups: document.querySelectorAll('.dv-groupview').length,
+      tabs: [...document.querySelectorAll('.dv-tab')].map(t => t.textContent.trim()),
+    }))()`);
+    check(
+      "Files lands in its own group beside the chat",
+      after.groups >= 2 && after.tabs.some((t) => t.includes("Files")),
+      JSON.stringify(after),
+    );
     check(
       "no renderer errors after the click",
       errors.length === 0,
       errors.slice(0, 3).join(" | ") || "clean",
     );
 
-    // ── 3. The toggle closes it again ─────────────────────────────────
+    // ── 4. The toggle removes the panel but never the chat ────────────
     await js(`document.querySelector('button[title="Files"]').click()`);
     await new Promise((r) => setTimeout(r, 800));
-    const gone = await js(`!document.querySelector('.dv-dockview')`);
-    check("a second click closes the wing", gone);
+    const closed = await js(`(() => ({
+      dock: !!document.querySelector('.dv-dockview'),
+      tabs: [...document.querySelectorAll('.dv-tab')].map(t => t.textContent.trim()),
+    }))()`);
+    check(
+      "a second click closes Files, and the chat stays",
+      closed.dock &&
+        !closed.tabs.some((t) => t.includes("Files")) &&
+        closed.tabs.some((t) => t.includes("Chat")),
+      JSON.stringify(closed),
+    );
   }
 
   srv.close();

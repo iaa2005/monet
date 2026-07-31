@@ -52,6 +52,7 @@ import { useTaskBadge } from "@/components/BackgroundTasks";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { FilterDropdown } from "@/components/FilterDropdown";
 import { SkillsPanel } from "@/components/SkillsPanel";
+import { createPortal } from "react-dom";
 import { useBrowserStore } from "@/components/browser/browser-store";
 import { DockArea } from "@/dock/DockArea";
 import { useDockStore } from "@/dock/dock-store";
@@ -301,15 +302,13 @@ export default function App(): JSX.Element {
   const [sessionEngine, setSessionEngine] =
     useState<"pyodide" | "subprocess" | "docker">("pyodide");
   const [homeShellSupported, setHomeShellSupported] = useState(false);
-  // The wing is a dock now — panels are tabs, splits and floating windows in
-  // it. Everything asks the dock store; the wing itself mounts only while
-  // something (or a pending desk) is in it.
+  // The content area is a dock — the chat is its anchor panel, everything
+  // else docks around it as tabs, splits, floating cards or popout windows.
   const dockOpen = useDockStore((s) => s.open);
-  const dockPending = useDockStore((s) => s.pending);
   const dockLayoutLive = useDockStore((s) => s.layoutJson);
-  const wingVisible = dockOpen.length > 0 || dockPending !== null;
+  const mainHost = useDockStore((s) => s.mainHost);
   const browserLayout = useBrowserStore((s) => s.layout);
-  const rightPanelRef = useRef<ImperativePanelHandle>(null);
+  void browserLayout;
   const taskBadge = useTaskBadge();
   const [filters, setFilters] = useState({
     status: "all",
@@ -417,13 +416,8 @@ export default function App(): JSX.Element {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // The Browser panel's expand button. Its group is maximized inside the dock
-  // (DockArea watches the same state); the wing itself also widens, because a
-  // page at 30% of the window is unusable however the dock slices it.
-  useEffect(() => {
-    if (!dockOpen.includes("browser")) return;
-    rightPanelRef.current?.resize(browserLayout === "expanded" ? 68 : 34);
-  }, [browserLayout, dockOpen]);
+  // The Browser panel's expand button maximizes its dock group — handled
+  // entirely inside DockArea, which watches the same browser-store state.
 
   // ── The chat's desk ────────────────────────────────────────────────
   //
@@ -1517,211 +1511,116 @@ export default function App(): JSX.Element {
             )}
             {sidebarOpen && !incognito && <ResizableHandle withHandle />}
 
-          {/* Content panel group */}
+          {/* Content: the dock IS the content area. The chat column renders
+              through a portal into the dock's `main` panel, which is how
+              other panels can sit on ANY side of it — right, below, above,
+              or between it and the sidebar. */}
           <ResizablePanel order={1} defaultSize={sidebarOpen ? 82 : 100} minSize={30}>
-            {appMode === "home" ? (
-              // Home: a plain, centered chat. It CAN open the Artifacts/Files
-              // panel on the right, and — when the sandbox engine has a shell
-              // (Podman/subprocess) — a Sandbox terminal below that runs inside
-              // this chat's sandbox (never the host).
-              <ResizablePanelGroup direction="horizontal" className="gap-1">
-                <ResizablePanel minSize={30}>
-                  <ResizablePanelGroup direction="vertical" className="gap-1">
-                    <ResizablePanel minSize={20}>
-                      <div className="h-full min-h-0 overflow-hidden relative">
-                        {view === "routines" ? (
-                          <div className="h-full overflow-auto">
-                            <div className="mx-auto max-w-4xl px-6 py-8">
-                              <RoutinesSettings />
-                            </div>
-                          </div>
-                        ) : (
-                          <ChatView
-                            transcriptMode={transcriptMode}
-                            sessionTitle={sessionTitle}
-                            home
-                            onOpenSettings={() => {
-                              setSettingsSection("sandbox");
-                              setSettingsOpen(true);
+            <DockArea
+              space={appMode}
+              currentSessionId={currentSessionId}
+              openBackgroundTask={openBackgroundTask}
+              sandboxRunner={sandboxRunner}
+            />
+            {mainHost &&
+              createPortal(
+                <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
+                  {appMode === "home" ? (
+                    view === "routines" ? (
+                      <div className="h-full overflow-auto">
+                        <div className="mx-auto max-w-4xl px-6 py-8">
+                          <RoutinesSettings />
+                        </div>
+                      </div>
+                    ) : (
+                      <ChatView
+                        transcriptMode={transcriptMode}
+                        sessionTitle={sessionTitle}
+                        home
+                        onOpenSettings={() => {
+                          setSettingsSection("sandbox");
+                          setSettingsOpen(true);
                         }}
                         onOpenProvidersSettings={() => {
                           setSettingsSection("providers");
                           setSettingsOpen(true);
                         }}
                       />
-                    )}
-                    {viewer && (
-                      <div className="!absolute inset-0 z-10">
-                        <ViewerErrorBoundary
-                          key={`viewer:${viewer.path ?? viewer.name}`}
+                    )
+                  ) : (
+                    <>
+                      {view === "chat" && (
+                        <ChatView
+                          transcriptMode={transcriptMode}
+                          sessionTitle={sessionTitle}
+                          onOpenProvidersSettings={() => {
+                            setSettingsSection("providers");
+                            setSettingsOpen(true);
+                          }}
+                        />
+                      )}
+                      {view === "skills" && (
+                        <div className="h-full overflow-auto">
+                          <SkillsPanel />
+                        </div>
+                      )}
+                      {view === "routines" && (
+                        <div className="h-full overflow-auto">
+                          <div className="mx-auto max-w-4xl px-6 py-8">
+                            <RoutinesSettings onOpenChat={openChatById} />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {viewer && (
+                    <div className="!absolute inset-0 z-10">
+                      <ViewerErrorBoundary
+                        key={`viewer:${viewer.path ?? viewer.name}`}
+                        onClose={closeViewer}
+                      >
+                        <FileViewer
+                          path={viewer.source === "file" ? viewer.path : undefined}
+                          item={viewer.source !== "file" ? viewer : undefined}
                           onClose={closeViewer}
+                        />
+                      </ViewerErrorBoundary>
+                    </div>
+                  )}
+                  {expandedSubAgent && (
+                    <div className="!absolute inset-0 z-10 flex h-full flex-col glass-panel rounded-xl border border-border bg-card overflow-hidden">
+                      <div className="relative shrink-0 border-b border-border px-4 py-3">
+                        <div className="mx-auto max-w-3xl flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground">Sub-agent</span>
+                          <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-400">
+                            {expandedSubAgent.agentType}
+                          </span>
+                          {expandedSubAgent.description && (
+                            <span className="text-xs text-muted-foreground">{expandedSubAgent.description}</span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={closeExpandedSubAgent}
+                          title="Back to chat"
+                          className="absolute right-4 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
                         >
-                          <FileViewer
-                            path={viewer.source === "file" ? viewer.path : undefined}
-                            item={viewer.source !== "file" ? viewer : undefined}
-                            onClose={closeViewer}
+                          <X className="size-4" />
+                        </button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto px-4 py-3">
+                        <div className="mx-auto max-w-3xl">
+                          <SubAgentTranscript
+                            messages={expandedSubAgent.messages}
+                            running={expandedSubAgent.status === "running"}
                           />
-                        </ViewerErrorBoundary>
+                        </div>
                       </div>
-                    )}
-                        {expandedSubAgent && (
-                          <div className="!absolute inset-0 z-10 flex h-full flex-col glass-panel rounded-xl border border-border bg-card overflow-hidden">
-                            <div className="relative shrink-0 border-b border-border px-4 py-3">
-                              <div className="mx-auto max-w-3xl flex items-center gap-2">
-                                <span className="text-sm font-medium text-foreground">Sub-agent</span>
-                                <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-400">
-                                  {expandedSubAgent.agentType}
-                                </span>
-                                {expandedSubAgent.description && (
-                                  <span className="text-xs text-muted-foreground">{expandedSubAgent.description}</span>
-                                )}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={closeExpandedSubAgent}
-                                title="Back to chat"
-                                className="absolute right-4 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
-                              >
-                                <X className="size-4" />
-                              </button>
-                            </div>
-                            <div className="flex-1 overflow-y-auto px-4 py-3">
-                              <div className="mx-auto max-w-3xl">
-                                <SubAgentTranscript
-                                  messages={expandedSubAgent.messages}
-                                  running={expandedSubAgent.status === "running"}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </ResizablePanel>
-                  </ResizablePanelGroup>
-                </ResizablePanel>
-                {wingVisible && (
-                  <>
-                    <ResizableHandle withHandle />
-                    <ResizablePanel
-                      ref={rightPanelRef}
-                      defaultSize={34}
-                      minSize={18}
-                      maxSize={82}
-                    >
-                      <div className="glass-panel flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
-                        <DockArea
-                          space={appMode}
-                          currentSessionId={currentSessionId}
-                          openBackgroundTask={openBackgroundTask}
-                          sandboxRunner={sandboxRunner}
-                        />
-                      </div>
-                    </ResizablePanel>
-                  </>
-                )}
-              </ResizablePanelGroup>
-            ) : (
-              <ResizablePanelGroup direction="horizontal" className="gap-1">
-                <ResizablePanel defaultSize={72} minSize={25}>
-                  <ResizablePanelGroup direction="vertical" className="gap-1">
-                    <ResizablePanel minSize={20}>
-                      <div className="flex h-full min-h-0 flex-col overflow-hidden relative">
-                        {view === "chat" && (
-                          <ChatView
-                            transcriptMode={transcriptMode}
-                            sessionTitle={sessionTitle}
-                            onOpenProvidersSettings={() => {
-                              setSettingsSection("providers");
-                              setSettingsOpen(true);
-                            }}
-                          />
-                        )}
-                        {view === "skills" && (
-                          <div className="h-full overflow-auto">
-                            <SkillsPanel />
-                          </div>
-                        )}
-                        {view === "routines" && (
-                          <div className="h-full overflow-auto">
-                            <div className="mx-auto max-w-4xl px-6 py-8">
-                              <RoutinesSettings onOpenChat={openChatById} />
-                            </div>
-                          </div>
-                        )}
-                        {viewer && (
-                          <div className="!absolute inset-0 z-10">
-                            <ViewerErrorBoundary
-                              key={`viewer:${viewer.path ?? viewer.name}`}
-                              onClose={closeViewer}
-                            >
-                              <FileViewer
-                                path={viewer.source === "file" ? viewer.path : undefined}
-                                item={viewer.source !== "file" ? viewer : undefined}
-                                onClose={closeViewer}
-                              />
-                            </ViewerErrorBoundary>
-                          </div>
-                        )}
-                        {expandedSubAgent && (
-                          <div className="!absolute inset-0 z-10 flex h-full flex-col glass-panel rounded-xl border border-border bg-card overflow-hidden">
-                            <div className="relative shrink-0 border-b border-border px-4 py-3">
-                              <div className="mx-auto max-w-3xl flex items-center gap-2">
-                                <span className="text-sm font-medium text-foreground">Sub-agent</span>
-                                <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-400">
-                                  {expandedSubAgent.agentType}
-                                </span>
-                                {expandedSubAgent.description && (
-                                  <span className="text-xs text-muted-foreground">{expandedSubAgent.description}</span>
-                                )}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={closeExpandedSubAgent}
-                                title="Back to chat"
-                                className="absolute right-4 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
-                              >
-                                <X className="size-4" />
-                              </button>
-                            </div>
-                            <div className="flex-1 overflow-y-auto px-4 py-3">
-                              <div className="mx-auto max-w-3xl">
-                                <SubAgentTranscript
-                                  messages={expandedSubAgent.messages}
-                                  running={expandedSubAgent.status === "running"}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </ResizablePanel>
-
-                  </ResizablePanelGroup>
-                </ResizablePanel>
-
-                {wingVisible && (
-                  <>
-                    <ResizableHandle withHandle />
-                    <ResizablePanel
-                      key="right-panel"
-                      ref={rightPanelRef}
-                      defaultSize={34}
-                      minSize={18}
-                      maxSize={82}
-                    >
-                      <Panel>
-                        <DockArea
-                          space={appMode}
-                          currentSessionId={currentSessionId}
-                          openBackgroundTask={openBackgroundTask}
-                          sandboxRunner={sandboxRunner}
-                        />
-                      </Panel>
-                    </ResizablePanel>
-                  </>
-                )}
-              </ResizablePanelGroup>
-            )}
+                    </div>
+                  )}
+                </div>,
+                mainHost,
+              )}
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>

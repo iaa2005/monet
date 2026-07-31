@@ -9,8 +9,9 @@
  *  - a panel this build does not know disappears, and the group that held
  *    only it disappears with it;
  *  - floating groups survive, in both serialized forms;
- *  - popout groups never survive — they are OS windows, and this app's
- *    window-open handler denies those by design;
+ *  - popout groups do not reopen — they are OS windows, and restoring one
+ *    would fling windows open at app start — but their PANELS come back as
+ *    floating groups instead of vanishing with the window;
  *  - a desk with nothing left is null, which the wing reads as "closed".
  */
 
@@ -27,7 +28,7 @@ const check = (name: string, ok: boolean, detail?: unknown): void => {
   if (!ok) failures++;
 };
 
-const KNOWN = ["files", "artifacts", "changes", "browser", "tasks", "terminal"];
+const KNOWN = ["main", "files", "artifacts", "changes", "browser", "tasks", "terminal"];
 
 const leaf = (id: string, views: string[], activeView?: string) => ({
   type: "leaf",
@@ -55,24 +56,52 @@ const desk = () => ({
     files: { id: "files", contentComponent: "files", title: "Files" },
     terminal: { id: "terminal", contentComponent: "terminal", title: "Terminal" },
     tasks: { id: "tasks", contentComponent: "tasks", title: "Tasks" },
+    changes: { id: "changes", contentComponent: "changes", title: "Changes" },
   },
   activeGroup: "g1",
   floatingGroups: [
     { data: { views: ["tasks"], activeView: "tasks", id: "gf" }, position: { left: 10, top: 10, width: 300, height: 200 } },
   ],
-  popoutGroups: [{ data: { views: ["files"], id: "gp" } }],
+  popoutGroups: [{ data: { views: ["changes"], id: "gp" }, position: null }],
 });
 
 // ── 1. A healthy desk passes through intact ───────────────────────────
 {
   const out = sanitizeDockLayout(desk(), KNOWN)!;
   check("a healthy desk survives", out !== null);
-  check("all four panels kept", Object.keys(out.panels as object).length === 4);
+  check("all five panels kept", Object.keys(out.panels as object).length === 5);
   const root = (out.grid as { root: { data: unknown[] } }).root;
   check("both grid groups kept", root.data.length === 2, root.data.length);
-  check("the floating group survives", Array.isArray(out.floatingGroups) && out.floatingGroups.length === 1);
-  check("popout groups never do", !("popoutGroups" in out));
+  const fgs = out.floatingGroups as { data: { views: string[] } }[];
+  check(
+    "the floating group survives, and the popout's panel joins it as floating",
+    Array.isArray(fgs) && fgs.length === 2,
+    fgs?.length,
+  );
+  check(
+    "the popout window itself never reopens",
+    !("popoutGroups" in out),
+  );
+  check(
+    "its panel is the one that came back",
+    fgs?.some((f) => f.data.views.includes("changes")),
+    JSON.stringify(fgs?.map((f) => f.data.views)),
+  );
   check("activeGroup still valid, kept", out.activeGroup === "g1");
+
+  // A corrupt desk that lists one panel in the grid AND a popout must not
+  // resurrect it twice — a duplicated view is exactly what fromJSON throws on.
+  const dup = desk();
+  (dup.popoutGroups as { data: { views: string[]; id: string } }[]).push({
+    data: { views: ["files"], id: "gp2" },
+  } as never);
+  const dedup = sanitizeDockLayout(dup, KNOWN)!;
+  const dupFgs = dedup.floatingGroups as { data: { views: string[] } }[];
+  check(
+    "a panel already in the grid is not duplicated from a popout",
+    dupFgs.every((f) => !f.data.views.includes("files")),
+    JSON.stringify(dupFgs.map((f) => f.data.views)),
+  );
 }
 
 // ── 2. An unknown panel vanishes, and takes its lonely group along ────
@@ -142,7 +171,7 @@ const desk = () => ({
 {
   check(
     "layout desks count their panels",
-    deskPanelIds({ kind: "layout", layout: desk() as never }).length === 4,
+    deskPanelIds({ kind: "layout", layout: desk() as never }).length === 5,
   );
   check(
     "open desks count their list",

@@ -15,6 +15,7 @@
  */
 
 export type DockPanelId =
+  | "main"
   | "files"
   | "artifacts"
   | "changes"
@@ -115,6 +116,74 @@ export function sanitizeDockLayout(
       } else if (isRecord(fg.grid) && isRecord(fg.grid.root)) {
         const sub = walk(fg.grid.root, keep);
         if (sub) floating.push({ ...fg, grid: { ...fg.grid, root: sub } });
+      }
+    }
+  }
+
+  // Popout groups are real OS windows — restoring one would fling windows
+  // open at app start. The PANELS in them are still the user's: they come
+  // back as floating groups instead of vanishing with the window. A view
+  // already placed in the grid or a floating group is skipped — one panel in
+  // two places is exactly the corruption fromJSON throws on.
+  const placed = new Set<string>();
+  const collectPlaced = (n: GridNode | null): void => {
+    if (!n) return;
+    if (n.type === "leaf" && isRecord(n.data)) {
+      const views = (n.data as LeafData).views;
+      if (Array.isArray(views))
+        for (const v of views) if (typeof v === "string") placed.add(v);
+      return;
+    }
+    if (n.type === "branch" && Array.isArray(n.data))
+      for (const c of n.data) collectPlaced(c as GridNode);
+  };
+  collectPlaced(root);
+  for (const fg of floating) {
+    if (isRecord(fg) && isRecord(fg.data)) {
+      const views = (fg.data as LeafData).views;
+      if (Array.isArray(views))
+        for (const v of views) if (typeof v === "string") placed.add(v);
+    } else if (isRecord(fg) && isRecord(fg.grid))
+      collectPlaced((fg.grid as { root?: GridNode }).root ?? null);
+  }
+  if (Array.isArray(raw.popoutGroups)) {
+    let offset = 0;
+    for (const pg of raw.popoutGroups) {
+      if (!isRecord(pg)) continue;
+      // Single-group form carries the leaf directly; the nested form carries
+      // a grid whose leaves we lift out one by one.
+      const leaves: Record<string, unknown>[] = [];
+      if (isRecord(pg.data)) leaves.push(pg.data);
+      else if (isRecord(pg.grid) && isRecord(pg.grid.root)) {
+        const collect = (n: unknown): void => {
+          if (!isRecord(n)) return;
+          if (n.type === "leaf" && isRecord(n.data)) leaves.push(n.data);
+          else if (n.type === "branch" && Array.isArray(n.data))
+            for (const c of n.data) collect(c);
+        };
+        collect(pg.grid.root);
+      }
+      for (const data of leaves) {
+        const filtered = {
+          ...data,
+          views: Array.isArray(data.views)
+            ? data.views.filter((v) => typeof v === "string" && !placed.has(v))
+            : [],
+        };
+        const leaf = walk({ type: "leaf", data: filtered }, keep);
+        if (!leaf) continue;
+        for (const v of (leaf as { data: LeafData }).data.views as string[])
+          placed.add(v);
+        floating.push({
+          data: (leaf as { data: unknown }).data,
+          position: {
+            left: 48 + offset,
+            top: 48 + offset,
+            width: 560,
+            height: 420,
+          },
+        });
+        offset += 32;
       }
     }
   }

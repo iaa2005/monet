@@ -13,7 +13,7 @@
  */
 
 import { create } from "zustand";
-import type { DockviewApi } from "dockview-react";
+import type { AddPanelPositionOptions, DockviewApi } from "dockview-react";
 import {
   sanitizeDockLayout,
   type DockDesk,
@@ -21,6 +21,7 @@ import {
 } from "./dock-layout";
 
 export const DOCK_TITLES: Record<DockPanelId, string> = {
+  main: "Chat",
   files: "Files",
   artifacts: "Artifacts",
   changes: "Changes",
@@ -40,6 +41,39 @@ function addPanel(api: DockviewApi, id: DockPanelId): void {
     // 'always' renderer hides with visibility, not display:none, which is
     // the same trick the tab strip inside the panel already relies on.
     ...(id === "browser" ? { renderer: "always" as const } : {}),
+    // Everything else opens BESIDE the chat, not on top of it: a panel that
+    // arrives as a tab in the chat's group hides the conversation.
+    ...(id !== "main" ? positionBesideMain(api) : {}),
+  });
+}
+
+/** Where a non-main panel lands: the first group that isn't the chat's. */
+function positionBesideMain(
+  api: DockviewApi,
+): { position?: AddPanelPositionOptions } {
+  const main = api.getPanel("main");
+  if (!main) return {};
+  const other = api.groups.find((g) => g !== main.group);
+  if (other) return { position: { referenceGroup: other.id, direction: "within" } };
+  return { position: { referencePanel: "main", direction: "right" } };
+}
+
+/**
+ * The chat panel must exist and cannot be absent: the dock IS the app's
+ * content area now, and the conversation is its anchor. When other groups
+ * already exist (a desk saved before the chat became a panel), it takes the
+ * LEFT edge — never a tab inside somebody else's group.
+ */
+function ensureMain(api: DockviewApi): void {
+  if (api.getPanel("main")) return;
+  const first = api.groups[0];
+  api.addPanel({
+    id: "main",
+    component: "main",
+    title: DOCK_TITLES.main,
+    ...(first
+      ? { position: { referenceGroup: first.id, direction: "left" } }
+      : {}),
   });
 }
 
@@ -57,6 +91,13 @@ interface DockState {
   pendingExtra: DockPanelId[];
   /** The serialized desk, refreshed on every layout change. */
   layoutJson: Record<string, unknown> | null;
+  /**
+   * Where App renders the chat. The `main` dock panel is just a host div;
+   * the actual conversation column PORTALS into it from App, so its state
+   * (streams, drafts, viewers) never remounts when the dock rearranges.
+   */
+  mainHost: HTMLElement | null;
+  setMainHost: (el: HTMLElement | null) => void;
 
   setApi: (api: DockviewApi | null) => void;
   /** Called by DockArea whenever panels are added/removed or moved. */
@@ -74,6 +115,8 @@ export const useDockStore = create<DockState>((set, get) => ({
   pending: null,
   pendingExtra: [],
   layoutJson: null,
+  mainHost: null,
+  setMainHost: (el) => set({ mainHost: el }),
 
   setApi: (api) => {
     set({ api });
@@ -105,13 +148,15 @@ export const useDockStore = create<DockState>((set, get) => ({
       set({ open: [], layoutJson: null });
       return;
     }
+    // Self-heal: the chat panel has no close button, but a closeAll or a bug
+    // could still take it — the conversation must not be closable.
+    ensureMain(api);
     const open = api.panels
       .map((p) => p.id)
       .filter((id): id is DockPanelId => id in DOCK_TITLES);
     let layoutJson: Record<string, unknown> | null = null;
     try {
-      layoutJson =
-        open.length > 0 ? (api.toJSON() as unknown as Record<string, unknown>) : null;
+      layoutJson = api.toJSON() as unknown as Record<string, unknown>;
     } catch {
       /* a mid-mutation read is not worth crashing a save over */
     }
@@ -142,6 +187,7 @@ export const useDockStore = create<DockState>((set, get) => ({
   },
 
   closePanel: (id) => {
+    if (id === "main") return; // the conversation is not a closable panel
     const { api, pending, pendingExtra } = get();
     if (!api) {
       // Toggling something back off before the wing has even mounted.
@@ -184,15 +230,19 @@ export const useDockStore = create<DockState>((set, get) => ({
 function applyToApi(api: DockviewApi, desk: DockDesk | null): void {
   if (!desk) {
     api.clear();
+    ensureMain(api);
     return;
   }
   if (desk.kind === "open") {
-    for (const id of desk.open) if (!api.getPanel(id)) addPanel(api, id);
+    ensureMain(api);
+    for (const id of desk.open)
+      if (id !== "main" && !api.getPanel(id)) addPanel(api, id);
     return;
   }
   const clean = sanitizeDockLayout(desk.layout, DOCK_PANEL_IDS);
   if (!clean) {
     api.clear();
+    ensureMain(api);
     return;
   }
   try {
@@ -205,9 +255,6 @@ function applyToApi(api: DockviewApi, desk: DockDesk | null): void {
     // A desk that will not load is a desk the user no longer has.
     api.clear();
   }
-}
-
-/** True when the wing should be on screen at all. */
-export function dockVisible(s: Pick<DockState, "open" | "pending">): boolean {
-  return s.open.length > 0 || s.pending !== null;
+  // A desk saved before the chat became a panel restores without it.
+  ensureMain(api);
 }

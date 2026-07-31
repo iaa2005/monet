@@ -30,12 +30,20 @@ import {
 import {
   DockviewReact,
   type DockviewReadyEvent,
+  type DockviewTheme,
   type IDockviewHeaderActionsProps,
+  type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
 } from "dockview-react";
 import "dockview-core/dist/styles/dockview.css";
 import "./dock.css";
-import { Maximize2, Minimize2, PictureInPicture2, PanelRight } from "lucide-react";
+import {
+  ExternalLink,
+  Maximize2,
+  Minimize2,
+  PanelRight,
+  X,
+} from "lucide-react";
 import { ArtifactsPanel } from "@/components/ArtifactsPanel";
 import { ChangesPanel } from "@/components/ChangesPanel";
 import { SandboxFilesPanel } from "@/components/SandboxFilesPanel";
@@ -99,6 +107,19 @@ const scrollWrap = (children: ReactNode): JSX.Element => (
  * they already hold.
  */
 const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> = {
+  /**
+   * The chat. Just a host div — App PORTALS the whole conversation column
+   * into it (see dock-store.mainHost), so streams, drafts and viewers live
+   * in App's tree and survive any dock rearrangement.
+   */
+  main: function MainDockPanel() {
+    return (
+      <div
+        className="h-full min-h-0 overflow-hidden"
+        ref={(el) => useDockStore.getState().setMainHost(el)}
+      />
+    );
+  },
   files: function FilesDockPanel() {
     const sessionId = useChatStore((s) => s.currentSessionId);
     void sessionId;
@@ -171,16 +192,20 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
   },
 };
 
-/** Float / dock-back / maximize — the group's own controls, app-styled. */
+/** The popout host page, resolved beside whatever document we are in —
+ * works for the dev server (http) and the packaged build (file:) alike. */
+const popoutUrl = (): string => new URL("popout.html", location.href).toString();
+
+/** Maximize / detach-to-OS-window / dock-back — the group's own controls. */
 function GroupActions(props: IDockviewHeaderActionsProps): JSX.Element {
   const { group, containerApi } = props;
-  const [floating, setFloating] = useState(group.api.location.type === "floating");
+  const [location, setLocation] = useState(group.api.location.type);
   const [maximized, setMaximized] = useState(group.api.isMaximized());
+  // The chat anchors the grid: it can move within it, but not leave it.
+  const holdsMain = props.panels.some((p) => p.id === "main");
 
   useEffect(() => {
-    const d1 = group.api.onDidLocationChange((e) =>
-      setFloating(e.location.type === "floating"),
-    );
+    const d1 = group.api.onDidLocationChange((e) => setLocation(e.location.type));
     const d2 = containerApi.onDidMaximizedGroupChange(() =>
       setMaximized(group.api.isMaximized()),
     );
@@ -195,41 +220,73 @@ function GroupActions(props: IDockviewHeaderActionsProps): JSX.Element {
 
   return (
     <div className="flex h-full items-center gap-0.5 px-1">
-      <button
-        type="button"
-        title={maximized ? "Restore size" : "Maximize"}
-        className={btn}
-        onClick={() => {
-          if (maximized) containerApi.exitMaximizedGroup();
-          else group.api.maximize();
-        }}
-      >
-        {maximized ? (
-          <Minimize2 className="size-3.5" />
-        ) : (
-          <Maximize2 className="size-3.5" />
-        )}
-      </button>
-      <button
-        type="button"
-        title={floating ? "Dock back into the panel" : "Detach as floating window"}
-        className={btn}
-        onClick={() => {
-          if (floating) group.api.moveTo({ position: "right" });
-          else
-            containerApi.addFloatingGroup(group, {
-              position: { top: 48, right: 48 },
-              width: 560,
-              height: 420,
-            });
-        }}
-      >
-        {floating ? (
+      {location === "grid" && (
+        <button
+          type="button"
+          title={maximized ? "Restore size" : "Maximize"}
+          className={btn}
+          onClick={() => {
+            if (maximized) containerApi.exitMaximizedGroup();
+            else group.api.maximize();
+          }}
+        >
+          {maximized ? (
+            <Minimize2 className="size-3.5" />
+          ) : (
+            <Maximize2 className="size-3.5" />
+          )}
+        </button>
+      )}
+      {location !== "grid" && (
+        <button
+          type="button"
+          title="Dock back into the window"
+          className={btn}
+          onClick={() => group.api.moveTo({ position: "right" })}
+        >
           <PanelRight className="size-3.5" />
-        ) : (
-          <PictureInPicture2 className="size-3.5" />
-        )}
-      </button>
+        </button>
+      )}
+      {!holdsMain && location !== "popout" && (
+        <button
+          type="button"
+          title="Detach into its own window"
+          className={btn}
+          onClick={() =>
+            void containerApi.addPopoutGroup(group, { popoutUrl: popoutUrl() })
+          }
+        >
+          <ExternalLink className="size-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The tab, app-styled — and the reason it is custom at all: the chat panel
+ * gets NO close button. The conversation is the dock's anchor; every other
+ * panel closes like a tab anywhere else.
+ */
+function DockTab(props: IDockviewPanelHeaderProps): JSX.Element {
+  const closable = props.api.id !== "main";
+  return (
+    <div className="flex h-full items-center gap-1.5 px-2.5 text-xs font-medium">
+      <span className="truncate">{props.api.title}</span>
+      {closable && (
+        <button
+          type="button"
+          aria-label="Close panel"
+          className="dv-default-tab-action -mr-1 flex size-4 items-center justify-center rounded text-muted-foreground hover:bg-black/[0.08] hover:text-foreground dark:hover:bg-white/[0.10]"
+          onPointerDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            props.api.close();
+          }}
+        >
+          <X className="size-3" />
+        </button>
+      )}
     </div>
   );
 }
@@ -268,15 +325,29 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
 
   useEffect(() => () => useDockStore.getState().setApi(null), []);
 
-  // dockview ships NO height of its own — it measures its container, and a
-  // flex-col parent gives an unsized child 0px. Without this wrapper the wing
-  // mounts as an invisible sliver and every header click looks like a no-op.
+  // Groups are separate cards: the theme's gap keeps them apart and the
+  // canvas shows through between them (see dock.css).
+  const theme: DockviewTheme = useMemo(
+    () => ({
+      name: "monet",
+      className: `${dark ? "dockview-theme-dark" : "dockview-theme-light"} monet-dock`,
+      colorScheme: dark ? "dark" : "light",
+      gap: 8,
+    }),
+    [dark],
+  );
+
+  // dockview ships NO height of its own — it measures its container. h-full,
+  // not flex-1: the host is a bare ResizablePanel div, not a flex column, and
+  // flex-1 outside a flex parent is how the dock booted 100px tall.
   return (
-    <div className="min-h-0 w-full flex-1">
+    <div className="h-full min-h-0 w-full">
       <DockviewReact
-        className={`${dark ? "dockview-theme-dark" : "dockview-theme-light"} monet-dock h-full w-full`}
+        className="h-full w-full"
+        theme={theme}
         components={components}
         onReady={onReady}
+        defaultTabComponent={DockTab}
         rightHeaderActionsComponent={GroupActions}
         watermarkComponent={Watermark}
         floatingGroupBounds="boundedWithinViewport"
