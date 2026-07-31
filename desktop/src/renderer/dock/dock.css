@@ -121,6 +121,7 @@
 .monet-dock .dv-tab {
   border-radius: 0px;
   transition: background-color 0.12s ease;
+  padding: 0px 14px;
 }
 .monet-dock .dv-tab:hover {
   background-color: rgb(0 0 0 / 0.04);

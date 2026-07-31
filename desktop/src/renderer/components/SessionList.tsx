@@ -241,9 +241,9 @@ export function SessionList({
           No recent chats
         </p>
       ) : (
-        <div className="flex flex-col gap-0.5 pb-2">
+        <div className="flex flex-col pb-2">
           {grouped.map((g) => (
-            <div key={g.title || "all"} className="flex flex-col gap-0.5">
+            <div key={g.title || "all"} className="flex flex-col">
               {g.title && (
                 <div className="px-2 pb-0.5 pt-2 text-[11px] font-medium text-muted-foreground/70">
                   {g.title}

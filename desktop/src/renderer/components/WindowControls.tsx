@@ -20,6 +20,8 @@ export function WindowControls(): JSX.Element {
     return api()?.win.onMaximizeChange(setMaximized);
   }, []);
 
+  // 46px is the Windows caption-button width; the HEIGHT comes from the title
+  // bar's own token, so a hover block can never overhang the bar again.
   const base =
     "app-no-drag flex h-full w-[46px] items-center justify-center text-muted-foreground transition-colors";
 
@@ -27,7 +29,7 @@ export function WindowControls(): JSX.Element {
     <>
       {/* Spacer holds the header slot the fixed buttons visually occupy. */}
       <div aria-hidden className="h-full w-[138px] shrink-0" />
-      <div className="app-no-drag fixed right-0 top-0 z-[200] flex h-11 items-stretch">
+      <div className="app-no-drag fixed right-0 top-0 z-[200] flex h-[var(--titlebar-h)] items-stretch">
       <button
         type="button"
         title="Minimize"

@@ -232,6 +232,40 @@ app.whenReady().then(async () => {
     `${side.rowLeft} vs ${side.asideLeft}`,
   );
 
+  // ── The window buttons cover the title bar exactly ─────────────────
+  //
+  // They are a FIXED layer, not part of the header's flow, so their height
+  // is a second number that has to agree with the bar's. It stopped agreeing
+  // the moment the bar got shorter: the close button's red hover block hung
+  // below it (reported with a screenshot). Both now read one token, and this
+  // measures that they land on the same band.
+  {
+    const bar = await js(`(() => {
+      const header = document.querySelector('.app-drag');
+      const close = document.querySelector('button[aria-label="Close"]');
+      const h = header?.getBoundingClientRect();
+      const c = close?.getBoundingClientRect();
+      return h && c ? {
+        headerTop: Math.round(h.top), headerBottom: Math.round(h.bottom),
+        closeTop: Math.round(c.top), closeBottom: Math.round(c.bottom),
+        closeWidth: Math.round(c.width),
+      } : null;
+    })()`);
+    check("the title bar and its buttons exist", !!bar, JSON.stringify(bar));
+    if (bar) {
+      check(
+        "the close button starts and ends with the bar",
+        bar.closeTop === bar.headerTop && bar.closeBottom === bar.headerBottom,
+        `bar ${bar.headerTop}–${bar.headerBottom} vs button ${bar.closeTop}–${bar.closeBottom}`,
+      );
+      check(
+        "and keeps the platform's caption width",
+        bar.closeWidth === 46,
+        `${bar.closeWidth}px`,
+      );
+    }
+  }
+
   // ── The accent, and how sharp the corners are ──────────────────────
   //
   // One orange carries links, focus rings and the mark; one --radius drives
