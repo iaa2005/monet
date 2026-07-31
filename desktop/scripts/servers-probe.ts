@@ -15,6 +15,7 @@
 import {
   mergeDetected,
   parseServers,
+  portFromOutput,
   portOf,
   suggestFromPackage,
   type ServerState,
@@ -202,6 +203,65 @@ const check = (name: string, ok: boolean, detail?: unknown): void => {
 
   check("nothing detected changes nothing", mergeDetected(declared, []).length === 1);
   check("nothing declared still lists what is up", mergeDetected([], detected).length === 2);
+}
+
+// ── 8. The port a server actually took ────────────────────────────────
+//
+// Declaring 5173 does not get you 5173. Vite finds it busy, moves to 5174 and
+// says so — and waiting on the declared number reported a running server as a
+// failure, then offered a stop button for a port with nothing on it.
+//
+// The prose is a trap: "Port 5173 is in use, trying another one" names the
+// port that did NOT work, and it comes BEFORE the one that did.
+{
+  const ESC = String.fromCharCode(27);
+  const viteOutput = [
+    "> website@0.0.0 dev",
+    "> vite",
+    "",
+    "Port 5173 is in use, trying another one...",
+    "",
+    `  ${ESC}[32m${ESC}[1mVITE${ESC}[22m v8.2.0${ESC}[39m  ${ESC}[2mready in 395 ms${ESC}[22m`,
+    "",
+    `  ${ESC}[32m➜${ESC}[39m  ${ESC}[1mLocal${ESC}[22m:   ${ESC}[36mhttp://localhost:${ESC}[1m5174${ESC}[22m/${ESC}[39m`,
+    `  ${ESC}[32m➜${ESC}[39m  ${ESC}[1mNetwork${ESC}[22m: use ${ESC}[1m--host${ESC}[22m to expose`,
+  ].join("\n");
+
+  check(
+    "the port it moved TO wins over the one it left",
+    portFromOutput(viteOutput) === 5174,
+    portFromOutput(viteOutput),
+  );
+
+  // The URL is split by colour codes mid-number in real Vite output; stripping
+  // ANSI first is what makes it readable at all.
+  check(
+    "colour codes inside the URL do not hide it",
+    portFromOutput(`http://localhost:${ESC}[1m3001${ESC}[22m/`) === 3001,
+    portFromOutput(`http://localhost:${ESC}[1m3001${ESC}[22m/`),
+  );
+
+  check(
+    "the LAST url wins, not the first",
+    portFromOutput("http://localhost:3000/\nhttp://localhost:3001/") === 3001,
+  );
+  check(
+    "127.0.0.1 counts too",
+    portFromOutput("Serving at http://127.0.0.1:8080/") === 8080,
+  );
+
+  // Servers that print no URL still say something usable.
+  check(
+    "listening on port N, when there is no URL",
+    portFromOutput("Server listening on port 4000") === 4000,
+  );
+  check(
+    "but only when the sentence means it worked",
+    portFromOutput("Port 5173 is in use, trying another one...") === null,
+    portFromOutput("Port 5173 is in use, trying another one..."),
+  );
+  check("nothing to find is null", portFromOutput("compiling...") === null);
+  check("empty output is null", portFromOutput("") === null);
 }
 
 console.log(failures === 0 ? "\nservers probe OK" : `\n${failures} FAILED`);

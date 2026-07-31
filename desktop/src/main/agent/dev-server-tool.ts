@@ -142,7 +142,12 @@ export const DevServerTool = buildTool({
         ]);
         const started = await startAndWait(workspace, id);
         return started.ok
-          ? ok(`Added "${name}" and started it — http://localhost:${port}/`)
+          ? ok(
+              `Added "${name}" and started it — http://localhost:${started.port ?? port}/` +
+                (started.port && started.port !== port
+                  ? ` (:${port} was in use, so it took :${started.port}.)`
+                  : ""),
+            )
           : fail(
               `Added "${name}", but it did not start: ${started.error}\n${serverOutput(id).slice(-1500)}`,
             );
@@ -161,7 +166,12 @@ export const DevServerTool = buildTool({
       const started = await startAndWait(workspace, config.id);
       return started.ok
         ? ok(
-            `${config.name} is up — http://localhost:${config.port}/ · BrowserNavigate to open it.`,
+            `${config.name} is up — http://localhost:${started.port ?? config.port}/ · BrowserNavigate to open it.` +
+              (started.alreadyUp
+                ? " (It was already running.)"
+                : started.port && started.port !== config.port
+                  ? ` (:${config.port} was in use, so it took :${started.port}.)`
+                  : ""),
           )
         : fail(
             `${config.name} did not start: ${started.error}\n${serverOutput(config.id).slice(-1500)}`,

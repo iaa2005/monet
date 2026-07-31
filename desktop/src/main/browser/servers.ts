@@ -40,6 +40,13 @@ export interface ServerState extends ServerConfig {
   /** True when something answers on the port, whoever started it. */
   externallyRunning?: boolean;
   /**
+   * The port it ACTUALLY took, when that is not the one declared.
+   *
+   * Vite, Next and CRA all move to the next free port and say so; the declared
+   * number is a wish, and the server's own output is the fact.
+   */
+  actualPort?: number;
+  /**
    * False for a server we merely FOUND — the agent ran `npm run dev`, or you
    * did in a terminal. It has no entry in the project file, so there is no
    * command to start it with and nothing of ours to stop.
@@ -140,6 +147,39 @@ export function suggestFromPackage(pkgJson: string): ServerConfig[] {
   return out;
 }
 
+const ANSI = /\u001b\[[0-9;]*m/g;
+
+/**
+ * The port a server says it actually took.
+ *
+ * Declaring 5173 does not get you 5173. Vite finds it busy, moves to 5174 and
+ * announces the new one — so waiting on the declared port reports a failure
+ * for a server that is running, and the panel then offers a stop button for a
+ * port with nothing on it.
+ *
+ * URLs are preferred over prose because the prose is a trap: "Port 5173 is in
+ * use, trying another one" names the port that did NOT work.
+ */
+export function portFromOutput(raw: string): number | null {
+  const text = raw.replace(ANSI, "");
+  const urls = [
+    ...text.matchAll(
+      /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0):(\d{2,5})/gi,
+    ),
+  ];
+  const last = urls[urls.length - 1]?.[1];
+  if (last) return Number(last);
+  // No URL: accept "listening on port N", but only with a word that means it
+  // succeeded in front of it.
+  const phrase = [
+    ...text.matchAll(
+      /(?:listening|running|ready|started|available|serving)[^\n]{0,40}?\bport\s+(\d{2,5})/gi,
+    ),
+  ];
+  const p = phrase[phrase.length - 1]?.[1];
+  return p ? Number(p) : null;
+}
+
 /** The port a command pins, if it pins one. */
 export function portOf(command: string): number | null {
   const m = /(?:--port[= ]|-p[= ]|PORT=)(\d{2,5})/.exec(command);
@@ -156,6 +196,8 @@ interface Running {
   error?: string;
   /** Tail of the output, so a failure can say what it said. */
   output: string[];
+  /** Where it actually landed, once it says so. */
+  actualPort?: number;
 }
 
 const running = new Map<string, Running>();
@@ -195,7 +237,9 @@ export async function serverStates(workspace: string): Promise<ServerState[]> {
   return Promise.all(
     configs.map(async (c) => {
       const live = running.get(c.id);
-      const answering = await portOpen(c.port);
+      // Check where it actually is, not where it was asked to be.
+      const port = live?.actualPort ?? c.port;
+      const answering = await portOpen(port);
       if (!live) {
         return {
           ...c,
@@ -210,6 +254,9 @@ export async function serverStates(workspace: string): Promise<ServerState[]> {
         status: answering ? ("running" as const) : live.status,
         error: live.error,
         startedAt: live.startedAt,
+        ...(live.actualPort && live.actualPort !== c.port
+          ? { actualPort: live.actualPort }
+          : {}),
       };
     }),
   );
@@ -238,18 +285,27 @@ export async function startAndWait(
   workspace: string,
   id: string,
   timeoutMs = 60_000,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; port?: number; alreadyUp?: boolean }> {
   const config = readServers(workspace).find((s) => s.id === id);
   if (!config) return { ok: false, error: `No server ${id}` };
+  // Already answering: that is the state anyone wanted, whoever produced it.
+  // Refusing here told the model a running server was a failure.
   if (await portOpen(config.port))
-    return { ok: false, error: `Something is already on :${config.port}.` };
+    return { ok: true, port: config.port, alreadyUp: true };
 
   startServer(workspace, id);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 400));
-    if (await portOpen(config.port)) return { ok: true };
     const live = running.get(id);
+    // The port it announced beats the port it was asked for.
+    const said = live ? portFromOutput(live.output.join("")) : null;
+    const port = said ?? config.port;
+    if (await portOpen(port)) {
+      if (live && said && said !== config.port) live.actualPort = said;
+      notify();
+      return { ok: true, port };
+    }
     if (live?.status === "failed")
       return { ok: false, error: live.error ?? "it exited" };
     if (!live) return { ok: false, error: "the process exited" };

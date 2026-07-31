@@ -161,18 +161,28 @@ export function ServersMenu({
             <button
               type="button"
               disabled={s.status !== "running"}
-              onClick={() => onOpen(`http://localhost:${s.port}/`)}
+              onClick={() => onOpen(`http://localhost:${s.actualPort ?? s.port}/`)}
               title={
                 s.status === "failed"
                   ? (s.error ?? "Failed to start")
-                  : `http://localhost:${s.port}/`
+                  : `http://localhost:${s.actualPort ?? s.port}/`
               }
               className="min-w-0 flex-1 truncate text-left disabled:cursor-default disabled:text-muted-foreground"
             >
               {s.name}
             </button>
-            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-              :{s.port}
+            {/* The port it actually took, when the one it was asked for was
+                busy and it moved. Showing the declared number then would send
+                you to a port with nothing on it. */}
+            <span
+              className="shrink-0 font-mono text-[11px] text-muted-foreground"
+              title={
+                s.actualPort
+                  ? `:${s.port} was in use, it took :${s.actualPort}`
+                  : undefined
+              }
+            >
+              :{s.actualPort ?? s.port}
             </span>
             {/* Found, not declared: something else is serving this port — the
                 agent's shell, or a terminal. There is no command to start it
