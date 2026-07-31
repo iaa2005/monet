@@ -49,10 +49,16 @@ activating it.
 | <kbd>Enter</kbd> | send what is selected |
 | <kbd>Esc</kbd> | clear the selection, then leave design mode |
 
-What you picked appears as a chip above the composer, and rides along with your
-next message. Each chip carries two things: a **description** — selector, xpath,
-computed styles, the component name and props read out of React's fibre — and a
-**picture**, a crop of how it actually looks.
+What you picked lands **in the message box**, at the cursor, as a reference:
+`сделать align center у ⟨Hero⟩`. It is ordinary text — write around it, select
+it, copy it, delete it. Backspace just after one removes the whole reference in
+a single press.
+
+The reference is what carries the element, so deleting it is how you change
+your mind: no reference, no context sent. Behind it travels a **description** —
+selector, xpath, computed styles, the component name and props read out of
+React's fibre — and a **picture**, a crop of how it actually looks. Neither is
+printed in the transcript; the reference stands for both.
 
 It also carries a short list of files that probably contain it, found by
 grepping your workspace. Visible text is searched for before component names,

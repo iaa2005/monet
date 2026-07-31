@@ -77,9 +77,15 @@ const UTILITY = new RegExp(
 
 const isUtility = (cls: string): boolean => UTILITY.test(cls);
 
-/** A short human name for the element — the chip label in the composer. */
+/**
+ * A short human name for the element.
+ *
+ * This becomes a token the user types around — ⟨SaveButton⟩ — so it carries no
+ * angle brackets of its own. The block below still writes `component: <X>`,
+ * which is where the renderer reads the name back from.
+ */
 export function summarizeElement(el: RawElement): string {
-  if (el.component) return `<${el.component}>`;
+  if (el.component) return el.component;
   const cls = (el.classes ?? []).find((c) => !isUtility(c));
   const text = (el.text ?? "").trim().replace(/\s+/g, " ");
   if (cls) return `${el.tag}.${cls}`;

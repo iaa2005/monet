@@ -96,10 +96,12 @@ const el = (over: Partial<RawElement> = {}): RawElement => ({
 
 // ── 4. The chip label names the most specific thing known ─────────────
 {
+  // No angle brackets: the label becomes a ⟨token⟩ the user types around.
   check(
     "component wins the label",
     summarizeElement(el({ component: "SaveButton", classes: ["btn"], text: "Save" })) ===
-      "<SaveButton>",
+      "SaveButton",
+    summarizeElement(el({ component: "SaveButton", classes: ["btn"], text: "Save" })),
   );
   check(
     "then a real class",

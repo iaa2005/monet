@@ -59,6 +59,8 @@ import type {
 } from "@/types/electron";
 import type { ChatMessage, ToolCall } from "@/types/chat";
 import { PlanApprovalHost } from "./PlanApprovalDialog";
+import { SelectionText } from "./SelectionText";
+import { joinSelections, splitSelections, usedRefs } from "@/lib/selection-marks";
 
 type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
@@ -298,7 +300,7 @@ const MessageRow = memo(
     const home = useChatStore((s) => s.space === "home");
     const resendFrom = useChatStore((s) => s.resendFrom);
     const [editing, setEditing] = useState(false);
-    const [draft, setDraft] = useState(msg.content);
+    const [draft, setDraft] = useState(() => splitSelections(msg.content).text);
 
     if (msg.role === "tool" && msg.toolCall) {
       return <ToolCallBubble toolCall={msg.toolCall} mode={mode} />;
@@ -312,8 +314,17 @@ const MessageRow = memo(
     const saveEdit = (): void => {
       const t = draft.trim();
       setEditing(false);
-      if (t && t !== msg.content) void resendFrom(msg.id, t);
+      // The element context rides along again — unless the user deleted the
+      // ⟨token⟩ that referred to it, which is how you drop one.
+      const kept = usedRefs(t, editable.refs, (r) => r.label);
+      const full = joinSelections(t, kept);
+      if (t && full !== msg.content) void resendFrom(msg.id, full);
     };
+
+    // Editing shows the sentence, not the machine-collected description of the
+    // element — but the description has to survive the edit, so it is put back
+    // on save. Stripping it for real would silently drop the context.
+    const editable = splitSelections(msg.content);
 
     if (isUser && editing) {
       return (
@@ -362,7 +373,7 @@ const MessageRow = memo(
               )}
               <Bubble variant="secondary" align="end">
                 <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.08] glass-panel rounded-xl">
-                  {msg.content}
+                  <SelectionText content={msg.content} />
                 </BubbleContent>
               </Bubble>
               {canAct && (

@@ -362,7 +362,6 @@ interface ChatStore {
   ) => void;
   setDroppedFiles: (files: File[] | null) => void;
   addPendingContext: (sel: BrowserSelection) => void;
-  removePendingContext: (id: string) => void;
   clearPendingContext: () => void;
   requestOpenFile: (path: string | null) => void;
   requestOpenChanges: () => void;
@@ -832,10 +831,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
     setDroppedFiles: (files) => set({ droppedFiles: files }),
     addPendingContext: (sel) =>
       set((s) => ({ pendingContext: [...s.pendingContext, sel] })),
-    removePendingContext: (id) =>
-      set((s) => ({
-        pendingContext: s.pendingContext.filter((c) => c.id !== id),
-      })),
     clearPendingContext: () => set({ pendingContext: [] }),
     requestOpenFile: (path) => set({ openFileRequest: path }),
     requestOpenChanges: () => set({ openChangesRequest: true }),

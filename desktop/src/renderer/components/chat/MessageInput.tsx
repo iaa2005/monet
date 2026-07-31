@@ -14,8 +14,6 @@ import {
   Sparkles,
   ListEnd,
   CornerDownLeft,
-  MousePointerClick,
-  X,
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import { MicButton } from "./MicButton";
@@ -32,6 +30,11 @@ import { ModalityBadges } from "@/components/providers/ModalityBadges";
 import type { Modality } from "@/stores/providerStore";
 import { StagedFileTile } from "@/components/FileCard";
 import { GoalStrip } from "./GoalStrip";
+import {
+  insertRefToken,
+  tokenBefore,
+  usedRefs,
+} from "@/lib/selection-marks";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -260,6 +263,8 @@ export function MessageInput({
   // Browser-panel selections are NOT keyed per chat: you point at a thing on
   // the page and then decide where to ask about it.
   const pendingContext = useChatStore((s) => s.pendingContext);
+  /** Selections already turned into a token, so the effect below runs once each. */
+  const tokenised = useRef(new Set<string>());
   const setFiles = useCallback(
     (update: StagedFile[] | ((prev: StagedFile[]) => StagedFile[])): void => {
       const st = useChatStore.getState();
@@ -557,6 +562,34 @@ export function MessageInput({
   // slash-token right before it (slash at start of input or after whitespace,
   // followed by name characters only). A space closes it (arguments begin).
   const [caret, setCaret] = useState(0);
+
+  // An element picked in the Browser panel becomes a token in the text, at the
+  // caret. Plain text on purpose: you can write around it, select it, copy it,
+  // and delete it with the cursor like any other word — none of which a chip
+  // parked above the box would let you do.
+  useEffect(() => {
+    const fresh = pendingContext.filter((c) => !tokenised.current.has(c.id));
+    if (fresh.length === 0) return;
+    let text = input;
+    let pos = caret;
+    for (const c of fresh) {
+      tokenised.current.add(c.id);
+      const next = insertRefToken(text, c.label, pos);
+      text = next.text;
+      pos = next.caret;
+    }
+    setInput(text);
+    setCaret(pos);
+    // After React has written the value, or setSelectionRange lands in the old
+    // string and the caret jumps to the end.
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(pos, pos);
+    });
+  }, [pendingContext, input, caret]);
+
   const slashTok = useMemo(() => {
     const upto = input.slice(0, caret);
     const m = /(?:^|\s)\/([A-Za-z0-9_:./-]*)$/.exec(upto);
@@ -729,7 +762,14 @@ export function MessageInput({
     // the model reads, the crop as an image it sees. Both, because either alone
     // is guesswork — a selector without a picture says nothing about how it
     // looks, and a picture without a selector says nothing about where it is.
-    const selections = useChatStore.getState().pendingContext;
+    // Only the selections the sentence still refers to. Deleting a ⟨token⟩
+    // while writing is how you drop one — the reference and the context are
+    // the same thing, so there is nothing to keep in sync.
+    const selections = usedRefs(
+      text,
+      useChatStore.getState().pendingContext,
+      (s) => s.label,
+    );
     const cropFiles: StagedFile[] = [];
     if (selections.length > 0) {
       text = [text, ...selections.map((s) => s.context)]
@@ -739,8 +779,9 @@ export function MessageInput({
         const file = fileFromDataUrl(s.imageDataUrl, `selected-${i + 1}.png`);
         if (file) cropFiles.push({ id: `${s.id}-img`, file });
       });
-      useChatStore.getState().clearPendingContext();
     }
+    useChatStore.getState().clearPendingContext();
+    tokenised.current.clear();
 
     const staged = [...files, ...cropFiles];
     setInput("");
@@ -973,46 +1014,6 @@ export function MessageInput({
             pause/cancel one click away. */}
         <GoalStrip />
 
-        {pendingContext.length > 0 && (
-          // Chips rather than the file tiles below: these are not files the
-          // user chose, they are places on a page, and they read as one line.
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {pendingContext.map((c) => (
-              <span
-                key={c.id}
-                title={`${c.url}\n\n${c.context.slice(0, 600)}`}
-                className="flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-card py-1 pl-1 pr-1.5 text-[12px]"
-              >
-                {c.imageDataUrl ? (
-                  <img
-                    src={c.imageDataUrl}
-                    alt=""
-                    className="size-5 shrink-0 rounded object-cover"
-                  />
-                ) : (
-                  <MousePointerClick className="ml-1 size-3.5 shrink-0 text-muted-foreground" />
-                )}
-                <span className="truncate font-mono">{c.label}</span>
-                {c.count > 1 && (
-                  <span className="shrink-0 text-muted-foreground">
-                    +{c.count - 1}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  aria-label="Remove"
-                  onClick={() =>
-                    useChatStore.getState().removePendingContext(c.id)
-                  }
-                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-black/10 hover:text-destructive dark:hover:bg-white/10"
-                >
-                  <X className="size-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-
         {files.length > 0 && (
           // Same tile as the Content panel, so a file looks the same before
           // you send it and after. auto-fill keeps the row count sensible from
@@ -1044,6 +1045,25 @@ export function MessageInput({
                 setCaret(e.currentTarget.selectionStart ?? 0)
               }
               onKeyDown={(e) => {
+                // Backspace just past a ⟨reference⟩ removes the whole thing,
+                // the one thing a real pill would give for free.
+                if (e.key === "Backspace" && !slashOpen) {
+                  const ta = e.currentTarget;
+                  if (ta.selectionStart === ta.selectionEnd) {
+                    const hit = tokenBefore(ta.value, ta.selectionStart ?? 0);
+                    if (hit) {
+                      e.preventDefault();
+                      const next =
+                        ta.value.slice(0, hit.start) + ta.value.slice(hit.end);
+                      setInput(next);
+                      setCaret(hit.start);
+                      requestAnimationFrame(() =>
+                        taRef.current?.setSelectionRange(hit.start, hit.start),
+                      );
+                      return;
+                    }
+                  }
+                }
                 // "/" menu navigation takes priority while it's open.
                 if (slashOpen) {
                   if (e.key === "ArrowDown") {
