@@ -17,8 +17,15 @@ import { join } from "path";
 import { getDataDir } from "./data-dir.js";
 
 export interface SessionUiState {
-  /** Which right-panel tab was up, if any. */
+  /**
+   * The dock's serialized layout (dockview JSON) — groups, splits, floating
+   * windows, tab order. Absent means the wing was closed. Sanitized against
+   * the current panel set on restore, never trusted raw.
+   */
+  dockLayout?: unknown;
+  /** Legacy desk (pre-dock builds): which single tab was up. Read, not written. */
   rightTab?: string | null;
+  /** Legacy: whether the terminal drawer was open. Read, not written. */
   terminalOpen?: boolean;
   /** The Browser panel's pages, in order. */
   browserTabs?: { url: string }[];

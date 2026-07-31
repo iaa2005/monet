@@ -48,19 +48,14 @@ import {
 } from "lucide-react";
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
-import { ArtifactsPanel } from "@/components/ArtifactsPanel";
-import { ChangesPanel } from "@/components/ChangesPanel";
-import { SandboxFilesPanel } from "@/components/SandboxFilesPanel";
-import {
-  BackgroundTasksPanel,
-  useTaskBadge,
-} from "@/components/BackgroundTasks";
+import { useTaskBadge } from "@/components/BackgroundTasks";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { FilterDropdown } from "@/components/FilterDropdown";
 import { SkillsPanel } from "@/components/SkillsPanel";
-import { FileTree } from "@/components/FileTree";
-import { BrowserPanel } from "@/components/browser/BrowserPanel";
 import { useBrowserStore } from "@/components/browser/browser-store";
+import { DockArea } from "@/dock/DockArea";
+import { useDockStore } from "@/dock/dock-store";
+import type { DockPanelId } from "@/dock/dock-layout";
 import { FileViewer } from "@/components/FileViewer";
 import { SubAgentTranscript } from "@/components/chat/ToolCallBubble";
 import { WindowControls } from "@/components/WindowControls";
@@ -94,10 +89,6 @@ import { cn } from "@/lib/utils";
 import { RoutinesList } from "@/components/RoutinesList";
 import type { ChatMessage } from "@/types/chat";
 import type { ElectronAPI } from "@/types/electron";
-
-const Terminal = lazy(() =>
-  import("@/components/Terminal").then((m) => ({ default: m.Terminal })),
-);
 
 type View = "chat" | "skills" | "routines";
 type RightTab = "files" | "artifacts" | "tasks" | "changes" | "browser" | null;
@@ -304,18 +295,19 @@ export default function App(): JSX.Element {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [transcriptMode, setTranscriptMode] =
     useState<TranscriptMode>("normal");
-  const [terminalOpen, setTerminalOpen] = useState(false);
   // The engine THIS chat runs on (per-chat override, else the global default).
   // Home terminal is available only when it has a real shell (Podman /
   // subprocess); Pyodide is WebAssembly — no shell.
   const [sessionEngine, setSessionEngine] =
     useState<"pyodide" | "subprocess" | "docker">("pyodide");
   const [homeShellSupported, setHomeShellSupported] = useState(false);
-  const [rightTab, setRightTab] = useState<RightTab>(null);
-  // The Browser panel is mounted from the first time it is opened and never
-  // unmounted while the right panel is up: a <webview> is a running page, and
-  // remounting it reloads whatever the user (or the agent) was looking at.
-  const [browserUsed, setBrowserUsed] = useState(false);
+  // The wing is a dock now — panels are tabs, splits and floating windows in
+  // it. Everything asks the dock store; the wing itself mounts only while
+  // something (or a pending desk) is in it.
+  const dockOpen = useDockStore((s) => s.open);
+  const dockPending = useDockStore((s) => s.pending);
+  const dockLayoutLive = useDockStore((s) => s.layoutJson);
+  const wingVisible = dockOpen.length > 0 || dockPending !== null;
   const browserLayout = useBrowserStore((s) => s.layout);
   const rightPanelRef = useRef<ImperativePanelHandle>(null);
   const taskBadge = useTaskBadge();
@@ -366,8 +358,7 @@ export default function App(): JSX.Element {
     const bridge = api();
     if (!bridge) return;
     const offOpen = bridge.browser.onOpenTab((url) => {
-      setBrowserUsed(true);
-      setRightTab("browser");
+      useDockStore.getState().openPanel("browser");
       useBrowserStore.getState().openTab(url);
     });
     // A link clicked somewhere in the app — chat, docs, a tool result.
@@ -375,16 +366,14 @@ export default function App(): JSX.Element {
       if (!s.pendingOpen) return;
       const url = s.pendingOpen;
       useBrowserStore.getState().clearPendingOpen();
-      setBrowserUsed(true);
-      setRightTab("browser");
+      useDockStore.getState().openPanel("browser");
       useBrowserStore.getState().openTab(url);
     });
     // Something visual is about to happen to the page. A parked guest produces
     // no frames at all — a screenshot of one never even returns — so the panel
     // has to be on screen before it, not after.
     const offReveal = bridge.browser.onReveal(() => {
-      setBrowserUsed(true);
-      setRightTab("browser");
+      useDockStore.getState().openPanel("browser");
     });
     return () => {
       offOpen();
@@ -418,8 +407,7 @@ export default function App(): JSX.Element {
       if (!(e.ctrlKey || e.metaKey) || !e.shiftKey) return;
       if (e.key !== "D" && e.key !== "d") return;
       e.preventDefault();
-      setBrowserUsed(true);
-      setRightTab("browser");
+      useDockStore.getState().openPanel("browser");
       const store = useBrowserStore.getState();
       const next = !store.designMode;
       store.setDesignMode(next);
@@ -429,14 +417,13 @@ export default function App(): JSX.Element {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // The Browser panel's expand button. A page rendered at 30% of the window is
-  // unusable, but permanently widening the right panel would squeeze the chat
-  // for every other tab — so the width follows the browser's own layout state,
-  // and only while the browser is the tab on screen.
+  // The Browser panel's expand button. Its group is maximized inside the dock
+  // (DockArea watches the same state); the wing itself also widens, because a
+  // page at 30% of the window is unusable however the dock slices it.
   useEffect(() => {
-    if (rightTab !== "browser") return;
+    if (!dockOpen.includes("browser")) return;
     rightPanelRef.current?.resize(browserLayout === "expanded" ? 68 : 34);
-  }, [browserLayout, rightTab]);
+  }, [browserLayout, dockOpen]);
 
   // ── The chat's desk ────────────────────────────────────────────────
   //
@@ -456,8 +443,7 @@ export default function App(): JSX.Element {
     if (leaving && leaving !== currentSessionId && !leaving.startsWith("incognito")) {
       const b = useBrowserStore.getState();
       void bridge.browser.uiState.set(leaving, {
-        rightTab,
-        terminalOpen,
+        dockLayout: useDockStore.getState().layoutJson ?? undefined,
         browserTabs: b.tabs.filter((t) => t.url !== "about:blank").map((t) => ({ url: t.url })),
         activeTab: Math.max(0, b.tabs.findIndex((t) => t.id === b.activeId)),
         browserExpanded: b.layout === "expanded",
@@ -468,28 +454,36 @@ export default function App(): JSX.Element {
 
     let cancelled = false;
     void bridge.browser.uiState.get(currentSessionId).then((saved) => {
-      if (cancelled || !saved) return;
+      if (cancelled) return;
       // A saved desk is restored even when it is empty — closing everything
-      // WAS the state of that chat.
+      // WAS the state of that chat. No record at all also means a clean desk:
+      // leaving the previous chat's panels up would dress this chat in them.
       const b = useBrowserStore.getState();
       b.restoreTabs(
-        (saved.browserTabs ?? []).map((t: { url: string }) => t.url),
-        saved.activeTab ?? 0,
+        (saved?.browserTabs ?? []).map((t: { url: string }) => t.url),
+        saved?.activeTab ?? 0,
       );
-      b.setLayout(saved.browserExpanded ? "expanded" : "panel");
-      if ((saved.browserTabs ?? []).length > 0) setBrowserUsed(true);
-      setTerminalOpen(!!saved.terminalOpen);
-      const tab = saved.rightTab as RightTab;
-      if (
-        tab === null ||
-        tab === "files" ||
-        tab === "artifacts" ||
-        tab === "tasks" ||
-        tab === "changes" ||
-        tab === "browser"
-      ) {
-        if (tab === "browser") setBrowserUsed(true);
-        setRightTab(tab);
+      b.setLayout(saved?.browserExpanded ? "expanded" : "panel");
+      const dock = useDockStore.getState();
+      if (saved?.dockLayout && typeof saved.dockLayout === "object") {
+        dock.applyDesk({
+          kind: "layout",
+          layout: saved.dockLayout as Record<string, unknown>,
+        });
+      } else {
+        // A desk saved by a pre-dock build: one tab and maybe a terminal.
+        const open: DockPanelId[] = [];
+        const tab = saved?.rightTab as RightTab;
+        if (
+          tab === "files" ||
+          tab === "artifacts" ||
+          tab === "tasks" ||
+          tab === "changes" ||
+          tab === "browser"
+        )
+          open.push(tab);
+        if (saved?.terminalOpen) open.push("terminal");
+        dock.applyDesk(open.length > 0 ? { kind: "open", open } : null);
       }
     });
     return () => {
@@ -512,8 +506,7 @@ export default function App(): JSX.Element {
     const t = setTimeout(() => {
       const b = useBrowserStore.getState();
       void bridge.browser.uiState.set(currentSessionId, {
-        rightTab,
-        terminalOpen,
+        dockLayout: useDockStore.getState().layoutJson ?? undefined,
         browserTabs: b.tabs
           .filter((x) => x.url !== "about:blank")
           .map((x) => ({ url: x.url })),
@@ -522,7 +515,7 @@ export default function App(): JSX.Element {
       });
     }, 600);
     return () => clearTimeout(t);
-  }, [currentSessionId, rightTab, terminalOpen, browserTabsLive, browserActiveLive, browserLayout]);
+  }, [currentSessionId, dockLayoutLive, browserTabsLive, browserActiveLive, browserLayout]);
 
   // "Branch from here" on a user message: a fork cut at that point. The
   // non-destructive sibling of Rewind — the original keeps its whole history,
@@ -591,7 +584,7 @@ export default function App(): JSX.Element {
   // GitCard's "+N −M" button asks to open the Changes tab.
   useEffect(() => {
     if (openChangesRequest) {
-      setRightTab("changes");
+      useDockStore.getState().openPanel("changes");
       useChatStore.getState().requestOpenChanges();
       useChatStore.setState({ openChangesRequest: false });
     }
@@ -716,7 +709,8 @@ export default function App(): JSX.Element {
       setSessionEngine(engine);
       const hasShell = engine !== "pyodide";
       setHomeShellSupported(hasShell);
-      if (!hasShell) setTerminalOpen(false); // Pyodide has no terminal
+      // Pyodide has no terminal — take the panel out of the dock with it.
+      if (!hasShell) useDockStore.getState().closePanel("terminal");
       void api()?.sandbox.setSessionConfig(sid, engine);
     },
     [currentSessionId],
@@ -895,8 +889,8 @@ export default function App(): JSX.Element {
     [currentSessionId],
   );
 
-  const toggleRight = (tab: Exclude<RightTab, null>): void =>
-    setRightTab((cur) => (cur === tab ? null : tab));
+  const toggleDock = (id: DockPanelId): void =>
+    useDockStore.getState().togglePanel(id);
 
   // Fork: copy the current conversation into a fresh saved session and switch
   // to it. The display messages are preserved; the next send seeds the agent
@@ -1166,8 +1160,8 @@ export default function App(): JSX.Element {
               how you "dig around" the sandbox; no host terminal needed here). */}
           <IconBtn
             title="Files"
-            active={rightTab === "files"}
-            onClick={() => toggleRight("files")}
+            active={dockOpen.includes("files")}
+            onClick={() => toggleDock("files")}
           >
             <Files className="size-4" />
           </IconBtn>
@@ -1213,8 +1207,8 @@ export default function App(): JSX.Element {
           {/* Artifacts: files the model produced + files the user attached. */}
           <IconBtn
             title="Artifacts"
-            active={rightTab === "artifacts"}
-            onClick={() => toggleRight("artifacts")}
+            active={dockOpen.includes("artifacts")}
+            onClick={() => toggleDock("artifacts")}
           >
             <Blocks className="size-4" />
           </IconBtn>
@@ -1222,11 +1216,8 @@ export default function App(): JSX.Element {
               mean alt-tabbing to another window the agent can't see. */}
           <IconBtn
             title="Browser"
-            active={rightTab === "browser"}
-            onClick={() => {
-              setBrowserUsed(true);
-              toggleRight("browser");
-            }}
+            active={dockOpen.includes("browser")}
+            onClick={() => toggleDock("browser")}
           >
             <Globe className="size-4" />
           </IconBtn>
@@ -1240,9 +1231,9 @@ export default function App(): JSX.Element {
                   ? `Background tasks — ${taskBadge} running`
                   : "Background tasks"
               }
-              active={rightTab === "tasks"}
+              active={dockOpen.includes("tasks")}
               badge={taskBadge}
-              onClick={() => toggleRight("tasks")}
+              onClick={() => toggleDock("tasks")}
             >
               <Activity className="size-4" />
             </IconBtn>
@@ -1252,8 +1243,8 @@ export default function App(): JSX.Element {
           {appMode === "home" && homeShellSupported && (
             <IconBtn
               title="Sandbox terminal"
-              active={terminalOpen}
-              onClick={() => setTerminalOpen((o) => !o)}
+              active={dockOpen.includes("terminal")}
+              onClick={() => toggleDock("terminal")}
             >
               <TerminalIcon className="size-4" />
             </IconBtn>
@@ -1264,15 +1255,15 @@ export default function App(): JSX.Element {
             <>
               <IconBtn
                 title="Terminal"
-                active={terminalOpen}
-                onClick={() => setTerminalOpen((o) => !o)}
+                active={dockOpen.includes("terminal")}
+                onClick={() => toggleDock("terminal")}
               >
                 <TerminalIcon className="size-4" />
               </IconBtn>
               <IconBtn
                 title="Changes"
-                active={rightTab === "changes"}
-                onClick={() => toggleRight("changes")}
+                active={dockOpen.includes("changes")}
+                onClick={() => toggleDock("changes")}
               >
                 <FileDiff className="size-4" />
               </IconBtn>
@@ -1606,145 +1597,24 @@ export default function App(): JSX.Element {
                         )}
                       </div>
                     </ResizablePanel>
-                    {terminalOpen && homeShellSupported && (
-                      <>
-                        <ResizableHandle withHandle />
-                        <ResizablePanel defaultSize={32} minSize={12}>
-                          <Panel>
-                            <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-                              <span className="text-xs font-medium text-muted-foreground">
-                                Sandbox terminal
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => setTerminalOpen(false)}
-                                className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
-                              >
-                                <X className="size-3.5" />
-                              </button>
-                            </div>
-                            <Suspense
-                              fallback={
-                                <div className="p-3 text-xs text-muted-foreground">
-                                  Loading terminal…
-                                </div>
-                              }
-                            >
-                              <Terminal
-                                runner={sandboxRunner}
-                                intro={[
-                                  "Home sandbox — commands run inside this chat's sandbox, not on your machine.",
-                                  "Files you create show up in the Files panel. Shell state (cwd, env) resets each command.",
-                                ]}
-                              />
-                            </Suspense>
-                          </Panel>
-                        </ResizablePanel>
-                      </>
-                    )}
                   </ResizablePanelGroup>
                 </ResizablePanel>
-                {rightTab && (
+                {wingVisible && (
                   <>
                     <ResizableHandle withHandle />
                     <ResizablePanel
                       ref={rightPanelRef}
-                      defaultSize={30}
+                      defaultSize={34}
                       minSize={18}
-                      maxSize={rightTab === "browser" ? 78 : 55}
+                      maxSize={82}
                     >
                       <div className="glass-panel flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
-                        <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setRightTab("files")}
-                            className={cn(
-                              "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                              rightTab === "files"
-                                ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                          >
-                            Files
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setRightTab("artifacts")}
-                            className={cn(
-                              "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                              rightTab === "artifacts"
-                                ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                          >
-                            Artifacts
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setBrowserUsed(true);
-                              setRightTab("browser");
-                            }}
-                            className={cn(
-                              "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                              rightTab === "browser"
-                                ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                          >
-                            Browser
-                          </button>
-                          {!incognito && (
-                            <button
-                              type="button"
-                              onClick={() => setRightTab("tasks")}
-                              className={cn(
-                                "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                                rightTab === "tasks"
-                                  ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                                  : "text-muted-foreground hover:text-foreground",
-                              )}
-                            >
-                              Tasks
-                              {taskBadge > 0 && (
-                                <span className="ml-1 text-green-text">
-                                  {taskBadge}
-                                </span>
-                              )}
-                            </button>
-                          )}
-                          <div className="flex-1" />
-                          <button
-                            type="button"
-                            onClick={() => setRightTab(null)}
-                            aria-label="Close panel"
-                            className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
-                          >
-                            <X className="size-4" />
-                          </button>
-                        </div>
-                        <div className="relative min-h-0 flex-1 overflow-auto">
-                          {rightTab === "files" && <SandboxFilesPanel />}
-                          {rightTab === "artifacts" && <ArtifactsPanel />}
-                          {rightTab === "tasks" && (
-                            <BackgroundTasksPanel
-                              onOpen={openBackgroundTask}
-                              currentSessionId={currentSessionId}
-                            />
-                          )}
-                          {browserUsed && (
-                            <div
-                              className={cn(
-                                "absolute inset-0 overflow-hidden",
-                                rightTab === "browser"
-                                  ? ""
-                                  : "pointer-events-none -translate-x-[200%]",
-                              )}
-                            >
-                              <BrowserPanel />
-                            </div>
-                          )}
-                        </div>
+                        <DockArea
+                          space={appMode}
+                          currentSessionId={currentSessionId}
+                          openBackgroundTask={openBackgroundTask}
+                          sandboxRunner={sandboxRunner}
+                        />
                       </div>
                     </ResizablePanel>
                   </>
@@ -1826,165 +1696,26 @@ export default function App(): JSX.Element {
                       </div>
                     </ResizablePanel>
 
-                    {terminalOpen && (
-                      <>
-                        <ResizableHandle withHandle />
-                        <ResizablePanel defaultSize={32} minSize={12}>
-                          <Panel>
-                            <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-                              <span className="text-xs font-medium text-muted-foreground">
-                                Terminal
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => setTerminalOpen(false)}
-                                className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
-                              >
-                                <X className="size-3.5" />
-                              </button>
-                            </div>
-                            <Suspense
-                              fallback={
-                                <div className="p-3 text-xs text-muted-foreground">
-                                  Loading terminal…
-                                </div>
-                              }
-                            >
-                              <Terminal />
-                            </Suspense>
-                          </Panel>
-                        </ResizablePanel>
-                      </>
-                    )}
                   </ResizablePanelGroup>
                 </ResizablePanel>
 
-                {rightTab && (
+                {wingVisible && (
                   <>
                     <ResizableHandle withHandle />
                     <ResizablePanel
                       key="right-panel"
                       ref={rightPanelRef}
-                      defaultSize={30}
+                      defaultSize={34}
                       minSize={18}
-                      maxSize={rightTab === "browser" ? 78 : 48}
+                      maxSize={82}
                     >
                       <Panel>
-                        <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
-                          <button
-                            onClick={() => setRightTab("files")}
-                            className={cn(
-                              "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                              rightTab === "files"
-                                ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                          >
-                            Files
-                          </button>
-                          <button
-                            onClick={() => setRightTab("artifacts")}
-                            className={cn(
-                              "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                              rightTab === "artifacts"
-                                ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                          >
-                            Artifacts
-                          </button>
-                          <button
-                            onClick={() => setRightTab("changes")}
-                            className={cn(
-                              "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                              rightTab === "changes"
-                                ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                          >
-                            Changes
-                          </button>
-                          <button
-                            onClick={() => {
-                              setBrowserUsed(true);
-                              setRightTab("browser");
-                            }}
-                            className={cn(
-                              "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                              rightTab === "browser"
-                                ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                          >
-                            Browser
-                          </button>
-                          {!incognito && (
-                            <button
-                              onClick={() => setRightTab("tasks")}
-                              className={cn(
-                                "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                                rightTab === "tasks"
-                                  ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                                  : "text-muted-foreground hover:text-foreground",
-                              )}
-                            >
-                              Tasks
-                              {taskBadge > 0 && (
-                                <span className="ml-1 text-green-text">
-                                  {taskBadge}
-                                </span>
-                              )}
-                            </button>
-                          )}
-                          <div className="flex-1" />
-                          <button
-                            type="button"
-                            onClick={() => setRightTab(null)}
-                            aria-label="Close panel"
-                            className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
-                          >
-                            <X className="size-4" />
-                          </button>
-                        </div>
-                        <div className="relative min-h-0 flex-1 overflow-auto">
-                          <div className={rightTab === "files" ? "" : "hidden"}>
-                            <FileTree
-                              onSelectFile={(p) => {
-                                useChatStore.getState().openViewer({
-                                  name: p.split(/[/\\]/).pop() || p,
-                                  path: p,
-                                  mediaType: "application/octet-stream",
-                                  kind: "file",
-                                  source: "file",
-                                });
-                              }}
-                            />
-                          </div>
-                          <div
-                            className={rightTab === "artifacts" ? "" : "hidden"}
-                          >
-                            <ArtifactsPanel />
-                          </div>
-                          {browserUsed && (
-                            <div
-                              className={cn(
-                                "absolute inset-0 overflow-hidden",
-                                rightTab === "browser"
-                                  ? ""
-                                  : "pointer-events-none -translate-x-[200%]",
-                              )}
-                            >
-                              <BrowserPanel />
-                            </div>
-                          )}
-                          {rightTab === "changes" && <ChangesPanel />}
-                          {rightTab === "tasks" && (
-                            <BackgroundTasksPanel
-                              onOpen={openBackgroundTask}
-                              currentSessionId={currentSessionId}
-                            />
-                          )}
-                        </div>
+                        <DockArea
+                          space={appMode}
+                          currentSessionId={currentSessionId}
+                          openBackgroundTask={openBackgroundTask}
+                          sandboxRunner={sandboxRunner}
+                        />
                       </Panel>
                     </ResizablePanel>
                   </>

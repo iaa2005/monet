@@ -1,0 +1,81 @@
+/*
+ * Dockview, dressed as the app.
+ *
+ * The library ships whole themes; this class only overrides the variables
+ * that show, mapped onto the app's own tokens — so a theme change (or a
+ * future rebrand) lands here for free. Applied on top of dockview-theme-light
+ * / -dark, which supply the long tail of variables nobody sees.
+ */
+
+.monet-dock {
+  --dv-group-view-background-color: var(--card);
+  --dv-tabs-and-actions-container-background-color: transparent;
+  --dv-tabs-and-actions-container-height: 32px;
+  --dv-tabs-and-actions-container-font-size: 12px;
+
+  --dv-activegroup-visiblepanel-tab-background-color: var(--accent);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--muted);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-activegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--muted-foreground);
+
+  --dv-tab-divider-color: transparent;
+  --dv-separator-border: var(--border);
+  --dv-paneview-header-border-color: var(--border);
+
+  --dv-tab-border-radius: 8px;
+  --dv-tab-margin: 3px 0 3px 3px;
+  --dv-border-radius: 10px;
+
+  --dv-drag-over-background-color: hsl(var(--link) / 0.10);
+  --dv-drag-over-border-color: hsl(var(--link) / 0.45);
+  --dv-icon-hover-background-color: var(--hover, rgb(0 0 0 / 0.06));
+
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: hsl(var(--link) / 0.35);
+
+  --dv-floating-box-shadow: 0 12px 40px rgb(0 0 0 / 0.22), 0 2px 10px rgb(0 0 0 / 0.14);
+  --dv-floating-border: 1px solid var(--border);
+  --dv-floating-group-border: 1px solid var(--border);
+  --dv-floating-titlebar-height: 26px;
+  --dv-floating-titlebar-background-color: var(--muted);
+
+  --dv-paneview-active-outline-color: hsl(var(--link));
+  --dv-tabs-container-scrollbar-color: var(--border);
+}
+
+/* The group body sits on the card surface with the app's radius. */
+.monet-dock .dv-groupview {
+  border-radius: 10px;
+}
+
+/* Floating windows read as the app's cards, not VS Code's. */
+.monet-dock .dv-resize-container {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Tab strip gets the same hairline the app's panel headers use. */
+.monet-dock .dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--border);
+}
+
+/* Tabs: pill-shaped, quiet until active — the app's tab grammar. */
+.monet-dock .dv-tab {
+  border-radius: 8px;
+  transition: background-color 0.12s ease;
+}
+.monet-dock .dv-tab:hover {
+  background-color: rgb(0 0 0 / 0.04);
+}
+.dark .monet-dock .dv-tab:hover {
+  background-color: rgb(255 255 255 / 0.06);
+}
+
+/* The close × only when the tab is hovered or active — less noise. */
+.monet-dock .dv-tab:not(:hover):not(.dv-active-tab) .dv-default-tab-action {
+  visibility: hidden;
+}
