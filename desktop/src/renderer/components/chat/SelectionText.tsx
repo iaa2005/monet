@@ -11,8 +11,8 @@
  */
 
 import { Fragment } from "react";
-import { MousePointerClick } from "lucide-react";
-import { chipColors } from "@shared/selection-tones";
+import { SquareMousePointer } from "lucide-react";
+import { chipColors, toneForLabel } from "@shared/selection-tones";
 import {
   REF_TOKEN,
   splitSelections,
@@ -52,13 +52,6 @@ export function SelectionText({
     return at < 0 ? undefined : queue.splice(at, 1)[0];
   };
 
-  /** Same hash the composer uses, so a chip keeps its colour after a reload. */
-  const toneOf = (label: string): number => {
-    let h = 0;
-    for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) | 0;
-    return Math.abs(h);
-  };
-
   const parts: React.ReactNode[] = [];
   let last = 0;
   // matchAll needs a fresh index — REF_TOKEN is a module-level global regex.
@@ -68,18 +61,14 @@ export function SelectionText({
     if (at > last) parts.push(text.slice(last, at));
     const label = m[1] ?? "";
     const hit = byLabel(label);
-    const c = chipColors(toneOf(label), dark);
+    const c = chipColors(toneForLabel(label), dark);
     const thumb = hit?.crop?.dataUrl;
     parts.push(
       <span
         key={`${at}-${label}`}
         title={hit ? tooltipFor(hit.ref) : label}
-        style={{
-          color: c.fg,
-          background: c.bg,
-          boxShadow: `inset 0 0 0 1px ${c.ring}`,
-        }}
-        className="mx-0.5 inline-flex items-center gap-1 rounded-[5px] py-px pl-1 pr-1.5 align-baseline font-medium"
+        style={{ color: c.fg, background: c.bg }}
+        className="mx-0.5 inline-flex items-center gap-1 rounded-full py-px pl-1.5 pr-2 align-baseline font-medium"
       >
         {/* The crop lives ON the chip: the browser tool made it, so it is part
             of the reference rather than a file anyone chose to attach. */}
@@ -90,7 +79,7 @@ export function SelectionText({
             className="size-4 shrink-0 rounded-[3px] object-cover"
           />
         ) : (
-          <MousePointerClick className="size-3 shrink-0 opacity-80" />
+          <SquareMousePointer className="size-3 shrink-0" />
         )}
         {label}
       </span>,

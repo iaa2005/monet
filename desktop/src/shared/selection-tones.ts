@@ -68,3 +68,17 @@ export function boxColors(index: number): BoxColors {
     label: `hsl(${h} 90% 45%)`,
   };
 }
+
+/**
+ * The tone an element gets when only its NAME is known.
+ *
+ * A selection carries its tone, but text does not: a draft restored from
+ * storage, or a message re-read after a reload, has the label and nothing else.
+ * Hashing keeps a given element the same colour across those, instead of
+ * reshuffling every chip in the message.
+ */
+export function toneForLabel(label: string): number {
+  let h = 0;
+  for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}

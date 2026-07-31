@@ -24,7 +24,7 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
-import { chipColors } from "@shared/selection-tones";
+import { chipColors, toneForLabel } from "@shared/selection-tones";
 import { refToken, tokenize } from "@/lib/selection-marks";
 import { useIsDark } from "./highlight";
 
@@ -51,11 +51,18 @@ interface TokenInputProps {
 
 const CHIP_ATTR = "data-monet-chip";
 
-/** The little cursor-in-a-box, drawn inline so the chip needs no image. */
+/**
+ * lucide's square-mouse-pointer, inline.
+ *
+ * Written out rather than imported: this chip is built with createElement, not
+ * JSX, because the input hands raw nodes to the browser. Same two paths as the
+ * React component the transcript uses, so both ends show one icon.
+ */
 const ICON =
-  '<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" ' +
-  'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none">' +
-  '<path d="M2.5 2.5h11v11h-4"/><path d="m5 6 5 7 1-3 3-1z"/></svg>';
+  '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none">' +
+  '<path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/>' +
+  '<path d="m12 12 4 10 1.7-4.3L22 16Z"/></svg>';
 
 function chipNode(label: string, tone: number, dark: boolean): HTMLElement {
   const c = chipColors(tone, dark);
@@ -69,17 +76,16 @@ function chipNode(label: string, tone: number, dark: boolean): HTMLElement {
   el.style.cssText = [
     "display:inline-flex",
     "align-items:center",
-    "gap:3px",
+    "gap:4px",
     "vertical-align:baseline",
     "margin:0 1px",
-    "padding:0 5px",
-    "border-radius:5px",
+    "padding:1px 7px 1px 6px",
+    "border-radius:999px",
     "font-weight:600",
     "white-space:nowrap",
     "user-select:none",
     `color:${c.fg}`,
     `background:${c.bg}`,
-    `box-shadow:inset 0 0 0 1px ${c.ring}`,
   ].join(";");
   el.innerHTML = ICON;
   el.appendChild(document.createTextNode(label));
@@ -119,7 +125,7 @@ function render(root: HTMLElement, text: string, dark: boolean): void {
   root.textContent = "";
   for (const piece of tokenize(text)) {
     if (piece.type === "chip") {
-      root.appendChild(chipNode(piece.label, chipToneOf(piece.label), dark));
+      root.appendChild(chipNode(piece.label, toneForLabel(piece.label), dark));
       continue;
     }
     const lines = piece.value.split("\n");
@@ -128,19 +134,6 @@ function render(root: HTMLElement, text: string, dark: boolean): void {
       if (line) root.appendChild(document.createTextNode(line));
     });
   }
-}
-
-/**
- * Which colour a label gets when the text is re-rendered from a string.
- *
- * The tone travels with the selection, not with the text, so a draft restored
- * from storage has only the label to go on. Hashing it keeps a given element
- * the same colour across a reload instead of reshuffling the whole message.
- */
-function chipToneOf(label: string): number {
-  let h = 0;
-  for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) | 0;
-  return Math.abs(h);
 }
 
 export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
@@ -172,7 +165,6 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
         const c = chipColors(Number(el.dataset.tone ?? 0), dark);
         el.style.color = c.fg;
         el.style.background = c.bg;
-        el.style.boxShadow = `inset 0 0 0 1px ${c.ring}`;
       }
     }, [dark]);
 
@@ -227,7 +219,7 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
           for (const piece of tokenize(text)) {
             if (piece.type === "chip") {
               frag.appendChild(
-                chipNode(piece.label, chipToneOf(piece.label), dark),
+                chipNode(piece.label, toneForLabel(piece.label), dark),
               );
             } else {
               piece.value.split("\n").forEach((line, i) => {

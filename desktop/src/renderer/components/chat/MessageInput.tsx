@@ -31,6 +31,7 @@ import type { Modality } from "@/stores/providerStore";
 import { StagedFileTile } from "@/components/FileCard";
 import { GoalStrip } from "./GoalStrip";
 import { usedRefs } from "@/lib/selection-marks";
+import { toneForLabel } from "@shared/selection-tones";
 import { TokenInput, type TokenInputHandle } from "./TokenInput";
 import {
   DropdownMenu,
@@ -550,7 +551,7 @@ export function MessageInput({
     const sid = useChatStore.getState().currentSessionId;
     const text = input.trim();
     if (!sid || !text) return;
-    setInput("");
+    applyText("");
     const r = await api()?.chat.inject(sid, text);
     if (!r?.ok) useChatStore.getState().enqueueMessage(sid, text);
   };
@@ -578,7 +579,9 @@ export function MessageInput({
       // Restored by a rewind: its ⟨token⟩ came back with the sentence, so
       // inserting again would double it.
       if (c.pretokenised) continue;
-      taRef.current?.insertChip(c.label, c.tone ?? 0);
+      // The tone comes with the selection; falling back to the label's hash
+      // means chips still differ if it ever arrives without one.
+      taRef.current?.insertChip(c.label, c.tone ?? toneForLabel(c.label));
     }
   }, [pendingContext]);
 
@@ -703,7 +706,7 @@ export function MessageInput({
     // Intercept app-level slash commands before anything reaches the model.
     const local = /^\/(compact|clear|rename)(?:\s+([\s\S]*))?$/.exec(text);
     if (local) {
-      setInput("");
+      applyText("");
       void runLocalCommand(local[1], local[2]?.trim() ?? "");
       return;
     }
@@ -776,7 +779,7 @@ export function MessageInput({
     tokenised.current.clear();
 
     const staged = [...files, ...cropFiles];
-    setInput("");
+    applyText("");
     setFiles([]);
 
     const bridge = api();
@@ -1086,7 +1089,7 @@ export function MessageInput({
                     const text = input.trim();
                     if (sid && text) {
                       useChatStore.getState().enqueueMessage(sid, text);
-                      setInput("");
+                      applyText("");
                     }
                   } else {
                     send();
@@ -1137,7 +1140,7 @@ export function MessageInput({
                     const text = input.trim();
                     if (!sid || !text) return;
                     useChatStore.getState().enqueueMessage(sid, text);
-                    setInput("");
+                    applyText("");
                   }}
                   disabled={!input.trim()}
                   title="Queue message (send after generation)"
