@@ -428,8 +428,10 @@ const OVERLAY_SCRIPT = `
     if (drag) {
       var d = drag; drag = null;
       if (d.moved) {
+        // Viewport coordinates, not document ones: the frame this annotates is
+        // a capture of the viewport, so that is the space it must be cut in.
         var region = {
-          x: Math.min(d.x0, d.x1) + scrollX, y: Math.min(d.y0, d.y1) + scrollY,
+          x: Math.min(d.x0, d.x1), y: Math.min(d.y0, d.y1),
           w: Math.abs(d.x1 - d.x0), h: Math.abs(d.y1 - d.y0)
         };
         send({ type: 'selection', target: 'composer', data: payload({ region: region }) });

@@ -76,7 +76,14 @@ export interface BrowserTransport {
   /** A named key: Enter, Tab, Backspace, Escape, ArrowDown… */
   pressKey(key: string): Promise<void>;
 
-  screenshot(clip?: Rect): Promise<Buffer>;
+  /**
+   * A PNG of the page, or of one region of it.
+   *
+   * `rect` is VIEWPORT-relative, in CSS pixels — the space getBoundingClientRect
+   * speaks, so a caller never has to think about scroll or device pixels. The
+   * returned image is at the display's scale.
+   */
+  screenshot(rect?: Rect): Promise<Buffer>;
 }
 
 // ─── Embedded: the panel's own <webview> ──────────────────────────────────
@@ -270,21 +277,34 @@ class EmbeddedTransport implements BrowserTransport {
     }
   }
 
-  async screenshot(clip?: Rect): Promise<Buffer> {
-    // A parked guest cannot be captured at ALL — measured: the command never
-    // answers, with or without fromSurface. So show the page first.
+  /**
+   * capturePage, NOT CDP.
+   *
+   * `Page.captureScreenshot` with `fromSurface: false` returns the pixels of
+   * the WINDOW starting at the window's own origin — for a guest sitting in a
+   * side panel that is the surrounding app, not the page. Measured, after it
+   * shipped: scripts/capture-target-probe.cjs. `fromSurface: true` is correct
+   * but capturePage is Electron's own per-WebContents call, it cannot resolve
+   * to the wrong contents, and it crops for us.
+   *
+   * A parked guest still cannot be captured at all, so reveal first.
+   */
+  async screenshot(rect?: Rect): Promise<Buffer> {
     await this.reveal();
-    const params: Record<string, unknown> = {
-      format: "png",
-      fromSurface: false,
-      captureBeyondViewport: false,
-    };
-    if (clip) params.clip = { ...clip, scale: 1 };
-    const res = (await this.send("Page.captureScreenshot", params)) as {
-      data?: string;
-    };
-    if (!res.data) throw new Error("Screenshot failed");
-    return Buffer.from(res.data, "base64");
+    const img = rect
+      ? await this.wc.capturePage({
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.max(1, Math.round(rect.width)),
+          height: Math.max(1, Math.round(rect.height)),
+        })
+      : await this.wc.capturePage();
+    const png = img.toPNG();
+    if (png.length === 0)
+      throw new Error(
+        "The page produced an empty frame — is the Browser panel visible?",
+      );
+    return png;
   }
 }
 

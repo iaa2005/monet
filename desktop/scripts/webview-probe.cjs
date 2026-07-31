@@ -8,10 +8,13 @@
  * this file was written to check turned out to be WRONG, which is the reason
  * it exists:
  *
- *   - A guest parked OFF-SCREEN cannot be captured. Not "returns a blank
- *     image" — `Page.captureScreenshot` never answers at all, with or without
- *     fromSurface. Hence reveal() before anything visual, and a deadline on
- *     every CDP command in the embedded transport.
+ *   - A guest parked OFF-SCREEN cannot be captured. CDP's
+ *     Page.captureScreenshot never answers at all; capturePage returns an
+ *     empty image. Hence reveal() before anything visual, a deadline on every
+ *     CDP command, and an explicit error on an empty frame rather than a
+ *     zero-byte PNG travelling on as if it were a picture.
+ *     (WHOSE pixels a capture returns is a separate question, and a separate
+ *     probe: capture-target-probe.cjs.)
  *   - A wheel event with no pointer over the page scrolls nothing, and a
  *     parked guest scrolls unreliably even with one. So pageScrollWheel moves
  *     the mouse first, and reveals.
@@ -223,22 +226,24 @@ app.whenReady().then(async () => {
   );
 
   // ── 4. Capturing ────────────────────────────────────────────────────
+  //
+  // capturePage, not CDP: whose pixels each route returns is settled in
+  // capture-target-probe.cjs, and the answer for `fromSurface: false` is "the
+  // app's". This probe only asks whether a capture happens at all.
   const capture = async (label, hard) => {
-    const shot = await cmd(guest, "Page.captureScreenshot", {
-      format: "png",
-      fromSurface: false,
-      captureBeyondViewport: false,
-    });
-    if (!ok(shot)) {
-      if (hard) check(`capture ${label}`, false, why(shot));
-      else note(`capture ${label}`, why(shot));
-      return;
+    let out;
+    try {
+      const img = await Promise.race([
+        guest.capturePage(),
+        sleep(6000).then(() => null),
+      ]);
+      out = img === null ? "timed out" : img.toPNG();
+    } catch (err) {
+      out = String(err);
     }
-    const png = Buffer.from(shot.data ?? "", "base64");
-    const distinct = new Set(png.subarray(8, Math.min(png.length, 20000))).size;
-    const detail = `${png.length} bytes, ${distinct} distinct`;
-    const good = png.subarray(1, 4).toString("ascii") === "PNG" && distinct > 16;
-    if (hard) check(`capture ${label}: a real, non-blank PNG`, good, detail);
+    const good = Buffer.isBuffer(out) && out.length > 1000;
+    const detail = Buffer.isBuffer(out) ? `${out.length} bytes` : out;
+    if (hard) check(`capture ${label}`, good, detail);
     else note(`capture ${label}`, detail);
   };
 

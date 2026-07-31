@@ -576,21 +576,21 @@ export const BrowserScreenshotTool = buildTool({
     const sessionId =
       (context as { sessionId?: string }).sessionId || "default";
     try {
-      let clip: { x: number; y: number; width: number; height: number } | undefined;
+      let region: { x: number; y: number; width: number; height: number } | undefined;
       if (ref) {
         const rect = await refRect(ref);
         if (!rect) return stale(ref);
-        // A little padding: an element cropped to its own box loses the
-        // spacing and neighbours that usually make it worth looking at.
+        // Viewport-relative, which is what the transport takes — refRect has
+        // just scrolled the element into view, so it is on screen.
         const pad = 16;
-        clip = {
+        region = {
           x: Math.max(0, rect.x - pad),
           y: Math.max(0, rect.y - pad),
           width: rect.w + pad * 2,
           height: rect.h + pad * 2,
         };
       }
-      const bytes = await pageScreenshot(clip);
+      const bytes = await pageScreenshot(region);
       const name = `browser-${Date.now()}.png`;
       const path = saveArtifactBuffer(sessionId, name, bytes);
       const info = await pageInfo();

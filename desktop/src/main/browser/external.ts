@@ -319,14 +319,37 @@ class ExternalTransport implements BrowserTransport {
     await this.send("Input.dispatchKeyEvent", { ...base, type: "keyUp" });
   }
 
-  async screenshot(clip?: Rect): Promise<Buffer> {
+  async screenshot(rect?: Rect): Promise<Buffer> {
     const params: Record<string, unknown> = { format: "png" };
-    if (clip) params.clip = { ...clip, scale: 1 };
+    if (rect) {
+      // CDP clips in DOCUMENT coordinates; every caller speaks viewport, so
+      // the scroll offset is added here rather than in each of them.
+      const scroll = await this.scrollOffset();
+      params.clip = {
+        x: rect.x + scroll.x,
+        y: rect.y + scroll.y,
+        width: rect.width,
+        height: rect.height,
+        scale: 1,
+      };
+    }
     const res = (await this.send("Page.captureScreenshot", params)) as {
       data?: string;
     };
     if (!res.data) throw new Error("Screenshot failed");
     return Buffer.from(res.data, "base64");
+  }
+
+  private async scrollOffset(): Promise<{ x: number; y: number }> {
+    try {
+      const r = (await this.send("Runtime.evaluate", {
+        expression: "JSON.stringify({x: scrollX, y: scrollY})",
+        returnByValue: true,
+      })) as { result?: { value?: string } };
+      return JSON.parse(r.result?.value ?? "{}") as { x: number; y: number };
+    } catch {
+      return { x: 0, y: 0 };
+    }
   }
 }
 

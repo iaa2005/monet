@@ -87,32 +87,56 @@ async function candidateFiles(el: RawElement, max = 3): Promise<string[]> {
   return [];
 }
 
-/** Crop a PNG to a document-relative rect, with a little breathing room. */
-function crop(
-  png: Buffer,
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A viewport-relative box with padding, kept inside the viewport. */
+function padded(
   rect: { x: number; y: number; w: number; h: number },
-  scrollOffset: { x: number; y: number },
-  dpr: number,
+  viewport: { w: number; h: number },
   pad = 16,
-): string | undefined {
+): Box {
+  // An element cropped to its own edges loses the spacing and the neighbours
+  // that usually make it worth pointing at.
+  const x = Math.max(0, rect.x - pad);
+  const y = Math.max(0, rect.y - pad);
+  return {
+    x,
+    y,
+    width: Math.max(1, Math.min(rect.w + pad * 2, viewport.w - x)),
+    height: Math.max(1, Math.min(rect.h + pad * 2, viewport.h - y)),
+  };
+}
+
+/**
+ * Cut a region out of a frame that was captured earlier.
+ *
+ * The scale is measured from the image rather than taken from
+ * devicePixelRatio: the two agree right up until they don't (a window dragged
+ * between monitors, a zoom level), and a wrong factor here crops a plausible
+ * picture of the wrong thing — the kind of error that looks like a feature
+ * working badly rather than a bug.
+ */
+function cropFrame(png: Buffer, box: Box, viewportWidth: number): string | undefined {
   try {
     const img = nativeImage.createFromBuffer(png);
     const size = img.getSize();
-    if (size.width === 0) return undefined;
-    // The capture is in device pixels; the page measures in CSS pixels.
-    const x = Math.round((rect.x - scrollOffset.x - pad) * dpr);
-    const y = Math.round((rect.y - scrollOffset.y - pad) * dpr);
-    const w = Math.round((rect.w + pad * 2) * dpr);
-    const h = Math.round((rect.h + pad * 2) * dpr);
-    const clamped = {
-      x: Math.max(0, Math.min(x, size.width - 1)),
-      y: Math.max(0, Math.min(y, size.height - 1)),
-      width: Math.max(1, Math.min(w, size.width)),
-      height: Math.max(1, Math.min(h, size.height)),
-    };
-    clamped.width = Math.min(clamped.width, size.width - clamped.x);
-    clamped.height = Math.min(clamped.height, size.height - clamped.y);
-    return img.crop(clamped).toDataURL();
+    if (size.width === 0 || viewportWidth === 0) return undefined;
+    const scale = size.width / viewportWidth;
+    const x = Math.max(0, Math.min(Math.round(box.x * scale), size.width - 1));
+    const y = Math.max(0, Math.min(Math.round(box.y * scale), size.height - 1));
+    return img
+      .crop({
+        x,
+        y,
+        width: Math.max(1, Math.min(Math.round(box.width * scale), size.width - x)),
+        height: Math.max(1, Math.min(Math.round(box.height * scale), size.height - y)),
+      })
+      .toDataURL();
   } catch {
     return undefined;
   }
@@ -126,7 +150,10 @@ export async function handleSelection(
   const payload = data as unknown as SelectionPayload;
   if (!payload?.elements) return;
 
-  const dpr = payload.viewport?.dpr || 1;
+  const viewport = {
+    w: payload.viewport?.w || 1280,
+    h: payload.viewport?.h || 800,
+  };
 
   // Candidates for the first few elements only: three ripgreps per element
   // adds up, and a selection of eight is about relationships anyway.
@@ -143,20 +170,24 @@ export async function handleSelection(
   // The picture: the marked region if there is one, else the first element.
   let imageDataUrl: string | undefined;
   const held = frozen.get(t.targetId);
-  const scrollOffset = scrollFrom(payload);
   try {
     if (payload.region) {
-      const png = held ?? (await t.screenshot());
-      imageDataUrl = crop(png, payload.region, scrollOffset, dpr, 0);
+      const box = {
+        x: payload.region.x,
+        y: payload.region.y,
+        width: payload.region.w,
+        height: payload.region.h,
+      };
+      // A region has a frame held from the moment the drag began — that is the
+      // state the user was annotating. Only fall back to a fresh capture if
+      // holding it failed.
+      imageDataUrl = held
+        ? cropFrame(held, box, viewport.w)
+        : `data:image/png;base64,${(await t.screenshot(box)).toString("base64")}`;
     } else if (payload.elements[0]) {
-      const first = payload.elements[0];
-      const png = await t.screenshot();
-      imageDataUrl = crop(
-        png,
-        first.pageRect ?? { ...first.rect },
-        first.pageRect ? scrollOffset : { x: 0, y: 0 },
-        dpr,
-      );
+      const box = padded(payload.elements[0].rect, viewport);
+      const png = await t.screenshot(box);
+      imageDataUrl = `data:image/png;base64,${png.toString("base64")}`;
     }
   } catch {
     /* a selection without a picture is still worth sending */
@@ -175,19 +206,6 @@ export async function handleSelection(
 
   for (const win of BrowserWindow.getAllWindows())
     win.webContents.send("browser:selection", selection);
-}
-
-/**
- * How far the page is scrolled, derived from an element's two rects.
- *
- * The page sends both viewport- and document-relative boxes, so the difference
- * IS the scroll offset — no extra round trip to ask for it, and no chance of
- * asking after the page has scrolled again.
- */
-function scrollFrom(payload: SelectionPayload): { x: number; y: number } {
-  const el = payload.elements[0];
-  if (!el?.pageRect) return { x: 0, y: 0 };
-  return { x: el.pageRect.x - el.rect.x, y: el.pageRect.y - el.rect.y };
 }
 
 /** Route one message from the page's overlay. */
