@@ -373,6 +373,11 @@ app.on("will-quit", () => {
   void import("./browser/chrome.js")
     .then((m) => m.shutdownBrowser())
     .catch(() => {});
+  // Dev servers the panel started. Nothing we spawned keeps a port after we
+  // are gone — otherwise the next launch cannot bind it and blames the user.
+  void import("./browser/servers.js")
+    .then((m) => m.stopAllServers())
+    .catch(() => {});
   // Shut down any language servers spawned by the LSP tool.
   void import("./agent/lsp/manager.js")
     .then((m) => m.stopAllLsp())

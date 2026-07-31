@@ -14,6 +14,7 @@
 import { getBrowserConfig } from "../browser/config.js";
 import { detectDevServers, type DevServer } from "../browser/dev-servers.js";
 import { listTabs } from "../browser/registry.js";
+import { readServers } from "../browser/servers.js";
 import { getWorkspacePath } from "../ipc/workspace.js";
 
 const REFRESH_MS = 60_000;
@@ -41,7 +42,8 @@ export function browserDirective(): string {
   const cfg = getBrowserConfig();
   if (!cfg.enabled) return "";
 
-  refreshIfStale(getWorkspacePath());
+  const workspace = getWorkspacePath();
+  refreshIfStale(workspace);
 
   const lines: string[] = [];
   const tabs = cfg.engine === "embedded" ? listTabs() : [];
@@ -66,6 +68,21 @@ export function browserDirective(): string {
     );
     for (const s of cache.servers)
       lines.push(`  ${s.url}${s.title ? `  (${s.title})` : ""}`);
+  }
+
+  // What the project SAYS it has, whether or not it is up. A declared server
+  // that is down is worth naming: the answer is for the user to start it from
+  // the panel, not for the agent to invent its own copy on another port.
+  const declared = readServers(workspace);
+  const idle = declared.filter(
+    (d) => !cache.servers.some((s) => s.port === d.port),
+  );
+  if (idle.length > 0) {
+    lines.push(
+      "",
+      "Declared in this project but NOT running (the user starts these from the Browser panel):",
+    );
+    for (const d of idle) lines.push(`  ${d.name} — \`${d.command}\` on :${d.port}`);
   }
 
   return `<browser>\n${lines.join("\n")}\n</browser>`;

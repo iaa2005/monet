@@ -13,9 +13,10 @@ import type { UiConnectorService } from "../main/connectors/services/types.js";
 import type { BrowserConfig } from "../main/browser/config.js";
 import type { DevServer } from "../main/browser/dev-servers.js";
 import type { BrowserSelection } from "../main/browser/selection.js";
+import type { ServerConfig, ServerState } from "../main/browser/servers.js";
 import type { ChatMessage } from "./chat";
 
-export type { BrowserConfig, DevServer, BrowserSelection };
+export type { BrowserConfig, DevServer, BrowserSelection, ServerConfig, ServerState };
 export type {
   BrowserEngine,
   BrowserApproval,
@@ -854,6 +855,15 @@ export interface ElectronAPI {
     activateTab: (tabId: string) => Promise<void>;
     onOpenTab: (cb: (url: string) => void) => () => void;
     onReveal: (cb: () => void) => () => void;
+    servers: {
+      list: () => Promise<ServerState[]>;
+      save: (servers: ServerConfig[]) => Promise<void>;
+      start: (id: string) => Promise<void>;
+      stop: (id: string) => Promise<void>;
+      output: (id: string) => Promise<string>;
+      suggest: () => Promise<ServerConfig[]>;
+      onChanged: (cb: () => void) => () => void;
+    };
     setDesignMode: (on: boolean) => Promise<{ ok: boolean; error?: string }>;
     onSelection: (cb: (sel: BrowserSelection) => void) => () => void;
     onDesignMode: (cb: (on: boolean) => void) => () => void;

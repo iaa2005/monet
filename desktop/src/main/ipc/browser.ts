@@ -7,7 +7,7 @@
  * the external browser down.
  */
 
-import { ipcMain, session } from "electron";
+import { BrowserWindow, ipcMain, session } from "electron";
 import {
   getBrowserConfig,
   setBrowserConfig,
@@ -15,6 +15,20 @@ import {
 } from "../browser/config.js";
 import { partitionFor } from "../browser/session.js";
 import { detectDevServers, type DevServer } from "../browser/dev-servers.js";
+import {
+  readServers,
+  serverOutput,
+  serverStates,
+  startServer,
+  stopServer,
+  suggestFromPackage,
+  watchServers,
+  writeServers,
+  type ServerConfig,
+  type ServerState,
+} from "../browser/servers.js";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { resetVendorTools } from "../agent/vendor-tools.js";
 import { shutdownBrowser } from "../browser/chrome.js";
 import { disconnectCdp } from "../browser/page.js";
@@ -29,6 +43,13 @@ import { onInspectMessage } from "../browser/selection.js";
 import { getWorkspacePath } from "./workspace.js";
 
 export function registerBrowserIPC(): void {
+  // The panel redraws whenever a server changes state, rather than polling —
+  // "starting" turning into "running" is the moment you are waiting for.
+  watchServers(() => {
+    for (const win of BrowserWindow.getAllWindows())
+      win.webContents.send("browser:serversChanged");
+  });
+
   ipcMain.handle("browser:getConfig", (): BrowserConfig => getBrowserConfig());
   ipcMain.handle(
     "browser:setConfig",
@@ -85,6 +106,32 @@ export function registerBrowserIPC(): void {
   ipcMain.handle("browser:activateTab", (_e, tabId: string): void =>
     setActiveTab(tabId),
   );
+
+  // ── Declared dev servers ────────────────────────────────────────────
+  ipcMain.handle("servers:list", (): Promise<ServerState[]> =>
+    serverStates(getWorkspacePath()),
+  );
+  ipcMain.handle("servers:save", (_e, servers: ServerConfig[]): void =>
+    writeServers(getWorkspacePath(), servers),
+  );
+  ipcMain.handle("servers:start", (_e, id: string): void =>
+    startServer(getWorkspacePath(), id),
+  );
+  ipcMain.handle("servers:stop", (_e, id: string): void => stopServer(id));
+  ipcMain.handle("servers:output", (_e, id: string): string => serverOutput(id));
+  // What to offer when the list is empty: the project's own npm scripts, but
+  // only the ones that name a port — see suggestFromPackage.
+  ipcMain.handle("servers:suggest", (): ServerConfig[] => {
+    const workspace = getWorkspacePath();
+    if (readServers(workspace).length > 0) return [];
+    try {
+      return suggestFromPackage(
+        readFileSync(join(workspace, "package.json"), "utf-8"),
+      );
+    } catch {
+      return [];
+    }
+  });
 
   // Design mode. The overlay is injected through CDP rather than a webview
   // preload because it must run in the page's MAIN world — React's fibre is an

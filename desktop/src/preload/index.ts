@@ -16,6 +16,7 @@ import type { UiConnectorService } from "../main/connectors/services/types.js";
 import type { BrowserConfig } from "../main/browser/config.js";
 import type { DevServer } from "../main/browser/dev-servers.js";
 import type { BrowserSelection } from "../main/browser/selection.js";
+import type { ServerConfig, ServerState } from "../main/browser/servers.js";
 
 const electronAPI = {
   platform: process.platform,
@@ -736,6 +737,22 @@ const electronAPI = {
       const handler = (): void => cb();
       ipcRenderer.on("browser:reveal", handler);
       return () => ipcRenderer.off("browser:reveal", handler);
+    },
+    /** Dev servers declared in the workspace's .monet/servers.json. */
+    servers: {
+      list: (): Promise<ServerState[]> => ipcRenderer.invoke("servers:list"),
+      save: (servers: ServerConfig[]): Promise<void> =>
+        ipcRenderer.invoke("servers:save", servers),
+      start: (id: string): Promise<void> => ipcRenderer.invoke("servers:start", id),
+      stop: (id: string): Promise<void> => ipcRenderer.invoke("servers:stop", id),
+      output: (id: string): Promise<string> =>
+        ipcRenderer.invoke("servers:output", id),
+      suggest: (): Promise<ServerConfig[]> => ipcRenderer.invoke("servers:suggest"),
+      onChanged: (cb: () => void): (() => void) => {
+        const handler = (): void => cb();
+        ipcRenderer.on("browser:serversChanged", handler);
+        return () => ipcRenderer.off("browser:serversChanged", handler);
+      },
     },
     setDesignMode: (on: boolean): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("browser:setDesignMode", on),

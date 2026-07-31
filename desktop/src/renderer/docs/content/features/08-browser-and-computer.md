@@ -19,6 +19,39 @@ The expand button widens the panel when a page needs the room. Switching to
 another tab in the right panel does not reload anything — pages keep running,
 with their scroll position and their login.
 
+### Servers
+
+The **server** button in the toolbar lists the dev servers this project
+declares, with a play button each. Start one, stop it, click its name to open
+it — no remembering which port today's project uses.
+
+The list lives in the workspace at `.monet/servers.json`, so it belongs to the
+project rather than to your machine, and committing it hands the same buttons
+to everyone else on the repo:
+
+```json
+{
+  "servers": [
+    { "id": "web", "name": "lk-dev", "command": "npm run dev", "port": 3000 }
+  ]
+}
+```
+
+While the list is empty the menu offers your own npm scripts — but only the
+ones that pin a port, since a server it could start and then not open is worse
+than one it never offered.
+
+A green dot means the **port answers**, not that a process is alive: a dev
+server takes a few seconds to bind, and one that died on a syntax error leaves
+a perfectly healthy npm shell behind it. A server somebody else started shows
+as `external` and gets no stop button — the port is answering, but the process
+is not ours to kill. Anything the panel did start is stopped when the app
+quits, along with everything it spawned.
+
+The agent is told what is declared and whether it is up, so "check the page"
+turns into "your lk-dev server isn't running" rather than a second copy of it
+on the next free port.
+
 ### Links in the chat
 
 Clicking a link the agent wrote opens it here, in a new tab — so you can look

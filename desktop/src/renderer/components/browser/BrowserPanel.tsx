@@ -40,6 +40,7 @@ import { useChatStore } from "@/stores/chatStore";
 import type { BrowserPersist, ElectronAPI } from "@/types/electron";
 import { BrowserView } from "./BrowserView";
 import { BrowserEmptyState } from "./EmptyState";
+import { ServersMenu } from "./ServersMenu";
 import { useBrowserStore } from "./browser-store";
 import { normalizeUrl } from "./url-input";
 import { getView } from "./webview-registry";
@@ -256,6 +257,14 @@ export function BrowserPanel(): JSX.Element {
           placeholder="Type a URL"
           spellCheck={false}
           className="min-w-0 flex-1 rounded-md bg-black/[0.04] px-2.5 py-1 text-xs outline-none placeholder:text-muted-foreground focus:bg-black/[0.06] dark:bg-white/[0.06] dark:focus:bg-white/[0.09]"
+        />
+
+        <ServersMenu
+          onOpen={(url) => {
+            const view = getView(activeId);
+            if (view && active) void view.loadURL(url).catch(() => openTab(url));
+            else openTab(url);
+          }}
         />
 
         <button
