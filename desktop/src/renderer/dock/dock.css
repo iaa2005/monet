@@ -40,7 +40,7 @@
   --dv-paneview-header-border-color: var(--border);
 
   --dv-tab-border-radius: 6px;
-  --dv-tab-margin: 3px 0 3px 3px;
+  --dv-tab-margin: 0px 0 0px 0px;
   --dv-border-radius: 0px;
 
   --dv-drag-over-background-color: hsl(var(--link) / 0.10);
@@ -113,13 +113,13 @@
 
 /* Tab strip gets the same hairline the app's panel headers use. */
 .monet-dock .dv-tabs-and-actions-container {
-  /*border-bottom: 1px solid var(--border);*/
+  border-bottom: 1px solid var(--border);
   /*padding: 0 4px;*/
 }
 
 /* Tabs: pill-shaped, quiet until active — the app's tab grammar. */
 .monet-dock .dv-tab {
-  border-radius: 8px;
+  border-radius: 0px;
   transition: background-color 0.12s ease;
 }
 .monet-dock .dv-tab:hover {
@@ -131,7 +131,7 @@
 
 /* The close × only when the tab is hovered or active — less noise. */
 .monet-dock .dv-tab:not(:hover):not(.dv-active-tab) .dv-default-tab-action {
-  visibility: hidden;
+  /*visibility: hidden;*/
 }
 
 /* ── Monet background: the cards go glass ─────────────────────────────
