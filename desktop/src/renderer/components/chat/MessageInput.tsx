@@ -341,6 +341,13 @@ export function MessageInput({
   const startStreaming = useChatStore((s) => s.startStreaming);
   const setError = useChatStore((s) => s.setError);
 
+  // Cmd/Ctrl+L (lib/hotkeys.ts) — jump back to typing from anywhere.
+  useEffect(() => {
+    const focus = (): void => taRef.current?.focus();
+    window.addEventListener("monet:focus-composer", focus);
+    return () => window.removeEventListener("monet:focus-composer", focus);
+  }, []);
+
   // A Home suggestion chip (or anything else) can push text into the composer.
   useEffect(() => {
     if (composerDraft) {

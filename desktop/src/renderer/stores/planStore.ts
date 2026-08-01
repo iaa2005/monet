@@ -9,6 +9,7 @@
  */
 
 import { create } from "zustand";
+import { useDockStore } from "../dock/dock-store";
 import type { ElectronAPI, Plan } from "../types/electron";
 
 export interface PlanRequest {
@@ -82,6 +83,9 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       // The document behind the request is about to be rendered — have it.
       const sid = (req as PlanRequest).sessionId;
       if (sid) usePlanStore.getState().load(sid);
+      // A prepared plan opens its panel, like Cursor opening the .plan.md
+      // tab. openPanel queues the reveal if the dock is not up yet.
+      useDockStore.getState().openPanel("plan");
     });
   }
 }

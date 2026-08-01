@@ -22,6 +22,7 @@ import {
   PanelRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { comboLabel, isMac } from "@/lib/hotkeys";
 import { usePlanStore } from "@/stores/planStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useDockStore } from "@/dock/dock-store";
@@ -111,6 +112,27 @@ export function PlanDocCard({
 
   const openPanel = (): void => useDockStore.getState().openPanel("plan");
 
+  // Cmd/Ctrl+Enter while the verdict is pending. The same combo sends a
+  // composer message, so focus decides: in the card's note field it submits
+  // THAT intent (empty note → Build, note → keep planning with it); in any
+  // other input it stays the composer's key; anywhere else it Builds.
+  useEffect(() => {
+    if (!pending) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Enter" || !(isMac ? e.metaKey : e.ctrlKey)) return;
+      const t = e.target as HTMLElement | null;
+      const inNote = !!t?.closest("[data-plan-note]");
+      if (!inNote && t?.closest("textarea, input, [contenteditable=true]"))
+        return;
+      e.preventDefault();
+      const note = feedback.trim();
+      if (inNote && note) respond("keep-planning", note);
+      else respond("approve");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pending, respond, feedback]);
+
   return (
     <div className="my-2">
       <div className="mb-1.5 text-xs text-muted-foreground">Prepared plan</div>
@@ -194,6 +216,7 @@ export function PlanDocCard({
         {pending ? (
           <div className="border-t border-border px-4 py-3">
             <textarea
+              data-plan-note
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
               placeholder="Optional: what to change (sent if you keep planning)"
@@ -218,9 +241,10 @@ export function PlanDocCard({
               <button
                 type="button"
                 onClick={() => respond("approve")}
-                className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+                className="flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
               >
                 Build
+                <span className="text-xs opacity-70">{comboLabel("mod+enter")}</span>
               </button>
             </div>
           </div>

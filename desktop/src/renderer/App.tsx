@@ -51,6 +51,8 @@ import { FilterDropdown } from "@/components/FilterDropdown";
 import { SkillsPanel } from "@/components/SkillsPanel";
 import { createPortal } from "react-dom";
 import { useBrowserStore } from "@/components/browser/browser-store";
+import { comboLabel, useHotkeys, type HotkeyDef } from "@/lib/hotkeys";
+import { HotkeysHelp } from "@/components/HotkeysHelp";
 import { DockArea } from "@/dock/DockArea";
 import { useDockStore } from "@/dock/dock-store";
 import type { DockPanelId } from "@/dock/dock-layout";
@@ -208,6 +210,7 @@ export default function App(): JSX.Element {
     "general" | "sandbox" | "providers" | "automation" | "memory" | "connectors"
   >("general");
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [hotkeysOpen, setHotkeysOpen] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
   const [directoryOpen, setDirectoryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -318,21 +321,6 @@ export default function App(): JSX.Element {
     };
   }, []);
 
-  // Ctrl+Shift+D, the same shortcut Cursor uses, so the habit transfers.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (!(e.ctrlKey || e.metaKey) || !e.shiftKey) return;
-      if (e.key !== "D" && e.key !== "d") return;
-      e.preventDefault();
-      useDockStore.getState().openPanel("browser");
-      const store = useBrowserStore.getState();
-      const next = !store.designMode;
-      store.setDesignMode(next);
-      if (!next) void api()?.browser.setDesignMode(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   // The Browser panel's expand button maximizes its dock group — handled
   // entirely inside DockArea, which watches the same browser-store state.
@@ -513,17 +501,6 @@ export default function App(): JSX.Element {
       .catch(() => {});
   }, []);
 
-  // Ctrl+, opens settings (like the official app).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
-        e.preventDefault();
-        setSettingsOpen(true);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   const handleSelectSession = useCallback(
     (session: {
@@ -806,6 +783,101 @@ export default function App(): JSX.Element {
   const toggleDock = (id: DockPanelId): void =>
     useDockStore.getState().togglePanel(id);
 
+  // ── The keymap ─────────────────────────────────────────────────────
+  // One registry (lib/hotkeys.ts): every shortcut in the app lives here and
+  // the Ctrl+/ cheatsheet renders from the same array. Panel keys follow the
+  // Cursor/VS Code habits where a habit exists (Ctrl+` terminal, Ctrl+Shift+E
+  // explorer, Ctrl+Shift+G source control), mnemonics where none does.
+  const keymap: HotkeyDef[] = [
+    {
+      combo: "mod+b",
+      label: "Toggle sidebar",
+      section: "General",
+      action: () => setSidebarOpen((o) => !o),
+    },
+    {
+      combo: "mod+n",
+      label: "New chat",
+      section: "General",
+      action: () => void newSession(),
+    },
+    {
+      combo: "mod+l",
+      label: "Focus the composer",
+      section: "General",
+      action: () =>
+        window.dispatchEvent(new CustomEvent("monet:focus-composer")),
+    },
+    {
+      combo: "mod+,",
+      label: "Settings",
+      section: "General",
+      action: () => setSettingsOpen(true),
+    },
+    {
+      combo: "mod+/",
+      label: "Keyboard shortcuts",
+      section: "General",
+      action: () => setHotkeysOpen((o) => !o),
+    },
+    {
+      combo: "mod+shift+e",
+      label: "Files",
+      section: "Panels",
+      action: () => toggleDock("files"),
+    },
+    {
+      combo: "mod+shift+a",
+      label: "Artifacts",
+      section: "Panels",
+      action: () => toggleDock("artifacts"),
+    },
+    {
+      combo: "mod+shift+b",
+      label: "Browser",
+      section: "Panels",
+      action: () => toggleDock("browser"),
+    },
+    {
+      combo: "mod+shift+p",
+      label: "Plan",
+      section: "Panels",
+      action: () => toggleDock("plan"),
+    },
+    {
+      combo: "mod+shift+g",
+      label: "Changes",
+      section: "Panels",
+      action: () => toggleDock("changes"),
+    },
+    {
+      combo: "mod+shift+t",
+      label: "Background tasks",
+      section: "Panels",
+      action: () => toggleDock("tasks"),
+    },
+    {
+      combo: "mod+`",
+      label: "Terminal",
+      section: "Panels",
+      action: () => toggleDock("terminal"),
+    },
+    {
+      // The same shortcut Cursor uses, so the habit transfers.
+      combo: "mod+shift+d",
+      label: "Design mode (browser)",
+      section: "Browser",
+      action: () => {
+        useDockStore.getState().openPanel("browser");
+        const store = useBrowserStore.getState();
+        const next = !store.designMode;
+        store.setDesignMode(next);
+        if (!next) void api()?.browser.setDesignMode(false);
+      },
+    },
+  ];
+  useHotkeys(keymap);
+
   // Fork: copy the current conversation into a fresh saved session and switch
   // to it. The display messages are preserved; the next send seeds the agent
   // via chat:send's `seed` param.
@@ -1012,7 +1084,7 @@ export default function App(): JSX.Element {
       >
         {!incognito && (
           <IconBtn
-            title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+            title={`${sidebarOpen ? "Collapse" : "Expand"} sidebar — ${comboLabel("mod+b")}`}
             onClick={() => setSidebarOpen((o) => !o)}
           >
             <PanelLeft className="size-4" />
@@ -1073,7 +1145,7 @@ export default function App(): JSX.Element {
           {/* Files: both modes (Code = workspace, Home = sandbox tree — this is
               how you "dig around" the sandbox; no host terminal needed here). */}
           <IconBtn
-            title="Files"
+            title={`Files — ${comboLabel("mod+shift+e")}`}
             active={dockOpen.includes("files")}
             onClick={() => toggleDock("files")}
           >
@@ -1120,7 +1192,7 @@ export default function App(): JSX.Element {
           )}
           {/* Artifacts: files the model produced + files the user attached. */}
           <IconBtn
-            title="Artifacts"
+            title={`Artifacts — ${comboLabel("mod+shift+a")}`}
             active={dockOpen.includes("artifacts")}
             onClick={() => toggleDock("artifacts")}
           >
@@ -1129,11 +1201,20 @@ export default function App(): JSX.Element {
           {/* Browser: a real page beside the chat, so "check the app" doesn't
               mean alt-tabbing to another window the agent can't see. */}
           <IconBtn
-            title="Browser"
+            title={`Browser — ${comboLabel("mod+shift+b")}`}
             active={dockOpen.includes("browser")}
             onClick={() => toggleDock("browser")}
           >
             <Globe className="size-4" />
+          </IconBtn>
+          {/* Plan: the session's plan document — prepared in Plan mode,
+              built against afterwards. */}
+          <IconBtn
+            title={`Plan — ${comboLabel("mod+shift+p")}`}
+            active={dockOpen.includes("plan")}
+            onClick={() => toggleDock("plan")}
+          >
+            <ListTodo className="size-4" />
           </IconBtn>
           {/* Opens in the right panel beside Files and Artifacts, not as its own
               popover: all three answer "what is this chat doing / what came out
@@ -1143,7 +1224,7 @@ export default function App(): JSX.Element {
               title={
                 taskBadge
                   ? `Background tasks — ${taskBadge} running`
-                  : "Background tasks"
+                  : `Background tasks — ${comboLabel("mod+shift+t")}`
               }
               active={dockOpen.includes("tasks")}
               badge={taskBadge}
@@ -1519,6 +1600,12 @@ export default function App(): JSX.Element {
       {directoryOpen && (
         <DirectoryModal onClose={() => setDirectoryOpen(false)} />
       )}
+
+      <HotkeysHelp
+        open={hotkeysOpen}
+        onClose={() => setHotkeysOpen(false)}
+        hotkeys={keymap}
+      />
 
       <Modal
         open={aboutOpen}
