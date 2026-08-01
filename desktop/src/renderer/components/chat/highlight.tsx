@@ -12,6 +12,7 @@
  */
 
 import {
+  memo,
   useEffect,
   useMemo,
   useRef,
@@ -154,6 +155,73 @@ const MAX_HIGHLIGHT_CHARS = 120_000;
 const HL_CACHE = new Map<string, ReactNode[]>();
 const HL_CACHE_MAX = 40;
 
+/**
+ * Tokenizing is done in BLOCKS, not whole files.
+ *
+ * Virtualization bounded the DOM but not the work: opening a 1200-line HTML
+ * file tokenized all of it inside the render and blocked the main thread for
+ * 628ms, measured — the app visibly stopped responding, which is exactly what
+ * was reported. Markup is the worst case (~7x TypeScript per character, its
+ * grammar nests CSS and JS), so the file that freezes is not even a big one.
+ *
+ * A block is tokenized when it first comes into view and cached after that.
+ * The cost per block is a few milliseconds, and a construct that spans more
+ * than a block loses its context — bounded, and invisible next to a UI that
+ * stops answering.
+ */
+// 150 lines, measured on the worst grammar (markup): 33ms per block, under
+// the 50ms a dropped frame costs. 400 was 95ms — smooth enough to scroll, but
+// still a visible hitch when a file opens.
+const BLOCK_LINES = 150;
+const BLOCK_CACHE = new Map<string, ReactNode[]>();
+const BLOCK_CACHE_MAX = 120;
+
+function tokenizedBlock(text: string, language: string): ReactNode[] {
+  const key = `${language}\u0000${text}`;
+  const hit = BLOCK_CACHE.get(key);
+  if (hit) {
+    BLOCK_CACHE.delete(key);
+    BLOCK_CACHE.set(key, hit);
+    return hit;
+  }
+  const lines = highlightLines(text, language);
+  BLOCK_CACHE.set(key, lines);
+  if (BLOCK_CACHE.size > BLOCK_CACHE_MAX)
+    BLOCK_CACHE.delete(BLOCK_CACHE.keys().next().value as string);
+  return lines;
+}
+
+/**
+ * The tokenized lines for [start, end) — only the blocks that range touches.
+ * Exported for the probe: this is the function whose cost used to be the
+ * whole file.
+ */
+export function windowedLines(
+  plain: string[],
+  language: string,
+  rawStart: number,
+  rawEnd: number,
+): ReactNode[] {
+  // Clamped here, not just at the call site: an end past the last line used
+  // to emit one empty row per missing line (asked for [6, 99) of an 8-line
+  // file, got 93 rows). The window hook clamps too, so this never bit — but
+  // a helper that trusts its caller is a bug waiting for a second caller.
+  const start = Math.max(0, Math.min(rawStart, plain.length));
+  const end = Math.max(start, Math.min(rawEnd, plain.length));
+  const out: ReactNode[] = [];
+  const firstBlock = Math.floor(start / BLOCK_LINES);
+  const lastBlock = Math.floor(Math.max(start, end - 1) / BLOCK_LINES);
+  for (let b = firstBlock; b <= lastBlock; b++) {
+    const from = b * BLOCK_LINES;
+    const text = plain.slice(from, from + BLOCK_LINES).join("\n");
+    const tokenized = tokenizedBlock(text, language);
+    const lo = Math.max(start, from);
+    const hi = Math.min(end, from + BLOCK_LINES);
+    for (let i = lo; i < hi; i++) out.push(tokenized[i - from] ?? plain[i]);
+  }
+  return out;
+}
+
 function linesFor(code: string, language: string): ReactNode[] {
   // Small blocks tokenize in microseconds, and a streaming block re-arrives
   // grown on every flush — caching those would only churn the LRU out of the
@@ -187,7 +255,11 @@ function linesFor(code: string, language: string): ReactNode[] {
 // (A previous attempt used CSS content-visibility on wrapped lines — wrong
 // estimated heights sent Chromium into exactly that relayout loop, freezing
 // the app on multi-thousand-line files.)
-const VIRTUAL_THRESHOLD = 500;
+// 200 lines. The file that froze the app in the field was 324 lines of HTML
+// — under the old 500 threshold, so it rendered whole: 168ms to tokenize and
+// every row in the DOM, twice (mount, then a re-render). Markup is expensive
+// enough that "not a big file" is not a defence.
+const VIRTUAL_THRESHOLD = 200;
 const LINE_H = 20; // 12.5px × 1.6 line-height
 const PRE_PAD = 12; // 0.75rem pre padding
 const OVERSCAN = 25;
@@ -250,6 +322,42 @@ function useLineWindow(
   return win;
 }
 
+/**
+ * The rendered rows, memoized on the slice they were built from.
+ *
+ * Opening a 324-line HTML file blocked the main thread twice — 814ms and
+ * 743ms, measured — because mounting the viewer is followed by a re-render
+ * (the dock names the panel after the file) and every row was rebuilt. The
+ * slice is a useMemo, so its identity is exactly "the content changed".
+ */
+const CodeRows = memo(function CodeRows({
+  lines,
+  first,
+  showLineNumbers,
+  padTop,
+  padBottom,
+}: {
+  lines: ReactNode[];
+  first: number;
+  showLineNumbers: boolean;
+  padTop: number;
+  padBottom: number;
+}): JSX.Element {
+  return (
+    <code style={padTop || padBottom ? { paddingTop: padTop, paddingBottom: padBottom } : undefined}>
+      {lines.map((node, idx) => {
+        const i = first + idx;
+        return (
+          <span key={i} className="line" data-ln={i + 1}>
+            {showLineNumbers ? <span className="ln">{i + 1}</span> : null}
+            <span className="cl">{node}</span>
+          </span>
+        );
+      })}
+    </code>
+  );
+});
+
 export function HighlightedCode({
   code,
   language = "text",
@@ -261,14 +369,27 @@ export function HighlightedCode({
   showLineNumbers?: boolean;
   className?: string;
 }): JSX.Element {
-  const lines = useMemo(() => linesFor(code, language), [code, language]);
+  // Splitting into lines is cheap (a couple of ms for a 100 KB file) and it
+  // is all that is needed to know how tall the document is. TOKENIZING is the
+  // expensive half, and past the threshold it happens per visible block.
+  const plain = useMemo(() => code.split("\n"), [code]);
   const preRef = useRef<HTMLPreElement>(null);
-  const virtual = lines.length >= VIRTUAL_THRESHOLD;
-  const { start, end } = useLineWindow(preRef, lines.length, virtual);
+  const virtual = plain.length >= VIRTUAL_THRESHOLD;
+  const { start, end } = useLineWindow(preRef, plain.length, virtual);
+  const small = useMemo(
+    () => (virtual ? null : linesFor(code, language)),
+    [virtual, code, language],
+  );
+  const slice = useMemo(
+    () =>
+      virtual
+        ? windowedLines(plain, language, start, end)
+        : (small ?? plain),
+    [virtual, plain, language, start, end, small],
+  );
   // Numbers are rendered as text, not CSS counters: rows outside the window
   // do not exist, so a counter would restart at the window's edge.
-  const digits = String(lines.length).length;
-  const slice = virtual ? lines.slice(start, end) : lines;
+  const digits = String(plain.length).length;
   return (
     <pre
       ref={preRef}
@@ -287,26 +408,13 @@ export function HighlightedCode({
         ["--ln-digits" as string]: digits,
       }}
     >
-      <code
-        style={
-          virtual
-            ? {
-                paddingTop: start * LINE_H,
-                paddingBottom: (lines.length - end) * LINE_H,
-              }
-            : undefined
-        }
-      >
-        {slice.map((node, idx) => {
-          const i = virtual ? start + idx : idx;
-          return (
-            <span key={i} className="line" data-ln={i + 1}>
-              {showLineNumbers ? <span className="ln">{i + 1}</span> : null}
-              <span className="cl">{node}</span>
-            </span>
-          );
-        })}
-      </code>
+      <CodeRows
+        lines={slice}
+        first={virtual ? start : 0}
+        showLineNumbers={showLineNumbers}
+        padTop={virtual ? start * LINE_H : 0}
+        padBottom={virtual ? (plain.length - end) * LINE_H : 0}
+      />
     </pre>
   );
 }

@@ -82,6 +82,7 @@
     "smoke:lean": "node scripts/smoke-agent.mjs scripts/lean-measure-probe.ts",
     "smoke:purge": "node scripts/build-purge-probe.mjs && electron scripts/session-purge-probe.cjs",
     "smoke:caveman": "node scripts/smoke-agent.mjs scripts/caveman-probe.ts",
+    "smoke:viewerperf": "node scripts/renderer-probe.mjs scripts/viewer-perf-probe.ts",
     "smoke:podmanwedge": "node scripts/build-podman-probe.mjs && electron scripts/podman-wedge-probe.cjs",
     "smoke:plan": "node scripts/build-transfer-probe.mjs && electron scripts/plan-probe.cjs"
   },

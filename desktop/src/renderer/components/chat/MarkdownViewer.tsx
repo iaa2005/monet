@@ -4,7 +4,7 @@
  */
 
 import type React from "react";
-import { useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { CodeBlock } from "./CodeBlock";
 import { ArtifactThumb, viewArtifact } from "@/components/ArtifactsPanel";
 import { isWebLink, openLink, wantsExternal } from "@/lib/open-link";
+import { splitMarkdownChunks } from "@/lib/markdown-chunks";
 
 interface MarkdownViewerProps {
   content: string;
@@ -63,7 +64,41 @@ function stripAlertMarker(children: unknown): React.ReactNode {
   return strip(children) as React.ReactNode;
 }
 
-export function MarkdownViewer({
+/**
+ * Documents past this size render in pieces (markdown-chunks.ts): the first
+ * piece immediately, the rest as the browser goes idle. Measured before it:
+ * 137 KB of markdown blocked the main thread for 3.1 seconds, so opening a
+ * long .md froze the app outright.
+ */
+const PROGRESSIVE_THRESHOLD = 40_000;
+
+/**
+ * One rendered piece, memoized.
+ *
+ * Without this, appending piece N re-rendered pieces 1..N-1 as well: the
+ * blocking tasks GREW as the document filled in (90ms → 444ms, measured),
+ * which is worse than rendering it in one go. Each piece's content never
+ * changes once cut, so identity is the whole comparison.
+ */
+const MarkdownChunk = memo(function MarkdownChunk({
+  content,
+  components,
+}: {
+  content: string;
+  components: Record<string, unknown>;
+}): JSX.Element {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex]}
+      components={components as never}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+});
+
+function MarkdownViewerImpl({
   content: raw,
   className,
 }: MarkdownViewerProps): JSX.Element {
@@ -72,6 +107,36 @@ export function MarkdownViewer({
     const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(raw);
     return m ? { frontmatter: m[1].trimEnd(), body: m[2] } : { frontmatter: null, body: raw };
   }, [raw]);
+
+  // Big documents arrive in pieces; small ones stay exactly as they were.
+  const chunks = useMemo(
+    () =>
+      body.length > PROGRESSIVE_THRESHOLD
+        ? splitMarkdownChunks(body)
+        : [body],
+    [body],
+  );
+  const [shown, setShown] = useState(1);
+  useEffect(() => {
+    setShown(1);
+  }, [chunks]);
+  useEffect(() => {
+    if (shown >= chunks.length) return;
+    // One piece per idle slot: the user reads the top while the tail lands,
+    // and no single task is long enough to be felt.
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number;
+      cancelIdleCallback?: (h: number) => void;
+    };
+    if (w.requestIdleCallback) {
+      const h = w.requestIdleCallback(() => setShown((n) => n + 1), {
+        timeout: 200,
+      });
+      return () => w.cancelIdleCallback?.(h);
+    }
+    const t = setTimeout(() => setShown((n) => n + 1), 16);
+    return () => clearTimeout(t);
+  }, [shown, chunks.length]);
 
   const components = useMemo(() => ({
     p: ({ node: _n, ...p }: any) => <p className="my-2" {...p} />,
@@ -186,13 +251,29 @@ export function MarkdownViewer({
       {frontmatter && (
         <CodeBlock code={frontmatter} language="yaml" className="mb-3" />
       )}
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-        components={components}
-      >
-        {body}
-      </ReactMarkdown>
+      {chunks.length === 1 ? (
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeKatex]}
+          components={components}
+        >
+          {body}
+        </ReactMarkdown>
+      ) : (
+        chunks.slice(0, shown).map((chunk, i) => (
+          <MarkdownChunk key={i} content={chunk} components={components} />
+        ))
+      )}
     </div>
   );
 }
+
+/**
+ * Re-rendering a long document is as expensive as rendering it: measured at
+ * 1.7s every time anything in the parent changed, which in the file viewer is
+ * every mouse-up. The content is the only input that matters.
+ */
+export const MarkdownViewer = memo(
+  MarkdownViewerImpl,
+  (a, b) => a.content === b.content && a.className === b.className,
+);
