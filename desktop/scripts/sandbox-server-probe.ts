@@ -19,6 +19,7 @@
  */
 
 import { serveArgs, staticServeCommand } from "../src/main/sandbox/podman-server";
+import { TRANSIENT_MACHINE_ERROR } from "../src/main/sandbox/podman-engine";
 import { spaceAllows } from "../src/main/agent/space-tools";
 
 let failures = 0;
@@ -95,6 +96,33 @@ const argv = args.join(" ");
   // hand it out either.
   check("Home's list does not include DevServer", !spaceAllows("DevServer", "home"));
   check("Code keeps DevServer", spaceAllows("DevServer", "code"));
+}
+
+// ── 5. A busy machine is not a broken one ─────────────────────────────
+//
+// Podman rewrites its machine JSON as it works; a `machine list` landing
+// mid-write says "unable to read machine config … .json". Reported raw, that
+// reads as corruption — a model diagnosed exactly that and told the user to
+// delete their machine, while Settings said "Podman is ready" the whole
+// time. These messages get a retry; a genuinely broken setup must not.
+{
+  const retried = [
+    String.raw`unable to read machine config C:\Users\x\.config\containers\podman\machine\wsl\podman-machine-default*.json`,
+    "Error: unexpected end of JSON input",
+    "The process cannot access the file because it is being used by another process.",
+    "Error: could not obtain lock on machine",
+  ];
+  for (const msg of retried)
+    check(`retried: ${msg.slice(0, 44)}…`, TRANSIENT_MACHINE_ERROR.test(msg));
+
+  const reported = [
+    "Error: no such machine podman-machine-default",
+    "Error: WSL is not installed on this system",
+    "Error: cannot connect to Podman socket",
+    "Error: image not known",
+  ];
+  for (const msg of reported)
+    check(`reported as-is: ${msg.slice(0, 40)}`, !TRANSIENT_MACHINE_ERROR.test(msg));
 }
 
 console.log(

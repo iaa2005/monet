@@ -439,6 +439,39 @@ async function ensurePodman(): Promise<PodmanReadyResult> {
   return result;
 }
 
+/**
+ * Machine status, retried through the transient failures.
+ *
+ * Podman rewrites its machine JSON while it works, and a `machine list` that
+ * lands mid-write reports "unable to read machine config … .json" — a real
+ * error message about a perfectly healthy machine. Reported raw it reads as
+ * corruption: a model diagnosed exactly that and told the user to delete
+ * their machine and rebuild it, while Settings still said "Podman is ready"
+ * (the socket was fine the whole time). Two short retries cost a second and
+ * turn that into nothing at all.
+ */
+export const TRANSIENT_MACHINE_ERROR =
+  /unable to read|unexpected end of json|invalid character|used by another process|resource busy|lock/i;
+
+async function machineList(): Promise<{
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  spawnError?: string;
+}> {
+  const once = (): ReturnType<typeof run> =>
+    run(["machine", "list", "--format", "{{.Name}}\t{{.Running}}"], {
+      timeoutMs: 30_000,
+    });
+  let last = await once();
+  for (let i = 0; i < 2 && last.code !== 0; i++) {
+    if (!TRANSIENT_MACHINE_ERROR.test(last.stderr || last.stdout || "")) break;
+    await new Promise((r) => setTimeout(r, 500));
+    last = await once();
+  }
+  return last;
+}
+
 async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise<PodmanReadyResult> {
   const probe = await run(["--version"], { timeoutMs: 15_000 });
   if (probe.spawnError || probe.code !== 0) {
@@ -451,10 +484,7 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
   }
 
   if (process.platform === "win32") {
-    const machines = await run(
-      ["machine", "list", "--format", "{{.Name}}\t{{.Running}}"],
-      { timeoutMs: 30_000 },
-    );
+    const machines = await machineList();
     if (machines.code !== 0) {
       return {
         ok: false,

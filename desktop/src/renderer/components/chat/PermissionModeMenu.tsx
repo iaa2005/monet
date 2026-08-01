@@ -86,8 +86,11 @@ export const PERMISSION_MODES: ModeDef[] = [
   },
 ];
 
-/** Home has no filesystem/shell — permissions collapse to two choices,
- * mirroring the official Claude Desktop wording. */
+/** Home has no filesystem/shell, so the approval choices collapse to two —
+ * plus Plan, which is about WHEN work starts rather than what it may touch.
+ * Home needs it as much as Code does: the model can put a chat into plan mode
+ * itself (EnterPlanMode), and without the entry here there was no way for the
+ * user to turn it back off. */
 export const HOME_MODES: ModeDef[] = [
   {
     id: "default",
@@ -95,6 +98,13 @@ export const HOME_MODES: ModeDef[] = [
     hint: "Code Monet pauses so you can approve each action.",
     icon: Hand,
     tone: "text-muted-foreground",
+  },
+  {
+    id: "plan",
+    label: "Plan mode",
+    hint: "Research first — nothing runs until you approve a plan.",
+    icon: ClipboardList,
+    tone: "text-link",
   },
   {
     id: "bypassPermissions",

@@ -33,6 +33,7 @@ import type { EffortLevel } from "../provider/types.js";
 import { requestPermissionFromRenderer } from "./permissions.js";
 import { askUserFromRenderer } from "./ask-user.js";
 import { askPlanApprovalFromRenderer } from "./plan.js";
+import { clearSessionMode } from "../agent/session-mode.js";
 import { tunablePrompt } from "../prompts/index.js";
 import { getWorkspacePath } from "./workspace.js";
 import type { LLMContentBlock } from "../llm/adapter.js";
@@ -442,6 +443,12 @@ export function registerChatIPC(): void {
       if (!sessionId || !VALID_MODES.has(mode)) return { ok: false };
       // Narrowed by VALID_MODES, which is the same set the union is built from.
       livePermissionMode.set(sessionId, mode as UiPermissionMode);
+      // A mode the user picked by hand ends any override the MODEL set
+      // (EnterPlanMode, or approving a plan). Without this, choosing the same
+      // value the override was recorded under — "Manually approve" while the
+      // model had switched the chat to plan — left plan mode on with no way
+      // to leave it.
+      clearSessionMode(sessionId);
       return { ok: true };
     },
   );
