@@ -17,6 +17,9 @@ export const HOME_TOOL_NAMES = new Set([
   "SandboxRead",
   "SandboxWrite",
   "SandboxEdit",
+  // Serving the chat's own folder over a loopback-only port, from inside the
+  // container — the isolated alternative to DevServer, which is Code's.
+  "ServeSandbox",
   // Looking at a picture the sandbox produced crosses no boundary — the path
   // is resolved inside this chat's own folder.
   "ReadMediaFile",

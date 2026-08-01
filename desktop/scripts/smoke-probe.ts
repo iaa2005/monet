@@ -10,6 +10,7 @@ import {
   executeVendorTool,
   getVendorApiTools,
   getVendorTools,
+  getVendorToolsForSpace,
 } from '../src/main/agent/vendor-tools.js'
 import { initVendorRuntime } from '../src/main/agent/vendor-context.js'
 import { getWorkspacePath } from '../src/main/ipc/workspace.js'
@@ -355,6 +356,51 @@ async function main() {
       effectiveMode(enterSid, 'acceptEdits') === 'acceptEdits',
     )
     clearSessionMode(enterSid)
+
+    // 4d3. Serving a page from Home. The real gate (isSpaceToolAllowed) is
+    // what decides, so it is asked here rather than through the space list:
+    // DevServer runs on the HOST in the Code workspace, and in a Home chat
+    // that meant serving the app's own project root to the network.
+    const { setSessionEngine, clearSessionEngine } = await import(
+      '../src/main/sandbox/config.js'
+    )
+    const serveSid = 'serve-gate'
+    const names = (space: string, sid: string): string[] =>
+      getVendorToolsForSpace(space, sid).map((t) => t.name)
+
+    clearSessionEngine(serveSid)
+    // In Code it depends only on the browser setting — which is what the
+    // gate said before Home was carved out of it, and must still say. The
+    // setting is turned ON for the check: with the browser off, DevServer is
+    // absent everywhere and "Home cannot reach it" would prove nothing.
+    const { getBrowserConfig, setBrowserConfig } = await import(
+      '../src/main/browser/config.js'
+    )
+    const browserWas = getBrowserConfig().enabled
+    setBrowserConfig({ enabled: true })
+    check(
+      'serve: with the browser ON, Code has DevServer',
+      names('code', serveSid).includes('DevServer'),
+    )
+    check(
+      'serve: and Home still cannot reach it',
+      !names('home', serveSid).includes('DevServer'),
+    )
+    setBrowserConfig({ enabled: browserWas })
+    check(
+      'serve: no sandbox server without the container engine',
+      !names('home', serveSid).includes('ServeSandbox'),
+    )
+    setSessionEngine(serveSid, 'docker')
+    check(
+      'serve: Podman Home gets ServeSandbox',
+      names('home', serveSid).includes('ServeSandbox'),
+    )
+    check(
+      'serve: and Code never does (it has a workspace)',
+      !names('code', serveSid).includes('ServeSandbox'),
+    )
+    clearSessionEngine(serveSid)
   }
 
   // 4e. Newly wired tools: Sleep (written here — the bundle ships only its

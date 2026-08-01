@@ -682,6 +682,33 @@ async function ensureImage(): Promise<{ ok: boolean; log: string; error?: string
   };
 }
 
+/** The image tag the sandbox runs — the preview server shares the image. */
+export { IMAGE_TAG };
+
+/**
+ * Build the image if needed. Exported for podman-server.ts, which starts a
+ * long-lived container from the same image the one-shot runs use.
+ */
+export async function ensureSandboxImage(): Promise<{
+  ok: boolean;
+  log: string;
+  error?: string;
+}> {
+  return ensureImage();
+}
+
+/**
+ * Raw `podman <args>` — for callers that manage their own container lifecycle
+ * (the preview server: run -d, logs, rm). The one-shot runners above wrap this
+ * with file snapshotting; this one hands back the process result untouched.
+ */
+export function podmanExec(
+  args: string[],
+  opts: { timeoutMs?: number } = {},
+): Promise<{ code: number | null; stdout: string; stderr: string; spawnError?: string }> {
+  return run(args, opts);
+}
+
 export async function runPodmanCommand(
   sessionId: string,
   command: string,

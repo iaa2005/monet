@@ -441,6 +441,11 @@ app.on("will-quit", () => {
   void import("./browser/servers.js")
     .then((m) => m.stopAllServers())
     .catch(() => {});
+  // Sandbox preview containers (ServeSandbox) — they hold a published port,
+  // so leaving one behind breaks the next chat that wants to serve.
+  void import("./sandbox/podman-server.js")
+    .then((m) => m.stopAllSandboxServers())
+    .catch(() => {});
   // Shut down any language servers spawned by the LSP tool.
   void import("./agent/lsp/manager.js")
     .then((m) => m.stopAllLsp())

@@ -90,6 +90,7 @@ import {
   BrowserTypeTool,
 } from "./browser-tools.js";
 import { DevServerTool } from "./dev-server-tool.js";
+import { ServeSandboxTool } from "./serve-sandbox-tool.js";
 import { getBrowserConfig } from "../browser/config.js";
 import { currentPageUrl } from "../browser/page.js";
 import { ComputerTool } from "./computer-tools.js";
@@ -267,6 +268,7 @@ const ALL_TOOLS = [
   BrowserResizeTool,
   BrowserTabsTool,
   DevServerTool,
+  ServeSandboxTool,
   ComputerTool,
   ...CONNECTOR_TOOLS,
   CreateRoutineTool,
@@ -334,6 +336,12 @@ export function isSpaceToolAllowed(
   space?: string,
   sessionId?: string,
 ): boolean {
+  // Serving the sandbox is Home's answer to "show me the page": it publishes
+  // the chat's own folder on loopback from inside the container, so it needs
+  // the Podman engine and belongs nowhere near Code (which has DevServer and
+  // a real workspace).
+  if (name === "ServeSandbox")
+    return space === "home" && getSessionEngine(sessionId ?? "default") === "docker";
   if (name === "RunPython" || name === "RunCommand") {
     if (space !== "home") return false;
     // Don't gate on live Podman readiness — the tools provision/repair Podman
@@ -374,6 +382,12 @@ export function isSpaceToolAllowed(
     return getToolSearchConfig().enabled && hasMcpServers();
   // LSP (opt-in) needs the real workspace + installed language servers; Code-only.
   if (name === "LSP") return space !== "home" && getLspConfig().enabled;
+  // DevServer runs a command on the HOST in the Code workspace — in Home
+  // there is no workspace and it served the app's own project root instead
+  // (published on every interface). Home serves its sandbox with
+  // ServeSandbox; this stays where a workspace exists.
+  if (name === "DevServer")
+    return space !== "home" && getBrowserConfig().enabled;
   if (BROWSER_TOOL_NAMES.has(name)) return getBrowserConfig().enabled;
   if (name === "Computer")
     return getComputerConfig().enabled && activeModelSeesImages();
