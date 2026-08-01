@@ -71,6 +71,16 @@ function Chip({
 
 /** The bits of a block worth showing on hover — not all forty lines of it. */
 function tooltipFor(ref: SelectionRef): string {
+  // Non-browser kinds carry their point in an attribute — show that.
+  if (ref.kind === "code" || ref.kind === "file") {
+    const path = /(?:file|path)="([^"]+)"/.exec(ref.raw)?.[1];
+    const lines = /lines="([^"]+)"/.exec(ref.raw)?.[1];
+    return (
+      [path, lines ? `lines ${lines}` : null].filter(Boolean).join(" — ") ||
+      ref.label
+    );
+  }
+  if (ref.kind === "chat") return `Chat: ${ref.label}`;
   const keep = ["selector:", "xpath:", "source:", "text:", "likely source files:"];
   const lines = ref.raw
     .split("\n")

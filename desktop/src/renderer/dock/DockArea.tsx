@@ -55,6 +55,8 @@ import { FileViewer } from "@/components/FileViewer";
 import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
 import { BrowserPanel } from "@/components/browser/BrowserPanel";
 import { useBrowserStore } from "@/components/browser/browser-store";
+import { useViewerStore } from "@/stores/viewerStore";
+import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import { isApplyingDesk, useDockStore } from "./dock-store";
 
@@ -139,26 +141,72 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
    * recoverable by simply opening something else.
    */
   viewer: function ViewerDockPanel() {
-    const viewer = useChatStore((s) => s.viewer);
-    const close = (): void => useChatStore.getState().openViewer(null);
-    if (!viewer)
+    const tabs = useViewerStore((s) => s.tabs);
+    const activeId = useViewerStore(s => s.activeId);
+    const active = tabs.find((t) => t.id === activeId) ?? tabs[0] ?? null;
+    if (!active)
       return (
         <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
           Open a file to preview it here.
         </div>
       );
+    const st = useViewerStore.getState();
+    const file = active.file;
     return (
-      <div className="h-full min-h-0 overflow-hidden">
-        <ViewerErrorBoundary
-          key={`viewer:${viewer.path ?? viewer.name}`}
-          onClose={close}
-        >
-          <FileViewer
-            path={viewer.source === "file" ? viewer.path : undefined}
-            item={viewer.source !== "file" ? viewer : undefined}
-            onClose={close}
-          />
-        </ViewerErrorBoundary>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        {/* The strip. Click an inactive tab to switch; click the ACTIVE
+            preview tab (or double-click any) to pin it — VS Code's idiom,
+            italic = preview. Middle click closes. */}
+        <div className="flex shrink-0 items-center overflow-x-auto border-b border-border">
+          {tabs.map((t) => (
+            <div
+              key={t.id}
+              role="tab"
+              aria-selected={t.id === active.id}
+              title={t.file.path ?? t.file.name}
+              onClick={() =>
+                t.id === active.id ? st.promote(t.id) : st.activate(t.id)
+              }
+              onDoubleClick={() => st.promote(t.id)}
+              onAuxClick={(e) => {
+                if (e.button === 1) st.close(t.id);
+              }}
+              className={cn(
+                "group/vtab flex max-w-48 cursor-pointer items-center gap-1.5 border-r border-border px-2.5 py-1.5 text-xs",
+                t.id === active.id
+                  ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
+                  : "text-muted-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
+              )}
+            >
+              <span className={cn("truncate", t.preview && "italic")}>
+                {t.file.name}
+              </span>
+              <button
+                type="button"
+                title="Close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  st.close(t.id);
+                }}
+                className="rounded-sm p-0.5 opacity-0 hover:bg-black/[0.08] group-hover/vtab:opacity-100 dark:hover:bg-white/[0.1]"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <ViewerErrorBoundary
+            key={`${active.id}:${file.path ?? file.name}`}
+            onClose={() => st.close(active.id)}
+          >
+            <FileViewer
+              path={file.source === "file" ? file.path : undefined}
+              item={file.source !== "file" ? file : undefined}
+              onClose={() => st.close(active.id)}
+            />
+          </ViewerErrorBoundary>
+        </div>
       </div>
     );
   },
@@ -431,17 +479,24 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
   // anywhere in the app raises the panel and names its tab; closing the
   // panel's tab clears the file. Without the second half the panel would
   // reopen the instant it was closed.
-  const viewer = useChatStore((s) => s.viewer);
+  const viewerTabs = useViewerStore((s) => s.tabs);
+  const viewerActive = useViewerStore((s) => s.activeId);
   const viewerOpen = useDockStore((s) => s.open.includes("viewer"));
   useEffect(() => {
     const dock = useDockStore.getState();
-    if (viewer) {
+    if (viewerTabs.length > 0) {
       dock.openPanel("viewer");
-      dock.setPanelTitle("viewer", viewer.name || "Viewer");
+      const active =
+        viewerTabs.find((t) => t.id === viewerActive) ?? viewerTabs[0];
+      const extra = viewerTabs.length - 1;
+      dock.setPanelTitle(
+        "viewer",
+        extra > 0 ? `${active.file.name} +${extra}` : active.file.name,
+      );
     } else if (viewerOpen) {
       dock.closePanel("viewer");
     }
-  }, [viewer, viewerOpen]);
+  }, [viewerTabs, viewerActive, viewerOpen]);
 
   const onReady = useMemo(
     () =>

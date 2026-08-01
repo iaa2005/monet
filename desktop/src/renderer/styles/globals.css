@@ -226,6 +226,14 @@
     * {
         border-color: var(--border);
     }
+    /* Text selection carries the brand — a translucent wash keeps token
+       colors readable through it (Cursor does the same). */
+    ::selection {
+        background: hsl(var(--brand) / 0.28);
+    }
+    .dark ::selection {
+        background: hsl(var(--brand) / 0.35);
+    }
     html,
     body,
     #root {

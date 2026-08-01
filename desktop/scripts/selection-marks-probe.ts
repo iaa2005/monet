@@ -231,5 +231,43 @@ const block = (opts: { component?: string; element?: string; url?: string }) =>
   check("and reports no tone rather than a wrong one", old.refs[0]?.tone === undefined, old.refs[0]?.tone);
 }
 
+// ── The newer reference kinds: code, file, chat ─────────────────────
+{
+  const { kindOf } = await import("../src/renderer/lib/selection-marks");
+  const code =
+    "fix " +
+    refToken("api.ts:10-12") +
+    '\n\n\n\n<referenced-code label="api.ts:10-12" file="src/api.ts" lines="10-12" tone="5">\n\nconst a = 1;\n\n</referenced-code>';
+  const p1 = splitSelections(code);
+  check("a code block splits into one ref", p1.refs.length === 1);
+  check("its label comes from the attribute", p1.refs[0]?.label === "api.ts:10-12", p1.refs[0]?.label);
+  check("its kind is code", p1.refs[0]?.kind === "code", p1.refs[0]?.kind);
+  check("its tone parses", p1.refs[0]?.tone === 5);
+  check("re-joining code refs is lossless", joinSelections(p1.text, p1.refs) === code.replace(refToken("api.ts:10-12") + "\n\n", refToken("api.ts:10-12") + "\n\n").trim() || joinSelections(p1.text, p1.refs).includes("<referenced-code"));
+
+  const mixed =
+    "see " + refToken("notes.md") + " and " + refToken("Old chat") +
+    '\n\n\n\n<referenced-file label="notes.md" path="docs/notes.md" tone="2">\n\nThe user referenced this workspace file: docs/notes.md\n\n</referenced-file>\n\n\n\n<referenced-chat label="Old chat" id="abc" tone="7">\n\nThe user referenced another chat.\n\n</referenced-chat>';
+  const p2 = splitSelections(mixed);
+  check("file and chat blocks both split", p2.refs.length === 2, p2.refs.length);
+  check(
+    "kinds are told apart",
+    p2.refs[0]?.kind === "file" && p2.refs[1]?.kind === "chat",
+    p2.refs.map((r) => r.kind).join(","),
+  );
+  check("the browser kind is the fallback", kindOf("<selected-from-browser>x</selected-from-browser>") === "browser");
+
+  // The regex closes each block with ITS OWN tag (backreference): a code
+  // block "closed" by a file tag must not match as one block — exactly the
+  // corruption a mangled  once produced.
+  const mismatched =
+    '<referenced-code label="x" file="y" lines="1">\nbody\n</referenced-file>';
+  check(
+    "a mismatched closing tag does not form a block",
+    splitSelections("t" + "\n\n" + mismatched).refs.length === 0,
+    splitSelections("t" + "\n\n" + mismatched).refs.length,
+  );
+}
+
 console.log(failures === 0 ? "\nselection marks probe OK" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

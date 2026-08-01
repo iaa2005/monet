@@ -300,7 +300,7 @@ export function HighlightedCode({
         {slice.map((node, idx) => {
           const i = virtual ? start + idx : idx;
           return (
-            <span key={i} className="line">
+            <span key={i} className="line" data-ln={i + 1}>
               {showLineNumbers ? <span className="ln">{i + 1}</span> : null}
               <span className="cl">{node}</span>
             </span>

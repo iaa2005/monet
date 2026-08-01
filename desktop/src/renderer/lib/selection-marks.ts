@@ -16,24 +16,44 @@
  * throws its context away.
  */
 
-/** One `<selected-from-browser>` block, as it sits in a message. */
+/** What a reference points at. "browser" is the original element pick; the
+ * rest arrived with @-mentions and the viewer's code selection. */
+export type RefKind = "browser" | "code" | "file" | "chat";
+
+/** One context block (`<selected-from-browser>`, `<referenced-code>`, …), as
+ * it sits in a message. */
 export interface SelectionRef {
-  /** Short name for the pill: a component name, else tag.class. */
+  /** Short name for the pill: a component name, file:lines, chat title. */
   label: string;
   url: string;
-  /** Palette slot the page's outline used, when the block records one.
+  kind: RefKind;
+  /** Palette slot the pill is drawn with, when the block records one.
    * Absent on messages written before the tag carried it. */
   tone?: number;
   /** The whole block, verbatim — what goes back to the model. */
   raw: string;
 }
 
-// The opening tag may carry attributes (tone="3"); older messages have none.
-const BLOCK = /<selected-from-browser(?:\s[^>]*)?>[\s\S]*?<\/selected-from-browser>/g;
+// Every context-block tag. The opening tag may carry attributes (tone="3",
+// label="…"); the oldest messages have none.
+const BLOCK =
+  /<(selected-from-browser|referenced-code|referenced-file|referenced-chat)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g;
 
-/** The palette slot this selection was drawn with, when the block says. */
+const KIND_OF_TAG: Record<string, RefKind> = {
+  "selected-from-browser": "browser",
+  "referenced-code": "code",
+  "referenced-file": "file",
+  "referenced-chat": "chat",
+};
+
+export function kindOf(block: string): RefKind {
+  const m = /^<([a-z-]+)/.exec(block);
+  return KIND_OF_TAG[m?.[1] ?? ""] ?? "browser";
+}
+
+/** The palette slot this reference was drawn with, when the block says. */
 export function toneOf(block: string): number | undefined {
-  const m = /^<selected-from-browser\s[^>]*tone="(\d+)"/.exec(block);
+  const m = /^<[a-z-]+\s[^>]*tone="(\d+)"/.exec(block);
   return m ? Number(m[1]) : undefined;
 }
 
@@ -49,8 +69,11 @@ export function refToken(label: string): string {
   return `${REF_OPEN}${label}${REF_CLOSE}`;
 }
 
-/** A readable name for a block: the component if it has one, else the tag. */
+/** A readable name for a block. New tags carry it as label="…"; browser
+ * blocks fall back to the component / element line they always had. */
 export function labelOf(block: string): string {
+  const attr = /^<[a-z-]+\s[^>]*label="([^"]{1,80})"/.exec(block)?.[1];
+  if (attr) return attr;
   const component = /^component:\s*<([^>]+)>/m.exec(block)?.[1];
   if (component) return component;
   const element = /^element \d+:\s*(.+)$/m.exec(block)?.[1]?.trim();
@@ -75,7 +98,13 @@ export function splitSelections(content: string): {
   const refs: SelectionRef[] = [];
   const text = content
     .replace(BLOCK, (raw) => {
-      refs.push({ label: labelOf(raw), url: urlOf(raw), tone: toneOf(raw), raw });
+      refs.push({
+        label: labelOf(raw),
+        url: urlOf(raw),
+        kind: kindOf(raw),
+        tone: toneOf(raw),
+        raw,
+      });
       return "";
     })
     // The blocks were appended after a blank line; removing them leaves it.

@@ -25,6 +25,9 @@ import {
 } from "lucide-react";
 import { MarkdownViewer } from "./chat/MarkdownViewer";
 import { HighlightedCode } from "./chat/highlight";
+import { codeRef, selectionLineRange } from "@/lib/refs";
+import { useChatStore } from "@/stores/chatStore";
+import { MessageSquarePlus } from "lucide-react";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -240,6 +243,57 @@ export function FileViewer({
   const docxRef = useRef<HTMLDivElement>(null);
 
   const isMd = /\.(md|markdown)$/i.test(displayName);
+
+  // ── Select code → chip in the composer ─────────────────────────────
+  // Selecting lines in the code view offers "Add to chat": the selection
+  // becomes a ⟨file:lines⟩ chip in the composer and a <referenced-code>
+  // block for the model — the same pipeline as the browser's element picks.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [codeSel, setCodeSel] = useState<{
+    start: number;
+    end: number;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const onBodyMouseUp = (): void => {
+    const sel = window.getSelection();
+    const host = bodyRef.current;
+    const range = host ? selectionLineRange(host, sel) : null;
+    if (!sel || !host || !range) {
+      setCodeSel(null);
+      return;
+    }
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
+    setCodeSel({
+      ...range,
+      // Content coordinates, so the button scrolls with the selection.
+      x: rect.left - hostRect.left + host.scrollLeft,
+      y: rect.bottom - hostRect.top + host.scrollTop + 6,
+    });
+  };
+
+  const addSelectionToChat = (): void => {
+    if (!codeSel) return;
+    const text = content ?? artText ?? "";
+    const snippet = text
+      .split("\n")
+      .slice(codeSel.start - 1, codeSel.end)
+      .join("\n");
+    useChatStore.getState().addPendingContext(
+      codeRef({
+        path: filePath ?? displayName,
+        name: displayName,
+        startLine: codeSel.start,
+        endLine: codeSel.end,
+        snippet,
+      }),
+    );
+    setCodeSel(null);
+    window.getSelection()?.removeAllRanges();
+    window.dispatchEvent(new CustomEvent("monet:focus-composer"));
+  };
   const preview: PreviewKind = eff ? previewKindOf(eff) : "none";
 
   // --- Load plain file content (text/markdown/code) ---
@@ -457,7 +511,27 @@ export function FileViewer({
       </div>
 
       {/* Body */}
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div
+        ref={bodyRef}
+        onMouseUp={onBodyMouseUp}
+        className="relative min-h-0 flex-1 overflow-auto"
+      >
+        {codeSel ? (
+          <button
+            type="button"
+            onClick={addSelectionToChat}
+            title={`Add lines ${codeSel.start}–${codeSel.end} to the chat`}
+            style={{ left: codeSel.x, top: codeSel.y }}
+            className="absolute z-10 flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs shadow-md hover:bg-muted"
+          >
+            <MessageSquarePlus className="size-3.5 text-brand" />
+            Add to chat
+            <span className="text-muted-foreground">
+              {displayName}:{codeSel.start}
+              {codeSel.end > codeSel.start ? `–${codeSel.end}` : ""}
+            </span>
+          </button>
+        ) : null}
         {isRich ? (
           <>
             {loading && (

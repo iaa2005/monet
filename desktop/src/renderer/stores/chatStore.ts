@@ -10,6 +10,7 @@
  */
 
 import { create } from "zustand";
+import { useViewerStore } from "./viewerStore";
 import { STORAGE_PREFIX } from "@shared/brand";
 import type {
   ChatAttachmentMeta,
@@ -338,17 +339,7 @@ interface ChatStore {
   /** Branch the chat from this user message. Consumed by App, which owns
    * session switching. */
   forkRequest: string | null;
-  /** Unified file/artifact viewer state (null = closed).
-   * source "artifact" → reads via artifacts:* IPC, pass as item prop.
-   * source "file" → reads via files:* IPC, pass as path prop. */
-  viewer: {
-    name: string;
-    path?: string;
-    mediaType: string;
-    kind: string;
-    dataUrl?: string;
-    source?: "artifact" | "file";
-  } | null;
+
   /** Sub-agent expanded to fill the chat area (like FileViewer). */
   expandedSubAgent: SubAgentState | null;
   /** Current workspace ("home" | "code") — new chats are tagged with it so
@@ -806,7 +797,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
     openChangesRequest: false,
     openSettingsRequest: null,
     forkRequest: null,
-    viewer: null,
     expandedSubAgent: null,
     space: "home",
     queue: [],
@@ -853,10 +843,20 @@ export const useChatStore = create<ChatStore>((set, get) => {
     requestOpenChanges: () => set({ openChangesRequest: true }),
     requestOpenSettings: (section) => set({ openSettingsRequest: section }),
     requestFork: (messageId) => set({ forkRequest: messageId }),
-    openViewer: (item) =>
-      set({ viewer: item, ...(item ? { expandedSubAgent: null } : {}) }),
-    openExpandedSubAgent: (sa) =>
-      set({ expandedSubAgent: sa, ...(sa ? { viewer: null } : {}) }),
+    // Facade over viewerStore (tabs + VS Code preview idiom): every "open a
+    // file" click in the app lands here, whatever surface it came from.
+    openViewer: (item) => {
+      if (item) {
+        useViewerStore.getState().open(item);
+        set({ expandedSubAgent: null });
+      } else {
+        useViewerStore.getState().closeAll();
+      }
+    },
+    openExpandedSubAgent: (sa) => {
+      if (sa) useViewerStore.getState().closeAll();
+      set({ expandedSubAgent: sa });
+    },
     setSpace: (v) => set({ space: v }),
     bumpSessions: () =>
       set((s) => ({ sessionsVersion: s.sessionsVersion + 1 })),

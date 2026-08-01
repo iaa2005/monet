@@ -31,7 +31,8 @@ import { ModalityBadges } from "@/components/providers/ModalityBadges";
 import type { Modality } from "@/stores/providerStore";
 import { StagedFileTile } from "@/components/FileCard";
 import { GoalStrip } from "./GoalStrip";
-import { usedRefs } from "@/lib/selection-marks";
+import { refToken, usedRefs } from "@/lib/selection-marks";
+import { chatRef as chatMentionRef, fileRef as fileMentionRef } from "@/lib/refs";
 import { toneForLabel } from "@shared/selection-tones";
 import { TokenInput, type TokenInputHandle } from "./TokenInput";
 import {
@@ -306,6 +307,15 @@ export function MessageInput({
   } | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState(false);
+  // ── @-mentions: files and chats as chips ───────────────────────────
+  const [mentionDismissed, setMentionDismissed] = useState(false);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionFiles, setMentionFiles] = useState<
+    { name: string; path: string; rel: string }[]
+  >([]);
+  const [mentionChats, setMentionChats] = useState<
+    { id: string; title: string }[]
+  >([]);
   const taRef = useRef<TokenInputHandle>(null);
 
   /**
@@ -681,6 +691,98 @@ export function MessageInput({
     });
   };
 
+  /** The "@" word the caret is sitting in, if any. */
+  const mentionTok = useMemo(() => {
+    const upto = input.slice(0, caret);
+    const m = /(?:^|[\s(])@([^\s@]{0,60})$/.exec(upto);
+    if (!m) return null;
+    return { query: m[1], start: caret - m[1].length - 1 };
+  }, [input, caret]);
+
+  useEffect(() => {
+    setMentionDismissed(false);
+    setMentionIndex(0);
+  }, [mentionTok?.start]);
+
+  // Search both sources as the query grows. Files come from the workspace
+  // root (Code space); chats from the session store.
+  useEffect(() => {
+    if (!mentionTok) {
+      setMentionFiles([]);
+      setMentionChats([]);
+      return;
+    }
+    const q = mentionTok.query;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      const bridge = api();
+      if (!bridge) return;
+      if (q.length >= 1) {
+        void bridge.workspace
+          .get()
+          .then((root) => (root ? bridge.files.search(root, q) : null))
+          .then((r) => {
+            if (cancelled || !r) return;
+            setMentionFiles(
+              r.hits.filter((h) => !h.isDirectory).slice(0, 8),
+            );
+          })
+          .catch(() => {});
+      } else {
+        setMentionFiles([]);
+      }
+      void bridge.sessions
+        .search(q, 6)
+        .then((rows) => {
+          if (cancelled) return;
+          setMentionChats(
+            (rows as { id: string; title?: string }[])
+              .filter((r) => r.id !== useChatStore.getState().currentSessionId)
+              .map((r) => ({ id: r.id, title: r.title || "Untitled chat" })),
+          );
+        })
+        .catch(() => {});
+    }, 120);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [mentionTok?.query, mentionTok]);
+
+  type MentionItem =
+    | { kind: "file"; name: string; path: string; rel: string }
+    | { kind: "chat"; id: string; title: string };
+  const mentionFlat: MentionItem[] = useMemo(
+    () => [
+      ...mentionFiles.map((f) => ({ kind: "file" as const, ...f })),
+      ...mentionChats.map((c) => ({ kind: "chat" as const, ...c })),
+    ],
+    [mentionFiles, mentionChats],
+  );
+  const mentionOpen =
+    mentionTok != null && !mentionDismissed && mentionFlat.length > 0;
+
+  /** Insert the mention: a chip in the sentence, a context block on send. */
+  const pickMention = (item: MentionItem): void => {
+    if (!mentionTok) return;
+    const ref =
+      item.kind === "file"
+        ? fileMentionRef(item.path, item.name)
+        : chatMentionRef(item.id, item.title);
+    // pretokenised: the token goes in HERE, so the pending-context effect
+    // must not insert a second chip.
+    useChatStore.getState().addPendingContext(ref);
+    const before = input.slice(0, mentionTok.start);
+    const after = input.slice(caret);
+    const token = refToken(ref.label);
+    const pos = before.length + token.length + 1;
+    applyText(`${before}${token} ${after}`);
+    requestAnimationFrame(() => {
+      taRef.current?.focus();
+      setCaret(pos);
+    });
+  };
+
   /** App-level commands handled in the composer, never sent to the model. */
   const runLocalCommand = async (
     cmd: string,
@@ -943,6 +1045,50 @@ export function MessageInput({
           flush ? "px-0" : "px-4",
         )}
       >
+        {mentionOpen && (
+          <div
+            className={cn(
+              "absolute bottom-full z-50 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-lg",
+              flush ? "left-0 right-0" : "left-4 right-4",
+            )}
+          >
+            {(["Files", "Chats"] as const).map((section) => {
+              const items = mentionFlat.filter((i) =>
+                section === "Files" ? i.kind === "file" : i.kind === "chat",
+              );
+              if (items.length === 0) return null;
+              return (
+                <div key={section}>
+                  <div className="px-2 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {section}
+                  </div>
+                  {items.map((item) => {
+                    const idx = mentionFlat.indexOf(item);
+                    return (
+                      <button
+                        key={item.kind === "file" ? item.path : item.id}
+                        type="button"
+                        onMouseEnter={() => setMentionIndex(idx)}
+                        onClick={() => pickMention(item)}
+                        className={cn(
+                          "flex w-full items-baseline gap-2 rounded-md px-2 py-1 text-left transition-colors",
+                          idx === mentionIndex && "bg-black/6 dark:bg-white/8",
+                        )}
+                      >
+                        <span className="shrink-0 font-mono text-[13px]">
+                          {item.kind === "file" ? item.name : item.title}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+                          {item.kind === "file" ? item.rel : "chat"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
         {slashOpen && (
           <div
             className={cn(
@@ -1064,6 +1210,31 @@ export function MessageInput({
               }}
               onKeyDown={(e) => {
                 // "/" menu navigation takes priority while it's open.
+                if (mentionOpen) {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setMentionIndex((i) => (i + 1) % mentionFlat.length);
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setMentionIndex(
+                      (i) => (i - 1 + mentionFlat.length) % mentionFlat.length,
+                    );
+                    return;
+                  }
+                  if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault();
+                    const item = mentionFlat[mentionIndex];
+                    if (item) pickMention(item);
+                    return;
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setMentionDismissed(true);
+                    return;
+                  }
+                }
                 if (slashOpen) {
                   if (e.key === "ArrowDown") {
                     e.preventDefault();
