@@ -19,13 +19,17 @@ import { useEffect, useRef, useState } from "react";
 import {
   Download,
   ExternalLink,
+  Eye,
+  Pencil,
   RefreshCw,
+  Save,
 } from "lucide-react";
 import { MarkdownViewer } from "./chat/MarkdownViewer";
-import { HighlightedCode } from "./chat/highlight";
-import { CodeEditor } from "./CodeEditor";
+import { CodeEditor, type CodeSelection } from "./CodeEditor";
 import { codeRef, selectionLineRange } from "@/lib/refs";
+import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
+import { useViewerStore } from "@/stores/viewerStore";
 import { MessageSquarePlus } from "lucide-react";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -43,55 +47,6 @@ export type FileViewerItem = {
   /** Where reads go: chat artifact (default) or an arbitrary file on disk. */
   source?: "artifact" | "file";
 };
-
-// --- Language detection ---
-
-const EXT_LANG: Record<string, string> = {
-  ts: "typescript",
-  tsx: "tsx",
-  js: "javascript",
-  mjs: "javascript",
-  cjs: "javascript",
-  jsx: "jsx",
-  py: "python",
-  rb: "ruby",
-  go: "go",
-  rs: "rust",
-  java: "java",
-  kt: "kotlin",
-  c: "c",
-  h: "c",
-  cpp: "cpp",
-  hpp: "cpp",
-  cs: "csharp",
-  php: "php",
-  swift: "swift",
-  css: "css",
-  scss: "scss",
-  less: "less",
-  html: "markup",
-  xml: "markup",
-  svg: "markup",
-  json: "json",
-  jsonc: "json",
-  yaml: "yaml",
-  yml: "yaml",
-  toml: "toml",
-  ini: "ini",
-  sh: "bash",
-  bash: "bash",
-  zsh: "bash",
-  ps1: "powershell",
-  sql: "sql",
-  tex: "latex",
-  bib: "latex",
-  sty: "latex",
-};
-
-function langFor(name: string): string {
-  const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  return EXT_LANG[ext] ?? "text";
-}
 
 // --- Rich preview detection ---
 
@@ -202,10 +157,13 @@ function b64ToBytes(b64: string): Uint8Array {
 export function FileViewer({
   path,
   item,
+  docId,
   onClose,
 }: {
   path?: string | null;
   item?: FileViewerItem | null;
+  /** The dock card this viewer fills — unsaved edits mark its tab. */
+  docId?: string;
   onClose: () => void;
 }): JSX.Element {
   // A tree file with a known binary type becomes a synthesized rich item and
@@ -243,17 +201,58 @@ export function FileViewer({
 
   const isMd = /\.(md|markdown)$/i.test(displayName);
 
+  // ── Editing ────────────────────────────────────────────────────────
+  //
+  // Only in Code, and only for a file that is really on disk and really all
+  // here: reads over 400KB come back TRUNCATED, and saving a truncated buffer
+  // would delete the rest of the file. Home stays a reader — its chats work
+  // in a sandbox, not in the user's project.
+  const space = useChatStore((s) => s.space);
+  const truncated = !!content && /… \(truncated/.test(content.slice(-120));
+  const canEdit =
+    space === "code" && source === "file" && !!filePath && !isRich && !truncated;
+
+  const [dirty, setDirty] = useState(false);
+  /** Markdown reads better rendered and edits only as source. */
+  const [mdEdit, setMdEdit] = useState(false);
+  // The last text typed, for the save that happens when the card closes.
+  const pending = useRef<string | null>(null);
+
+  const markDirty = (next: boolean): void => {
+    setDirty(next);
+    if (docId) useViewerStore.getState().setDirty(docId, next);
+  };
+
+  const save = (text: string): void => {
+    if (!canEdit || !filePath) return;
+    pending.current = null;
+    api()
+      ?.files.write(filePath, text)
+      .then(() => {
+        setContent(text);
+        markDirty(false);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  };
+
+  // A card closed with unsaved edits writes them. The alternative is a modal
+  // asking a question the user already answered by typing.
+  useEffect(() => {
+    return () => {
+      const text = pending.current;
+      if (text != null && filePath) void api()?.files.write(filePath, text);
+    };
+  }, [filePath]);
+
   // ── Select code → chip in the composer ─────────────────────────────
   // Selecting lines in the code view offers "Add to chat": the selection
   // becomes a ⟨file:lines⟩ chip in the composer and a <referenced-code>
   // block for the model — the same pipeline as the browser's element picks.
+  // Monaco owns its selection — there is no DOM range to read — so in the
+  // editor the offer comes from the editor's own callbacks. Markdown, which
+  // renders as prose rather than as code, still reads a DOM range.
   const bodyRef = useRef<HTMLDivElement>(null);
-  const [codeSel, setCodeSel] = useState<{
-    start: number;
-    end: number;
-    x: number;
-    y: number;
-  } | null>(null);
+  const [codeSel, setCodeSel] = useState<CodeSelection | null>(null);
 
   const onBodyMouseUp = (): void => {
     const sel = window.getSelection();
@@ -265,28 +264,31 @@ export function FileViewer({
     }
     const rect = sel.getRangeAt(0).getBoundingClientRect();
     const hostRect = host.getBoundingClientRect();
+    const text = content ?? artText ?? "";
     setCodeSel({
-      ...range,
+      startLine: range.start,
+      endLine: range.end,
+      text: text.split("\n").slice(range.start - 1, range.end).join("\n"),
       // Content coordinates, so the button scrolls with the selection.
-      x: rect.left - hostRect.left + host.scrollLeft,
-      y: rect.bottom - hostRect.top + host.scrollTop + 6,
+      left: rect.left - hostRect.left + host.scrollLeft,
+      top: rect.bottom - hostRect.top + host.scrollTop + 6,
     });
   };
 
-  const addSelectionToChat = (): void => {
-    if (!codeSel) return;
-    const text = content ?? artText ?? "";
-    const snippet = text
-      .split("\n")
-      .slice(codeSel.start - 1, codeSel.end)
-      .join("\n");
+  const addSelectionToChat = (sel?: {
+    startLine: number;
+    endLine: number;
+    text: string;
+  }): void => {
+    const use = sel ?? codeSel;
+    if (!use) return;
     useChatStore.getState().addPendingContext(
       codeRef({
         path: filePath ?? displayName,
         name: displayName,
-        startLine: codeSel.start,
-        endLine: codeSel.end,
-        snippet,
+        startLine: use.startLine,
+        endLine: use.endLine,
+        snippet: use.text,
       }),
     );
     setCodeSel(null);
@@ -483,6 +485,22 @@ export function FileViewer({
     <div className="flex h-full flex-col">
       {/* Actions only: the dock tab already names the file and closes it. */}
       <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border px-2 py-1">
+        {canEdit && isMd && (
+          <IconBtn
+            title={mdEdit ? "Preview (rendered)" : "Edit source"}
+            onClick={() => setMdEdit((v) => !v)}
+          >
+            {mdEdit ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
+          </IconBtn>
+        )}
+        {canEdit && (
+          <IconBtn
+            title={dirty ? "Save — Ctrl+S" : "Saved"}
+            onClick={() => pending.current != null && save(pending.current)}
+          >
+            <Save className={cn("size-3.5", dirty && "text-brand")} />
+          </IconBtn>
+        )}
         <IconBtn title="Refresh" onClick={() => setNonce((n) => n + 1)}>
           <RefreshCw className="size-3.5" />
         </IconBtn>
@@ -507,16 +525,16 @@ export function FileViewer({
         {codeSel ? (
           <button
             type="button"
-            onClick={addSelectionToChat}
-            title={`Add lines ${codeSel.start}–${codeSel.end} to the chat`}
-            style={{ left: codeSel.x, top: codeSel.y }}
+            onClick={() => addSelectionToChat()}
+            title={`Add lines ${codeSel.startLine}–${codeSel.endLine} to the chat`}
+            style={{ left: codeSel.left, top: codeSel.top }}
             className="absolute z-10 flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs shadow-md hover:bg-muted"
           >
             <MessageSquarePlus className="size-3.5 text-brand" />
             Add to chat
             <span className="text-muted-foreground">
-              {displayName}:{codeSel.start}
-              {codeSel.end > codeSel.start ? `–${codeSel.end}` : ""}
+              {displayName}:{codeSel.startLine}
+              {codeSel.endLine > codeSel.startLine ? `–${codeSel.endLine}` : ""}
             </span>
           </button>
         ) : null}
@@ -592,7 +610,12 @@ export function FileViewer({
                   <MarkdownViewer content={artText} />
                 </div>
               ) : (
-                <CodeEditor value={artText} fileName={displayName} />
+                <CodeEditor
+                  value={artText}
+                  fileName={displayName}
+                  onSelect={setCodeSel}
+                  onAddSelection={addSelectionToChat}
+                />
               )
             )}
 
@@ -616,12 +639,24 @@ export function FileViewer({
           <div className="p-4 text-sm text-destructive">{error}</div>
         ) : content == null ? (
           <div className="p-4 text-sm text-muted-foreground">Loading…</div>
-        ) : isMd ? (
+        ) : isMd && !mdEdit ? (
           <div className="mx-auto max-w-3xl p-6">
             <MarkdownViewer content={content} />
           </div>
         ) : (
-          <CodeEditor value={content} fileName={displayName} />
+          <CodeEditor
+            value={content}
+            fileName={displayName}
+            filePath={filePath ?? undefined}
+            readOnly={!canEdit}
+            onChange={(next) => {
+              pending.current = canEdit && next !== content ? next : null;
+              markDirty(canEdit && next !== content);
+            }}
+            onSave={save}
+            onSelect={setCodeSel}
+            onAddSelection={addSelectionToChat}
+          />
         )}
       </div>
     </div>

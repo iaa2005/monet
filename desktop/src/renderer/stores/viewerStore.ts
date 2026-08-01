@@ -29,6 +29,8 @@ export interface ViewerDoc {
   file: ViewerFile;
   /** Italic tab; the next preview open replaces this one. */
   preview: boolean;
+  /** Edited and not yet written to disk — the tab shows a dot. */
+  dirty?: boolean;
 }
 
 /** What ui-state stores per session. */
@@ -53,6 +55,8 @@ interface ViewerState {
   open: (file: ViewerFile, opts?: { preview?: boolean }) => void;
   /** A preview panel becomes permanent (its tab was clicked). */
   pin: (id: string) => void;
+  /** The editor reports unsaved edits so the tab can say so. */
+  setDirty: (id: string, dirty: boolean) => void;
   setActive: (id: string) => void;
   close: (id: string) => void;
   closeAll: () => void;
@@ -101,6 +105,19 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
     set((s) => ({
       docs: s.docs.map((d) => (d.id === id ? { ...d, preview: false } : d)),
     })),
+
+  setDirty: (id, dirty) =>
+    set((s) => {
+      const doc = s.docs.find((d) => d.id === id);
+      if (!doc || !!doc.dirty === dirty) return s;
+      return {
+        // An edited file is never a preview: typing in it is the strongest
+        // possible statement that it should stay open.
+        docs: s.docs.map((d) =>
+          d.id === id ? { ...d, dirty, preview: dirty ? false : d.preview } : d,
+        ),
+      };
+    }),
 
   setActive: (id) => set({ activeId: id }),
 

@@ -166,6 +166,7 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
           <FileViewer
             path={doc.file.source === "file" ? doc.file.path : undefined}
             item={doc.file.source !== "file" ? doc.file : undefined}
+            docId={id}
             onClose={close}
           />
         </ViewerErrorBoundary>
@@ -431,6 +432,12 @@ function DockTab(props: IDockviewPanelHeaderProps): JSX.Element {
       >
         {title}
       </span>
+      {doc?.dirty && (
+        <span
+          title="Unsaved changes"
+          className="size-1.5 shrink-0 rounded-full bg-brand"
+        />
+      )}
       {closable && (
         <button
           type="button"

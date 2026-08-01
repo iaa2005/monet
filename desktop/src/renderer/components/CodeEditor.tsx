@@ -9,27 +9,41 @@
  * multi-cursor, real editing.
  *
  * Kept deliberately small:
- *   - one editor per viewer pane, disposed with it;
+ *   - one editor per viewer card, disposed with it (the MODEL outlives it —
+ *     see monaco-project: models are the project's memory, not the panel's);
  *   - the app's own theme, derived from the CSS variables already in use, so
  *     a file looks like the rest of the app rather than like VS Code;
- *   - read-only by default, with `onChange` the only thing standing between
- *     this and an editor.
+ *   - editing is a prop, and the caller decides who gets it.
  *
- * Workers: Monaco wants one per language service. Vite's `?worker` imports
- * bundle them, and the environment hook below hands the right one over —
- * without it Monaco silently falls back to running them on the main thread,
- * which is the whole problem again.
+ * Workers: Monaco wants one per language service. The local worker module
+ * below bundles them, and the environment hook hands the right one over —
+ * without it Monaco silently runs them on the main thread, which is the whole
+ * problem again.
  */
 
 import { useEffect, useRef } from "react";
 import * as monaco from "monaco-editor";
 import { useIsDark } from "./chat/highlight";
+import {
+  configureMonaco,
+  loadProjectGraph,
+  modelFor,
+  takeReveal,
+} from "./monaco-project";
 
 self.MonacoEnvironment = {
-  getWorker: () =>
-    new Worker(new URL("../workers/monaco.worker.ts", import.meta.url), {
-      type: "module",
-    }),
+  // The label is the language service asking. TypeScript and JavaScript share
+  // one worker and it is NOT the base editor worker — that one answers a
+  // completion request with "Missing requestHandler", which is exactly how a
+  // dead IntelliSense looks from the outside.
+  getWorker: (_id: string, label: string) =>
+    label === "typescript" || label === "javascript"
+      ? new Worker(new URL("../workers/ts.worker.ts", import.meta.url), {
+          type: "module",
+        })
+      : new Worker(new URL("../workers/monaco.worker.ts", import.meta.url), {
+          type: "module",
+        }),
 };
 
 /** The app's palette, read from the CSS variables the rest of the UI uses. */
@@ -75,6 +89,15 @@ function readTheme(dark: boolean): monaco.editor.IStandaloneThemeData {
   };
 }
 
+/** A selection, plus where to put a button beside it (editor pixels). */
+export interface CodeSelection {
+  startLine: number;
+  endLine: number;
+  text: string;
+  top: number;
+  left: number;
+}
+
 /** Monaco's id for a file name — its own table, not ours. */
 export function languageOf(fileName: string): string {
   const ext = "." + (fileName.split(".").pop() ?? "").toLowerCase();
@@ -86,27 +109,53 @@ export function languageOf(fileName: string): string {
 export function CodeEditor({
   value,
   fileName,
+  filePath,
   readOnly = true,
   onChange,
+  onSave,
+  onSelect,
+  onAddSelection,
   className,
 }: {
   value: string;
   fileName: string;
+  /** Absolute path. Gives the model a file identity, which is what lets the
+   *  language service resolve this file's imports against the project. */
+  filePath?: string;
   readOnly?: boolean;
   onChange?: (next: string) => void;
+  /** Ctrl/⌘+S. Absent means the file is not savable from here. */
+  onSave?: (text: string) => void;
+  /** Where the selection is, in editor pixels, so the caller can float a
+   *  button beside it. Null when nothing is selected. */
+  onSelect?: (sel: CodeSelection | null) => void;
+  /** "Add to chat", from the button or the editor's own context menu. */
+  onAddSelection?: (sel: { startLine: number; endLine: number; text: string }) => void;
   className?: string;
 }): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const dark = useIsDark();
+  // Read by the save command, which is bound once and must not capture a
+  // stale handler.
+  const saveRef = useRef(onSave);
+  saveRef.current = onSave;
+  const selectRef = useRef(onSelect);
+  selectRef.current = onSelect;
+  const addRef = useRef(onAddSelection);
+  addRef.current = onAddSelection;
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    configureMonaco();
     monaco.editor.defineTheme("monet", readTheme(dark));
+    const language = languageOf(fileName);
+    const model = filePath
+      ? modelFor(filePath, value, language)
+      : monaco.editor.createModel(value, language);
     const editor = monaco.editor.create(host, {
-      value,
-      language: languageOf(fileName),
+      model,
       theme: "monet",
       readOnly,
       automaticLayout: true,
@@ -121,21 +170,90 @@ export function CodeEditor({
       // The dock panel owns the scrollbar's look elsewhere; keep Monaco's own
       // so the editor scrolls like an editor.
       scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
+      quickSuggestions: true,
+      suggestOnTriggerCharacters: true,
+      tabSize: 2,
     });
     editorRef.current = editor;
+
+    // Ctrl/⌘+S. An action rather than a raw keybinding so it also appears in
+    // the editor's command palette (F1), where a user goes looking for it.
+    editor.addAction({
+      id: "monet.save",
+      label: "Save File",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+      run: (ed) => saveRef.current?.(ed.getValue()),
+    });
+
+    // Selecting code offers it to the chat. Monaco owns its selection (there
+    // is no DOM range to read), so the offer is built from the editor's own
+    // API — and it is an ACTION as well as a button, which puts it in the
+    // right-click menu where a selection is already under the cursor.
+    const currentSelection = (): CodeSelection | null => {
+      const sel = editor.getSelection();
+      const m = editor.getModel();
+      if (!sel || !m || sel.isEmpty()) return null;
+      const at = editor.getScrolledVisiblePosition({
+        lineNumber: sel.endLineNumber,
+        column: sel.endColumn,
+      });
+      return {
+        startLine: sel.startLineNumber,
+        endLine: sel.endLineNumber,
+        text: m.getValueInRange(sel),
+        top: (at?.top ?? 0) + (at?.height ?? 18) + 4,
+        left: Math.max(8, at?.left ?? 8),
+      };
+    };
+    const report = (): void => selectRef.current?.(currentSelection());
+    editor.addAction({
+      id: "monet.addToChat",
+      label: "Add selection to chat",
+      contextMenuGroupId: "9_cutcopypaste",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyL],
+      run: () => {
+        const sel = currentSelection();
+        if (sel) addRef.current?.(sel);
+      },
+    });
+
+    const subs = [
+      editor.onDidChangeCursorSelection(report),
+      editor.onDidScrollChange(report),
+    ];
     const sub = onChange
       ? editor.onDidChangeModelContent(() => onChange(editor.getValue()))
       : null;
+
+    // Loading the imports is what turns "one file" into "the project"; it is
+    // IPC-bound, so it happens after the editor is on screen, never before.
+    if (filePath) {
+      void loadProjectGraph(filePath, value);
+      const reveal = takeReveal(filePath);
+      if (reveal) {
+        const pos =
+          "startLineNumber" in reveal
+            ? { lineNumber: reveal.startLineNumber, column: reveal.startColumn }
+            : reveal;
+        editor.setPosition(pos);
+        editor.revealLineInCenter(pos.lineNumber);
+      }
+    }
+
     return () => {
       sub?.dispose();
-      editor.getModel()?.dispose();
+      for (const d of subs) d.dispose();
+      selectRef.current?.(null);
+      // The model is NOT disposed: it belongs to the project's view of itself,
+      // and dropping it would make every file that imports this one forget
+      // what is in it.
       editor.dispose();
       editorRef.current = null;
     };
     // The editor is created once per file; value/theme changes are applied
     // below without tearing it down.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileName]);
+  }, [fileName, filePath]);
 
   // Content that changed underneath (a reload, a different revision).
   useEffect(() => {

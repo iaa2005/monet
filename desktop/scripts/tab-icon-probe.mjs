@@ -116,8 +116,10 @@ const out = await evalJs(`(async () => {
   const ft = filesTab();
   if (ft) fire(ft);
   // The tree lists the workspace over IPC — wait for rows rather than guess.
-  for (let i = 0; i < 20 && !document.querySelector("img[src*='icons/']"); i++)
-    await sleep(300);
+  // More than a couple of rows: Home's sandbox panel draws icons too, and one
+  // of those would look like a tree that has finished loading.
+  const rowCount = () => document.querySelectorAll("img[src*='icons/']").length;
+  for (let i = 0; i < 40 && rowCount() < 4; i++) await sleep(300);
   // The tree is windowed and folders sort first, so the files are below the
   // fold until it is scrolled.
   const scroller = [...document.querySelectorAll("div")].find(
@@ -130,7 +132,7 @@ const out = await evalJs(`(async () => {
   }
   const fileRow = [...document.querySelectorAll("img[src*='icons/']")]
     .map((i) => i.parentElement)
-    .find((row) => /\\.(ts|tsx|json|md|js|txt)$/.test(row?.textContent?.trim() ?? ""));
+    .find((row) => /^[^/\\\\]+\\.[a-z0-9]+$/i.test(row?.textContent?.trim() ?? ""));
   let treeClick = null;
   let treeDouble = null;
   if (fileRow) {
@@ -215,5 +217,6 @@ check("the editor card is on screen", out.editorPanelFound === true);
 check("the card body no longer repeats the file name", out.bodyRepeatsName === false);
 check("and has no close button of its own", out.closeButtonsInBody === 0, out.closeButtonsInBody);
 
+if (failures) console.log("tree diag:", JSON.stringify(out.treeDiag));
 console.log(failures === 0 ? "\nALL TAB CHECKS PASSED" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
