@@ -60,7 +60,7 @@ import {
 import { CreateRoutineTool } from "./routine-tool.js";
 import { RememberTool } from "./remember-tool.js";
 import { CreateSkillTool } from "./create-skill-tool.js";
-import { ExitPlanModeTool } from "./plan-tool.js";
+import { ExitPlanModeTool, UpdatePlanTool } from "./plan-tool.js";
 import { SleepTool } from "./sleep-tool.js";
 import { SendMessageTool, TeamListTool } from "./team-tools.js";
 import { NotebookEditTool } from "@vendor/tools/NotebookEditTool/NotebookEditTool.js";
@@ -271,6 +271,7 @@ const ALL_TOOLS = [
   // Skill tool, which runs one.
   CreateSkillTool,
   ExitPlanModeTool,
+  UpdatePlanTool,
   SleepTool,
   SendMessageTool,
   TeamListTool,
@@ -551,6 +552,9 @@ export async function executeVendorTool(opts: {
   /** Nobody is watching (a routine firing) — distinct from bypassPermissions,
    * which a user enables while sitting right there. */
   unattended?: boolean;
+  /** Who is calling — the main loop stays "agent"; sub-agents pass their own
+   * name so plan notes and comments carry a real byline. */
+  agentLabel?: string;
   /** Connector action ids the routine's creator granted for unattended use. */
   connectorGrants?: string[];
 }): Promise<VendorToolResult> {
@@ -569,6 +573,7 @@ export async function executeVendorTool(opts: {
     askUser,
     askPlanApproval,
     unattended,
+    agentLabel,
     connectorGrants,
   } = opts;
   // Approving a plan flips the mode mid-turn, so the live value wins over the
@@ -706,6 +711,8 @@ export async function executeVendorTool(opts: {
   // ExitPlanMode shows the plan and returns the user's verdict.
   (context as { askPlanApproval?: AskPlanApprovalFn }).askPlanApproval =
     askPlanApproval;
+  // UpdatePlan signs plan updates with the calling agent's name.
+  if (agentLabel) (context as { agentLabel?: string }).agentLabel = agentLabel;
   if (onProgress)
     (context as Record<string, unknown>)._subAgentOnProgress = onProgress;
   if (onSubAgentEvent)

@@ -12,11 +12,26 @@
 
 import { ipcMain, type BrowserWindow } from "electron";
 import { randomUUID } from "crypto";
+import {
+  addComment,
+  currentPlan,
+  getPlan,
+  listPlans,
+  planToMarkdown,
+  setPlanStatus,
+  setTodoStatus,
+  type PlanTodoStatus,
+} from "../plan/store.js";
 
 export interface PlanApprovalRequest {
   id: string;
   /** Markdown plan the model wrote. */
   plan: string;
+  /** The plan DOCUMENT this approval is about (plan/store.ts). The chat card
+   * renders from the document; this string is the fallback. */
+  planId?: string;
+  /** Which chat asked — the card offers Build only in that transcript. */
+  sessionId?: string;
 }
 
 export type PlanDecision =
@@ -39,7 +54,10 @@ interface PlanResponsePayload {
   feedback?: string;
 }
 
-export type AskPlanApprovalFn = (plan: string) => Promise<PlanApprovalResult>;
+export type AskPlanApprovalFn = (
+  plan: string,
+  planId?: string,
+) => Promise<PlanApprovalResult>;
 
 /** Same budget as ask-user: long enough to actually read a plan. */
 const DECISION_TIMEOUT_MS = 10 * 60 * 1000;
@@ -47,8 +65,15 @@ const DECISION_TIMEOUT_MS = 10 * 60 * 1000;
 export function askPlanApprovalFromRenderer(
   win: BrowserWindow,
   plan: string,
+  planId?: string,
+  sessionId?: string,
 ): Promise<PlanApprovalResult> {
-  const request: PlanApprovalRequest = { id: randomUUID(), plan };
+  const request: PlanApprovalRequest = {
+    id: randomUUID(),
+    plan,
+    planId,
+    sessionId,
+  };
 
   return new Promise((resolve) => {
     let settled = false;
@@ -83,4 +108,40 @@ export function askPlanApprovalFromRenderer(
     }
     win.webContents.send("plan:request", request);
   });
+}
+
+/**
+ * The plan DOCUMENT's own IPC — read it, comment on it, tick a box by hand.
+ * Every mutation broadcasts `plan:changed` from the store, so the chat card
+ * and the dock panel redraw together.
+ */
+export function registerPlanIPC(): void {
+  ipcMain.handle("plan:current", (_e, sessionId: string) =>
+    currentPlan(sessionId),
+  );
+  ipcMain.handle("plan:list", (_e, sessionId: string) => listPlans(sessionId));
+  ipcMain.handle("plan:get", (_e, planId: string) => getPlan(planId));
+  ipcMain.handle(
+    "plan:comment",
+    (_e, planId: string, text: string, todoId?: string) =>
+      addComment(planId, { author: "user", kind: "user", text, todoId }),
+  );
+  // The user can move a box themselves — the same honesty rule as the agent:
+  // the injector shows the model the list as it now stands.
+  ipcMain.handle(
+    "plan:setTodo",
+    (_e, planId: string, todoId: string, status: PlanTodoStatus) =>
+      setTodoStatus(planId, todoId, status, "user"),
+  );
+  ipcMain.handle("plan:markdown", (_e, planId: string) => {
+    const plan = getPlan(planId);
+    return plan ? planToMarkdown(plan) : null;
+  });
+  // "Keep planning" from the card without feedback text, or archiving a stale
+  // ready plan back to draft.
+  ipcMain.handle("plan:setStatus", (_e, planId: string, status: string) =>
+    status === "draft" || status === "done"
+      ? setPlanStatus(planId, status)
+      : null,
+  );
 }

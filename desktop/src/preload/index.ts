@@ -282,6 +282,33 @@ const electronAPI = {
     respond: (id: string, decision: PlanDecision, feedback?: string): void => {
       ipcRenderer.send("plan:response", { id, decision, feedback });
     },
+    // ── The plan document (plan/store.ts) ─────────────────────────────
+    current: (sessionId: string): Promise<unknown> =>
+      ipcRenderer.invoke("plan:current", sessionId),
+    list: (sessionId: string): Promise<unknown[]> =>
+      ipcRenderer.invoke("plan:list", sessionId),
+    comment: (
+      planId: string,
+      text: string,
+      todoId?: string,
+    ): Promise<unknown> =>
+      ipcRenderer.invoke("plan:comment", planId, text, todoId),
+    setTodo: (
+      planId: string,
+      todoId: string,
+      status: string,
+    ): Promise<unknown> =>
+      ipcRenderer.invoke("plan:setTodo", planId, todoId, status),
+    markdown: (planId: string): Promise<string | null> =>
+      ipcRenderer.invoke("plan:markdown", planId),
+    setStatus: (planId: string, status: string): Promise<unknown> =>
+      ipcRenderer.invoke("plan:setStatus", planId, status),
+    onChanged: (callback: (sessionId: string) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, sessionId: string) =>
+        callback(sessionId);
+      ipcRenderer.on("plan:changed", handler);
+      return () => ipcRenderer.removeListener("plan:changed", handler);
+    },
   },
 
   askUser: {

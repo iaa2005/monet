@@ -49,6 +49,7 @@ import { ChangesPanel } from "@/components/ChangesPanel";
 import { SandboxFilesPanel } from "@/components/SandboxFilesPanel";
 import { BackgroundTasksPanel } from "@/components/BackgroundTasks";
 import { RoutinesSettings } from "@/components/settings/RoutinesSettings";
+import { PlanPanel } from "@/components/PlanPanel";
 import { FileTree } from "@/components/FileTree";
 import { FileViewer } from "@/components/FileViewer";
 import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
@@ -196,6 +197,9 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
         <RoutinesSettings onOpenChat={(id) => latest.openChat(id)} />
       </div>,
     );
+  },
+  plan: function PlanDockPanel() {
+    return scrollWrap(<PlanPanel />);
   },
   tasks: function TasksDockPanel() {
     const sessionId = useChatStore((s) => s.currentSessionId);

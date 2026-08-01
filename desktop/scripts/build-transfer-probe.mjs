@@ -67,6 +67,8 @@ export {
   replaceTranscript,
   loadTranscriptWithMeta,
 } from "../src/main/transcript-store.js";
+export * as planStore from "../src/main/plan/store.js";
+export * as planInject from "../src/main/plan/inject.js";
 `,
   "utf-8",
 );

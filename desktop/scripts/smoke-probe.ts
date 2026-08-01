@@ -237,6 +237,7 @@ async function main() {
   // hit a wall).
   {
     const { clearSessionMode } = await import('../src/main/agent/session-mode.js')
+    const { deletePlans } = await import('../src/main/plan/store.js')
     const planFile = join(getWorkspacePath(), '.smoke-plan.txt')
     const runPlan = async (
       session: string,
@@ -248,7 +249,11 @@ async function main() {
         sessionId: session,
         toolUseID: `toolu_${Math.random().toString(36).slice(2)}`,
         name: 'ExitPlanMode',
-        input: { plan: '## Plan\n1. Do the thing' },
+        input: {
+          title: 'Smoke plan',
+          plan: '## Plan\n1. Do the thing',
+          todos: ['Do the thing'],
+        },
         model: MODEL,
         permissionMode: 'plan',
         askPlanApproval: async (plan: string) => {
@@ -308,6 +313,10 @@ async function main() {
     check('plan: approval does not leak to another session', otherBlocked.isError)
     clearSessionMode(beforeSession)
     rmSync(planFile, { force: true })
+    // The tool now writes real plan documents — these sids are fakes, so
+    // their rows must not linger in the data dir's DB.
+    deletePlans('plan-keep')
+    deletePlans(beforeSession)
   }
 
   // 4e. Newly wired tools: Sleep (written here — the bundle ships only its

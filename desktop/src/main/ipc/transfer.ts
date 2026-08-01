@@ -51,6 +51,7 @@ import {
   type ContextEvent,
 } from "../transcript-store.js";
 import { getUiState, setUiState, type SessionUiState } from "../ui-state.js";
+import { importPlan, listPlans, type Plan } from "../plan/store.js";
 import { loadGoal, saveGoal } from "../agent/goal/store.js";
 import type { Goal } from "../agent/goal/state.js";
 import { existsSync } from "fs";
@@ -119,6 +120,8 @@ interface Bundle {
   goal?: Goal;
   /** v3: compact / rewind history, so "undo compact" survives the trip. */
   contextEvents?: ContextEvent[];
+  /** v3: the session's plan documents — todos, notes, comment threads. */
+  plans?: Plan[];
 }
 
 function sysContext(): { profile?: string; memory?: string; claudeMd?: string } {
@@ -289,6 +292,7 @@ export function buildBundle(
   const uiState = getUiState(sessionId);
   const goal = loadGoal(sessionId);
   const contextEvents = listContextEvents(sessionId);
+  const plans = listPlans(sessionId);
 
   return {
     format: BUNDLE_FORMAT,
@@ -334,6 +338,7 @@ export function buildBundle(
     ...(uiState ? { uiState } : {}),
     ...(goal ? { goal } : {}),
     ...(contextEvents.length ? { contextEvents } : {}),
+    ...(plans.length ? { plans } : {}),
   };
 }
 
@@ -435,6 +440,8 @@ export function applyBundle(bundle: Partial<Bundle>): SessionWithMessages | null
       created.id,
       bundle.contextEvents.map((ev) => ({ ...ev, sessionId: created.id })),
     );
+  for (const p of bundle.plans ?? [])
+    if (p && Array.isArray(p.todos)) importPlan(p, created.id);
 
   return store.get(created.id) ?? null;
 }

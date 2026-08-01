@@ -34,6 +34,7 @@ import { registerTuningIPC } from "./tuning.js";
 import { registerTransferIPC } from "./transfer.js";
 import { registerTasksIPC } from "./tasks.js";
 import { registerRoutinesIPC } from "./routines.js";
+import { registerPlanIPC } from "./plan.js";
 
 export function registerAllIPC(): void {
   registerChatIPC();
@@ -68,6 +69,7 @@ export function registerAllIPC(): void {
   registerComputerIPC();
   registerTuningIPC();
   registerTransferIPC();
+  registerPlanIPC();
   registerRoutinesIPC();
   registerTasksIPC();
 }

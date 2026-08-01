@@ -39,6 +39,15 @@ import {
 } from "./vendor-tools.js";
 import { planBatches, runBatches } from "./tool-batching.js";
 import { activeGoalReminder, idleGoalNote } from "./goal/inject.js";
+import {
+  currentPlan,
+  markCommentsSeen,
+  unseenComments,
+} from "../plan/store.js";
+import {
+  buildingPlanReminder,
+  unseenCommentsReminder,
+} from "../plan/inject.js";
 import { loadGoal } from "./goal/store.js";
 import {
   dropSessionContext,
@@ -1176,6 +1185,27 @@ async function runAgentScoped(
         ? activeGoalReminder(activeGoal)
         : idleGoalNote(activeGoal);
     turnContent = mergeBackgroundResults([note], turnContent);
+  }
+
+  // The plan document, same treatment as the goal: while it builds, the live
+  // todo list is restated so the model keeps it truthful with UpdatePlan; any
+  // user comments left on the document since last turn are handed over ONCE,
+  // wrapped as data (see plan/inject.ts).
+  const activePlan = currentPlan(sessionId);
+  if (activePlan) {
+    const notes: string[] = [];
+    if (activePlan.status === "building")
+      notes.push(buildingPlanReminder(activePlan));
+    const freshComments = unseenComments(activePlan);
+    const commentNote = unseenCommentsReminder(activePlan, freshComments);
+    if (commentNote) {
+      notes.push(commentNote);
+      markCommentsSeen(
+        activePlan.id,
+        freshComments.map((c) => c.id),
+      );
+    }
+    if (notes.length) turnContent = mergeBackgroundResults(notes, turnContent);
   }
 
   const userMsg: LLMMessage = { role: "user", content: turnContent };

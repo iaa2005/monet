@@ -59,7 +59,6 @@ import type {
   AskUserRequest,
 } from "@/types/electron";
 import type { ChatMessage, ToolCall } from "@/types/chat";
-import { PlanApprovalHost } from "./PlanApprovalDialog";
 import { SelectionText } from "./SelectionText";
 import { joinSelections, splitSelections, usedRefs } from "@/lib/selection-marks";
 import { copyTargets as computeCopyTargets, shouldShowWorking } from "./turn-state";
@@ -1282,7 +1281,6 @@ export function ChatView({
       <AskUserHost />
 
       {/* Plan approval — modal; the model is waiting on the verdict. */}
-      <PlanApprovalHost />
 
       {/* Bottom composer — except in the Home empty state, where the composer
           is centered above. Home never shows the working-directory picker. */}

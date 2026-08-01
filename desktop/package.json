@@ -76,7 +76,8 @@
     "smoke:palette": "electron scripts/palette-probe.cjs",
     "smoke:turnstate": "node scripts/renderer-probe.mjs scripts/working-copy-probe.ts",
     "smoke:stt": "node scripts/build-stt-probe.mjs && electron scripts/stt-settings-probe.cjs",
-    "smoke:transfer": "node scripts/build-transfer-probe.mjs && electron scripts/transfer-probe.cjs"
+    "smoke:transfer": "node scripts/build-transfer-probe.mjs && electron scripts/transfer-probe.cjs",
+    "smoke:plan": "node scripts/build-transfer-probe.mjs && electron scripts/plan-probe.cjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",

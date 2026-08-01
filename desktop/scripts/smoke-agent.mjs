@@ -31,6 +31,13 @@ await build({
   resolve: {
     alias: [
       { find: 'electron', replacement: resolve('scripts/smoke-electron-stub.ts') },
+      // The plan store persists via better-sqlite3, whose native binary is
+      // Electron-ABI — it cannot load under plain Node. Smoke tests the
+      // approval contract, not persistence (plan-probe.cjs covers that).
+      {
+        find: /^.*\/plan\/store\.js$/,
+        replacement: resolve('scripts/smoke-plan-store-stub.ts'),
+      },
       // Code both processes share — kept in sync with electron.vite.config.ts,
       // tsconfig paths and renderer-probe.mjs.
       { find: '@shared', replacement: resolve('src/shared') },

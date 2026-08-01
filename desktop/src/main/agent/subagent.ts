@@ -205,6 +205,8 @@ async function runSubAgentWithCwd(opts: SubAgentOptions): Promise<string> {
         model,
         permissionMode: "bypassPermissions",
         signal,
+        // Plan updates from this child carry its name, not a generic "agent".
+        agentLabel: opts.memberName ?? opts.def?.type,
       });
       emit?.({
         kind: "tool_done",

@@ -357,8 +357,10 @@ export function registerChatIPC(): void {
         requestPermissionFromRenderer(win, ask),
       askUser: (questions: Parameters<typeof askUserFromRenderer>[1]) =>
         askUserFromRenderer(win, questions),
-      askPlanApproval: (plan: Parameters<typeof askPlanApprovalFromRenderer>[1]) =>
-        askPlanApprovalFromRenderer(win, plan),
+      askPlanApproval: (
+        plan: Parameters<typeof askPlanApprovalFromRenderer>[1],
+        planId?: string,
+      ) => askPlanApprovalFromRenderer(win, plan, planId, sessionId),
       space: payload.space,
       cwd,
       effort: payload.effort,

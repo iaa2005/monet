@@ -17,12 +17,14 @@ import type { Bookmark, Visit } from "../main/browser/bookmark-store.js";
 import type { ServerConfig, ServerState } from "../main/browser/servers.js";
 import type { SessionUiState } from "../main/ui-state.js";
 import type { SttSettings } from "../main/stt-settings.js";
+import type { Plan, PlanTodoStatus } from "@shared/plan";
 import type { ChatMessage } from "./chat";
 
 export type { BrowserConfig, DevServer, BrowserSelection, ServerConfig, ServerState };
 export type { Bookmark, Visit };
 export type { SessionUiState };
 export type { SttSettings };
+export type { Plan, PlanTodoStatus };
 export type {
   BrowserEngine,
   BrowserApproval,
@@ -499,13 +501,29 @@ export interface ElectronAPI {
   };
   plan: {
     onRequest: (
-      callback: (request: { id: string; plan: string }) => void,
+      callback: (request: { id: string; plan: string; planId?: string }) => void,
     ) => () => void;
     respond: (
       id: string,
       decision: "approve" | "approve-auto" | "keep-planning",
       feedback?: string,
     ) => void;
+    /** The plan document — read/annotate (plan/store.ts in main). */
+    current: (sessionId: string) => Promise<Plan | null>;
+    list: (sessionId: string) => Promise<Plan[]>;
+    comment: (
+      planId: string,
+      text: string,
+      todoId?: string,
+    ) => Promise<Plan | null>;
+    setTodo: (
+      planId: string,
+      todoId: string,
+      status: PlanTodoStatus,
+    ) => Promise<Plan | null>;
+    markdown: (planId: string) => Promise<string | null>;
+    setStatus: (planId: string, status: "draft" | "done") => Promise<Plan | null>;
+    onChanged: (callback: (sessionId: string) => void) => () => void;
   };
   askUser: {
     onRequest: (callback: (request: AskUserRequest) => void) => () => void;

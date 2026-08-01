@@ -492,6 +492,14 @@ export class SessionStore {
 
   delete(id: string): boolean {
     const d = getDb();
+    // The chat's plan documents go with it. Inline SQL (not the plan store —
+    // that would be an import cycle), and tolerant of the table not existing
+    // yet: plan/store.ts creates it lazily.
+    try {
+      d.prepare("DELETE FROM plans WHERE session_id = ?").run(id);
+    } catch {
+      /* plans table not created yet */
+    }
     const result = d.prepare("DELETE FROM sessions WHERE id = ?").run(id);
     return result.changes > 0;
   }

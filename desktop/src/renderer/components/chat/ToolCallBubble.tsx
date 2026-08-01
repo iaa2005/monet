@@ -12,6 +12,7 @@ import type { ChatMessage, ToolCall } from "@/types/chat";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import { CodeBlock } from "./CodeBlock";
+import { PlanDocCard } from "./PlanDocCard";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { diffStats, langFromPath } from "./diff-core";
 import { Spinner } from "./WorkingIndicator";
@@ -119,6 +120,7 @@ const HUMAN_NAMES: Record<string, string> = {
   Grep: "Searched",
   Glob: "Found files",
   TodoWrite: "Updated plan",
+  UpdatePlan: "Updated the plan document",
   Task: "Delegated task",
   RunPython: "Ran Python",
   SandboxList: "Listed sandbox files",
@@ -730,6 +732,20 @@ function ToolCallBubbleImpl({
   groupMembers,
   mode = "verbose",
 }: ToolCallBubbleProps): JSX.Element {
+  // The plan card outranks every mode filter: while its approval round-trip
+  // is open it carries the Build buttons, and a hidden card would strand the
+  // turn until the timeout sends "keep planning".
+  if (toolCall.name === "ExitPlanMode") {
+    return (
+      <div className="space-y-1.5">
+        <PlanDocCard toolCall={toolCall} />
+        {mode === "normal" && groupMembers && groupMembers.length > 0 && (
+          <ToolGroupCard calls={groupMembers} />
+        )}
+      </div>
+    );
+  }
+
   if (mode === "summary") return <span />;
 
   // Task calls render as a live nested agent card (in every non-summary mode).
