@@ -5,9 +5,10 @@
  * Falls back to Node.js manual search if rg is not installed.
  */
 import { execFile as cpExecFile, type ExecFileException } from 'child_process'
-import { readFileSync, readdirSync, statSync } from 'fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { join, relative } from 'path'
 import { promisify } from 'util'
+import { app } from 'electron'
 import { getWorkspacePath } from '../ipc/workspace.js'
 
 const execFileAsync = promisify(cpExecFile)
@@ -27,6 +28,17 @@ export interface RipgrepArgs {
   head_limit?: number
   offset?: number
   multiline?: boolean
+  /**
+   * Honour .gitignore and skip dependency folders.
+   *
+   * Off by default, because an agent asking "where is this string" wants the
+   * whole tree. On for the UI's own lookups, where speed is the point:
+   * searching node_modules for a CSS class took 20 SECONDS on an ordinary
+   * workspace — measured — and a browser element-pick fires nine searches.
+   */
+  respect_ignore?: boolean
+  /** Cap for this search; defaults to RG_TIMEOUT. */
+  timeout_ms?: number
 }
 
 export interface RipgrepResult {
@@ -42,8 +54,59 @@ const RG_MAX_BUFFER = 20_000_000
 
 let rgPath: string | null = null
 
+/**
+ * The ripgrep the BUILD ships, at `<out/main>/vendor/ripgrep/<arch>-<os>/`.
+ *
+ * The build has been copying it there all along and nothing ever looked: the
+ * search only probed PATH, so on a machine without ripgrep installed every
+ * call fell through to the manual walk below. Measured on a real workspace,
+ * that walk reads about a gigabyte across twelve thousand files and does not
+ * finish in eight seconds — in the MAIN process, where it freezes the whole
+ * app. Picking an element in the browser fires up to nine of them.
+ */
+function bundledRg(): string | null {
+  const binary = process.platform === 'win32' ? 'rg.exe' : 'rg'
+  const folder =
+    process.platform === 'win32'
+      ? `${process.arch}-win32`
+      : `${process.arch}-${process.platform}`
+  // Anchored on Electron's own paths rather than __dirname: the bundle is CJS
+  // today and ESM in a probe, and a resolver that only works in one of them
+  // is a resolver that will quietly stop working. (The probe caught exactly
+  // that: "__dirname is not defined".)
+  const roots: string[] = []
+  try {
+    const appPath = app.getAppPath()
+    roots.push(join(appPath, 'out', 'main'), appPath)
+    // Packaged: asar cannot execute a binary, so it is unpacked beside it.
+    roots.push(
+      join(appPath.replace('app.asar', 'app.asar.unpacked'), 'out', 'main'),
+    )
+    if (process.resourcesPath)
+      roots.push(join(process.resourcesPath, 'app.asar.unpacked', 'out', 'main'))
+  } catch {
+    /* not an Electron context (a probe) — fall through to the cwd guesses */
+  }
+  roots.push(join(process.cwd(), 'out', 'main'))
+  const candidates = roots.map((r) => join(r, 'vendor', 'ripgrep', folder, binary))
+  for (const c of candidates) {
+    try {
+      if (existsSync(c)) return c
+    } catch {
+      /* keep looking */
+    }
+  }
+  return null
+}
+
 async function findRg(): Promise<string | null> {
-  if (rgPath !== null) return rgPath
+  if (rgPath !== null) return rgPath || null
+
+  const bundled = bundledRg()
+  if (bundled) {
+    rgPath = bundled
+    return rgPath
+  }
   try {
     // Test if rg is available
     const { stdout } = await execFileAsync(
@@ -97,17 +160,22 @@ async function ripGrepNative(
     head_limit,
     offset = 0,
     multiline = false,
+    respect_ignore = false,
+    timeout_ms,
   } = args
 
   const ws = getWorkspacePath()
   const target = searchPath ? (searchPath.startsWith('/') || /^[A-Z]:/i.test(searchPath) ? searchPath : join(ws, searchPath)) : ws
 
-  const rgArgs: string[] = ['--hidden', '--no-ignore']
+  const rgArgs: string[] = respect_ignore ? ['--hidden'] : ['--hidden', '--no-ignore']
 
   // Exclude VCS noise
   for (const dir of ['.git', '.svn', '.hg', '.bzr', '.jj', '.sl']) {
     rgArgs.push('--glob', `!${dir}`)
   }
+  if (respect_ignore)
+    for (const dir of ['node_modules', 'dist', 'build', 'out', '.next', 'target', 'vendor'])
+      rgArgs.push('--glob', `!${dir}`)
 
   rgArgs.push('--max-columns', '500')
 
@@ -139,7 +207,7 @@ async function ripGrepNative(
 
   const { stdout } = await execFileAsync(rgExe, rgArgs, {
     maxBuffer: RG_MAX_BUFFER,
-    timeout: RG_TIMEOUT,
+    timeout: timeout_ms ?? RG_TIMEOUT,
     signal: abortSignal,
     windowsHide: true,
   })
@@ -164,6 +232,15 @@ async function ripGrepNative(
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '.hg', '.svn', '__pycache__', 'dist', 'out', '.next', 'build'])
 const MANUAL_MAX = 200
+/**
+ * The manual walk is a fallback, not a search engine: it reads every file it
+ * touches. Measured on one ordinary workspace — 12 000 files, a gigabyte, not
+ * finished after eight seconds, all of it blocking the main process. A budget
+ * turns "the app is gone" into "no results this time", which is a fallback
+ * doing its job.
+ */
+const MANUAL_BUDGET_MS = 400
+const MANUAL_MAX_FILE_BYTES = 512 * 1024
 
 async function ripGrepManual(args: RipgrepArgs): Promise<RipgrepResult> {
   const {
@@ -188,12 +265,13 @@ async function ripGrepManual(args: RipgrepArgs): Promise<RipgrepResult> {
 
   const incRegex = globFilter ? globToRegex(globFilter) : null
   const results: string[] = []
+  const deadline = Date.now() + MANUAL_BUDGET_MS
 
   function search(dir: string): void {
-    if (results.length >= MANUAL_MAX) return
+    if (results.length >= MANUAL_MAX || Date.now() > deadline) return
     try {
       for (const e of readdirSync(dir, { withFileTypes: true })) {
-        if (results.length >= MANUAL_MAX) return
+        if (results.length >= MANUAL_MAX || Date.now() > deadline) return
         const fp = join(dir, e.name)
         if (e.isDirectory()) {
           if (!e.name.startsWith('.') && !SKIP_DIRS.has(e.name)) search(fp)
@@ -202,6 +280,9 @@ async function ripGrepManual(args: RipgrepArgs): Promise<RipgrepResult> {
         if (incRegex && !incRegex.test(e.name)) continue
         if (e.name.startsWith('.')) continue
         try {
+          // Reading a 200 MB artifact to regex it is how a fallback becomes
+          // the problem it was meant to soften.
+          if (statSync(fp).size > MANUAL_MAX_FILE_BYTES) continue
           const lines = readFileSync(fp, 'utf-8').split('\n')
           if (output_mode === 'files_with_matches') {
             if (lines.some(l => regex.test(l))) {

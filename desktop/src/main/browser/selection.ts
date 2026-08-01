@@ -76,6 +76,9 @@ export async function freezeFrame(t: BrowserTransport): Promise<void> {
  * and the search stops at the first that finds something: a component name
  * that matches forty files is worse than the text that matches one.
  */
+/** How long the whole candidate hunt may take before the chip goes without. */
+const CANDIDATE_BUDGET_MS = 1_200;
+
 async function candidateFiles(el: RawElement, max = 3): Promise<string[]> {
   const workspace = getWorkspacePath();
   if (!workspace) return [];
@@ -87,6 +90,11 @@ async function candidateFiles(el: RawElement, max = 3): Promise<string[]> {
         output_mode: "files_with_matches",
         head_limit: max + 2,
         "-i": false,
+        // The hint is worth a moment, not a minute: honouring ignore files
+        // and skipping dependency folders took one search from 20 SECONDS to
+        // well under one on the same workspace. Nine of them run per pick.
+        respect_ignore: true,
+        timeout_ms: 900,
       });
       const files = res.lines
         .map((l) => l.trim())
@@ -175,12 +183,21 @@ export async function handleSelection(
   // Candidates for the first few elements only: three ripgreps per element
   // adds up, and a selection of eight is about relationships anyway.
   const candidatesByIndex: Record<number, string[]> = {};
-  await Promise.all(
-    payload.elements.slice(0, 3).map(async (el, i) => {
-      const files = await candidateFiles(el);
-      if (files.length) candidatesByIndex[i] = files;
-    }),
-  );
+  // Bounded, because this is a nicety: the chip is about the element the user
+  // clicked, and "which file might define it" is a hint on top. Without the
+  // cap a slow search — or a workspace with no ripgrep, where the fallback
+  // reads the whole tree in the main process — held the chip for as long as
+  // it took. Reported as "selecting an element takes forever, or never
+  // finishes at all".
+  await Promise.race([
+    Promise.all(
+      payload.elements.slice(0, 3).map(async (el, i) => {
+        const files = await candidateFiles(el);
+        if (files.length) candidatesByIndex[i] = files;
+      }),
+    ),
+    new Promise((r) => setTimeout(r, CANDIDATE_BUDGET_MS)),
+  ]);
 
   const context = formatSelection(payload, candidatesByIndex, {
     browserToolsEnabled: getBrowserConfig().enabled,
