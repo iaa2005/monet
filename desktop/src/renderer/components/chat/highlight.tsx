@@ -131,8 +131,44 @@ export function highlightOne(text: string, language: string): ReactNode {
  * Full-block syntax highlighting via refractor — replaces react-syntax-highlighter.
  * Avoids the `wrapLongLines` performance hit (uses CSS `white-space: pre-wrap`
  * instead of JS-based character measurement).
+ *
+ * Two costs are bounded here. TOKENIZING: past the threshold the text renders
+ * plain — never truncated (an earlier version cut the content itself off,
+ * which silently amputated any file over 30 KB in the viewer). RENDERING:
+ * results are cached across mounts keyed by content, so re-parenting a dock
+ * panel or reopening a file does not re-tokenize; the per-line
+ * content-visibility rules in globals.css keep offscreen lines out of layout
+ * and paint entirely, which is what lets a 10k-line file scroll flat.
  */
-const MAX_HIGHLIGHT_CHARS = 30_000;
+const MAX_HIGHLIGHT_CHARS = 120_000;
+
+/** Tokenized lines by content — survives unmounts (dock drags, tab flips).
+ * ReactNodes are immutable, so sharing them between mounts is safe. */
+const HL_CACHE = new Map<string, ReactNode[]>();
+const HL_CACHE_MAX = 40;
+
+function linesFor(code: string, language: string): ReactNode[] {
+  // Small blocks tokenize in microseconds, and a streaming block re-arrives
+  // grown on every flush — caching those would only churn the LRU out of the
+  // big entries it exists for.
+  if (code.length < 2_000) return highlightLines(code, language);
+  const key = `${language}\u0000${code}`;
+  const hit = HL_CACHE.get(key);
+  if (hit) {
+    // Keep hot entries alive: Map iterates in insertion order, so re-insert.
+    HL_CACHE.delete(key);
+    HL_CACHE.set(key, hit);
+    return hit;
+  }
+  const lines =
+    code.length > MAX_HIGHLIGHT_CHARS
+      ? code.split("\n")
+      : highlightLines(code, language);
+  HL_CACHE.set(key, lines);
+  if (HL_CACHE.size > HL_CACHE_MAX)
+    HL_CACHE.delete(HL_CACHE.keys().next().value as string);
+  return lines;
+}
 
 export function HighlightedCode({
   code,
@@ -145,14 +181,11 @@ export function HighlightedCode({
   showLineNumbers?: boolean;
   className?: string;
 }): JSX.Element {
-  const source =
-    code.length > MAX_HIGHLIGHT_CHARS
-      ? `${code.slice(0, MAX_HIGHLIGHT_CHARS)}\n\n… (highlighting skipped for large input)`
-      : code;
-  const lines = useMemo(
-    () => highlightLines(source, language),
-    [source, language],
-  );
+  const lines = useMemo(() => linesFor(code, language), [code, language]);
+  // Numbers are rendered as text, not CSS counters: content-visibility
+  // carries style containment, which scopes counters per line and would
+  // reset every number to 1.
+  const digits = String(lines.length).length;
   return (
     <pre
       className={cn(
@@ -166,12 +199,13 @@ export function HighlightedCode({
         lineHeight: "1.6",
         background: "transparent",
         padding: "0.75rem",
+        ["--ln-digits" as string]: digits,
       }}
     >
       <code>
         {lines.map((node, i) => (
           <span key={i} className="line">
-            <span className="ln" />
+            {showLineNumbers ? <span className="ln">{i + 1}</span> : null}
             <span className="cl">{node}</span>
           </span>
         ))}

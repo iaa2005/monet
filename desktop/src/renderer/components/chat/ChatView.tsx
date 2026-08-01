@@ -526,6 +526,45 @@ function stripIndexes(msgs: ChatMessage[]): Map<number, ArtifactItem[]> {
 /** In Normal mode, consecutive tool messages become a single group card.
  * In every mode, a turn that produced sandbox files gets an artifact strip
  * right after its last message. */
+/** Windowing: how much of the tail mounts initially, and per reveal step. */
+const WINDOW_INITIAL = 80;
+const WINDOW_STEP = 120;
+
+/** The top-of-transcript sentinel: scrolling it into view mounts an earlier
+ * slice. A button too, for keyboard/page-up users. */
+function RevealEarlier({
+  hiddenCount,
+  onReveal,
+}: {
+  hiddenCount: number;
+  onReveal: () => void;
+}): JSX.Element {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) onReveal();
+      },
+      { rootMargin: "400px 0px 0px 0px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [onReveal]);
+  return (
+    <div ref={ref} className="flex justify-center py-2">
+      <button
+        type="button"
+        onClick={onReveal}
+        className="rounded-md border border-border px-3 py-1 text-xs text-muted-foreground hover:bg-muted"
+      >
+        Show earlier messages ({hiddenCount})
+      </button>
+    </div>
+  );
+}
+
 function groupMessages(
   msgs: ChatMessage[],
   mode: TranscriptMode,
@@ -961,7 +1000,20 @@ export function ChatView({
 
   const greeting = useMemo(() => pickGreeting(profileName, isFirstRun), [profileName, isFirstRun]);
 
-  const grouped = groupMessages(messages, transcriptMode);
+  const grouped = useMemo(
+    () => groupMessages(messages, transcriptMode),
+    [messages, transcriptMode],
+  );
+
+  // ── Windowing ──────────────────────────────────────────────────────
+  // A long chat renders only its tail: the last `reveal` grouped items plus
+  // whatever the user has scrolled back into. Scrolling to the top mounts
+  // another slice (the sentinel below observes itself into view). Together
+  // with the items' content-visibility this bounds both React work per
+  // streaming flush and the DOM the compositor has to carry.
+  const [reveal, setReveal] = useState(WINDOW_INITIAL);
+  useEffect(() => setReveal(WINDOW_INITIAL), [sessionId]);
+  const windowStart = Math.max(0, grouped.length - reveal);
   // The rules live in turn-state.ts so they can be asserted without a browser
   // (scripts/working-copy-probe.ts). Here we only adapt the shapes.
   const copyTargets = useMemo(
@@ -1154,6 +1206,12 @@ export function ChatView({
             <MessageScroller className="flex-1">
               <MessageScrollerViewport>
                 <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-2 px-4 py-4">
+                  {!summaryTurns && windowStart > 0 && (
+                    <RevealEarlier
+                      hiddenCount={windowStart}
+                      onReveal={() => setReveal((r) => r + WINDOW_STEP)}
+                    />
+                  )}
                   {summaryTurns
                     ? summaryTurns.map((t, i) => (
                         <MessageScrollerItem
@@ -1166,7 +1224,8 @@ export function ChatView({
                           <SummaryTurnCard turn={t} />
                         </MessageScrollerItem>
                       ))
-                    : grouped.flatMap((item, i) => {
+                    : grouped.slice(windowStart).flatMap((item, j) => {
+                    const i = windowStart + j;
                     const copyBtn = copyTargets.get(i);
                     if ("type" in item && item.type === "tool-group") {
                       const el = (

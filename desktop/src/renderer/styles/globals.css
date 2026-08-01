@@ -518,41 +518,45 @@
     color: #d4d4d4;
 }
 
-/* Line numbers — pure CSS via counter, no JS overhead.
-   Uses its own color outside the token palette so numbers never look
-   like code (comment color = #a0a1a7 light / #6a9955 dark). */
+/* Code lines. Flex rows, NOT table-rows: a table lays out globally (any
+   change re-measures every row, and content-visibility is inert on rows),
+   which is what made long files jank on scroll and window drags. Each line
+   is its own containment boundary — offscreen lines cost no layout and no
+   paint. Numbers are text (highlight.tsx): style containment scopes CSS
+   counters per line, so counters would all read 1. Number color sits
+   outside the token palette so it never looks like code. */
 pre.diff-hl code {
     display: block;
 }
 pre.diff-hl .line {
-    display: table-row;
+    display: flex;
+    align-items: flex-start;
+    content-visibility: auto;
+    /* line-height 1.6 × 12.5px — keeps the scrollbar honest while skipped,
+       and empty lines from collapsing to nothing. */
+    contain-intrinsic-size: auto 20px;
+    min-height: 20px;
 }
 pre.diff-hl .ln {
     display: none;
 }
 pre.diff-hl.show-ln .ln {
-    display: table-cell;
+    display: block;
+    flex: none;
+    width: calc(var(--ln-digits, 3) * 1ch + 1em);
     text-align: right;
     padding-right: 1em;
     user-select: none;
     color: #b8b8b8;
-    min-width: 3ch;
-}
-pre.diff-hl.show-ln .ln::before {
-    counter-increment: line;
-    content: counter(line);
 }
 .dark pre.diff-hl.show-ln .ln {
     color: #4a505a;
 }
 pre.diff-hl .cl {
-    display: table-cell;
-}
-pre.diff-hl.show-ln {
-    counter-reset: line 0;
-}
-pre.diff-hl.show-ln code {
     display: block;
+    flex: 1 1 0;
+    min-width: 0;
+    white-space: pre-wrap;
 }
 
 /*

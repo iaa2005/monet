@@ -116,10 +116,10 @@ app.whenReady().then(async () => {
   }
 
   // ── 3. Files opens BESIDE the chat, not over it ─────────────────────
-  const hasBtn = await js(`!!document.querySelector('button[title="Files"]')`);
+  const hasBtn = await js(`!!document.querySelector('button[title^="Files"]')`);
   check("the header has a Files button", hasBtn);
   if (hasBtn) {
-    await js(`document.querySelector('button[title="Files"]').click()`);
+    await js(`document.querySelector('button[title^="Files"]').click()`);
     await new Promise((r) => setTimeout(r, 1200));
     const after = await js(`(() => ({
       groups: document.querySelectorAll('.dv-groupview').length,
@@ -137,7 +137,7 @@ app.whenReady().then(async () => {
     );
 
     // ── 4. The toggle removes the panel but never the chat ────────────
-    await js(`document.querySelector('button[title="Files"]').click()`);
+    await js(`document.querySelector('button[title^="Files"]').click()`);
     await new Promise((r) => setTimeout(r, 800));
     const closed = await js(`(() => ({
       dock: !!document.querySelector('.dv-dockview'),
@@ -160,7 +160,7 @@ app.whenReady().then(async () => {
   // each side doubling the line — so all three are measured, in pixels.
   {
     // Two groups, because an edge needs two sides.
-    await js(`document.querySelector('button[title="Files"]').click()`);
+    await js(`document.querySelector('button[title^="Files"]').click()`);
     await new Promise((r) => setTimeout(r, 1000));
     const grid = await js(`(() => {
       const gs = [...document.querySelectorAll('.dv-groupview')].map(g => {
@@ -209,7 +209,7 @@ app.whenReady().then(async () => {
     );
 
     // Leave the desk as this section found it.
-    await js(`document.querySelector('button[title="Files"]').click()`);
+    await js(`document.querySelector('button[title^="Files"]').click()`);
     await new Promise((r) => setTimeout(r, 700));
   }
 
@@ -298,7 +298,7 @@ app.whenReady().then(async () => {
   // root classes — the exact half-dark-half-light bug reported from use.
   {
     await js(`document.documentElement.classList.add('dark')`);
-    await js(`document.querySelector('button[title="Files"]').click()`);
+    await js(`document.querySelector('button[title^="Files"]').click()`);
     await new Promise((r) => setTimeout(r, 1000));
     const clicked = await js(`(() => {
       const btn = [...document.querySelectorAll('button[title="Detach into its own window"]')][0];
