@@ -6,6 +6,7 @@
  * vite/esbuild strips types without checking them.
  */
 import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 
 const r = spawnSync(
   process.platform === 'win32' ? 'npx.cmd' : 'npx',
@@ -26,4 +27,27 @@ if (own.length) {
   console.error(`\ntypecheck FAILED: ${own.length} error(s) in desktop code`)
   process.exit(1)
 }
+// package.json duplicate keys — invisible to JSON.parse (the last one wins),
+// so a new script can silently shadow an existing one. That happened: a
+// second "smoke:podman" took the name and the original probe stopped being
+// runnable at all, with nothing failing to say so. A text scan, because a
+// parsed object has already thrown the evidence away.
+{
+  const pkg = readFileSync('package.json', 'utf8')
+  const seen = new Set()
+  const dupes = new Set()
+  for (const m of pkg.matchAll(/^(\s*)"([^"]+)"\s*:/gm)) {
+    const key = `${m[1].length}:${m[2]}`
+    if (seen.has(key)) dupes.add(m[2])
+    seen.add(key)
+  }
+  if (dupes.size) {
+    console.error(
+      `\npackage.json has duplicate keys: ${[...dupes].join(', ')} —` +
+        ' the later one silently wins',
+    )
+    process.exit(1)
+  }
+}
+
 console.log('typecheck OK: desktop code clean')
