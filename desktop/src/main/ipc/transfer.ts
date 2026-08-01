@@ -13,6 +13,18 @@
  *
  * Optional: the user's Profile + long-term Memory + project CLAUDE.md ("system
  * context"). OFF by default — sharing a chat shouldn't leak personal context.
+ *
+ * A v3 bundle also carries the state AROUND the chat: its flags (pinned,
+ * archived), the routine that produced it, the folder it was bound to (as a
+ * PATH — restored only if that path exists here), its desk (dock layout and
+ * browser tabs), its goal, and its context-event log so "undo compact" still
+ * works after an import.
+ *
+ * What a bundle deliberately does NOT carry: the project folder of a Code chat
+ * (that is the user's repository, not the conversation), and therefore the
+ * shadow-git checkpoints, which are that folder's file history under another
+ * name. An imported Code chat continues the conversation; it does not
+ * resurrect a workspace.
  */
 
 import { dialog, ipcMain } from "electron";
@@ -32,13 +44,20 @@ import { buildMemoryPrompt } from "../memory/store.js";
 import { loadClaudeMd } from "../claude-md.js";
 import { getWorkspacePath } from "./workspace.js";
 import {
+  listContextEvents,
   loadTranscriptWithMeta,
+  replaceContextEvents,
   replaceTranscript,
+  type ContextEvent,
 } from "../transcript-store.js";
+import { getUiState, setUiState, type SessionUiState } from "../ui-state.js";
+import { loadGoal, saveGoal } from "../agent/goal/store.js";
+import type { Goal } from "../agent/goal/state.js";
+import { existsSync } from "fs";
 import type { LLMMessage } from "../llm/adapter.js";
 
 const BUNDLE_FORMAT = "monet-chat";
-const BUNDLE_VERSION = 2;
+const BUNDLE_VERSION = 3;
 const MAX_ARTIFACT_FILE = 20 * 1024 * 1024; // 20 MB per file
 const MAX_ARTIFACT_TOTAL = 60 * 1024 * 1024; // 60 MB total
 
@@ -76,6 +95,14 @@ interface Bundle {
     space?: string;
     createdAt?: string;
     updatedAt?: string;
+    /** v3: the chat's own flags. */
+    pinned?: boolean;
+    archived?: boolean;
+    /** v3: the routine that produced this chat, if any. */
+    routineId?: string;
+    /** v3: the folder it was bound to. A PATH, not its contents — restored
+     * only when it exists on the importing machine. */
+    workspace?: string;
   };
   messages: ChatMessage[];
   /** The durable model transcript (tool_use/tool_result blocks) + hidden flags,
@@ -86,6 +113,12 @@ interface Bundle {
   /** The Home sandbox work tree (subfolders preserved). */
   sandboxFiles?: BundleSandboxFile[];
   context?: { profile?: string; memory?: string; claudeMd?: string };
+  /** v3: the desk — which panels were open, which pages the browser held. */
+  uiState?: SessionUiState;
+  /** v3: the goal this chat was pursuing. */
+  goal?: Goal;
+  /** v3: compact / rewind history, so "undo compact" survives the trip. */
+  contextEvents?: ContextEvent[];
 }
 
 function sysContext(): { profile?: string; memory?: string; claudeMd?: string } {
@@ -241,6 +274,171 @@ function safeFileBase(title: string): string {
   );
 }
 
+/**
+ * Everything a chat is, as a bundle. Separated from the IPC handler so a probe
+ * can round-trip it without a file dialog.
+ */
+export function buildBundle(
+  sessionId: string,
+  opts: ExportOptions,
+): Bundle | null {
+  const store = getSessionStore();
+  const session = store.get(sessionId);
+  if (!session) return null;
+
+  const uiState = getUiState(sessionId);
+  const goal = loadGoal(sessionId);
+  const contextEvents = listContextEvents(sessionId);
+
+  return {
+    format: BUNDLE_FORMAT,
+    version: BUNDLE_VERSION,
+    exportedAt: new Date().toISOString(),
+    app: "monet",
+    session: {
+      title: session.title,
+      space: session.space,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      ...(session.pinned ? { pinned: true } : {}),
+      ...(session.archived ? { archived: true } : {}),
+      ...(store.routineIdOf(sessionId)
+        ? { routineId: store.routineIdOf(sessionId) }
+        : {}),
+      // The PATH only. The folder itself is the user's project, and a chat is
+      // not a way to ship a repository.
+      ...(session.workspace ? { workspace: session.workspace } : {}),
+    },
+    messages: session.messages,
+    // The full model transcript — so the recipient continues with the exact
+    // context (tool blocks), not a text-only rebuild. Only when the chat
+    // actually has one (new chats do; migrated ones are text).
+    ...(() => {
+      const t = loadTranscriptWithMeta(sessionId);
+      return t.messages.length > 0 ? { transcript: t } : {};
+    })(),
+    ...(() => {
+      if (!opts.includeArtifacts) return {};
+      // Sandbox work tree (structured) is canonical; artifacts (flat) cover
+      // attachments/preview — dedup the Home overlap by basename.
+      const sandboxFiles = collectSandboxFiles(sessionId);
+      const skip = new Set(sandboxFiles.map((f) => basename(f.path)));
+      const artifacts = collectArtifacts(sessionId, skip);
+      return {
+        ...(sandboxFiles.length ? { sandboxFiles } : {}),
+        ...(artifacts.length ? { artifacts } : {}),
+      };
+    })(),
+    ...(opts.includeContext ? { context: sysContext() } : {}),
+    // The state around the chat: its desk, its goal, its context history.
+    ...(uiState ? { uiState } : {}),
+    ...(goal ? { goal } : {}),
+    ...(contextEvents.length ? { contextEvents } : {}),
+  };
+}
+
+/**
+ * A bundle becomes a new chat.
+ *
+ * New id, new message ids (they are a global primary key), embedded files
+ * written into this install's artifact/sandbox folders and the attachment
+ * paths remapped onto them.
+ */
+export function applyBundle(bundle: Partial<Bundle>): SessionWithMessages | null {
+  const store = getSessionStore();
+  if (bundle.format !== BUNDLE_FORMAT || !Array.isArray(bundle.messages))
+    return null;
+
+  const created = store.create(
+    bundle.session?.title || "Imported chat",
+    bundle.session?.space || "code",
+  );
+
+  // Materialise embedded files, mapping BOTH the relative path and the
+  // basename to the new artifact path: two files called data.csv in different
+  // sandbox folders used to collapse into one attachment.
+  const byPath = new Map<string, string>();
+  const byName = new Map<string, string>();
+  for (const sf of bundle.sandboxFiles ?? []) {
+    try {
+      const bytes = Buffer.from(sf.base64, "base64");
+      copyBufferIntoSandbox(created.id, sf.path, bytes);
+      const base = basename(sf.path);
+      const artifact = saveArtifactBuffer(created.id, base, bytes);
+      byPath.set(sf.path, artifact);
+      if (!byName.has(base)) byName.set(base, artifact);
+    } catch {
+      /* skip bad sandbox file */
+    }
+  }
+  for (const a of bundle.artifacts ?? []) {
+    try {
+      const bytes = Buffer.from(a.base64, "base64");
+      const artifact = saveArtifactBuffer(created.id, a.name, bytes);
+      byPath.set(a.name, artifact);
+      if (!byName.has(a.name)) byName.set(a.name, artifact);
+    } catch {
+      /* skip bad artifact */
+    }
+  }
+
+  const messages: ChatMessage[] = bundle.messages.map((m) => ({
+    ...m,
+    id: randomUUID(),
+    attachments: m.attachments?.map((att) => {
+      const p =
+        (att.name ? byPath.get(att.name) : undefined) ??
+        (att.name ? byName.get(basename(att.name)) : undefined);
+      return p ? { ...att, path: p } : { ...att, path: undefined };
+    }),
+  }));
+
+  store.save({
+    id: created.id,
+    title: created.title,
+    space: bundle.session?.space || "code",
+    createdAt: created.createdAt,
+    updatedAt: created.updatedAt,
+    messageCount: messages.length,
+    messages,
+  });
+
+  // The chat's own flags.
+  if (bundle.session?.pinned) store.setPinned(created.id, true);
+  if (bundle.session?.archived) store.setArchived(created.id, true);
+  if (bundle.session?.routineId)
+    store.markRoutineChat(created.id, bundle.session.routineId);
+  // A path from another machine usually means nothing here; binding the chat
+  // to a folder that does not exist would send its next turn somewhere wrong.
+  if (bundle.session?.workspace && existsSync(bundle.session.workspace))
+    store.setWorkspace(created.id, bundle.session.workspace);
+
+  // Restore the durable model transcript so the imported chat continues with
+  // full fidelity (tool blocks). Absent → it self-migrates to text-only on
+  // first continuation, like any pre-transcript chat.
+  if (
+    bundle.transcript &&
+    Array.isArray(bundle.transcript.messages) &&
+    bundle.transcript.messages.length > 0
+  )
+    replaceTranscript(
+      created.id,
+      bundle.transcript.messages,
+      bundle.transcript.hidden,
+    );
+
+  // The state around the chat.
+  if (bundle.uiState) setUiState(created.id, bundle.uiState);
+  if (bundle.goal) saveGoal(created.id, bundle.goal);
+  if (bundle.contextEvents?.length)
+    replaceContextEvents(
+      created.id,
+      bundle.contextEvents.map((ev) => ({ ...ev, sessionId: created.id })),
+    );
+
+  return store.get(created.id) ?? null;
+}
+
 export function registerTransferIPC(): void {
   const store = getSessionStore();
 
@@ -269,39 +467,8 @@ export function registerTransferIPC(): void {
         if (opts.format === "markdown") {
           writeFileSync(picked.filePath, toMarkdown(session, opts), "utf-8");
         } else {
-          const bundle: Bundle = {
-            format: BUNDLE_FORMAT,
-            version: BUNDLE_VERSION,
-            exportedAt: new Date().toISOString(),
-            app: "monet",
-            session: {
-              title: session.title,
-              space: session.space,
-              createdAt: session.createdAt,
-              updatedAt: session.updatedAt,
-            },
-            messages: session.messages,
-            // The full model transcript — so the recipient continues with the
-            // exact context (tool blocks), not a text-only rebuild. Only when
-            // the chat actually has one (new chats do; migrated ones are text).
-            ...(() => {
-              const t = loadTranscriptWithMeta(sessionId);
-              return t.messages.length > 0 ? { transcript: t } : {};
-            })(),
-            ...(() => {
-              if (!opts.includeArtifacts) return {};
-              // Sandbox work tree (structured) is canonical; artifacts (flat)
-              // cover attachments/preview — dedup the Home overlap by basename.
-              const sandboxFiles = collectSandboxFiles(sessionId);
-              const skip = new Set(sandboxFiles.map((f) => basename(f.path)));
-              const artifacts = collectArtifacts(sessionId, skip);
-              return {
-                ...(sandboxFiles.length ? { sandboxFiles } : {}),
-                ...(artifacts.length ? { artifacts } : {}),
-              };
-            })(),
-            ...(opts.includeContext ? { context: sysContext() } : {}),
-          };
+          const bundle = buildBundle(sessionId, opts);
+          if (!bundle) return { ok: false, error: "Session not found" };
           writeFileSync(picked.filePath, JSON.stringify(bundle, null, 2), "utf-8");
         }
         return { ok: true, path: picked.filePath };
@@ -330,77 +497,9 @@ export function registerTransferIPC(): void {
       try {
         const raw = readFileSync(picked.filePaths[0], "utf-8");
         const bundle = JSON.parse(raw) as Partial<Bundle>;
-        if (bundle.format !== BUNDLE_FORMAT || !Array.isArray(bundle.messages))
-          return { ok: false, error: "Not a Monet chat bundle." };
-
-        const created = store.create(
-          bundle.session?.title || "Imported chat",
-          bundle.session?.space || "code",
-        );
-
-        // Materialise embedded files into the new session, mapping basename →
-        // new artifact path so attachment previews/opens work post-import.
-        const pathByName = new Map<string, string>();
-        // Sandbox work tree first: restore into the new chat's sandbox (subdirs
-        // preserved, so RunPython/SandboxRead/Files see it) AND keep a flat
-        // artifact copy for attachment remap.
-        for (const sf of bundle.sandboxFiles ?? []) {
-          try {
-            const bytes = Buffer.from(sf.base64, "base64");
-            copyBufferIntoSandbox(created.id, sf.path, bytes);
-            const base = basename(sf.path);
-            pathByName.set(base, saveArtifactBuffer(created.id, base, bytes));
-          } catch {
-            /* skip bad sandbox file */
-          }
-        }
-        for (const a of bundle.artifacts ?? []) {
-          try {
-            const bytes = Buffer.from(a.base64, "base64");
-            pathByName.set(a.name, saveArtifactBuffer(created.id, a.name, bytes));
-          } catch {
-            /* skip bad artifact */
-          }
-        }
-
-        // Message ids are a global PK — regenerate them, and remap attachment
-        // paths onto the freshly written artifacts.
-        const messages: ChatMessage[] = bundle.messages.map((m) => ({
-          ...m,
-          id: randomUUID(),
-          attachments: m.attachments?.map((att) => {
-            const name = att.name ? basename(att.name) : att.name;
-            const p = name ? pathByName.get(name) : undefined;
-            return p ? { ...att, path: p } : { ...att, path: undefined };
-          }),
-        }));
-
-        store.save({
-          id: created.id,
-          title: created.title,
-          space: bundle.session?.space || "code",
-          createdAt: created.createdAt,
-          updatedAt: created.updatedAt,
-          messageCount: messages.length,
-          messages,
-        });
-
-        // Restore the durable model transcript so the imported chat continues
-        // with full fidelity (tool blocks). Absent → it self-migrates to
-        // text-only on first continuation, like any pre-transcript chat.
-        if (
-          bundle.transcript &&
-          Array.isArray(bundle.transcript.messages) &&
-          bundle.transcript.messages.length > 0
-        ) {
-          replaceTranscript(
-            created.id,
-            bundle.transcript.messages,
-            bundle.transcript.hidden,
-          );
-        }
-
-        return { ok: true, session: store.get(created.id) ?? undefined };
+        const session = applyBundle(bundle);
+        if (!session) return { ok: false, error: "Not a Monet chat bundle." };
+        return { ok: true, session };
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }

@@ -33,9 +33,11 @@ export interface ChatMessage {
   isStreaming?: boolean
   isError?: boolean
   /** Extended-thinking / reasoning text, shown only in Thinking mode. Display-
-   * only: it is NEVER fed back into the model context. */
+   * only: it is NEVER fed back into the model context, but it IS stored, so it
+   * survives a reload and travels with an exported chat. */
   reasoning?: string
-  /** Code Rewind: workspace snapshot taken after this (assistant) turn. */
+  /** Code Rewind: workspace snapshot taken after this (assistant) turn. Stored
+   * too — the sha is what a rewind rolls back to. */
   checkpointSha?: string
 }
 

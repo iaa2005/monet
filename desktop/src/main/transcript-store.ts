@@ -177,6 +177,49 @@ export function recordContextEvent(
   }
 }
 
+/**
+ * Replace a session's context-event log with a recorded one (import).
+ *
+ * Verbatim — ids, seq and timestamps included: the log is a history, and a
+ * history renumbered on arrival is a different history. `undoCompact` looks
+ * events up by id, so those have to survive too.
+ */
+export function replaceContextEvents(
+  sessionId: string,
+  events: ContextEvent[],
+): void {
+  try {
+    const d = db();
+    const tx = d.transaction(() => {
+      d.prepare("DELETE FROM context_events WHERE session_id = ?").run(sessionId);
+      const insert = d.prepare(
+        "INSERT INTO context_events (id, session_id, seq, type, at, payload) VALUES (?, ?, ?, ?, ?, ?)",
+      );
+      for (const ev of events) {
+        const args = [
+          sessionId,
+          ev.seq,
+          ev.type,
+          ev.at,
+          JSON.stringify(ev.payload ?? {}),
+        ] as const;
+        // The id is kept when it is free — but ids are session-local (the UI
+        // re-reads them), and importing a chat back into the install it came
+        // from collides on the primary key. A collision must cost one id, not
+        // the whole log.
+        try {
+          insert.run(ev.id, ...args);
+        } catch {
+          insert.run(randomUUID(), ...args);
+        }
+      }
+    });
+    tx();
+  } catch {
+    /* an unreadable log is not worth failing an import over */
+  }
+}
+
 export function listContextEvents(sessionId: string): ContextEvent[] {
   try {
     const rows = db()

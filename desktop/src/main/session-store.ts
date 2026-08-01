@@ -52,6 +52,22 @@ export interface ChatMessage {
   }[];
   isStreaming?: boolean;
   isError?: boolean;
+  /**
+   * Extended-thinking text, shown in Thinking mode.
+   *
+   * Persisted (it used to live only in the renderer): reopening a chat threw
+   * every reasoning block away, and an export could not carry what the app
+   * had already forgotten.
+   */
+  reasoning?: string;
+  /**
+   * The workspace snapshot taken after this turn (shadow-git sha).
+   *
+   * Also renderer-only before: "Rewind to here" silently degraded to a
+   * conversation-only rewind on any reopened chat, because the sha the button
+   * needs was gone.
+   */
+  checkpointSha?: string;
 }
 
 export interface SessionWithMessages extends Session {
@@ -169,6 +185,14 @@ function getDb(): ReturnType<typeof Database> {
     }[];
     if (!msgCols.some((c) => c.name === "attachments"))
       db.exec("ALTER TABLE messages ADD COLUMN attachments TEXT");
+    // Reasoning text and the turn's checkpoint sha used to live only in the
+    // renderer: reopening a chat threw every thinking block away, and "Rewind
+    // to here" silently degraded to a conversation-only rewind because the sha
+    // it needs was gone.
+    if (!msgCols.some((c) => c.name === "reasoning"))
+      db.exec("ALTER TABLE messages ADD COLUMN reasoning TEXT");
+    if (!msgCols.some((c) => c.name === "checkpoint_sha"))
+      db.exec("ALTER TABLE messages ADD COLUMN checkpoint_sha TEXT");
   }
   return db;
 }
@@ -191,6 +215,18 @@ function attachmentsJson(m: ChatMessage): string | null {
 }
 
 export class SessionStore {
+  /** The routine that produced this chat, if any — for export/import. */
+  routineIdOf(id: string): string | undefined {
+    try {
+      const row = getDb()
+        .prepare("SELECT routine_id FROM sessions WHERE id = ?")
+        .get(id) as { routine_id: string | null } | undefined;
+      return row?.routine_id ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** Tag a chat as produced by a routine. Survives the routine's deletion —
    * that's the point: the chat is still a routine's output either way. */
   markRoutineChat(sessionId: string, routineId: string): void {
@@ -233,6 +269,8 @@ export class SessionStore {
           message_count: number;
           space?: string | null;
           workspace?: string | null;
+          archived?: number | null;
+          pinned?: number | null;
         }
       | undefined;
     if (!s) return null;
@@ -248,6 +286,8 @@ export class SessionStore {
       timestamp: number;
       tool_call: string | null;
       attachments: string | null;
+      reasoning: string | null;
+      checkpoint_sha: string | null;
     }>;
 
     return {
@@ -258,6 +298,8 @@ export class SessionStore {
       messageCount: s.message_count,
       space: s.space ?? undefined,
       workspace: s.workspace ?? undefined,
+      archived: s.archived === 1,
+      pinned: s.pinned === 1,
       messages: msgs.map((m) => ({
         id: m.id,
         role: m.role as ChatMessage["role"],
@@ -265,6 +307,8 @@ export class SessionStore {
         timestamp: m.timestamp,
         toolCall: m.tool_call ? JSON.parse(m.tool_call) : undefined,
         attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
+        reasoning: m.reasoning ?? undefined,
+        checkpointSha: m.checkpoint_sha ?? undefined,
       })),
     };
   }
@@ -296,7 +340,7 @@ export class SessionStore {
       // Replace messages
       d.prepare("DELETE FROM messages WHERE session_id = ?").run(session.id);
       const insert = d.prepare(
-        "INSERT INTO messages (id, session_id, role, content, timestamp, tool_call, attachments) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO messages (id, session_id, role, content, timestamp, tool_call, attachments, reasoning, checkpoint_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       );
       for (const m of session.messages) {
         insert.run(
@@ -307,6 +351,8 @@ export class SessionStore {
           m.timestamp,
           m.toolCall ? JSON.stringify(m.toolCall) : null,
           attachmentsJson(m),
+          m.reasoning ?? null,
+          m.checkpointSha ?? null,
         );
       }
     });
@@ -332,7 +378,7 @@ export class SessionStore {
     if (!s) return null;
 
     d.prepare(
-      "INSERT INTO messages (id, session_id, role, content, timestamp, tool_call, attachments) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO messages (id, session_id, role, content, timestamp, tool_call, attachments, reasoning, checkpoint_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ).run(
       message.id || randomUUID(),
       sessionId,
@@ -341,6 +387,8 @@ export class SessionStore {
       message.timestamp,
       message.toolCall ? JSON.stringify(message.toolCall) : null,
       attachmentsJson(message),
+      message.reasoning ?? null,
+      message.checkpointSha ?? null,
     );
 
     const count = d
