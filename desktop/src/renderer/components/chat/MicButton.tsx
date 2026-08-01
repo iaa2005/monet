@@ -9,8 +9,13 @@
  *
  * UI: the mic toggles recording; a small chevron appears on hover and opens
  * a panel with the input-device list, a live input-level bar, and the
- * transcription settings (endpoint / API key / model), persisted in
- * localStorage.
+ * transcription settings (endpoint / API key / model).
+ *
+ * Those settings live in MAIN's data dir (stt.json, key encrypted with
+ * safeStorage), not in localStorage. localStorage is keyed by origin, and the
+ * dev renderer's origin carries the vite port — which moves when the port is
+ * taken, so the whole panel came up blank and read as "my API key resets
+ * every launch". The old localStorage values are migrated once, then dropped.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -26,13 +31,16 @@ function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
-const LS_DEVICE = "mic-device-id";
-const LS_ENGINE = "stt-engine"; // "local" | "cloud"
-const LS_ENDPOINT = "stt-endpoint";
-const LS_KEY = "stt-key";
-const LS_MODEL = "stt-model";
-const LS_LOCAL_MODEL = "stt-local-model";
-const LS_LANGUAGE = "stt-language"; // "" (auto) | "ru" | "en"
+/** Legacy localStorage keys — read once at startup, then removed. */
+const LEGACY_KEYS = {
+  deviceId: "mic-device-id",
+  engine: "stt-engine",
+  endpoint: "stt-endpoint",
+  key: "stt-key",
+  model: "stt-model",
+  localModel: "stt-local-model",
+  language: "stt-language",
+} as const;
 
 const LOCAL_MODELS = [
   { id: "Xenova/whisper-tiny", label: "Fast (~147 MB)" },
@@ -183,27 +191,50 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [deviceId, setDeviceId] = useState<string>(
-    () => localStorage.getItem(LS_DEVICE) ?? "",
-  );
-  const [engine, setEngine] = useState<string>(
-    () => localStorage.getItem(LS_ENGINE) ?? "local",
-  );
-  const [endpoint, setEndpoint] = useState<string>(
-    () => localStorage.getItem(LS_ENDPOINT) ?? "",
-  );
-  const [sttKey, setSttKey] = useState<string>(
-    () => localStorage.getItem(LS_KEY) ?? "",
-  );
-  const [model, setModel] = useState<string>(
-    () => localStorage.getItem(LS_MODEL) ?? "",
-  );
-  const [localModel, setLocalModel] = useState<string>(
-    () => localStorage.getItem(LS_LOCAL_MODEL) ?? "Xenova/whisper-base",
-  );
-  const [language, setLanguage] = useState<string>(
-    () => localStorage.getItem(LS_LANGUAGE) ?? "",
-  );
+  const [deviceId, setDeviceId] = useState<string>("");
+  const [engine, setEngine] = useState<string>("local");
+  const [endpoint, setEndpoint] = useState<string>("");
+  const [sttKey, setSttKey] = useState<string>("");
+  const [model, setModel] = useState<string>("");
+  const [localModel, setLocalModel] = useState<string>("Xenova/whisper-base");
+  const [language, setLanguage] = useState<string>("");
+
+  // Load from main, migrating anything the old localStorage build left behind.
+  useEffect(() => {
+    let gone = false;
+    void (async () => {
+      const legacy: Record<string, string> = {};
+      for (const [field, lsKey] of Object.entries(LEGACY_KEYS)) {
+        const v = localStorage.getItem(lsKey);
+        if (v) legacy[field] = v;
+      }
+      let saved = await api()?.stt.getSettings();
+      if (saved && Object.keys(legacy).length > 0) {
+        // Only fill blanks: whatever is already in the data dir wins, so a
+        // second window cannot resurrect stale values over newer ones.
+        const patch = Object.fromEntries(
+          Object.entries(legacy).filter(
+            ([k]) => !(saved as Record<string, unknown>)[k],
+          ),
+        );
+        if (Object.keys(patch).length > 0)
+          saved = await api()?.stt.setSettings(patch);
+        for (const lsKey of Object.values(LEGACY_KEYS))
+          localStorage.removeItem(lsKey);
+      }
+      if (gone || !saved) return;
+      setDeviceId(saved.deviceId);
+      setEngine(saved.engine);
+      setEndpoint(saved.endpoint);
+      setSttKey(saved.key);
+      setModel(saved.model);
+      setLocalModel(saved.localModel);
+      setLanguage(saved.language);
+    })();
+    return () => {
+      gone = true;
+    };
+  }, []);
   const [status, setStatus] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -297,7 +328,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
 
   async function selectDevice(id: string): Promise<void> {
     setDeviceId(id);
-    localStorage.setItem(LS_DEVICE, id);
+    void api()?.stt.setSettings({ deviceId: id });
     if (recordingRef.current) return; // applies to the next recording
     releaseStream();
     try {
@@ -435,13 +466,14 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** Optimistic in the UI, durable in main. */
   const saveSetting = (
-    key: string,
+    field: keyof typeof LEGACY_KEYS,
     value: string,
     set: (v: string) => void,
   ): void => {
     set(value);
-    localStorage.setItem(key, value);
+    void api()?.stt.setSettings({ [field]: value });
   };
 
   return (
@@ -566,7 +598,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
               <button
                 key={id}
                 type="button"
-                onClick={() => saveSetting(LS_ENGINE, id, setEngine)}
+                onClick={() => saveSetting("engine", id, setEngine)}
                 className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
               >
                 <span className="flex w-4 justify-center">
@@ -583,7 +615,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
                 <Select
                   ariaLabel="Local model"
                   value={localModel}
-                  onChange={(v) => saveSetting(LS_LOCAL_MODEL, v, setLocalModel)}
+                  onChange={(v) => saveSetting("localModel", v, setLocalModel)}
                   className="w-3/5 justify-between"
                   options={LOCAL_MODELS.map((m) => ({
                     value: m.id,
@@ -593,7 +625,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
                 <Select
                   ariaLabel="Language"
                   value={language}
-                  onChange={(v) => saveSetting(LS_LANGUAGE, v, setLanguage)}
+                  onChange={(v) => saveSetting("language", v, setLanguage)}
                   className="w-2/5 justify-between"
                   options={[
                     { value: "", label: "Auto language" },
@@ -612,7 +644,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
               <input
                 value={endpoint}
                 onChange={(e) =>
-                  saveSetting(LS_ENDPOINT, e.target.value, setEndpoint)
+                  saveSetting("endpoint", e.target.value, setEndpoint)
                 }
                 placeholder="https://api.groq.com/openai/v1/audio/transcriptions"
                 spellCheck={false}
@@ -621,7 +653,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
               <div className="flex gap-1.5">
                 <input
                   value={sttKey}
-                  onChange={(e) => saveSetting(LS_KEY, e.target.value, setSttKey)}
+                  onChange={(e) => saveSetting("key", e.target.value, setSttKey)}
                   placeholder="API key"
                   type="password"
                   spellCheck={false}
@@ -629,7 +661,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
                 />
                 <input
                   value={model}
-                  onChange={(e) => saveSetting(LS_MODEL, e.target.value, setModel)}
+                  onChange={(e) => saveSetting("model", e.target.value, setModel)}
                   placeholder="whisper-large-v3"
                   spellCheck={false}
                   className="w-1/2 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-link"

@@ -10,6 +10,11 @@
  */
 
 import { ipcMain } from "electron";
+import {
+  getSttSettings,
+  setSttSettings,
+  type SttSettings,
+} from "../stt-settings.js";
 
 interface SttPayload {
   audioBase64: string;
@@ -30,6 +35,15 @@ interface SttResult {
 }
 
 export function registerSttIPC(): void {
+  // Settings live in the data dir, not the renderer: localStorage is keyed by
+  // origin, and the dev server's port moves when it is taken — which read as
+  // "my API key resets every time".
+  ipcMain.handle("stt:getSettings", (): SttSettings => getSttSettings());
+  ipcMain.handle(
+    "stt:setSettings",
+    (_e, patch: Partial<SttSettings>): SttSettings => setSttSettings(patch),
+  );
+
   ipcMain.handle(
     "stt:transcribe",
     async (_e, p: SttPayload): Promise<SttResult> => {

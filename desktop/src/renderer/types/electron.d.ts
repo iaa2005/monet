@@ -16,11 +16,13 @@ import type { BrowserSelection } from "../main/browser/selection.js";
 import type { Bookmark, Visit } from "../main/browser/bookmark-store.js";
 import type { ServerConfig, ServerState } from "../main/browser/servers.js";
 import type { SessionUiState } from "../main/ui-state.js";
+import type { SttSettings } from "../main/stt-settings.js";
 import type { ChatMessage } from "./chat";
 
 export type { BrowserConfig, DevServer, BrowserSelection, ServerConfig, ServerState };
 export type { Bookmark, Visit };
 export type { SessionUiState };
+export type { SttSettings };
 export type {
   BrowserEngine,
   BrowserApproval,
@@ -808,6 +810,8 @@ export interface ElectronAPI {
       model?: string;
       language?: string;
     }) => Promise<{ ok: boolean; text?: string; error?: string }>;
+    getSettings: () => Promise<SttSettings>;
+    setSettings: (patch: Partial<SttSettings>) => Promise<SttSettings>;
   };
   goal: {
     get: (sessionId: string) => Promise<GoalRecord | null>;

@@ -24,7 +24,6 @@ import {
   X,
 } from "lucide-react";
 import { MarkdownViewer } from "./chat/MarkdownViewer";
-import { CodeBlock } from "./chat/CodeBlock";
 import { HighlightedCode } from "./chat/highlight";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -522,13 +521,21 @@ export function FileViewer({
             )}
 
             {!error && preview === "text" && artText != null && (
-              <div className="p-4">
-                <CodeBlock
-                  code={artText}
+              // The same renderer the file tree uses — an artifact and a
+              // workspace file of the same type must not look like two
+              // different features (CodeBlock is the CHAT's block: it draws a
+              // language header and no line numbers).
+              isMd ? (
+                <div className="mx-auto max-w-3xl p-6">
+                  <MarkdownViewer content={artText} />
+                </div>
+              ) : (
+                <HighlightedCode
                   language={langFor(displayName)}
-                  className="my-0"
+                  code={artText}
+                  showLineNumbers
                 />
-              </div>
+              )
             )}
 
             {!loading && !error && preview === "none" && (

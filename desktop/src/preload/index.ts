@@ -19,6 +19,7 @@ import type { BrowserSelection } from "../main/browser/selection.js";
 import type { Bookmark, Visit } from "../main/browser/bookmark-store.js";
 import type { ServerConfig, ServerState } from "../main/browser/servers.js";
 import type { SessionUiState } from "../main/ui-state.js";
+import type { SttSettings } from "../main/stt-settings.js";
 
 const electronAPI = {
   platform: process.platform,
@@ -669,6 +670,11 @@ const electronAPI = {
       language?: string;
     }): Promise<{ ok: boolean; text?: string; error?: string }> =>
       ipcRenderer.invoke("stt:transcribe", payload),
+    /** Dictation settings, stored in the data dir (key encrypted at rest). */
+    getSettings: (): Promise<SttSettings> =>
+      ipcRenderer.invoke("stt:getSettings"),
+    setSettings: (patch: Partial<SttSettings>): Promise<SttSettings> =>
+      ipcRenderer.invoke("stt:setSettings", patch),
   },
 
   goal: {
