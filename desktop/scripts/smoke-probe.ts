@@ -317,6 +317,44 @@ async function main() {
     // their rows must not linger in the data dir's DB.
     deletePlans('plan-keep')
     deletePlans(beforeSession)
+
+    // 4d2. EnterPlanMode — the model switches itself into plan mode when the
+    // user asks for a plan in prose. The override must bind to the selector
+    // value it was set under, and die the moment the user flips it.
+    const enterSid = 'plan-enter'
+    clearSessionMode(enterSid)
+    const entered = await executeVendorTool({
+      sessionId: enterSid,
+      toolUseID: 'toolu_enter',
+      name: 'EnterPlanMode',
+      input: {},
+      model: MODEL,
+      permissionMode: 'default',
+    })
+    check(
+      'enter-plan: the tool reports the switch',
+      !entered.isError && /[Pp]lan mode is on/.test(entered.content),
+      entered.content.slice(0, 60),
+    )
+    const enterBlocked = await executeVendorTool({
+      sessionId: enterSid,
+      toolUseID: 'toolu_enterblock',
+      name: 'Write',
+      input: { file_path: planFile, content: 'x' },
+      model: MODEL,
+      permissionMode: 'default',
+    })
+    check(
+      'enter-plan: writes are blocked though the selector still says default',
+      enterBlocked.isError && /[Pp]lan [Mm]ode/.test(enterBlocked.content),
+      enterBlocked.content.slice(0, 60),
+    )
+    const { effectiveMode } = await import('../src/main/agent/session-mode.js')
+    check(
+      'enter-plan: flipping the selector drops the override',
+      effectiveMode(enterSid, 'acceptEdits') === 'acceptEdits',
+    )
+    clearSessionMode(enterSid)
   }
 
   // 4e. Newly wired tools: Sleep (written here — the bundle ships only its

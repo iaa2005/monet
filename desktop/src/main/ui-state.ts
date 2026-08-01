@@ -29,6 +29,22 @@ export interface SessionUiState {
   terminalOpen?: boolean;
   /** The Browser panel's pages, in order. */
   browserTabs?: { url: string }[];
+  /** Viewer panes: each with its open file tabs and preview flags (the
+   * renderer's viewerStore serialize/restore round-trip). */
+  viewerPanes?: {
+    tabs: {
+      file: {
+        name: string;
+        path?: string;
+        mediaType: string;
+        kind: string;
+        dataUrl?: string;
+        source?: "artifact" | "file";
+      };
+      preview: boolean;
+    }[];
+    active: number;
+  }[];
   /** Index into browserTabs of the one on screen. */
   activeTab?: number;
   browserExpanded?: boolean;

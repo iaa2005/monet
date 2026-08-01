@@ -29,6 +29,12 @@ export const HOME_TOOL_NAMES = new Set([
   // not the machine Home is isolating.
   "CreateSkill",
   "AskUserQuestion",
+  // Planning crosses no boundary: the plan document lives in the app's own
+  // DB, and entering/leaving plan mode is a permission-mode change, not a
+  // filesystem one. Without these, Home could never plan at all.
+  "EnterPlanMode",
+  "ExitPlanMode",
+  "UpdatePlan",
   "WebFetch",
   "WebSearch",
   "SearchPastChats",

@@ -309,6 +309,18 @@ const electronAPI = {
       ipcRenderer.on("plan:changed", handler);
       return () => ipcRenderer.removeListener("plan:changed", handler);
     },
+    // The MODEL changed the session's permission mode (entered plan mode, or
+    // an approval flipped it to default/acceptEdits) — the selector follows.
+    onModeChanged: (
+      callback: (payload: { sessionId: string; mode: string }) => void,
+    ): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        payload: { sessionId: string; mode: string },
+      ) => callback(payload);
+      ipcRenderer.on("plan:modeChanged", handler);
+      return () => ipcRenderer.removeListener("plan:modeChanged", handler);
+    },
   },
 
   askUser: {

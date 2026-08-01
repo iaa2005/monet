@@ -60,7 +60,11 @@ import {
 import { CreateRoutineTool } from "./routine-tool.js";
 import { RememberTool } from "./remember-tool.js";
 import { CreateSkillTool } from "./create-skill-tool.js";
-import { ExitPlanModeTool, UpdatePlanTool } from "./plan-tool.js";
+import {
+  EnterPlanModeTool,
+  ExitPlanModeTool,
+  UpdatePlanTool,
+} from "./plan-tool.js";
 import { SleepTool } from "./sleep-tool.js";
 import { SendMessageTool, TeamListTool } from "./team-tools.js";
 import { NotebookEditTool } from "@vendor/tools/NotebookEditTool/NotebookEditTool.js";
@@ -270,6 +274,7 @@ const ALL_TOOLS = [
   // Writes a new skill into the user's skills folder — the counterpart of the
   // Skill tool, which runs one.
   CreateSkillTool,
+  EnterPlanModeTool,
   ExitPlanModeTool,
   UpdatePlanTool,
   SleepTool,

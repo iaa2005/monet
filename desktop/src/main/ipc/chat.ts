@@ -213,7 +213,18 @@ const VALID_MODES = new Set([
 const livePermissionMode = new Map<string, UiPermissionMode>();
 
 const MODE_DIRECTIVES: Record<string, string> = {
-  plan: "You are operating in PLAN mode: think through the task and present a clear, numbered plan first. Do NOT modify files or run mutating commands until the user approves the plan.",
+  plan: [
+    "You are operating in PLAN mode: research first, change nothing. Read",
+    "whatever you need to know exactly which files change and how; do NOT",
+    "modify files or run mutating commands.",
+    "",
+    "When the plan is ready, present it by CALLING the ExitPlanMode tool —",
+    "title, one-line summary, the detailed markdown, and a todo list of",
+    "checkable work units. Do not paste the plan as a chat message instead",
+    "of calling the tool: the tool is what shows the user the plan card and",
+    "asks them to approve it. If they approve, start working through it; if",
+    "they send it back, revise and call ExitPlanMode again.",
+  ].join("\n"),
 };
 
 /** The mode directive for `mode`, tunable via <dataDir>/prompts/mode-<mode>.md. */

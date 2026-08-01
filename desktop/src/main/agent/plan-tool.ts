@@ -14,6 +14,7 @@
  * list every turn while it builds.
  */
 
+import { BrowserWindow } from "electron";
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
@@ -28,6 +29,7 @@ import {
   type PlanTodoStatus,
 } from "../plan/store.js";
 import { setSessionMode } from "./session-mode.js";
+import type { UiPermissionMode } from "./vendor-tools.js";
 import { tunablePrompt } from "../prompts/index.js";
 
 interface Output {
@@ -42,19 +44,105 @@ function out(text: string, isError = false): { data: Output } {
 function ctxOf(context: ToolUseContext): {
   sessionId: string;
   agentLabel: string;
+  permissionMode: string;
   askPlanApproval?: AskPlanApprovalFn;
 } {
   const c = context as {
     sessionId?: string;
     agentLabel?: string;
+    permissionMode?: string;
     askPlanApproval?: AskPlanApprovalFn;
   };
   return {
     sessionId: c.sessionId ?? "",
     agentLabel: c.agentLabel ?? "agent",
+    permissionMode: c.permissionMode ?? "default",
     askPlanApproval: c.askPlanApproval,
   };
 }
+
+/** Tell every window the session's mode changed, so the composer's selector
+ * follows a mode the MODEL switched (plan entered/exited mid-turn). */
+function broadcastMode(sessionId: string, mode: string): void {
+  for (const win of BrowserWindow.getAllWindows())
+    win.webContents.send("plan:modeChanged", { sessionId, mode });
+}
+
+// ── EnterPlanMode ─────────────────────────────────────────────────────
+
+const enterSchema = lazySchema(() =>
+  z.strictObject({
+    reason: z
+      .string()
+      .optional()
+      .describe("One line: why this task deserves a plan first."),
+  }),
+);
+
+type EnterSchema = ReturnType<typeof enterSchema>;
+
+export const EnterPlanModeTool = buildTool({
+  name: "EnterPlanMode",
+  get inputSchema(): EnterSchema {
+    return enterSchema();
+  },
+  searchHint: "switch into plan mode before a larger task",
+  maxResultSizeChars: 1_000,
+  userFacingName() {
+    return "Plan mode";
+  },
+  isReadOnly() {
+    return true; // changes the session's mode, nothing on disk
+  },
+  isConcurrencySafe() {
+    return false;
+  },
+  async prompt() {
+    return tunablePrompt(
+      "tool-enter-plan-mode",
+      [
+        "Switch this chat into plan mode yourself. Use it when the user asks",
+        "for a plan in prose (\"давай спланируем\", \"make a plan first\"), or",
+        "when the task is large enough that they should approve an approach",
+        "before you touch files.",
+        "",
+        "After calling it: research without modifying anything, then present",
+        "the plan with ExitPlanMode. Do not use it for small tasks the user",
+        "just wants done.",
+      ].join("\n"),
+    );
+  },
+  async description() {
+    return "Switch the chat into plan mode: research first, then present a plan for approval.";
+  },
+  async call(_input: z.infer<EnterSchema>, context: ToolUseContext) {
+    const { sessionId, permissionMode } = ctxOf(context);
+    if (!sessionId) return out("No session to switch.", true);
+    if (permissionMode === "plan")
+      return out("Already in plan mode — research, then call ExitPlanMode.");
+    // The override is keyed to the selector's CURRENT value: if the user
+    // flips the selector by hand later, their choice wins (session-mode.ts).
+    setSessionMode(sessionId, "plan", permissionMode as UiPermissionMode);
+    broadcastMode(sessionId, "plan");
+    return out(
+      "Plan mode is on. Research the task WITHOUT modifying anything, then present the plan by calling ExitPlanMode (title, one-line summary, detailed markdown, todo list).",
+    );
+  },
+  mapToolResultToToolResultBlockParam(
+    content: Output,
+    toolUseID: string,
+  ): ToolResultBlockParam {
+    return {
+      type: "tool_result",
+      tool_use_id: toolUseID,
+      content: content.text,
+      is_error: content.isError || undefined,
+    };
+  },
+  renderToolUseMessage() {
+    return null;
+  },
+});
 
 // ── ExitPlanMode ──────────────────────────────────────────────────────
 
@@ -164,7 +252,13 @@ export const ExitPlanModeTool = buildTool({
     // model would be told to proceed and then hit plan-mode blocks on its
     // very next tool call.
     const mode = decision === "approve-auto" ? "acceptEdits" : "default";
-    if (sessionId) setSessionMode(sessionId, mode);
+    if (sessionId) {
+      setSessionMode(sessionId, mode);
+      // The selector follows: idempotent when the card's respond() already
+      // set it, and the only sync at all when the model entered plan mode
+      // itself and the renderer never saw a change until now.
+      broadcastMode(sessionId, mode);
+    }
     return out(
       (decision === "approve-auto"
         ? "The user approved the plan and turned on auto-accept for edits in the workspace. Start working through it now."

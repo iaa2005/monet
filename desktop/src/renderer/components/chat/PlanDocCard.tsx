@@ -74,6 +74,9 @@ export function PlanDocCard({
   const respond = usePlanStore((s) => s.respond);
   const load = usePlanStore((s) => s.load);
   const [feedback, setFeedback] = useState("");
+  // Build is two steps: the button, then "auto-accept edits while building?"
+  // — the mode question comes AFTER the decision to build, not beside it.
+  const [confirmAuto, setConfirmAuto] = useState(false);
 
   useEffect(() => load(sessionId), [load, sessionId]);
 
@@ -127,11 +130,13 @@ export function PlanDocCard({
       e.preventDefault();
       const note = feedback.trim();
       if (inNote && note) respond("keep-planning", note);
-      else respond("approve");
+      else if (!confirmAuto) setConfirmAuto(true);
+      // On the confirm step the same combo takes the primary answer: auto.
+      else respond("approve-auto");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pending, respond, feedback]);
+  }, [pending, respond, feedback, confirmAuto]);
 
   return (
     <div className="my-2">
@@ -213,7 +218,7 @@ export function PlanDocCard({
           ) : null}
         </div>
 
-        {pending ? (
+        {pending && !confirmAuto ? (
           <div className="border-t border-border px-4 py-3">
             <textarea
               data-plan-note
@@ -233,17 +238,45 @@ export function PlanDocCard({
               </button>
               <button
                 type="button"
-                onClick={() => respond("approve-auto")}
-                className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"
+                onClick={() => setConfirmAuto(true)}
+                className="flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
               >
-                Build + auto-accept edits
+                Build
+                <span className="text-xs opacity-70">{comboLabel("mod+enter")}</span>
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {pending && confirmAuto ? (
+          <div className="border-t border-border px-4 py-3">
+            <div className="text-sm">
+              Auto-accept edits while building?
+              <span className="ml-1.5 text-xs text-muted-foreground">
+                Workspace edits stop asking; risky commands still do.
+              </span>
+            </div>
+            <div className="mt-2.5 flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmAuto(false)}
+                className="mr-auto rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted"
+              >
+                ← Back
               </button>
               <button
                 type="button"
                 onClick={() => respond("approve")}
+                className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"
+              >
+                Ask each time
+              </button>
+              <button
+                type="button"
+                onClick={() => respond("approve-auto")}
                 className="flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
               >
-                Build
+                Auto-accept
                 <span className="text-xs opacity-70">{comboLabel("mod+enter")}</span>
               </button>
             </div>

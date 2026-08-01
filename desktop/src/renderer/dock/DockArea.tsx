@@ -38,6 +38,7 @@ import {
 import "dockview-core/dist/styles/dockview.css";
 import "./dock.css";
 import {
+  Columns2,
   ExternalLink,
   Maximize2,
   Minimize2,
@@ -56,6 +57,7 @@ import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
 import { BrowserPanel } from "@/components/browser/BrowserPanel";
 import { useBrowserStore } from "@/components/browser/browser-store";
 import { useViewerStore } from "@/stores/viewerStore";
+import { closeViewerPane, openViewerPane } from "@/dock/dock-store";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import { isApplyingDesk, useDockStore } from "./dock-store";
@@ -140,10 +142,11 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
    * The `key` remounts on a new file, which is what makes a broken preview
    * recoverable by simply opening something else.
    */
-  viewer: function ViewerDockPanel() {
-    const tabs = useViewerStore((s) => s.tabs);
-    const activeId = useViewerStore(s => s.activeId);
-    const active = tabs.find((t) => t.id === activeId) ?? tabs[0] ?? null;
+  viewer: function ViewerDockPanel(props: IDockviewPanelProps) {
+    const paneId = props.api.id;
+    const pane = useViewerStore((s) => s.panes.find((p) => p.id === paneId));
+    const tabs = pane?.tabs ?? [];
+    const active = tabs.find((t) => t.id === pane?.activeId) ?? tabs[0] ?? null;
     if (!active)
       return (
         <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
@@ -165,11 +168,13 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
               aria-selected={t.id === active.id}
               title={t.file.path ?? t.file.name}
               onClick={() =>
-                t.id === active.id ? st.promote(t.id) : st.activate(t.id)
+                t.id === active.id
+                  ? st.promote(paneId, t.id)
+                  : st.activateTab(paneId, t.id)
               }
-              onDoubleClick={() => st.promote(t.id)}
+              onDoubleClick={() => st.promote(paneId, t.id)}
               onAuxClick={(e) => {
-                if (e.button === 1) st.close(t.id);
+                if (e.button === 1) st.closeTab(paneId, t.id);
               }}
               className={cn(
                 "group/vtab flex max-w-48 cursor-pointer items-center gap-1.5 border-r border-border px-2.5 py-1.5 text-xs",
@@ -186,7 +191,7 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
                 title="Close"
                 onClick={(e) => {
                   e.stopPropagation();
-                  st.close(t.id);
+                  st.closeTab(paneId, t.id);
                 }}
                 className="rounded-sm p-0.5 opacity-0 hover:bg-black/[0.08] group-hover/vtab:opacity-100 dark:hover:bg-white/[0.1]"
               >
@@ -194,16 +199,27 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
               </button>
             </div>
           ))}
+          <button
+            type="button"
+            title="Split: open files in a new viewer pane"
+            onClick={() => st.split()}
+            className="ml-auto shrink-0 rounded-sm p-1.5 text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+          >
+            <Columns2 className="size-3.5" />
+          </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div
+          className="min-h-0 flex-1 overflow-hidden"
+          onMouseDownCapture={() => st.setActivePane(paneId)}
+        >
           <ViewerErrorBoundary
             key={`${active.id}:${file.path ?? file.name}`}
-            onClose={() => st.close(active.id)}
+            onClose={() => st.closeTab(paneId, active.id)}
           >
             <FileViewer
               path={file.source === "file" ? file.path : undefined}
               item={file.source !== "file" ? file : undefined}
-              onClose={() => st.close(active.id)}
+              onClose={() => st.closeTab(paneId, active.id)}
             />
           </ViewerErrorBoundary>
         </div>
@@ -479,24 +495,31 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
   // anywhere in the app raises the panel and names its tab; closing the
   // panel's tab clears the file. Without the second half the panel would
   // reopen the instant it was closed.
-  const viewerTabs = useViewerStore((s) => s.tabs);
-  const viewerActive = useViewerStore((s) => s.activeId);
+  const viewerPanes = useViewerStore((s) => s.panes);
   const viewerOpen = useDockStore((s) => s.open.includes("viewer"));
   useEffect(() => {
     const dock = useDockStore.getState();
-    if (viewerTabs.length > 0) {
-      dock.openPanel("viewer");
+    // Every pane gets (or keeps) its dock panel; a pane that vanished takes
+    // its panel with it. The base "viewer" panel also closes when no pane
+    // remains at all.
+    for (const pane of viewerPanes) {
+      openViewerPane(pane.id);
       const active =
-        viewerTabs.find((t) => t.id === viewerActive) ?? viewerTabs[0];
-      const extra = viewerTabs.length - 1;
-      dock.setPanelTitle(
-        "viewer",
-        extra > 0 ? `${active.file.name} +${extra}` : active.file.name,
-      );
-    } else if (viewerOpen) {
-      dock.closePanel("viewer");
+        pane.tabs.find((t) => t.id === pane.activeId) ?? pane.tabs[0];
+      const title = active
+        ? pane.tabs.length > 1
+          ? `${active.file.name} +${pane.tabs.length - 1}`
+          : active.file.name
+        : "Viewer";
+      const panel = dock.api?.getPanel(pane.id);
+      if (panel && panel.title !== title) panel.api.setTitle(title);
     }
-  }, [viewerTabs, viewerActive, viewerOpen]);
+    const wanted = new Set(viewerPanes.map((p) => p.id));
+    for (const panel of dock.api?.panels ?? [])
+      if (/^viewer(:\d+)?$/.test(panel.id) && !wanted.has(panel.id))
+        closeViewerPane(panel.id);
+    if (viewerPanes.length === 0 && viewerOpen) dock.closePanel("viewer");
+  }, [viewerPanes, viewerOpen]);
 
   const onReady = useMemo(
     () =>
@@ -511,8 +534,8 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
           // Closing the tab IS closing the file — but only when a person did
           // it. A desk restore removes every panel on its way through, and
           // reading that as a close would drop the open file on every switch.
-          if (panel.id === "viewer" && !isApplyingDesk())
-            useChatStore.getState().openViewer(null);
+          if (/^viewer(:\d+)?$/.test(panel.id) && !isApplyingDesk())
+            useViewerStore.getState().closePane(panel.id);
         });
       },
     [],

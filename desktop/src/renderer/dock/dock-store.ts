@@ -58,6 +58,40 @@ export const RESTORABLE_PANEL_IDS = DOCK_PANEL_IDS.filter(
   (id) => id !== "viewer" && !GLOBAL_PANEL_IDS.includes(id),
 );
 
+/**
+ * Extra viewer panes: "viewer:2", "viewer:3" — dynamic panel ids sharing the
+ * viewer component. They come back from the session's viewerPanes ui-state,
+ * not from the dock layout, so the sanitizer's ignorance of them is fine.
+ */
+export function openViewerPane(id: string): void {
+  const st = useDockStore.getState();
+  const api = st.api;
+  if (!api) {
+    // No wing yet: base "viewer" rides the pending desk; extras are recreated
+    // by the viewer-sync effect once the wing is up.
+    if (id === "viewer") st.openPanel("viewer");
+    return;
+  }
+  const existing = api.getPanel(id);
+  if (existing) {
+    existing.api.setActive();
+    return;
+  }
+  api.addPanel({
+    id,
+    component: "viewer",
+    title: "Viewer",
+    ...positionBesideMain(api, "viewer"),
+  });
+  st.syncFromApi();
+}
+
+export function closeViewerPane(id: string): void {
+  const api = useDockStore.getState().api;
+  const panel = api?.getPanel(id);
+  if (panel) api?.removePanel(panel);
+}
+
 function addPanel(api: DockviewApi, id: DockPanelId): void {
   api.addPanel({
     id,

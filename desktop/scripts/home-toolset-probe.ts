@@ -44,6 +44,12 @@ const inCode = (name: string): boolean => spaceAllows(name, "code");
   // about the USER, not about the workspace. A skill is the same class of thing,
   // written under a validated slug in the app's own folder.
   check("Home allows Remember", inHome("Remember"));
+  // Planning crosses no boundary — without these Home could never plan,
+  // which is exactly the bug that shipped: "модель не может составить план".
+  check("Home allows EnterPlanMode", inHome("EnterPlanMode"));
+  check("Home allows ExitPlanMode", inHome("ExitPlanMode"));
+  check("Home allows UpdatePlan", inHome("UpdatePlan"));
+  check("and Code plans too", inCode("ExitPlanMode") && inCode("EnterPlanMode"));
   check("Home allows Skill — running one", inHome("Skill"));
   check("Home allows CreateSkill — writing one", inHome("CreateSkill"));
   check("and Code has it too", inCode("CreateSkill"));

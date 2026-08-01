@@ -51,6 +51,7 @@ import { FilterDropdown } from "@/components/FilterDropdown";
 import { SkillsPanel } from "@/components/SkillsPanel";
 import { createPortal } from "react-dom";
 import { useBrowserStore } from "@/components/browser/browser-store";
+import { useViewerStore } from "@/stores/viewerStore";
 import { comboLabel, useHotkeys, type HotkeyDef } from "@/lib/hotkeys";
 import { HotkeysHelp } from "@/components/HotkeysHelp";
 import { DockArea } from "@/dock/DockArea";
@@ -347,6 +348,7 @@ export default function App(): JSX.Element {
         browserTabs: b.tabs.filter((t) => t.url !== "about:blank").map((t) => ({ url: t.url })),
         activeTab: Math.max(0, b.tabs.findIndex((t) => t.id === b.activeId)),
         browserExpanded: b.layout === "expanded",
+        viewerPanes: useViewerStore.getState().serialize(),
       });
     }
     restoredFor.current = currentSessionId;
@@ -364,6 +366,9 @@ export default function App(): JSX.Element {
         saved?.activeTab ?? 0,
       );
       b.setLayout(saved?.browserExpanded ? "expanded" : "panel");
+      // The files this chat had open, pane by pane — restored before the
+      // desk so the pane-sync effect recreates their panels on the new wing.
+      useViewerStore.getState().restore(saved?.viewerPanes);
       const dock = useDockStore.getState();
       if (saved?.dockLayout && typeof saved.dockLayout === "object") {
         dock.applyDesk({
@@ -398,6 +403,7 @@ export default function App(): JSX.Element {
   // half a second of layout.
   const browserTabsLive = useBrowserStore((s) => s.tabs);
   const browserActiveLive = useBrowserStore((s) => s.activeId);
+  const viewerPanesLive = useViewerStore((s) => s.panes);
   useEffect(() => {
     const bridge = api();
     if (!bridge || !currentSessionId || currentSessionId.startsWith("incognito"))
@@ -412,10 +418,11 @@ export default function App(): JSX.Element {
           .map((x) => ({ url: x.url })),
         activeTab: Math.max(0, b.tabs.findIndex((x) => x.id === b.activeId)),
         browserExpanded: b.layout === "expanded",
+        viewerPanes: useViewerStore.getState().serialize(),
       });
     }, 600);
     return () => clearTimeout(t);
-  }, [currentSessionId, dockLayoutLive, browserTabsLive, browserActiveLive, browserLayout]);
+  }, [currentSessionId, dockLayoutLive, browserTabsLive, browserActiveLive, browserLayout, viewerPanesLive]);
 
   // "Branch from here" on a user message: a fork cut at that point. The
   // non-destructive sibling of Rewind — the original keeps its whole history,

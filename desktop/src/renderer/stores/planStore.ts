@@ -10,6 +10,7 @@
 
 import { create } from "zustand";
 import { useDockStore } from "../dock/dock-store";
+import { useChatStore } from "./chatStore";
 import type { ElectronAPI, Plan } from "../types/electron";
 
 export interface PlanRequest {
@@ -75,6 +76,16 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       // Refresh only sessions someone has looked at; the rest fetch on demand.
       if (sessionId in usePlanStore.getState().plans)
         usePlanStore.getState().load(sessionId);
+    });
+  }
+  if (api?.plan?.onModeChanged) {
+    api.plan.onModeChanged(({ sessionId, mode }) => {
+      // Only the visible chat's selector follows; a background session's
+      // mode change must not repaint the composer someone else is using.
+      const cur = useChatStore.getState().currentSessionId ?? "default";
+      if (sessionId !== cur) return;
+      localStorage.setItem("permission-mode", mode);
+      window.dispatchEvent(new CustomEvent("permission-mode-changed"));
     });
   }
   if (api?.plan?.onRequest) {

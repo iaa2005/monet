@@ -524,6 +524,9 @@ export interface ElectronAPI {
     markdown: (planId: string) => Promise<string | null>;
     setStatus: (planId: string, status: "draft" | "done") => Promise<Plan | null>;
     onChanged: (callback: (sessionId: string) => void) => () => void;
+    onModeChanged: (
+      callback: (payload: { sessionId: string; mode: string }) => void,
+    ) => () => void;
   };
   askUser: {
     onRequest: (callback: (request: AskUserRequest) => void) => () => void;
