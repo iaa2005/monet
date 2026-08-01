@@ -531,11 +531,22 @@ pre.diff-hl code {
 pre.diff-hl .line {
     display: flex;
     align-items: flex-start;
-    content-visibility: auto;
-    /* line-height 1.6 × 12.5px — keeps the scrollbar honest while skipped,
-       and empty lines from collapsing to nothing. */
-    contain-intrinsic-size: auto 20px;
+    /* line-height 1.6 × 12.5px — keeps empty lines from collapsing.
+       NO content-visibility here: wrapped lines break its height estimate
+       and the measure→anchor→re-measure feedback froze the app on long
+       files. Big blocks are JS-virtualized instead (highlight.tsx). */
     min-height: 20px;
+}
+/* Virtualized mode (≥500 lines): the editor behavior. Lines do not wrap —
+   they scroll horizontally — so every row is exactly one line tall and the
+   window math in highlight.tsx is exact. width: max-content lets the pre
+   grow past its container for the horizontal scrollbar. */
+pre.diff-hl.virt {
+    width: max-content;
+    min-width: 100%;
+}
+pre.diff-hl.virt .cl {
+    white-space: pre;
 }
 pre.diff-hl .ln {
     display: none;

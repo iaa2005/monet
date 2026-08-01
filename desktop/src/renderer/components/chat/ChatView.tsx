@@ -545,13 +545,20 @@ function RevealEarlier({
     if (!el) return;
     const obs = new IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting)) onReveal();
+        if (entries.some((e) => e.isIntersecting)) {
+          // One slice per sighting: reveal, stop watching, and let the
+          // re-render (hiddenCount changed) arm a fresh observer. Without
+          // this the callback kept firing while layout settled and a single
+          // scroll-to-top could mount the entire chat in one frame.
+          obs.disconnect();
+          onReveal();
+        }
       },
       { rootMargin: "400px 0px 0px 0px" },
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [onReveal]);
+  }, [onReveal, hiddenCount]);
   return (
     <div ref={ref} className="flex justify-center py-2">
       <button
