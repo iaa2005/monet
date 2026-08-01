@@ -19,7 +19,10 @@
  */
 
 import { serveArgs, staticServeCommand } from "../src/main/sandbox/podman-server";
-import { TRANSIENT_MACHINE_ERROR } from "../src/main/sandbox/podman-engine";
+import {
+  TRANSIENT_MACHINE_ERROR,
+  machineName,
+} from "../src/main/sandbox/podman-engine";
 import { spaceAllows } from "../src/main/agent/space-tools";
 
 let failures = 0;
@@ -123,6 +126,43 @@ const argv = args.join(" ");
   ];
   for (const msg of reported)
     check(`reported as-is: ${msg.slice(0, 40)}`, !TRANSIENT_MACHINE_ERROR.test(msg));
+}
+
+// ── 6. The machine's name is a name, not a marker ─────────────────────
+//
+// `podman machine list --format {{.Name}}` marks the DEFAULT machine with a
+// trailing asterisk, inside the field. We fed that straight back to
+// `podman machine start`, Windows rejected `*` in the config path (error
+// 123: "The filename, directory name, or volume label syntax is incorrect"),
+// and the app told the user their machine was damaged and to rebuild it —
+// while Settings still said "Podman is ready". Reproduced exactly:
+//   podman machine start "podman-machine-default*"
+//   Error: open …\wsl\podman-machine-default*.json: …syntax is incorrect.
+{
+  check(
+    "the default-machine marker is not part of the name",
+    machineName("podman-machine-default*") === "podman-machine-default",
+    machineName("podman-machine-default*"),
+  );
+  check(
+    "a plain name is untouched",
+    machineName("podman-machine-default") === "podman-machine-default",
+  );
+  check(
+    "whitespace around either form is trimmed",
+    machineName("  my-machine*  ") === "my-machine",
+    machineName("  my-machine*  "),
+  );
+  check("an empty line is not a machine", machineName("   ") === undefined);
+  check("nothing is not a machine", machineName(undefined) === undefined);
+  // The real two-machine listing shape, tab-separated as we ask for it.
+  const listed = "podman-machine-default*\ttrue\nother-machine\tfalse";
+  const first = machineName(listed.split("\n")[0].split("\t")[0]);
+  check(
+    "parsed out of a real listing, the name is usable as an argument",
+    first === "podman-machine-default" && !first.includes("*"),
+    first,
+  );
 }
 
 console.log(

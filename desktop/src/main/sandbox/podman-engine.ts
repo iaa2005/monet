@@ -135,6 +135,30 @@ function run(
   });
 }
 
+/**
+ * The machine's real name, out of `machine list` output.
+ *
+ * `{{.Name}}` renders the DEFAULT machine with a trailing asterisk —
+ * "podman-machine-default*" — and that marker is part of the field, not of
+ * the table formatting. Passing it back to podman produced the failure a user
+ * hit again and again:
+ *
+ *   podman machine start podman-machine-default*
+ *   Error: open ...\machine\wsl\podman-machine-default*.json: The filename,
+ *   directory name, or volume label syntax is incorrect.
+ *
+ * Windows rejects `*` in a path (error 123); the app reported that as "the
+ * machine is damaged and needs to be rebuilt", so the user was told to delete
+ * a perfectly healthy machine — while Settings, which only asks `podman
+ * info`, kept saying "Podman is ready". It bites only once the machine has
+ * stopped (an idle WSL machine shuts itself down), because a running one
+ * never reaches `machine start`.
+ */
+export function machineName(raw: string | undefined): string | undefined {
+  const name = raw?.trim().replace(/\*+$/, "").trim();
+  return name || undefined;
+}
+
 type PodmanReadyResult = {
   ok: boolean;
   log: string;
@@ -503,7 +527,7 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
         .split(/\r?\n/)
         .map((line) => line.split("\t"))
         .find(([name]) => name);
-      return m?.[0];
+      return machineName(m?.[0]);
     };
     resolvedName = parseName();
     running = machines.stdout
@@ -533,7 +557,7 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
             .split(/\r?\n/)
             .find((n) => n.trim());
           if (named) {
-            resolvedName = named.trim();
+            resolvedName = machineName(named);
             log += "[sandbox] Podman machine already present\n";
           } else {
             const repair = await orphanedMachineFailure(
@@ -575,6 +599,18 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
     // isn't necessarily fatal — a machine wedged "Currently starting" reports an
     // error yet can still settle, and the readiness poll below recovers it.
     let start = running ? { code: 0, stdout: "", stderr: "" } : await tryStart();
+    // A path-shaped complaint means the NAME was wrong, not the machine: that
+    // is what a stray default-machine marker produced for a year. The name is
+    // sanitized now (machineName), so this is the belt to that braces — retry
+    // once with no name at all, letting podman pick its own default, before
+    // anyone concludes the VM is damaged.
+    if (start.code !== 0 && /\*\.json|syntax is incorrect/i.test(start.stderr || start.stdout)) {
+      const nameless = await run(["machine", "start"], { timeoutMs: 180_000 });
+      if (nameless.code === 0) {
+        resolvedName = undefined;
+        start = nameless;
+      }
+    }
     if (start.code !== 0) {
       const msg = (start.stderr || start.stdout).toLowerCase();
       const looksBroken =
