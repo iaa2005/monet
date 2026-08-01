@@ -47,15 +47,17 @@ interface TokenInputProps {
   /** Initial value only — this input is uncontrolled by design (see above). */
   initialText: string;
   /**
-   * Known palette slots by label, for chips rendered from TEXT (a restored
+   * The palette slot for a label, for chips rendered from TEXT (a restored
    * draft, a paste). Text carries labels only; without this the colour is
    * hashed and a chip changes shade between the composer and the message.
+   * A callback rather than a map for the same reason as `kindFor`: the chip
+   * is often drawn in the tick its selection was registered.
    */
-  tones?: Record<string, number>;
+  toneFor?: (label: string) => number | undefined;
   /** What KIND a label refers to, asked at draw time rather than passed as a
    *  snapshot: a mention inserts its chip in the same tick it registers its
    *  context, so any map handed down as a prop is still the previous one. */
-  kindFor?: (label: string) => RefKind;
+  kindFor?: (label: string) => RefKind | undefined;
   onChange(text: string): void;
   onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void;
   placeholder: string;
@@ -133,14 +135,83 @@ function serialize(root: HTMLElement): string {
  * message that recorded it), that wins: the chip then matches the outline the
  * page drew and the chip the sent message shows.
  */
-function toneOf(label: string, tones?: Record<string, number>): number {
-  const known = tones?.[label];
+function toneOf(
+  label: string,
+  toneFor?: (l: string) => number | undefined,
+  seen?: Map<string, Drawn>,
+): number {
+  const known = toneFor?.(label) ?? seen?.get(label)?.tone;
   return typeof known === "number" ? known : toneForLabel(label);
 }
 
 /** Browser is the fallback: it is what every chip was before kinds existed. */
-function kindOfLabel(label: string, kindFor?: (l: string) => RefKind): RefKind {
-  return kindFor?.(label) ?? "browser";
+function kindOfLabel(
+  label: string,
+  kindFor?: (l: string) => RefKind | undefined,
+  seen?: Map<string, Drawn>,
+): RefKind {
+  return kindFor?.(label) ?? seen?.get(label)?.kind ?? "browser";
+}
+
+/**
+ * What a label was last drawn as.
+ *
+ * A chip only knows its colour and its icon while its selection is in the
+ * store, and the store is emptied on send — so a chip still standing in the
+ * composer (a restored draft, a message being re-staged) redrew as a grey
+ * browser pick the next time anything re-rendered. Reported as chips
+ * changing colour and losing their icon on their own. What was drawn once is
+ * remembered for as long as the composer lives.
+ */
+interface Drawn {
+  tone: number;
+  kind: RefKind;
+}
+
+/**
+ * A slash COMMAND, not a slash in a sentence.
+ *
+ * The rule is the one the send path uses: a command is the first thing in the
+ * message. That alone rules out "put it in src/utils"; the shape rules out a
+ * path typed first ("/etc/hosts is broken" has a second slash, so it is not a
+ * command) and a lone "/" while the menu is still open.
+ */
+function commandLength(text: string): number {
+  const word = text.split(/\s/, 1)[0] ?? "";
+  return /^\/[A-Za-z][A-Za-z0-9_:-]*$/.test(word) ? word.length : 0;
+}
+
+/**
+ * Painted with the CSS Custom Highlight API rather than by wrapping the text
+ * in a span: the composer's DOM belongs to the browser between events, and
+ * rewriting it on every keystroke is exactly what this input exists to avoid
+ * (it fights the caret, breaks IME composition, and drops native undo). A
+ * highlight is a range laid OVER the text and touches nothing.
+ */
+const COMMAND_HIGHLIGHT = "monet-command";
+const commandRanges = new Map<HTMLElement, Range>();
+
+function paintCommand(box: HTMLElement): void {
+  const registry = (
+    CSS as unknown as { highlights?: Map<string, Highlight> }
+  ).highlights;
+  if (!registry) return; // older Chromium: no colour, everything else works
+  commandRanges.delete(box);
+  for (const el of Array.from(commandRanges.keys()))
+    if (!el.isConnected) commandRanges.delete(el);
+
+  const first = box.firstChild;
+  if (first && first.nodeType === Node.TEXT_NODE) {
+    const len = commandLength(first.nodeValue ?? "");
+    if (len > 0) {
+      const range = document.createRange();
+      range.setStart(first, 0);
+      range.setEnd(first, len);
+      commandRanges.set(box, range);
+    }
+  }
+  if (commandRanges.size === 0) registry.delete(COMMAND_HIGHLIGHT);
+  else registry.set(COMMAND_HIGHLIGHT, new Highlight(...commandRanges.values()));
 }
 
 /** The plain string → DOM. */
@@ -148,20 +219,20 @@ function render(
   root: HTMLElement,
   text: string,
   dark: boolean,
-  tones?: Record<string, number>,
-  kindFor?: (label: string) => RefKind,
+  toneFor?: (label: string) => number | undefined,
+  kindFor?: (label: string) => RefKind | undefined,
+  seen?: Map<string, Drawn>,
 ): void {
   root.textContent = "";
   for (const piece of tokenize(text)) {
     if (piece.type === "chip") {
-      root.appendChild(
-        chipNode(
-          piece.label,
-          toneOf(piece.label, tones),
-          dark,
-          kindOfLabel(piece.label, kindFor),
-        ),
-      );
+      const tone = toneOf(piece.label, toneFor, seen);
+      const kind = kindOfLabel(piece.label, kindFor, seen);
+      // Remember it while the store still knows: after the next send it will
+      // not, and this chip must not change under the user.
+      if (seen && (toneFor?.(piece.label) !== undefined || kindFor?.(piece.label)))
+        seen.set(piece.label, { tone, kind });
+      root.appendChild(chipNode(piece.label, tone, dark, kind));
       continue;
     }
     const lines = piece.value.split("\n");
@@ -174,16 +245,17 @@ function render(
 
 export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
   function TokenInput(
-    { initialText, tones, kindFor, onChange, onKeyDown, placeholder, className },
+    { initialText, toneFor, kindFor, onChange, onKeyDown, placeholder, className },
     ref,
   ) {
     const boxRef = useRef<HTMLDivElement>(null);
     // Handlers below run on DOM events, outside React's render — they need the
     // current map, not the one captured when they were attached.
-    const tonesRef = useRef(tones);
-    tonesRef.current = tones;
+    const toneRef = useRef(toneFor);
+    toneRef.current = toneFor;
     const kindRef = useRef(kindFor);
     kindRef.current = kindFor;
+    const seen = useRef(new Map<string, Drawn>());
     const dark = useIsDark();
     // What we last handed out, so an external setText can skip a no-op render
     // that would otherwise move the caret to the end mid-typing.
@@ -192,7 +264,8 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
     useLayoutEffect(() => {
       const box = boxRef.current;
       if (!box) return;
-      render(box, initialText, dark, tonesRef.current, kindRef.current);
+      render(box, initialText, dark, toneRef.current, kindRef.current, seen.current);
+      paintCommand(box);
       lastText.current = initialText;
       // Only on mount: after that the DOM is the browser's.
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -215,6 +288,7 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
       if (!box) return;
       const text = serialize(box);
       lastText.current = text;
+      paintCommand(box);
       onChange(text);
     };
 
@@ -224,8 +298,9 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
       setText: (text) => {
         const box = boxRef.current;
         if (!box || text === lastText.current) return;
-        render(box, text, dark, tonesRef.current, kindRef.current);
+        render(box, text, dark, toneRef.current, kindRef.current, seen.current);
         lastText.current = text;
+        paintCommand(box);
         placeCaretAtEnd(box);
         onChange(text);
       },
@@ -233,10 +308,10 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
         const box = boxRef.current;
         if (!box) return;
         box.focus();
-        insertAtCaret(
-          box,
-          chipNode(label, tone, dark, kind ?? kindOfLabel(label, kindRef.current)),
-        );
+        const drawnKind =
+          kind ?? kindOfLabel(label, kindRef.current, seen.current);
+        seen.current.set(label, { tone, kind: drawnKind });
+        insertAtCaret(box, chipNode(label, tone, dark, drawnKind));
         emit();
       },
       caretOffset: () => (boxRef.current ? caretOffsetIn(boxRef.current) : 0),
@@ -266,9 +341,9 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
               frag.appendChild(
                 chipNode(
                   piece.label,
-                  toneOf(piece.label, tonesRef.current),
+                  toneOf(piece.label, toneRef.current, seen.current),
                   dark,
-                  kindOfLabel(piece.label, kindRef.current),
+                  kindOfLabel(piece.label, kindRef.current, seen.current),
                 ),
               );
             } else {

@@ -79,6 +79,16 @@ const out = await evalJs(`(async () => {
   });
   await sleep(500);
 
+  // The colour a chip is wearing BEFORE anything re-renders the composer.
+  const colourOf = (label) => {
+    const el = chipFor(label);
+    return el ? getComputedStyle(el).backgroundColor : null;
+  };
+  const coloursBefore = {
+    code: colourOf("a.ts:3-9"),
+    browser: colourOf("SaveButton"),
+  };
+
   // One sentence carrying all four tokens. Rendering from TEXT is the hard
   // case: the chip has nothing but the label to decide what it is.
   useChatStore
@@ -95,12 +105,37 @@ const out = await evalJs(`(async () => {
     browser: iconOf("SaveButton"),
   };
   const chipCount = document.querySelectorAll("[data-monet-chip]").length;
+  const coloursAfter = {
+    code: colourOf("a.ts:3-9"),
+    browser: colourOf("SaveButton"),
+  };
+
+  // …and after the selections are gone, which is what sending does. A chip
+  // still standing in the composer must not change under the user.
+  useChatStore.getState().clearPendingContext();
+  await sleep(200);
+  useChatStore
+    .getState()
+    .setComposerDraft(
+      "⟨a.ts:3-9⟩ ⟨b.ts⟩ ⟨Old chat⟩ ⟨SaveButton⟩ after",
+    );
+  await sleep(700);
+  const coloursOrphaned = {
+    code: colourOf("a.ts:3-9"),
+    browser: colourOf("SaveButton"),
+  };
+  const iconsOrphaned = {
+    code: iconOf("a.ts:3-9"),
+    file: iconOf("b.ts"),
+    chat: iconOf("Old chat"),
+    browser: iconOf("SaveButton"),
+  };
 
   // Leave the composer as it was found.
   useChatStore.getState().clearPendingContext();
   useChatStore.getState().setComposerDraft("");
 
-  return { icons, chipCount };
+  return { icons, chipCount, coloursBefore, coloursAfter, coloursOrphaned, iconsOrphaned };
 })()`);
 
 ws.close();
@@ -124,6 +159,32 @@ check(
   "and each kind wears a different one",
   new Set(Object.values(icons).filter(Boolean)).size === 4,
   icons,
+);
+
+// Reported from use: a chip changed colour by itself. It was drawn in the
+// tick its selection was registered, missed its own tone, and took the
+// label's hash — until the next re-render handed it the real one.
+check(
+  "a chip keeps its colour when the composer re-renders",
+  !!out.coloursBefore?.code &&
+    out.coloursBefore.code === out.coloursAfter?.code &&
+    out.coloursBefore.browser === out.coloursAfter?.browser,
+  { before: out.coloursBefore, after: out.coloursAfter },
+);
+
+// And after the selections are gone — which is what sending does. A chip
+// still standing in the composer redrew as a grey browser pick, reported as
+// chips losing their colour and icon after a command was confirmed.
+check(
+  "a chip keeps its colour after its selection is gone",
+  out.coloursOrphaned?.code === out.coloursBefore?.code &&
+    out.coloursOrphaned?.browser === out.coloursBefore?.browser,
+  { was: out.coloursBefore, now: out.coloursOrphaned },
+);
+check(
+  "and keeps its icon too",
+  JSON.stringify(out.iconsOrphaned) === JSON.stringify(out.icons),
+  out.iconsOrphaned,
 );
 
 console.log(failures === 0 ? "\nALL CHIP-ICON CHECKS PASSED" : `\n${failures} FAILED`);

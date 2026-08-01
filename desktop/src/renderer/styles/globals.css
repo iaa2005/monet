@@ -234,6 +234,14 @@
     .dark ::selection {
         background: hsl(var(--brand) / 0.35);
     }
+    /* A slash command in the composer, painted as a range over the text
+       rather than by wrapping it in an element — see TokenInput. Only the
+       first word of a message can be one, so a path in a sentence stays
+       plain text. */
+    ::highlight(monet-command) {
+        color: hsl(var(--brand));
+        font-weight: 500;
+    }
     html,
     body,
     #root {

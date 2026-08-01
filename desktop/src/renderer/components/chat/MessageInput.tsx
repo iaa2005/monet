@@ -263,24 +263,33 @@ export function MessageInput({
   // Browser-panel selections are NOT keyed per chat: you point at a thing on
   // the page and then decide where to ask about it.
   const pendingContext = useChatStore((s) => s.pendingContext);
-  const selectionTones = useMemo(
-    () =>
-      Object.fromEntries(
-        pendingContext
-          .filter((c) => typeof c.tone === "number")
-          .map((c) => [c.label, c.tone as number]),
-      ),
-    [pendingContext],
+  // The selection a label belongs to, read from the store at DRAW time. A
+  // memo of it was one render behind: a mention adds its context and paints
+  // its chip in the same tick, so the chip missed its own tone, took the
+  // label's hash instead, and changed colour the next time anything in the
+  // composer re-rendered. Reported as chips changing colour by themselves.
+  const refFor = useCallback(
+    (label: string) =>
+      useChatStore.getState().pendingContext.find((c) => c.label === label),
+    [],
+  );
+  const toneForLabel = useCallback(
+    (label: string): number | undefined => refFor(label)?.tone,
+    [refFor],
   );
   // Which icon each chip wears — the block's own tag says what it is. Read
   // from the store rather than from a memo: a mention adds its context and
   // draws its chip in the same tick, before any re-render.
-  const kindForLabel = useCallback((label: string): RefKind => {
-    const hit = useChatStore
-      .getState()
-      .pendingContext.find((c) => c.label === label);
-    return hit ? kindOf(hit.context ?? "") : "browser";
-  }, []);
+  // Undefined, not "browser", when the label is unknown: the composer keeps
+  // what a chip was last drawn as, and a confident wrong answer here would
+  // overwrite it.
+  const kindForLabel = useCallback(
+    (label: string): RefKind | undefined => {
+      const hit = refFor(label);
+      return hit ? kindOf(hit.context ?? "") : undefined;
+    },
+    [refFor],
+  );
   /** Selections already turned into a token, so the effect below runs once each. */
   const tokenised = useRef(new Set<string>());
   const setFiles = useCallback(
@@ -1216,7 +1225,7 @@ export function MessageInput({
               initialText={input}
               // A re-staged message (Rewind / Branch) restores its chips from
               // TEXT; these are the tones those selections actually carried.
-              tones={selectionTones}
+              toneFor={toneForLabel}
               kindFor={kindForLabel}
               onChange={(text) => {
                 setInput(text);
