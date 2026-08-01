@@ -39,6 +39,8 @@ interface SearchHit {
 
 interface FileTreeProps {
   onSelectFile?: (path: string) => void;
+  /** Double click — VS Code's "keep this one open" (the tab stops being italic). */
+  onOpenFile?: (path: string) => void;
   /** Root the tree here instead of the Code workspace (e.g. the Home sandbox
    * working folder). When it changes, the tree reloads. */
   rootPath?: string;
@@ -176,6 +178,7 @@ const Row = memo(function Row({
   loading,
   dark,
   onToggle,
+  onOpen,
 }: {
   entry: FileEntry;
   depth: number;
@@ -183,6 +186,7 @@ const Row = memo(function Row({
   loading: boolean;
   dark: boolean;
   onToggle: (entry: FileEntry) => void;
+  onOpen: (entry: FileEntry) => void;
 }): JSX.Element {
   const iconSrc = resolveIcon(entry.name, entry.isDirectory, expanded, dark);
   return (
@@ -190,6 +194,9 @@ const Row = memo(function Row({
       className="flex cursor-pointer items-center gap-0.5 rounded px-1 text-[13px] hover:bg-accent/50"
       style={{ height: ROW_H, paddingLeft: `${depth * 16 + 4}px` }}
       onClick={() => onToggle(entry)}
+      onDoubleClick={() => {
+        if (!entry.isDirectory) onOpen(entry);
+      }}
     >
       {entry.isDirectory ? (
         expanded ? (
@@ -227,6 +234,7 @@ const Row = memo(function Row({
 
 export function FileTree({
   onSelectFile,
+  onOpenFile,
   rootPath,
   emptyLabel,
 }: FileTreeProps): JSX.Element {
@@ -428,6 +436,12 @@ export function FileTree({
     [onSelectFile],
   );
 
+  // Stable, or every scroll would re-render every memoized row.
+  const openEntry = useCallback(
+    (entry: FileEntry) => onOpenFile?.(entry.path),
+    [onOpenFile],
+  );
+
   const rows = useMemo(
     () => flattenTree(root?.children ?? [], expanded, childrenOf),
     [root, expanded, childrenOf],
@@ -504,6 +518,7 @@ export function FileTree({
                 loading={pending.has(r.entry.path)}
                 dark={dark}
                 onToggle={toggle}
+                onOpen={openEntry}
               />
             ))}
             <div style={{ height: win.padBottom }} />

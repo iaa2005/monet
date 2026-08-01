@@ -403,7 +403,7 @@ export default function App(): JSX.Element {
   // half a second of layout.
   const browserTabsLive = useBrowserStore((s) => s.tabs);
   const browserActiveLive = useBrowserStore((s) => s.activeId);
-  const viewerPanesLive = useViewerStore((s) => s.panes);
+  const viewerDocsLive = useViewerStore((s) => s.docs);
   useEffect(() => {
     const bridge = api();
     if (!bridge || !currentSessionId || currentSessionId.startsWith("incognito"))
@@ -422,7 +422,7 @@ export default function App(): JSX.Element {
       });
     }, 600);
     return () => clearTimeout(t);
-  }, [currentSessionId, dockLayoutLive, browserTabsLive, browserActiveLive, browserLayout, viewerPanesLive]);
+  }, [currentSessionId, dockLayoutLive, browserTabsLive, browserActiveLive, browserLayout, viewerDocsLive]);
 
   // "Branch from here" on a user message: a fork cut at that point. The
   // non-destructive sibling of Rewind — the original keeps its whole history,

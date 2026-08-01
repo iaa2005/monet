@@ -539,49 +539,8 @@ pre.diff-hl code {
 pre.diff-hl .line {
     display: flex;
     align-items: flex-start;
-    /* line-height 1.6 × 12.5px — keeps empty lines from collapsing.
-       NO content-visibility here: wrapped lines break its height estimate
-       and the measure→anchor→re-measure feedback froze the app on long
-       files. Big blocks are JS-virtualized instead (highlight.tsx). */
+    /* line-height 1.6 × 12.5px — keeps empty lines from collapsing. */
     min-height: 20px;
-}
-/* Virtualized mode (≥500 lines): the editor behavior. Lines do not wrap —
-   they scroll horizontally — so every row is exactly one line tall and the
-   window math in highlight.tsx is exact. width: max-content lets the pre
-   grow past its container for the horizontal scrollbar. */
-/* The editor layout: rows are placed by coordinate inside a box whose size
-   is known up front. `contain` is the part that matters — it tells the
-   compositor the box cannot affect anything outside it, so it rasterizes
-   what is on screen instead of the whole document. The previous shape (one
-   tall pre, width: max-content, padding spacers) traced at a single 815ms
-   Commit; long lines are still reachable because the box is as wide as the
-   widest line, in ch, computed without measuring anything. */
-pre.diff-hl.virt {
-    padding: 0;
-    position: relative;
-    /* The rows layer is pinned inside this box; nothing here may paint
-       outside it. */
-    contain: paint;
-}
-/* Pinned to the top of the scroller and translated by the scroll offset, so
-   the painted area is one viewport tall no matter how long the file is. The
-   old shape - one box as tall as the document - cost a 780ms compositor
-   commit on a 324-line file. */
-pre.diff-hl.virt .virt-rows {
-    position: sticky;
-    top: 0;
-    height: 0;
-    will-change: transform;
-}
-pre.diff-hl.virt .line {
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 20px;
-    padding-left: 0.75rem;
-}
-pre.diff-hl.virt .cl {
-    white-space: pre;
 }
 pre.diff-hl .ln {
     display: none;

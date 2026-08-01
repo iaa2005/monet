@@ -380,6 +380,8 @@ interface ChatStore {
       dataUrl?: string;
       source?: "artifact" | "file";
     } | null,
+    /** `preview: false` pins the card — a double click rather than a click. */
+    opts?: { preview?: boolean },
   ) => void;
   openExpandedSubAgent: (sa: SubAgentState | null) => void;
   setSpace: (v: string) => void;
@@ -845,9 +847,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
     requestFork: (messageId) => set({ forkRequest: messageId }),
     // Facade over viewerStore (tabs + VS Code preview idiom): every "open a
     // file" click in the app lands here, whatever surface it came from.
-    openViewer: (item) => {
+    openViewer: (item, opts) => {
       if (item) {
-        useViewerStore.getState().open(item);
+        useViewerStore.getState().open(item, opts);
         set({ expandedSubAgent: null });
       } else {
         useViewerStore.getState().closeAll();

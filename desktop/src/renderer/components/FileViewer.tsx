@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { MarkdownViewer } from "./chat/MarkdownViewer";
 import { HighlightedCode } from "./chat/highlight";
+import { CodeEditor } from "./CodeEditor";
 import { codeRef, selectionLineRange } from "@/lib/refs";
 import { useChatStore } from "@/stores/chatStore";
 import { MessageSquarePlus } from "lucide-react";
@@ -482,32 +483,21 @@ export function FileViewer({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-1">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate text-xs font-medium" title={filePath ?? ""}>
-            {displayName}
-          </span>
-        </span>
-        <div className="flex shrink-0 items-center gap-1">
-          <IconBtn title="Refresh" onClick={() => setNonce((n) => n + 1)}>
-            <RefreshCw className="size-3.5" />
-          </IconBtn>
-          {filePath && (
-            <>
-              <IconBtn title="Download" onClick={download}>
-                <Download className="size-3.5" />
-              </IconBtn>
-              <IconBtn title="Open externally" onClick={openExternal}>
-                <ExternalLink className="size-3.5" />
-              </IconBtn>
-            </>
-          )}
-          <IconBtn title="Close" onClick={onClose}>
-            <X className="size-3.5" />
-          </IconBtn>
-        </div>
+      {/* Actions only: the dock tab already names the file and closes it. */}
+      <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border px-2 py-1">
+        <IconBtn title="Refresh" onClick={() => setNonce((n) => n + 1)}>
+          <RefreshCw className="size-3.5" />
+        </IconBtn>
+        {filePath && (
+          <>
+            <IconBtn title="Download" onClick={download}>
+              <Download className="size-3.5" />
+            </IconBtn>
+            <IconBtn title="Open externally" onClick={openExternal}>
+              <ExternalLink className="size-3.5" />
+            </IconBtn>
+          </>
+        )}
       </div>
 
       {/* Body */}
@@ -604,11 +594,7 @@ export function FileViewer({
                   <MarkdownViewer content={artText} />
                 </div>
               ) : (
-                <HighlightedCode
-                  language={langFor(displayName)}
-                  code={artText}
-                  showLineNumbers
-                />
+                <CodeEditor value={artText} fileName={displayName} />
               )
             )}
 
@@ -637,11 +623,7 @@ export function FileViewer({
             <MarkdownViewer content={content} />
           </div>
         ) : (
-          <HighlightedCode
-            language={langFor(displayName)}
-            code={content}
-            showLineNumbers
-          />
+          <CodeEditor value={content} fileName={displayName} />
         )}
       </div>
     </div>

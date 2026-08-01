@@ -1,26 +1,22 @@
 /**
- * The rules that keep opening a file from freezing the app.
+ * What is left of the viewer's own rendering rules.
  *
- * Reported twice, and the second time with the file: 324 lines of HTML,
- * 20 KB. In the shipped build, clicking it blocked the renderer for 6838ms —
- * measured over the DevTools protocol against the real app, because a plain
- * browser harness put the same work at 168ms and hid the problem entirely.
+ * Most of what this file used to assert is gone with the code it covered: a
+ * hand-written virtualized renderer (windowed rows, block tokenizing, an idle
+ * scheduler, a sticky rows layer) that was measured from 6838ms down to 51ms
+ * on one HTML file — and then deleted, because Monaco does the same job and
+ * the things that would have come next (find, folding, editing) for free.
  *
- * Three causes, one theme: work proportional to the FILE instead of to what
- * is on screen.
+ * Two rules survive, because they are still ours:
  *
- *   1. tokenizing ran over the whole document, however little was displayed;
- *   2. the virtualization threshold (500 lines) was above the file that
- *      froze, so every row was in the DOM anyway;
- *   3. markdown had no windowing at all and re-rendered wholesale on any
- *      parent state change — which in the viewer is every mouse-up.
- *
- * These are the invariants that keep it fixed. They are about SHAPE, not
- * milliseconds: a timing assertion would be flaky on a loaded machine, while
- * "tokenizing a window must not touch the rest of the file" stays true.
+ *   1. long markdown renders in pieces, and a piece never cuts a fenced code
+ *      block in half — that turns the rest of the document into code;
+ *   2. the chat's code blocks tokenize cheaply and identically whatever the
+ *      nesting, since flattening the token spans is what took the viewer from
+ *      841ms to 51ms and the chat inherits it.
  */
 
-import { windowedLines, highlightLines } from "../src/renderer/components/chat/highlight";
+import { highlightLines } from "../src/renderer/components/chat/highlight";
 import { splitMarkdownChunks } from "../src/renderer/lib/markdown-chunks";
 
 let failures = 0;
@@ -29,78 +25,7 @@ const check = (name: string, ok: boolean, detail?: unknown): void => {
   if (!ok) failures++;
 };
 
-// A file shaped like the one that froze: markup, the most expensive grammar.
-const htmlLines: string[] = ["<!doctype html>", "<html><head><style>.a{color:red}</style></head><body>"];
-for (let i = 0; i < 2000; i++)
-  htmlLines.push(`  <div class="card c${i}" data-id="${i}"><span>Item ${i}</span></div>`);
-htmlLines.push("</body></html>");
-
-// ── 1. The render path never tokenizes ───────────────────────────────
-//
-// Tokenizing used to happen inside the render, so scrolling into a fresh part
-// of a file blocked for over a second at a time (measured in the shipped app
-// on a 324-line HTML file: 1151ms, then 609ms). Now a window comes back as
-// plain text immediately and the colours arrive from idle time afterwards.
-{
-  const t0 = Date.now();
-  const cold = windowedLines(htmlLines, "markup", 0, 80);
-  const coldMs = Date.now() - t0;
-
-  const t1 = Date.now();
-  highlightLines(htmlLines.join("\n"), "markup");
-  const wholeMs = Date.now() - t1;
-
-  check("a window returns exactly the lines asked for", cold.length === 80, cold.length);
-  check(
-    "and returns them without tokenizing anything",
-    coldMs * 20 < wholeMs || coldMs <= 2,
-    `window ${coldMs}ms vs whole file ${wholeMs}ms`,
-  );
-  check(
-    "so what it hands back first is plain text",
-    cold.every((l) => typeof l === "string"),
-  );
-
-  // Ask again WITH the callback: colours are prepared in the background.
-  const painted = await new Promise<boolean>((resolve) => {
-    let done = false;
-    windowedLines(htmlLines, "markup", 0, 80, () => {
-      if (!done) {
-        done = true;
-        resolve(true);
-      }
-    });
-    setTimeout(() => resolve(done), 3_000);
-  });
-  check("a block colours itself in the background", painted);
-
-  const warm = windowedLines(htmlLines, "markup", 0, 80);
-  check(
-    "and the next window is coloured",
-    warm.some((l) => typeof l !== "string"),
-  );
-  const t2 = Date.now();
-  windowedLines(htmlLines, "markup", 0, 80);
-  check("a revisited window is free", Date.now() - t2 <= 2, `${Date.now() - t2}ms`);
-}
-
-// ── 2. Windows line up with the file ──────────────────────────────────
-//
-// An off-by-one here shows the wrong code under the right line number, which
-// is worse than being slow.
-{
-  const plain = ["a", "b", "c", "d", "e", "f", "g", "h"];
-  const all = windowedLines(plain, "text", 0, plain.length);
-  check("a short file comes back whole", all.length === plain.length);
-  const mid = windowedLines(plain, "text", 2, 5);
-  check("a slice is [start, end)", mid.length === 3, mid.length);
-  const past = windowedLines(plain, "text", 6, 99);
-  check("an over-long end stops at the last line", past.length === 2, past.length);
-  const empty = windowedLines(plain, "text", 3, 3);
-  check("an empty window renders nothing", empty.length === 0, empty.length);
-}
-
-// ── 3. Markdown pieces never cut a fence ──────────────────────────────
+// ── 1. Markdown pieces never cut a fence ──────────────────────────────
 {
   const parts: string[] = [];
   for (let i = 0; i < 60; i++) {
@@ -116,8 +41,7 @@ htmlLines.push("</body></html>");
     chunks.join("\n") === doc,
     `${chunks.join("\n").length} vs ${doc.length}`,
   );
-  // The rule that matters: an odd number of fences in a piece means a code
-  // block was cut in half, and everything after it renders as code.
+  // An odd number of fences in a piece means a code block was cut in half.
   const badFence = chunks.find(
     (c) => (c.match(/^\s{0,3}(```|~~~)/gm) ?? []).length % 2 !== 0,
   );
@@ -127,13 +51,48 @@ htmlLines.push("</body></html>");
     "a short document is left alone",
     splitMarkdownChunks("# hi\n\nshort", 6_000).length === 1,
   );
-  // A document with no cut point at all (one giant fence) must come back
-  // whole rather than be split somewhere unsafe.
+  // A document with no safe cut point at all comes back whole rather than
+  // being split somewhere wrong.
   const oneFence = ["```", "x".repeat(30_000), "```"].join("\n");
   check(
     "a document with nowhere safe to cut stays whole",
     splitMarkdownChunks(oneFence, 6_000).length === 1,
   );
+}
+
+// ── 2. Highlighting is flat, and says what the source said ────────────
+//
+// Prism nests tokens (a tag inside a tag inside a tag) and the old walker
+// rebuilt every leaf inside its ancestor stack, which put thousands of small
+// styled elements on screen for one page of HTML. Flattening is why the chat
+// and the viewer stopped costing hundreds of milliseconds — but a flattener
+// that drops a character would be a silent corruption of what the user reads.
+{
+  const src = [
+    "<!doctype html>",
+    '<html lang="ru"><head><style>.a{color:red}</style></head>',
+    '  <body><div class="card" data-id="7">Item &amp; more</div></body>',
+    "</html>",
+  ].join("\n");
+  const lines = highlightLines(src, "markup");
+
+  check("one entry per source line", lines.length === src.split("\n").length, lines.length);
+
+  // Every line must still READ as itself. React nodes here are either a
+  // string or an element tree of strings, so flatten and compare.
+  const textOf = (node: unknown): string => {
+    if (typeof node === "string") return node;
+    if (Array.isArray(node)) return node.map(textOf).join("");
+    const el = node as { props?: { children?: unknown } } | null;
+    return el?.props ? textOf(el.props.children) : "";
+  };
+  const rebuilt = lines.map(textOf).join("\n");
+  check("the text is unchanged, character for character", rebuilt === src, `${rebuilt.length} vs ${src.length}`);
+
+  // An unknown language must fall back to plain lines rather than throwing.
+  const plain = highlightLines(src, "nosuchlang");
+  check("an unknown language degrades to plain text", plain.every((l) => typeof l === "string"));
+  check("and still keeps every line", plain.length === src.split("\n").length);
 }
 
 console.log(failures === 0 ? "\nALL VIEWER-PERF CHECKS PASSED" : `\n${failures} FAILED`);

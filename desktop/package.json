@@ -119,6 +119,7 @@
     "lucide-react": "^0.400.0",
     "mailparser": "^3.9.14",
     "marked": "^18.0.5",
+    "monaco-editor": "^0.56.0",
     "nodemailer": "^9.0.3",
     "pdfjs-dist": "^6.1.200",
     "picomatch": "^4.0.5",
