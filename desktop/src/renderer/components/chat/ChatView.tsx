@@ -62,6 +62,7 @@ import type { ChatMessage, ToolCall } from "@/types/chat";
 import { PlanApprovalHost } from "./PlanApprovalDialog";
 import { SelectionText } from "./SelectionText";
 import { joinSelections, splitSelections, usedRefs } from "@/lib/selection-marks";
+import { copyTargets as computeCopyTargets, shouldShowWorking } from "./turn-state";
 
 type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
@@ -562,27 +563,30 @@ function groupMessages(
 
 /** For each assistant turn (user→…→next-user), collect all assistant message
  * text and map it to the index of the turn's last item in `grouped`. */
-function turnCopyTargets(grouped: GroupedItem[]): Map<number, string> {
-  const out = new Map<number, string>();
-  let parts: string[] = [];
-  let lastIdx = -1;
-
-  grouped.forEach((item, i) => {
-    if ("type" in item) {
-      // tool-group / artifact-strip — still part of the same turn
-      lastIdx = i;
-    } else if (item.role === "user") {
-      if (parts.length > 0 && lastIdx >= 0) out.set(lastIdx, parts.join("\n\n"));
-      parts = [];
-      lastIdx = -1;
-    } else if (item.content) {
-      parts.push(stripInterrupt(item.content));
-      lastIdx = i;
+/**
+ * True while the assistant's visible text is actually growing.
+ *
+ * Goes false after `idleMs` of no growth, which is what tells the chat that
+ * the model has moved on to a tool (or is composing a long tool input) and
+ * the "Working" row belongs back on screen.
+ */
+function useTextFlowing(text: string, streaming: boolean, idleMs = 1200): boolean {
+  const [flowing, setFlowing] = useState(false);
+  const lastLen = useRef(-1);
+  useEffect(() => {
+    if (!streaming || !text) {
+      lastLen.current = -1;
+      setFlowing(false);
+      return;
     }
-  });
-
-  if (parts.length > 0 && lastIdx >= 0) out.set(lastIdx, parts.join("\n\n"));
-  return out;
+    if (text.length !== lastLen.current) {
+      lastLen.current = text.length;
+      setFlowing(true);
+    }
+    const t = setTimeout(() => setFlowing(false), idleMs);
+    return () => clearTimeout(t);
+  }, [text, streaming, idleMs]);
+  return flowing;
 }
 
 function isInterrupted(content: string | undefined): boolean {
@@ -625,9 +629,19 @@ function CopyMessageButton({ text }: { text: string }): JSX.Element {
   );
 }
 
+/**
+ * The copy affordance under a finished turn.
+ *
+ * Hidden until the pointer is over the turn it belongs to (the message above
+ * carries `peer/turn`) or over the row itself — a button that is always there
+ * reads as part of the transcript, which it is not.
+ */
 function CopyRow({ text }: { text: string }): JSX.Element {
   return (
-    <MessageScrollerItem messageId={`copy-${text.slice(0, 32)}`}>
+    <MessageScrollerItem
+      messageId={`copy-${text.slice(0, 32)}`}
+      className="opacity-0 transition-opacity focus-within:opacity-100 hover:opacity-100 peer-hover/turn:opacity-100"
+    >
       <div className="flex justify-start pb-2">
         <CopyMessageButton text={text} />
       </div>
@@ -949,14 +963,38 @@ export function ChatView({
   const greeting = useMemo(() => pickGreeting(profileName, isFirstRun), [profileName, isFirstRun]);
 
   const grouped = groupMessages(messages, transcriptMode);
-  const copyTargets = useMemo(() => turnCopyTargets(grouped), [grouped]);
+  // The rules live in turn-state.ts so they can be asserted without a browser
+  // (scripts/working-copy-probe.ts). Here we only adapt the shapes.
+  const copyTargets = useMemo(
+    () =>
+      computeCopyTargets(
+        grouped.map((item) =>
+          "type" in item
+            ? ({ kind: "other" } as const)
+            : ({
+                kind: "message",
+                role: item.role as "user" | "assistant" | "tool",
+                content: item.content ? stripInterrupt(item.content) : undefined,
+              } as const),
+        ),
+        isStreaming,
+      ),
+    [grouped, isStreaming],
+  );
   const summaryTurns =
     transcriptMode === "summary" ? summarizeTurns(messages) : null;
 
   const last = messages[messages.length - 1];
-  const activeText =
-    last?.role === "assistant" && last.isStreaming && !!last.content;
-  const showWorking = isStreaming && !activeText;
+  // Is TEXT arriving right now? Not "is the message flagged streaming" — that
+  // flag stays set for the whole turn, and a model writing a large file spends
+  // minutes streaming the tool INPUT with no visible text at all. The old rule
+  // read that as "text is flowing", so the working chip vanished and the turn
+  // looked finished while the stop button was still red (reported from use).
+  // Growth of the visible content is the honest signal.
+  const streamingText =
+    last?.role === "assistant" && last.isStreaming ? (last.content ?? "") : "";
+  const textFlowing = useTextFlowing(streamingText, isStreaming);
+  const showWorking = shouldShowWorking({ streaming: isStreaming, textFlowing });
 
   // When the current run began, for the elapsed clock on the working row.
   //
@@ -1139,6 +1177,7 @@ export function ChatView({
                           scrollAnchor={
                             !showWorking && i === grouped.length - 1
                           }
+                          className={copyBtn ? "peer/turn" : undefined}
                         >
                           <ToolCallBubble
                             toolCall={item.calls[0]}
@@ -1158,6 +1197,7 @@ export function ChatView({
                           scrollAnchor={
                             !showWorking && i === grouped.length - 1
                           }
+                          className={copyBtn ? "peer/turn" : undefined}
                         >
                           <ArtifactsStrip items={item.items} />
                         </MessageScrollerItem>
@@ -1170,6 +1210,7 @@ export function ChatView({
                         key={item.id}
                         messageId={item.id}
                         scrollAnchor={!showWorking && i === grouped.length - 1}
+                        className={copyBtn ? "peer/turn" : undefined}
                       >
                         <MessageRow
                           msg={item as ChatMessage}
