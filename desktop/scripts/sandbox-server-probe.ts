@@ -22,6 +22,7 @@ import { serveArgs, staticServeCommand } from "../src/main/sandbox/podman-server
 import {
   TRANSIENT_MACHINE_ERROR,
   machineName,
+  stripPodmanNoise,
 } from "../src/main/sandbox/podman-engine";
 import { spaceAllows } from "../src/main/agent/space-tools";
 
@@ -162,6 +163,45 @@ const argv = args.join(" ");
     "parsed out of a real listing, the name is usable as an argument",
     first === "podman-machine-default" && !first.includes("*"),
     first,
+  );
+}
+
+// ── 7. Podman's chatter is not the error ─────────────────────────────
+//
+// This block prints on SUCCESSFUL starts — it is about Docker API forwarding
+// and says so itself. Quoted inside a failure it became the headline, and a
+// user twice concluded their machine was broken from a line that appears
+// when everything works.
+{
+  const realStart = [
+    "API forwarding for Docker API clients is not available due to the following startup failures.",
+    "	could not start api proxy since expected pipe is not available: podman-machine-default",
+    "Podman clients are still able to connect.",
+    "Error: machine did not transition into running state: ssh error: machine not in running state",
+  ].join("\n");
+  const cleaned = stripPodmanNoise(realStart);
+  check(
+    "the api-forwarding warning is dropped",
+    !/api forwarding|api proxy|still able to connect/i.test(cleaned),
+    JSON.stringify(cleaned),
+  );
+  check(
+    "the actual error survives",
+    cleaned.includes("did not transition into running state"),
+    cleaned,
+  );
+  check(
+    "a healthy start's chatter reduces to nothing",
+    stripPodmanNoise(
+      [
+        "Docker API clients default to this address. You do not need to set DOCKER_HOST.",
+        "Podman clients are still able to connect.",
+      ].join("\n"),
+    ) === "",
+  );
+  check(
+    "an unrelated failure is untouched",
+    stripPodmanNoise("Error: WSL is not installed") === "Error: WSL is not installed",
   );
 }
 

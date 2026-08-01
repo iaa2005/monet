@@ -159,6 +159,71 @@ export function machineName(raw: string | undefined): string | undefined {
   return name || undefined;
 }
 
+/**
+ * Podman's own chatter, out of anything a user reads.
+ *
+ * These lines print on SUCCESSFUL starts too — they are about Docker API
+ * forwarding, and podman says so itself two lines later ("Podman clients are
+ * still able to connect"). Quoted back inside a failure they read like the
+ * cause: a user was shown "could not start api proxy since expected pipe is
+ * not available" as the headline of a problem it had nothing to do with, and
+ * concluded their machine was broken. The real line — "machine did not
+ * transition into running state" — was buried under it.
+ */
+export function stripPodmanNoise(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .filter(
+      (line) =>
+        !/api forwarding for docker api clients/i.test(line) &&
+        !/could not start api proxy/i.test(line) &&
+        !/podman clients are still able to connect/i.test(line) &&
+        !/docker api clients default to this address/i.test(line) &&
+        !/you do not need to set docker_host/i.test(line),
+    )
+    .join("\n")
+    .trim();
+}
+
+/**
+ * One clean stop→start cycle — the recovery for a machine that reports
+ * running while its socket is dead (an idle WSL distro that lost its tunnel).
+ *
+ * `machine stop` returns before the distro has actually gone, and starting
+ * into that gap is how a recovery turns into "already running" and leaves the
+ * machine exactly as wedged as before. So the stop is followed by waiting for
+ * podman to admit the machine is down, not by a fixed guess.
+ *
+ * Verified by hand against a really wedged machine: stop → settle → start
+ * brings the socket back every time, with nothing killed and nothing rebuilt.
+ */
+async function stopThenStart(
+  name: string | undefined,
+  tryStart: () => Promise<{
+    code: number | null;
+    stdout: string;
+    stderr: string;
+    spawnError?: string;
+  }>,
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const stopArgs = ["machine", "stop"];
+  if (name) stopArgs.push(name);
+  await run(stopArgs, { timeoutMs: 60_000 });
+  // Up to ~20s for the distro to report itself down; usually one or two ticks.
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 1_000));
+    const list = await machineList();
+    const running = list.stdout
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => line.split("\t"))
+      .find(([n]) => n)?.[1]
+      ?.toLowerCase();
+    if (running !== "true") break;
+  }
+  return tryStart();
+}
+
 type PodmanReadyResult = {
   ok: boolean;
   log: string;
@@ -637,7 +702,9 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
             "Settings → Sandbox and press Prepare — it removes the broken " +
             "machine and downloads a fresh one (several minutes). Meanwhile " +
             "switch the sandbox engine to Pyodide or Local subprocess.\n" +
-            `Podman said:\n${(start.stderr || start.stdout).slice(-400)}`,
+            `Podman said:\n${stripPodmanNoise(
+              start.stderr || start.stdout,
+            ).slice(-400)}`,
         );
       }
       if (looksBroken) {
@@ -680,10 +747,10 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
     const firstPollMs = running ? 15_000 : 45_000;
     if (!(await waitForPodmanReady(firstPollMs))) {
       log += "[sandbox] socket unreachable — restarting the Podman machine\n";
-      const stopArgs = ["machine", "stop"];
-      if (resolvedName) stopArgs.push(resolvedName);
-      await run(stopArgs, { timeoutMs: 60_000 });
-      const restart = await tryStart();
+      const restart = await stopThenStart(resolvedName, tryStart);
+      // The wedge that produced "could not start api proxy since expected pipe
+      // is not available" + "machine did not transition into running state":
+      // the WSL distro is up (list says running) but its ssh tunnel is dead,
       if (!(await waitForPodmanReady(60_000))) {
         const why = (restart.stderr || restart.stdout).toLowerCase();
         // "VM does not exist" after a start means the machine podman listed is
@@ -693,7 +760,9 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
           return orphanedMachineFailure(opts.resetOnBroken === true);
         return fail(
           restart.code !== 0
-            ? `Podman machine failed to start:\n${(restart.stderr || restart.stdout).slice(-600)}`
+            ? `Podman machine failed to start:\n${stripPodmanNoise(
+                restart.stderr || restart.stdout,
+              ).slice(-600)}`
             : "Podman started but its API socket never became reachable. Try `podman machine stop` then `podman machine start`, or restart the app.",
         );
       }
