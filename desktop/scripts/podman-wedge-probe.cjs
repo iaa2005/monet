@@ -1,15 +1,23 @@
 /**
- * A wedged Podman machine, and whether the sandbox comes back on its own.
+ * Does the sandbox get itself running — cold, and after a wedge?
  *
- * The state a user hit twice: `machine list` says the machine is running (the
- * WSL distro IS up), but its ssh tunnel is dead, so `podman info` refuses and
- * every RunPython fails with "could not start api proxy since expected pipe
- * is not available" / "machine did not transition into running state". The
- * app then told them to rebuild a perfectly healthy machine.
+ * Three failure reports, one dead end: RunPython refused over and over, the
+ * app blamed the machine ("damaged, rebuild it"), and retrying never helped.
+ * Retrying COULDN'T help: once a session had verified the image, ensureImage()
+ * returned early and skipped the machine check entirely, so the recovery code
+ * was unreachable for the rest of the app's life. The machine was fine; the
+ * path to fixing it sat behind a latch.
  *
- * This probe CREATES that state (kills win-sshproxy under a running machine)
- * and then calls the real RunPython path — no reset flag, so nothing here can
- * destroy a machine — asserting the recovery brings Python back by itself.
+ * So this drives the REAL RunPython entry point, twice, in one process:
+ *
+ *   1. cold — machine stopped, as it is after an idle timeout;
+ *   2. wedged — WSL distro terminated under a running machine, which is what
+ *      an idle timeout actually leaves behind (podman still says "running",
+ *      the socket is dead), and deliberately AFTER a successful run, so the
+ *      latch is warm and the second run has to heal it anyway.
+ *
+ * No reset flag is ever passed, so nothing here can delete a machine to make
+ * itself pass.
  *
  *   node scripts/build-podman-probe.mjs && electron scripts/podman-wedge-probe.cjs
  */
@@ -20,9 +28,19 @@ const { spawnSync } = require("child_process");
 
 let failures = 0;
 const check = (name, pass, detail) => {
-  console.log(`${pass ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${detail}` : ""}`);
+  console.log(
+    `${pass ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${detail}` : ""}`,
+  );
   if (!pass) failures++;
 };
+
+const show = (r) =>
+  JSON.stringify({
+    ok: r.ok,
+    error: r.error,
+    stdout: (r.stdout || "").slice(0, 80),
+    stderr: (r.stderr || "").slice(0, 80),
+  }).slice(0, 260);
 
 app.whenReady().then(async () => {
   const { runPodman, podmanInfoOk, ensurePodmanBinary } = await import(
@@ -32,38 +50,39 @@ app.whenReady().then(async () => {
   // probe that skips this measures "podman is not installed".
   await ensurePodmanBinary();
 
-  const healthy = await podmanInfoOk();
-  check("the machine answers before we break it", healthy);
-  if (!healthy) {
-    console.log("\n(skipped: no healthy machine to wedge)");
-    return app.exit(0);
-  }
+  // ── 1. Cold: the machine is down, as after an idle timeout ───────────
+  spawnSync("podman", ["machine", "stop"], { windowsHide: true, timeout: 120_000 });
+  await new Promise((r) => setTimeout(r, 2_000));
+  check("the machine starts out stopped", !(await podmanInfoOk()));
 
-  // ── Wedge it exactly the way it wedges in the field ──────────────────
-  // Terminating the WSL distro under a running machine leaves podman's view
-  // ("running") and reality (socket dead) disagreeing — which is precisely
-  // what an idle-timed-out machine looks like, and what every failure report
-  // showed. Killing win-sshproxy was tried first and is NOT the mechanism:
-  // this install has no such process, and podman prints the "expected pipe"
-  // line on healthy starts too.
+  let t0 = Date.now();
+  const cold = await runPodman("probe-cold", "print('cold', 6*7)");
+  check(
+    "RunPython starts a stopped machine by itself",
+    cold.ok && cold.stdout.includes("cold 42"),
+    `${Math.round((Date.now() - t0) / 1000)}s — ${show(cold)}`,
+  );
+
+  // ── 2. Wedged, with the image latch already warm ─────────────────────
+  // The case that used to be unrecoverable: the run above set imageReady, and
+  // the machine check used to sit behind that early return.
   spawnSync("wsl.exe", ["--terminate", "podman-machine-default"], {
     windowsHide: true,
   });
   await new Promise((r) => setTimeout(r, 2_000));
-  const wedged = !(await podmanInfoOk());
-  check("terminating the distro wedges the socket", wedged);
+  check("terminating the distro wedges the socket", !(await podmanInfoOk()));
 
-  // ── The real RunPython path recovers, or it does not ─────────────────
-  const t0 = Date.now();
-  const r = await runPodman("probe-wedge", "print('recovered', 6*7)");
-  const secs = Math.round((Date.now() - t0) / 1000);
+  t0 = Date.now();
+  const healed = await runPodman("probe-wedged", "print('healed', 6*7)");
   check(
-    "RunPython recovers the wedged machine by itself",
-    r.ok && r.stdout.includes("recovered 42"),
-    `${secs}s — ${(r.error || r.stdout || "").slice(0, 120)}`,
+    "a second RunPython heals it, latch and all",
+    healed.ok && healed.stdout.includes("healed 42"),
+    `${Math.round((Date.now() - t0) / 1000)}s — ${show(healed)}`,
   );
   check("and the socket is healthy afterwards", await podmanInfoOk());
 
-  console.log(failures === 0 ? "\nALL PODMAN WEDGE CHECKS PASSED" : `\n${failures} FAILED`);
+  console.log(
+    failures === 0 ? "\nALL PODMAN WEDGE CHECKS PASSED" : `\n${failures} FAILED`,
+  );
   app.exit(failures === 0 ? 0 : 1);
 });

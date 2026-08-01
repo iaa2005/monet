@@ -221,7 +221,47 @@ async function stopThenStart(
       ?.toLowerCase();
     if (running !== "true") break;
   }
+  // Podman can report a clean stop while the WSL distro is still up — and a
+  // distro that outlives the stop is the whole wedge: the next start writes a
+  // new SSH port that the surviving sshd never hears about. `wsl --terminate`
+  // is a power-off, not a delete: the disk, the images and the containers are
+  // all still there afterwards.
+  if (await distroRunning(name)) await terminateDistro(name);
   return tryStart();
+}
+
+/** Whether the machine's WSL distro is up, whatever podman believes. */
+async function distroRunning(name: string | undefined): Promise<boolean> {
+  if (process.platform !== "win32") return false;
+  const distro = name || "podman-machine-default";
+  return new Promise((resolve) => {
+    const child = spawn("wsl.exe", ["-l", "-v"], {
+      windowsHide: true,
+      env: { ...process.env, WSL_UTF8: "1" },
+    });
+    let out = "";
+    child.stdout?.on("data", (b: Buffer) => (out += b.toString()));
+    child.on("error", () => resolve(false));
+    child.on("close", () => {
+      const line = out
+        .split(/\r?\n/)
+        .map((l) => l.replace(/\0/g, "").trim())
+        .find((l) => l.replace(/^\*\s*/, "").startsWith(distro));
+      resolve(!!line && /running/i.test(line));
+    });
+  });
+}
+
+function terminateDistro(name: string | undefined): Promise<void> {
+  const distro = name || "podman-machine-default";
+  return new Promise((resolve) => {
+    const child = spawn("wsl.exe", ["--terminate", distro], {
+      windowsHide: true,
+      env: { ...process.env, WSL_UTF8: "1" },
+    });
+    child.on("error", () => resolve());
+    child.on("close", () => setTimeout(resolve, 1_500));
+  });
 }
 
 type PodmanReadyResult = {
@@ -654,7 +694,27 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
       needsWsl: !(await wslInstalled()),
     });
 
-    const tryStart = (): Promise<{ code: number | null; stdout: string; stderr: string; spawnError?: string }> => {
+    /**
+     * Start the machine — but never one that is already up.
+     *
+     * `machine start` re-provisions the SSH port: it writes a fresh port into
+     * the machine config and points clients at it. On a machine that is
+     * ALREADY running, the distro is left alone, so sshd keeps listening on
+     * the previous port while every client dials the new one — connection
+     * refused, forever, from a machine that was working a second earlier.
+     * Caught in the field with the ports side by side: config said 45597,
+     * sshd inside the distro was still on 41021.
+     *
+     * So the API is asked first. If it answers, there is nothing to start.
+     */
+    const tryStart = async (): Promise<{
+      code: number | null;
+      stdout: string;
+      stderr: string;
+      spawnError?: string;
+    }> => {
+      if (await podmanInfoOk())
+        return { code: 0, stdout: "[sandbox] machine already serving", stderr: "" };
       const startArgs = ["machine", "start"];
       if (resolvedName) startArgs.push(resolvedName);
       return run(startArgs, { timeoutMs: 180_000 });
@@ -783,10 +843,20 @@ async function initializePodman(opts: { resetOnBroken?: boolean } = {}): Promise
 }
 
 async function ensureImage(): Promise<{ ok: boolean; log: string; error?: string }> {
-  if (imageReady) return { ok: true, log: "" };
-
+  // The machine is checked on EVERY run, even when the image is known.
+  //
+  // This latch used to skip ensurePodman() entirely, and that is why a
+  // wedged machine looked unfixable: the first run of a session warmed the
+  // latch, the WSL machine idled out an hour later, and every run after that
+  // failed with a raw podman error while the recovery code sat behind the
+  // early return. Retrying was useless by construction — which is exactly
+  // what the user reported, three variations of the same dead end.
+  //
+  // ensurePodman is cheap when things are fine: one `podman info` against a
+  // live socket. When they are not, it is the thing that heals them.
   const podman = await ensurePodman();
   if (!podman.ok) return podman;
+  if (imageReady) return { ok: true, log: "" };
 
   const exists = await run(["image", "exists", IMAGE_TAG], { timeoutMs: 30_000 });
   if (exists.code === 0) {
