@@ -86,3 +86,16 @@ export function copyTargets(
   }
   return out;
 }
+
+/**
+ * Tools that render as their own CARD rather than as a row in a tool group.
+ *
+ * The plan is the case that matters: its card carries the Build buttons, and
+ * a grouped call never reaches the card renderer — the approval then waits
+ * for its ten-minute timeout with nothing on screen to answer it. Grouping
+ * asks this before folding a call in, so the rule lives in one place instead
+ * of being spread between the grouper and the bubble.
+ */
+export function rendersAsCard(toolName: string | undefined): boolean {
+  return toolName === "ExitPlanMode";
+}

@@ -13,6 +13,7 @@
 
 import {
   copyTargets,
+  rendersAsCard,
   shouldShowWorking,
   type TurnItem,
 } from "../src/renderer/components/chat/turn-state";
@@ -104,6 +105,27 @@ const tools = (): TurnItem => ({ kind: "other" });
     copyTargets([asked("hi")], false).size === 0,
   );
   check("an empty chat has nothing to copy", copyTargets([], false).size === 0);
+}
+
+// ── Which calls are cards, not rows ─────────────────────────────────
+//
+// The plan card carries the Build buttons. A card folded into a tool group
+// is drawn by the group as a plain row, so the buttons never appear and the
+// approval waits out its ten-minute timeout — exactly what happened when
+// EnterPlanMode ran first and ExitPlanMode became a group member. Grouping
+// asks this predicate before folding a call in.
+{
+  check("the plan renders as a card", rendersAsCard("ExitPlanMode"));
+  for (const name of [
+    "Read",
+    "Write",
+    "Bash",
+    "TodoWrite",
+    "UpdatePlan",
+    "EnterPlanMode",
+  ])
+    check(`${name} is an ordinary row`, !rendersAsCard(name));
+  check("an unnamed call is an ordinary row", !rendersAsCard(undefined));
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL WORKING/COPY CHECKS PASSED");

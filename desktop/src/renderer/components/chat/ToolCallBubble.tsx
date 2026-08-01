@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import { CodeBlock } from "./CodeBlock";
 import { PlanDocCard } from "./PlanDocCard";
+import { rendersAsCard } from "./turn-state";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { diffStats, langFromPath } from "./diff-core";
 import { Spinner } from "./WorkingIndicator";
@@ -735,7 +736,7 @@ function ToolCallBubbleImpl({
   // The plan card outranks every mode filter: while its approval round-trip
   // is open it carries the Build buttons, and a hidden card would strand the
   // turn until the timeout sends "keep planning".
-  if (toolCall.name === "ExitPlanMode") {
+  if (rendersAsCard(toolCall.name)) {
     return (
       <div className="space-y-1.5">
         <PlanDocCard toolCall={toolCall} />

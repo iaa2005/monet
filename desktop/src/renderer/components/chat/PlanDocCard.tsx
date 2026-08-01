@@ -88,14 +88,21 @@ export function PlanDocCard({
       ? livePlan
       : null;
 
-  // The verdict buttons belong to the newest card only, while its round-trip
-  // is open in this session.
+  // The verdict buttons belong to the card whose call is still open in this
+  // session. Deliberately NOT keyed on planId: the document is a nicety the
+  // card can render without, while a mismatch there would leave the user
+  // with no way to answer at all.
   const pending =
     request !== null &&
     (request.sessionId === undefined || request.sessionId === sessionId) &&
-    (request.planId === undefined || request.planId === plan?.id) &&
     toolCall.status !== "done" &&
     toolCall.status !== "error";
+
+  // Tell the store this request has a UI (see claimedRequestId).
+  const claim = usePlanStore((s) => s.claimRequest);
+  useEffect(() => {
+    if (pending && request) claim(request.id);
+  }, [pending, request, claim]);
 
   const title = plan?.title ?? input.title ?? "Plan";
   const summary = plan?.summary ?? input.summary;

@@ -6,6 +6,7 @@ import { MessageInput } from "./MessageInput";
 import { TodoCard } from "./TodoCard";
 import { GitCard } from "./GitCard";
 import { PermissionDialog } from "./PermissionDialog";
+import { PlanFallbackBar } from "./PlanFallbackBar";
 import { AskUserDialog } from "./AskUserDialog";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -61,7 +62,11 @@ import type {
 import type { ChatMessage, ToolCall } from "@/types/chat";
 import { SelectionText } from "./SelectionText";
 import { joinSelections, splitSelections, usedRefs } from "@/lib/selection-marks";
-import { copyTargets as computeCopyTargets, shouldShowWorking } from "./turn-state";
+import {
+  copyTargets as computeCopyTargets,
+  rendersAsCard,
+  shouldShowWorking,
+} from "./turn-state";
 
 type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
@@ -581,11 +586,22 @@ function groupMessages(
   let i = 0;
   while (i < msgs.length) {
     const m = msgs[i];
-    if (mode === "normal" && m.role === "tool" && m.toolCall) {
+    // A plan is a CARD, not a tool row: it carries the Build buttons, so it
+    // must never be folded into a group (the group renders its members
+    // itself, and the card would never get drawn — which left the approval
+    // waiting for its ten-minute timeout with nothing on screen to answer).
+    const isCard = (c: ToolCall | undefined): boolean =>
+      rendersAsCard(c?.name);
+    if (mode === "normal" && m.role === "tool" && m.toolCall && !isCard(m.toolCall)) {
       const group: ToolCall[] = [m.toolCall];
       let stripItems = strips.get(i);
       let j = i + 1;
-      while (j < msgs.length && msgs[j].role === "tool" && msgs[j].toolCall) {
+      while (
+        j < msgs.length &&
+        msgs[j].role === "tool" &&
+        msgs[j].toolCall &&
+        !isCard(msgs[j].toolCall)
+      ) {
         group.push(msgs[j].toolCall!);
         stripItems = strips.get(j) ?? stripItems;
         j++;
@@ -1134,6 +1150,7 @@ export function ChatView({
             </p>
           </div>
           <div className="mt-6 w-full max-w-2xl">
+            <PlanFallbackBar />
             <MessageInput flush onOpenProviders={onOpenProvidersSettings} />
           </div>
           {podmanWarning && (
@@ -1358,6 +1375,7 @@ export function ChatView({
             </div>
           )}
           {!home && <GitCard />}
+          <PlanFallbackBar />
           <MessageInput onOpenProviders={onOpenProvidersSettings} />
         </>
       )}

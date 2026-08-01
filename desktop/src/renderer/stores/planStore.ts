@@ -31,6 +31,13 @@ interface PlanState {
   plans: Record<string, Plan | null>;
   /** A plan awaiting the user's Build / keep-planning verdict. */
   request: PlanRequest | null;
+  /** The request id some card is currently showing buttons for. A pending
+   * request nobody claimed means the user has NOTHING to answer with — the
+   * turn then hangs until the ten-minute timeout, which is exactly what
+   * happened when the plan call got folded into a tool group. ChatView
+   * watches this and puts a fallback bar above the composer. */
+  claimedRequestId: string | null;
+  claimRequest: (id: string) => void;
   load: (sessionId: string) => void;
   respond: (decision: PlanDecision, feedback?: string) => void;
 }
@@ -38,6 +45,10 @@ interface PlanState {
 export const usePlanStore = create<PlanState>((set, get) => ({
   plans: {},
   request: null,
+  claimedRequestId: null,
+
+  claimRequest: (id) =>
+    set((s) => (s.claimedRequestId === id ? s : { claimedRequestId: id })),
 
   load: (sessionId: string) => {
     const api = bridge();
@@ -64,7 +75,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       decision,
       decision === "keep-planning" ? feedback?.trim() || undefined : undefined,
     );
-    set({ request: null });
+    set({ request: null, claimedRequestId: null });
   },
 }));
 
@@ -90,7 +101,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   }
   if (api?.plan?.onRequest) {
     api.plan.onRequest((req) => {
-      usePlanStore.setState({ request: req });
+      usePlanStore.setState({ request: req, claimedRequestId: null });
       // The document behind the request is about to be rendered — have it.
       const sid = (req as PlanRequest).sessionId;
       if (sid) usePlanStore.getState().load(sid);
