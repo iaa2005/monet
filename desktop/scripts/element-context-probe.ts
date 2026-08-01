@@ -205,7 +205,7 @@ const el = (over: Partial<RawElement> = {}): RawElement => ({
   };
   const out = formatSelection(payload, { 0: ["src/Row.tsx"] });
 
-  check("opens and closes a tag", out.startsWith("<selected-from-browser>"));
+  check("opens and closes a tag", out.startsWith("<selected-from-browser"));
   check("closes the tag", out.trim().endsWith("</selected-from-browser>"));
   check("names the page", out.includes("http://localhost:17173/settings"));
   check("records the dpr", out.includes("1280×800 @2x"), /viewport:.*/.exec(out)?.[0]);
@@ -253,6 +253,41 @@ const el = (over: Partial<RawElement> = {}): RawElement => ({
   const without = formatSelection(payload, {});
   check("without tools, no such advice", !without.includes("Browser panel"));
   check("and no WebFetch talk either", !without.includes("WebFetch"));
+}
+
+// ── 9. The block records which colour the page drew ───────────────────
+//
+// The chip in the composer and the chip in the sent message must be the same
+// colour; the message only has the block to learn it from. It rides on the
+// TAG so the model reads no extra content.
+{
+  const payload: SelectionPayload = {
+    url: "http://localhost:5173/",
+    title: "App",
+    viewport: { w: 1280, h: 800, dpr: 1 },
+    elements: [el({ component: "SaveButton" })],
+  };
+  const toned = formatSelection(payload, {}, { tone: 3 });
+  check(
+    "the opening tag carries the tone",
+    toned.startsWith('<selected-from-browser tone="3">'),
+    toned.split("\n")[0],
+  );
+  check(
+    "and the body is unchanged by it",
+    toned.includes("component: <SaveButton>"),
+  );
+  check(
+    "without a tone the tag stays bare (nothing to say)",
+    formatSelection(payload, {}).startsWith("<selected-from-browser>"),
+  );
+  check(
+    "a negative or fractional slot is normalised",
+    formatSelection(payload, {}, { tone: -2.7 }).startsWith(
+      '<selected-from-browser tone="2">',
+    ),
+    formatSelection(payload, {}, { tone: -2.7 }).split("\n")[0],
+  );
 }
 
 console.log(failures === 0 ? "\nelement context probe OK" : `\n${failures} FAILED`);

@@ -1064,7 +1064,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
           id: generateId(),
           label: r.label,
           count: 1,
-          tone: i,
+          // Keep the colour the message recorded; the index is only a
+          // fallback for blocks written before the tag carried a tone.
+          tone: r.tone ?? i,
           pretokenised: true,
           context: r.raw,
           imageDataUrl: cropUrls[i],

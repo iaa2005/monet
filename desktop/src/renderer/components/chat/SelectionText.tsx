@@ -39,7 +39,11 @@ function Chip({
   crop?: ChatAttachmentMeta;
   dark: boolean;
 }): JSX.Element {
-  const c = chipColors(toneForLabel(label), dark);
+  // The tone the block recorded — the same slot the page outlined and the
+  // composer chip used. Hashing the label is the fallback for messages
+  // written before the block carried it (and it is what made a chip change
+  // colour the moment it was sent).
+  const c = chipColors(refHit?.tone ?? toneForLabel(label), dark);
   const thumb = useArtifactImage(
     crop ?? { mediaType: "image/png" },
   );

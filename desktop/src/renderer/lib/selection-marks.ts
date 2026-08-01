@@ -21,11 +21,21 @@ export interface SelectionRef {
   /** Short name for the pill: a component name, else tag.class. */
   label: string;
   url: string;
+  /** Palette slot the page's outline used, when the block records one.
+   * Absent on messages written before the tag carried it. */
+  tone?: number;
   /** The whole block, verbatim — what goes back to the model. */
   raw: string;
 }
 
-const BLOCK = /<selected-from-browser>[\s\S]*?<\/selected-from-browser>/g;
+// The opening tag may carry attributes (tone="3"); older messages have none.
+const BLOCK = /<selected-from-browser(?:\s[^>]*)?>[\s\S]*?<\/selected-from-browser>/g;
+
+/** The palette slot this selection was drawn with, when the block says. */
+export function toneOf(block: string): number | undefined {
+  const m = /^<selected-from-browser\s[^>]*tone="(\d+)"/.exec(block);
+  return m ? Number(m[1]) : undefined;
+}
 
 /** The inline pill, e.g. ⟨SaveButton⟩. Angle quotes so it reads as prose. */
 export const REF_OPEN = "⟨";
@@ -65,7 +75,7 @@ export function splitSelections(content: string): {
   const refs: SelectionRef[] = [];
   const text = content
     .replace(BLOCK, (raw) => {
-      refs.push({ label: labelOf(raw), url: urlOf(raw), raw });
+      refs.push({ label: labelOf(raw), url: urlOf(raw), tone: toneOf(raw), raw });
       return "";
     })
     // The blocks were appended after a blank line; removing them leaves it.

@@ -262,6 +262,15 @@ export function MessageInput({
   // Browser-panel selections are NOT keyed per chat: you point at a thing on
   // the page and then decide where to ask about it.
   const pendingContext = useChatStore((s) => s.pendingContext);
+  const selectionTones = useMemo(
+    () =>
+      Object.fromEntries(
+        pendingContext
+          .filter((c) => typeof c.tone === "number")
+          .map((c) => [c.label, c.tone as number]),
+      ),
+    [pendingContext],
+  );
   /** Selections already turned into a token, so the effect below runs once each. */
   const tokenised = useRef(new Set<string>());
   const setFiles = useCallback(
@@ -1039,6 +1048,9 @@ export function MessageInput({
             <TokenInput
               ref={taRef}
               initialText={input}
+              // A re-staged message (Rewind / Branch) restores its chips from
+              // TEXT; these are the tones those selections actually carried.
+              tones={selectionTones}
               onChange={(text) => {
                 setInput(text);
                 setCaret(taRef.current?.caretOffset() ?? text.length);

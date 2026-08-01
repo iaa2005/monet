@@ -28,7 +28,7 @@ import {
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {
-  console.log(
+console.log(
     `${ok ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? ` — ${detail}` : ""}`,
   );
   if (!ok) failures++;
@@ -192,6 +192,43 @@ const block = (opts: { component?: string; element?: string; url?: string }) =>
   check("no refs", refs.length === 0);
   check("hasSelections says no", !hasSelections(plain));
   check("join with nothing is a no-op", joinSelections(plain, []) === plain);
+}
+
+  // ── The chip's colour travels with the block ─────────────────────────
+//
+// Reported from use: a chip changed colour the moment the message was sent.
+// The composer coloured it with the selection's tone (the same palette slot
+// the page outlined), while the sent message had only the label left and
+// hashed it. The tone now rides on the opening tag, and splitSelections hands
+// it back — old blocks, which carry no attribute, still parse.
+{
+  const withTone =
+    'look at ' +
+    refToken("SaveButton") +
+    '\n\n<selected-from-browser tone="3">\npage: X — https://x.dev/\n\ncomponent: <SaveButton>\n</selected-from-browser>';
+  const parsed = splitSelections(withTone);
+  check("a toned block still splits into one ref", parsed.refs.length === 1);
+  check("and the tone comes back as a number", parsed.refs[0]?.tone === 3, parsed.refs[0]?.tone);
+  check(
+    "the label is unaffected by the attribute",
+    parsed.refs[0]?.label === "SaveButton",
+    parsed.refs[0]?.label,
+  );
+  check(
+    "the visible text keeps the user's words and the pill",
+    parsed.text === "look at " + refToken("SaveButton"),
+    JSON.stringify(parsed.text),
+  );
+  check(
+    "re-joining is lossless, attribute and all",
+    joinSelections(parsed.text, parsed.refs).includes('<selected-from-browser tone="3">'),
+  );
+
+  const legacy =
+    "hi\n\n<selected-from-browser>\npage: X — https://x.dev/\n\ncomponent: <Old>\n</selected-from-browser>";
+  const old = splitSelections(legacy);
+  check("a block written before tones still parses", old.refs.length === 1);
+  check("and reports no tone rather than a wrong one", old.refs[0]?.tone === undefined, old.refs[0]?.tone);
 }
 
 console.log(failures === 0 ? "\nselection marks probe OK" : `\n${failures} FAILED`);

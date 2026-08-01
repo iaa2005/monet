@@ -216,7 +216,7 @@ export function formatElement(
 export function formatSelection(
   payload: SelectionPayload,
   candidatesByIndex: Record<number, string[]> = {},
-  opts: { browserToolsEnabled?: boolean } = {},
+  opts: { browserToolsEnabled?: boolean; tone?: number } = {},
 ): string {
   const head = [
     `page: ${payload.title || "(untitled)"} — ${payload.url}`,
@@ -250,8 +250,18 @@ export function formatSelection(
       ? "\nThe user selected these together — the change likely concerns how they relate."
       : "";
 
+  // The tone rides on the TAG, not in the body: it is the palette slot the
+  // page's outline was drawn with, and the chip in the message must match the
+  // chip in the composer (it stopped matching once the message was sent — the
+  // renderer had only the label left and hashed it into a different colour).
+  // An attribute keeps it out of what the model reads as content.
+  const open =
+    typeof opts.tone === "number"
+      ? `<selected-from-browser tone="${Math.abs(Math.trunc(opts.tone))}">`
+      : "<selected-from-browser>";
+
   return [
-    "<selected-from-browser>",
+    open,
     head.join("\n"),
     "",
     blocks.join("\n\n"),

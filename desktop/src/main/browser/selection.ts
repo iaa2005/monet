@@ -184,6 +184,8 @@ export async function handleSelection(
 
   const context = formatSelection(payload, candidatesByIndex, {
     browserToolsEnabled: getBrowserConfig().enabled,
+    // The same slot the box on the page is drawn with — see selection-tones.
+    tone: toneCursor,
   });
 
   // The picture: the marked region if there is one, else the first element.

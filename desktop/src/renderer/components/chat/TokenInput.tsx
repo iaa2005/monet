@@ -44,6 +44,12 @@ export interface TokenInputHandle {
 interface TokenInputProps {
   /** Initial value only — this input is uncontrolled by design (see above). */
   initialText: string;
+  /**
+   * Known palette slots by label, for chips rendered from TEXT (a restored
+   * draft, a paste). Text carries labels only; without this the colour is
+   * hashed and a chip changes shade between the composer and the message.
+   */
+  tones?: Record<string, number>;
   onChange(text: string): void;
   onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void;
   placeholder: string;
@@ -81,8 +87,7 @@ function chipNode(label: string, tone: number, dark: boolean): HTMLElement {
     "vertical-align:baseline",
     "margin:0 1px",
     "padding:1px 7px 1px 6px",
-    "border-radius:999px",
-    "font-weight:600",
+    "border-radius: calc(var(--radius)* 0.5);",
     "white-space:nowrap",
     "user-select:none",
     `color:${c.fg}`,
@@ -121,12 +126,31 @@ function serialize(root: HTMLElement): string {
   return out;
 }
 
+/**
+ * The palette slot for a label.
+ *
+ * A string of text carries labels, not tones — so a draft restored from
+ * storage, or a chip pasted from another message, can only hash the label.
+ * When the caller KNOWS the tone (a live selection, or one re-staged from a
+ * message that recorded it), that wins: the chip then matches the outline the
+ * page drew and the chip the sent message shows.
+ */
+function toneOf(label: string, tones?: Record<string, number>): number {
+  const known = tones?.[label];
+  return typeof known === "number" ? known : toneForLabel(label);
+}
+
 /** The plain string → DOM. */
-function render(root: HTMLElement, text: string, dark: boolean): void {
+function render(
+  root: HTMLElement,
+  text: string,
+  dark: boolean,
+  tones?: Record<string, number>,
+): void {
   root.textContent = "";
   for (const piece of tokenize(text)) {
     if (piece.type === "chip") {
-      root.appendChild(chipNode(piece.label, toneForLabel(piece.label), dark));
+      root.appendChild(chipNode(piece.label, toneOf(piece.label, tones), dark));
       continue;
     }
     const lines = piece.value.split("\n");
@@ -139,10 +163,14 @@ function render(root: HTMLElement, text: string, dark: boolean): void {
 
 export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
   function TokenInput(
-    { initialText, onChange, onKeyDown, placeholder, className },
+    { initialText, tones, onChange, onKeyDown, placeholder, className },
     ref,
   ) {
     const boxRef = useRef<HTMLDivElement>(null);
+    // Handlers below run on DOM events, outside React's render — they need the
+    // current map, not the one captured when they were attached.
+    const tonesRef = useRef(tones);
+    tonesRef.current = tones;
     const dark = useIsDark();
     // What we last handed out, so an external setText can skip a no-op render
     // that would otherwise move the caret to the end mid-typing.
@@ -151,7 +179,7 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
     useLayoutEffect(() => {
       const box = boxRef.current;
       if (!box) return;
-      render(box, initialText, dark);
+      render(box, initialText, dark, tonesRef.current);
       lastText.current = initialText;
       // Only on mount: after that the DOM is the browser's.
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,7 +211,7 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
       setText: (text) => {
         const box = boxRef.current;
         if (!box || text === lastText.current) return;
-        render(box, text, dark);
+        render(box, text, dark, tonesRef.current);
         lastText.current = text;
         placeCaretAtEnd(box);
         onChange(text);
@@ -220,7 +248,7 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
           for (const piece of tokenize(text)) {
             if (piece.type === "chip") {
               frag.appendChild(
-                chipNode(piece.label, toneForLabel(piece.label), dark),
+                chipNode(piece.label, toneOf(piece.label, tonesRef.current), dark),
               );
             } else {
               piece.value.split("\n").forEach((line, i) => {
