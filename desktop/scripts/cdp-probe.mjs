@@ -33,6 +33,8 @@ const send = (method, params = {}) =>
     pending.set(n, res);
     ws.send(JSON.stringify({ id: n, method, params }));
   });
+await send("Page.bringToFront").catch(() => {});
+
 const evalJs = async (expression) => {
   const r = await send("Runtime.evaluate", {
     expression,

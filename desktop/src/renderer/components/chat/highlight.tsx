@@ -72,45 +72,41 @@ function isLanguageKnown(lang: string): boolean {
   }
 }
 
-/** Clone an element node without its children (used as a wrapper frame). */
-function frame(node: HastElement): HastElement {
-  return { type: "element", tagName: node.tagName, properties: node.properties };
+/**
+ * Walk the token tree into FLAT tokens per line: one span each, with the
+ * ancestor classes merged into a single string.
+ *
+ * The nested shape Prism produces (a tag inside a tag inside a tag) was
+ * rebuilt per leaf and rendered as nested spans, which put thousands of
+ * small styled elements in the DOM for one screen of HTML. Tokenizing the
+ * whole file takes 7ms; it was the elements that cost hundreds of
+ * milliseconds — the same file with highlighting off rendered instantly.
+ * Merging the classes keeps every CSS rule matching (they are all
+ * `.token.<kind>`) while collapsing the depth to one.
+ */
+interface FlatToken {
+  cls: string;
+  text: string;
 }
 
-/**
- * Walk the token tree, splitting on newlines inside text nodes. Every leaf is
- * re-wrapped in its ancestor element stack so a line can be rendered in
- * isolation while keeping its token classes.
- */
-function splitIntoLines(nodes: HastNode[]): HastNode[][] {
-  const lines: HastNode[][] = [[]];
-  const walk = (node: HastNode, stack: HastElement[]): void => {
+function splitIntoLines(nodes: HastNode[]): FlatToken[][] {
+  const lines: FlatToken[][] = [[]];
+  const walk = (node: HastNode, cls: string): void => {
     if (node.type === "text") {
       const parts = node.value.split("\n");
-      parts.forEach((part, idx) => {
-        if (idx > 0) lines.push([]);
-        if (!part) return;
-        let leaf: HastNode = { type: "text", value: part };
-        for (let s = stack.length - 1; s >= 0; s--)
-          leaf = { ...frame(stack[s]), children: [leaf] };
-        lines[lines.length - 1].push(leaf);
-      });
+      for (let i = 0; i < parts.length; i++) {
+        if (i > 0) lines.push([]);
+        if (parts[i]) lines[lines.length - 1].push({ cls, text: parts[i] });
+      }
       return;
     }
-    for (const child of node.children ?? []) walk(child, [...stack, frame(node)]);
+    const own = node.properties?.className;
+    const ownStr = own ? (Array.isArray(own) ? own.join(" ") : own) : "";
+    const merged = ownStr ? (cls ? cls + " " + ownStr : ownStr) : cls;
+    for (const child of node.children ?? []) walk(child, merged);
   };
-  for (const node of nodes) walk(node, []);
+  for (const node of nodes) walk(node, "");
   return lines;
-}
-
-function toReact(node: HastNode, key: number): ReactNode {
-  if (node.type === "text") return node.value;
-  const cls = node.properties?.className;
-  return (
-    <span key={key} className={Array.isArray(cls) ? cls.join(" ") : cls}>
-      {node.children?.map((c, i) => toReact(c, i))}
-    </span>
-  );
 }
 
 /**
@@ -122,9 +118,24 @@ export function highlightLines(code: string, language: string): ReactNode[] {
   const plain = (): ReactNode[] => code.split("\n");
   if (!isLanguageKnown(language)) return plain();
   try {
-    return splitIntoLines(tokenize(code, language)).map((line) => (
-      <>{line.map((n, i) => toReact(n, i))}</>
-    ));
+    return splitIntoLines(tokenize(code, language)).map((line) => {
+      // A line of one unclassified token is just text: no element at all.
+      if (line.length === 0) return "";
+      if (line.length === 1 && !line[0].cls) return line[0].text;
+      return (
+        <>
+          {line.map((t, i) =>
+            t.cls ? (
+              <span key={i} className={t.cls}>
+                {t.text}
+              </span>
+            ) : (
+              t.text
+            ),
+          )}
+        </>
+      );
+    });
   } catch {
     return plain();
   }
@@ -176,19 +187,87 @@ const BLOCK_LINES = 150;
 const BLOCK_CACHE = new Map<string, ReactNode[]>();
 const BLOCK_CACHE_MAX = 120;
 
-function tokenizedBlock(text: string, language: string): ReactNode[] {
-  const key = `${language}\u0000${text}`;
+/** Blocks already queued, and languages that proved too costly to colour. */
+const BLOCK_PENDING = new Set<string>();
+const TOO_EXPENSIVE = new Set<string>();
+/** A block slower than this is not worth a frame. Measured: 150 lines of CSS
+ * nested inside markup cost ~500ms, and three in a row is the second a user
+ * spends watching nothing happen. */
+const BLOCK_BUDGET_MS = 60;
+/** Lines tokenized to estimate what the whole block would cost. */
+const SAMPLE_LINES = 20;
+
+function blockKey(text: string, language: string): string {
+  return language + "\u0000" + text;
+}
+
+/** Tokens for a block, or null when it has not been tokenized yet. */
+function cachedBlock(text: string, language: string): ReactNode[] | null {
+  const key = blockKey(text, language);
   const hit = BLOCK_CACHE.get(key);
-  if (hit) {
-    BLOCK_CACHE.delete(key);
-    BLOCK_CACHE.set(key, hit);
-    return hit;
-  }
-  const lines = highlightLines(text, language);
-  BLOCK_CACHE.set(key, lines);
-  if (BLOCK_CACHE.size > BLOCK_CACHE_MAX)
-    BLOCK_CACHE.delete(BLOCK_CACHE.keys().next().value as string);
-  return lines;
+  if (!hit) return null;
+  BLOCK_CACHE.delete(key);
+  BLOCK_CACHE.set(key, hit);
+  return hit;
+}
+
+/**
+ * Tokenize a block WITHOUT blocking the render - in idle time, telling the
+ * caller when the colours are ready.
+ *
+ * Tokenizing used to happen inside the render, so scrolling into a fresh part
+ * of a file blocked for over a second at a time (measured on a 324-line HTML
+ * file: 1151ms, then 609ms). Now the text appears immediately, plain, and the
+ * colours arrive a beat later. A block that blows the budget stops the
+ * colouring for that language: a plain file that scrolls beats a coloured one
+ * that does not.
+ */
+function scheduleBlock(text: string, language: string, onReady: () => void): void {
+  const key = blockKey(text, language);
+  if (BLOCK_PENDING.has(key) || TOO_EXPENSIVE.has(key)) return;
+  BLOCK_PENDING.add(key);
+  const run = (): void => {
+    BLOCK_PENDING.delete(key);
+    // Cost is ESTIMATED before it is paid. An idle callback does not get
+    // interrupted: a 600ms tokenization in idle time blocks the next frame
+    // exactly as it would in the render, which is why moving it here was not
+    // enough on its own. So a small sample is measured first, and a block
+    // whose projection blows the budget simply stays plain — the file scrolls,
+    // it just is not coloured. That is the trade the user asked for: "невозможно
+    // листать" is worse than grey text.
+    const sample = text
+      .split("\n")
+      .slice(0, SAMPLE_LINES)
+      .join("\n");
+    const t0 = performance.now();
+    highlightLines(sample, language);
+    const sampleMs = performance.now() - t0;
+    const lineCount = Math.max(1, text.split("\n").length);
+    const projected = (sampleMs * lineCount) / Math.min(SAMPLE_LINES, lineCount);
+    if (projected > BLOCK_BUDGET_MS) {
+      TOO_EXPENSIVE.add(key);
+      return;
+    }
+    const lines = highlightLines(text, language);
+    BLOCK_CACHE.set(key, lines);
+    if (BLOCK_CACHE.size > BLOCK_CACHE_MAX)
+      BLOCK_CACHE.delete(BLOCK_CACHE.keys().next().value as string);
+    onReady();
+  };
+  // `typeof window` because this module is also imported by probes running
+  // under plain Node — a renderer file that assumes a DOM cannot be tested
+  // without one.
+  const w =
+    typeof window === "undefined"
+      ? undefined
+      : (window as unknown as {
+          requestIdleCallback?: (
+            cb: () => void,
+            o?: { timeout: number },
+          ) => number;
+        });
+  if (w?.requestIdleCallback) w.requestIdleCallback(run, { timeout: 500 });
+  else setTimeout(run, 0);
 }
 
 /**
@@ -201,6 +280,8 @@ export function windowedLines(
   language: string,
   rawStart: number,
   rawEnd: number,
+  /** Called when a block finishes colouring in the background. */
+  onReady?: () => void,
 ): ReactNode[] {
   // Clamped here, not just at the call site: an end past the last line used
   // to emit one empty row per missing line (asked for [6, 99) of an 8-line
@@ -214,10 +295,12 @@ export function windowedLines(
   for (let b = firstBlock; b <= lastBlock; b++) {
     const from = b * BLOCK_LINES;
     const text = plain.slice(from, from + BLOCK_LINES).join("\n");
-    const tokenized = tokenizedBlock(text, language);
+    const tokenized = cachedBlock(text, language);
+    if (!tokenized && onReady) scheduleBlock(text, language, onReady);
     const lo = Math.max(start, from);
     const hi = Math.min(end, from + BLOCK_LINES);
-    for (let i = lo; i < hi; i++) out.push(tokenized[i - from] ?? plain[i]);
+    for (let i = lo; i < hi; i++)
+      out.push(tokenized ? (tokenized[i - from] ?? plain[i]) : plain[i]);
   }
   return out;
 }
@@ -262,15 +345,33 @@ function linesFor(code: string, language: string): ReactNode[] {
 const VIRTUAL_THRESHOLD = 200;
 const LINE_H = 20; // 12.5px × 1.6 line-height
 const PRE_PAD = 12; // 0.75rem pre padding
-const OVERSCAN = 25;
+const OVERSCAN = 8;
+// The window snaps to a multiple of this. Bigger = fewer re-renders while
+// scrolling, more rows mounted; 50 rows is ~1000px of travel between them.
+const STEP = 25;
 
+/**
+ * Which lines to mount, and where the rows layer sits.
+ *
+ * Two jobs, deliberately split by cost:
+ *
+ *   - the WINDOW (which lines exist in the DOM) changes rarely - snapped to
+ *     STEP rows, so scrolling a screen costs one React render, not sixty;
+ *   - the OFFSET (where those rows are drawn) changes every frame, and is
+ *     applied straight to the DOM as a transform. React never sees it.
+ *
+ * The rows layer is sticky at the top of the scroller, so what gets painted
+ * is only ever a viewport's worth. The tall part of the document is an empty
+ * sizer: it gives the scrollbar its range and costs nothing to draw. A tall
+ * PAINTED box is what cost 780ms per commit - 3400x6500 pixels of canvas for
+ * a 324-line file, while the same panel with a 10-line file cost nothing.
+ */
 function useLineWindow(
   preRef: RefObject<HTMLPreElement | null>,
+  rowsRef: RefObject<HTMLDivElement | null>,
   total: number,
   enabled: boolean,
 ): { start: number; end: number } {
-  // Disabled → everything; enabled → nothing until the first measure, so the
-  // initial commit never mounts thousands of rows.
   const [win, setWin] = useState(() =>
     enabled ? { start: 0, end: 0 } : { start: 0, end: total },
   );
@@ -297,11 +398,18 @@ function useLineWindow(
           scroller.getBoundingClientRect().top +
           scroller.scrollTop
         : pre.getBoundingClientRect().top + window.scrollY;
-      const first = Math.floor((scrollTop - preTop - PRE_PAD) / LINE_H);
-      const start = Math.max(0, first - OVERSCAN);
+      const within = scrollTop - preTop;
+      // The rows layer is pinned to the viewport; this puts its children back
+      // where the document says they are. Straight to the DOM, no re-render.
+      const rows = rowsRef.current;
+      if (rows) rows.style.transform = `translateY(${-Math.max(0, within)}px)`;
+
+      const first = Math.floor((within - PRE_PAD) / LINE_H);
+      const visible = Math.ceil(viewH / LINE_H);
+      const start = Math.max(0, Math.floor((first - OVERSCAN) / STEP) * STEP);
       const end = Math.min(
         total,
-        Math.max(first, 0) + Math.ceil(viewH / LINE_H) + OVERSCAN * 2,
+        Math.ceil((Math.max(first, 0) + visible + OVERSCAN) / STEP) * STEP,
       );
       setWin((w) => (w.start === start && w.end === end ? w : { start, end }));
     };
@@ -318,43 +426,41 @@ function useLineWindow(
       ro?.disconnect();
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [enabled, total, preRef]);
+  }, [enabled, total, preRef, rowsRef]);
   return win;
 }
 
 /**
- * The rendered rows, memoized on the slice they were built from.
- *
- * Opening a 324-line HTML file blocked the main thread twice — 814ms and
- * 743ms, measured — because mounting the viewer is followed by a re-render
- * (the dock names the panel after the file) and every row was rebuilt. The
- * slice is a useMemo, so its identity is exactly "the content changed".
+ * Rows placed by coordinate - one absolute box each, at the position the
+ * document says. Nothing reflows when the window moves: rows are added and
+ * removed, never pushed.
  */
-const CodeRows = memo(function CodeRows({
+const CodeRowsAbsolute = memo(function CodeRowsAbsolute({
   lines,
   first,
   showLineNumbers,
-  padTop,
-  padBottom,
 }: {
   lines: ReactNode[];
   first: number;
   showLineNumbers: boolean;
-  padTop: number;
-  padBottom: number;
 }): JSX.Element {
   return (
-    <code style={padTop || padBottom ? { paddingTop: padTop, paddingBottom: padBottom } : undefined}>
+    <>
       {lines.map((node, idx) => {
         const i = first + idx;
         return (
-          <span key={i} className="line" data-ln={i + 1}>
+          <span
+            key={i}
+            className="line"
+            data-ln={i + 1}
+            style={{ top: i * LINE_H + PRE_PAD }}
+          >
             {showLineNumbers ? <span className="ln">{i + 1}</span> : null}
             <span className="cl">{node}</span>
           </span>
         );
       })}
-    </code>
+    </>
   );
 });
 
@@ -371,50 +477,87 @@ export function HighlightedCode({
 }): JSX.Element {
   // Splitting into lines is cheap (a couple of ms for a 100 KB file) and it
   // is all that is needed to know how tall the document is. TOKENIZING is the
-  // expensive half, and past the threshold it happens per visible block.
+  // expensive half, and past the threshold it happens per visible block, in
+  // idle time.
   const plain = useMemo(() => code.split("\n"), [code]);
   const preRef = useRef<HTMLPreElement>(null);
+  const rowsRef = useRef<HTMLDivElement>(null);
   const virtual = plain.length >= VIRTUAL_THRESHOLD;
-  const { start, end } = useLineWindow(preRef, plain.length, virtual);
+  const { start, end } = useLineWindow(preRef, rowsRef, plain.length, virtual);
   const small = useMemo(
     () => (virtual ? null : linesFor(code, language)),
     [virtual, code, language],
   );
+  // A block finishing in the background bumps this, and only then are the
+  // colours picked up - the render itself never waits for them.
+  const [coloured, setColoured] = useState(0);
+  const onColoured = useMemo(() => () => setColoured((n) => n + 1), []);
   const slice = useMemo(
     () =>
       virtual
-        ? windowedLines(plain, language, start, end)
+        ? windowedLines(plain, language, start, end, onColoured)
         : (small ?? plain),
-    [virtual, plain, language, start, end, small],
+    // `coloured` is a dependency on purpose: it is the signal that the cache
+    // now holds something this window wants.
+    [virtual, plain, language, start, end, small, onColoured, coloured],
   );
   // Numbers are rendered as text, not CSS counters: rows outside the window
   // do not exist, so a counter would restart at the window's edge.
   const digits = String(plain.length).length;
+  // The widest line, in characters - computed once per file, never measured
+  // per row. It gives the scroller a stable width without asking the browser
+  // to lay out every line to find one (which is what max-content did).
+  const widestCh = useMemo(() => {
+    let w = 0;
+    for (const l of plain) if (l.length > w) w = l.length;
+    return Math.min(w, 2000) + digits + 4;
+  }, [plain, digits]);
+
+  const fontStyle = {
+    fontFamily: "var(--font-mono)",
+    fontSize: "12.5px",
+    lineHeight: "1.6",
+    background: "transparent",
+    ["--ln-digits" as string]: digits,
+  } as const;
+
+  if (virtual)
+    return (
+      <pre
+        ref={preRef}
+        className={cn("diff-hl virt m-0", showLineNumbers && "show-ln", className)}
+        style={{ ...fontStyle, width: `${widestCh}ch`, minWidth: "100%" }}
+      >
+        {/* Empty, and as tall as the document: the scrollbar's range. */}
+        <div style={{ height: plain.length * LINE_H + PRE_PAD * 2 }} />
+        <div className="virt-rows" ref={rowsRef}>
+          <CodeRowsAbsolute
+            lines={slice}
+            first={start}
+            showLineNumbers={showLineNumbers}
+          />
+        </div>
+      </pre>
+    );
+
   return (
     <pre
       ref={preRef}
       className={cn(
-        "diff-hl m-0",
-        virtual ? "virt" : "whitespace-pre-wrap break-words",
+        "diff-hl m-0 whitespace-pre-wrap break-words",
         showLineNumbers && "show-ln",
         className,
       )}
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: "12.5px",
-        lineHeight: "1.6",
-        background: "transparent",
-        padding: "0.75rem",
-        ["--ln-digits" as string]: digits,
-      }}
+      style={{ ...fontStyle, padding: "0.75rem" }}
     >
-      <CodeRows
-        lines={slice}
-        first={virtual ? start : 0}
-        showLineNumbers={showLineNumbers}
-        padTop={virtual ? start * LINE_H : 0}
-        padBottom={virtual ? (plain.length - end) * LINE_H : 0}
-      />
+      <code>
+        {slice.map((node, i) => (
+          <span key={i} className="line" data-ln={i + 1}>
+            {showLineNumbers ? <span className="ln">{i + 1}</span> : null}
+            <span className="cl">{node}</span>
+          </span>
+        ))}
+      </code>
     </pre>
   );
 }

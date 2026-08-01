@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kimi K3 x xxxxxx xxxxxxxx xxxxxx xxxxxx 3T</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --bg2: #121722;
+    --card: #161d2b;
+    --accent: #e53935;
+    --accent2: #ff7043;
+    --text: #e8eaf0;
+    --muted: #9aa3b5;
+    --border: #242e41;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* Nav */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(11,14,20,.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .container { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .brand { font-weight: 800; font-size: 1.1rem; letter-spacing: .5px; }
+  .brand span { color: var(--accent); }
+  nav ul { display: flex; gap: 22px; list-style: none; }
+  nav a { color: var(--muted); text-decoration: none; font-size: .92rem; transition: color .2s; }
+  nav a:hover { color: var(--text); }
+
+  /* Hero */
+  header.hero {
+    padding: 90px 0 70px;
+    background:
+      radial-gradient(800px 400px at 80% -10%, rgba(229,57,53,.18), transparent 60%),
+      radial-gradient(600px 350px at 10% 10%, rgba(255,112,67,.12), transparent 60%),
+      var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .badge {
+    display: inline-block; padding: 6px 14px; border-radius: 999px;
+    background: rgba(229,57,53,.12); border: 1px solid rgba(229,57,53,.4);
+    color: #ff8a80; font-size: .82rem; font-weight: 600; letter-spacing: .4px;
+    margin-bottom: 22px;
+  }
+  header.hero h1 { font-size: clamp(2rem, 5vw, 3.3rem); line-height: 1.15; font-weight: 800; margin-bottom: 18px; }
+  header.hero h1 em { font-style: normal; color: var(--accent2); }
+  header.hero p.lead { font-size: 1.13rem; color: var(--muted); max-width: 720px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 44px; }
+  .stat {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px 20px;
+  }
+  .stat b { display: block; font-size: 1.5rem; color: #fff; font-weight: 800; }
+  .stat span { color: var(--muted); font-size: .85rem; }
+
+  /* Sections */
+  section { padding: 64px 0; border-bottom: 1px solid var(--border); }
+  h2 { font-size: 1.7rem; font-weight: 800; margin-bottom: 26px; }
+  h2 .n { color: var(--accent); margin-right: 10px; }
+  p { margin-bottom: 16px; color: #cdd3e0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 22px 24px;
+  }
+  .card h3 { font-size: 1.05rem; margin-bottom: 10px; color: #fff; }
+  .card p { font-size: .93rem; margin-bottom: 0; }
+
+  /* Spec table */
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 14px; overflow: hidden; }
+  th, td { text-align: left; padding: 13px 18px; font-size: .94rem; border-bottom: 1px solid var(--border); }
+  th { background: #1a2233; color: #fff; font-weight: 700; }
+  td:first-child { color: var(--muted); width: 45%; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+
+  /* Benchmarks */
+  .bench { display: flex; flex-direction: column; gap: 14px; }
+  .brow { display: grid; grid-template-columns: 220px 1fr 90px; align-items: center; gap: 16px; }
+  .brow .name { font-size: .9rem; color: #cdd3e0; }
+  .brow .bar { height: 22px; background: #1a2233; border-radius: 6px; overflow: hidden; }
+  .brow .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 6px; }
+  .brow .val { font-weight: 700; color: #fff; text-align: right; }
+
+  /* Figure */
+  figure { margin: 30px 0 0; }
+  figure img { width: 100%; border: 1px solid var(--border); border-radius: 14px; }
+  figcaption { margin-top: 12px; color: var(--muted); font-size: .86rem; text-align: center; }
+
+  /* Pricing */
+  .pricing { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .price-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 22px; text-align: center; }
+  .price-card .tag { color: var(--muted); font-size: .85rem; }
+  .price-card .val { font-size: 1.7rem; font-weight: 800; color: #fff; margin: 8px 0 4px; }
+  .price-card .sub { color: var(--muted); font-size: .8rem; }
+
+  /* Comparison */
+  .vs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .vs .model { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+  .vs .model.me { border-color: rgba(229,57,53,.55); background: rgba(229,57,53,.07); }
+  .vs .model h4 { font-size: .98rem; margin-bottom: 6px; }
+  .vs .model.me h4 { color: #ff8a80; }
+  .vs .score { font-size: 1.5rem; font-weight: 800; color: #fff; }
+  .vs .model.me .score { color: var(--accent2); }
+  .vs .who { color: var(--muted); font-size: .78rem; margin-top: 6px; }
+
+  /* Limitations / footer */
+  .lim { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .lim .card { padding: 18px 20px; }
+  .lim .card h3 { color: #ff8a80; font-size: .98rem; }
+  footer { padding: 40px 0 60px; color: var(--muted); font-size: .85rem; }
+  footer a { color: var(--muted); }
+  footer a:hover { color: #fff; }
+  .srcs { columns: 2; column-gap: 40px; list-style: none; }
+  .srcs li { margin-bottom: 10px; font-size: .88rem; break-inside: avoid; }
+
+  @media (max-width: 800px) {
+    nav ul { display: none; }
+    .stats, .pricing, .vs, .lim, .grid2 { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: 1fr 1fr; }
+    .brow { grid-template-columns: 1fr 70px; }
+    .brow .name { grid-column: 1 / -1; }
+    .srcs { columns: 1; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <div class="brand">KIMI <span>K3</span></div>
+    <ul>
+      <li><a href="#about">x xxxxxx</a></li>
+      <li><a href="#arch">xxxxxxxxxxx</a></li>
+      <li><a href="#bench">xxxxxxxxx</a></li>
+      <li><a href="#weights">xxxx</a></li>
+      <li><a href="#price">xxxx</a></li>
+      <li><a href="#limits">xxxxxxxxxxx</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="container">
+    <span class="badge">x 16 xxxx 2026 x Moonshot AI</span>
+    <h1>Kimi K3 x xxxxxx xxxxxxxx xxxxxx <em>xxxxxx 3T</em></h1>
+    <p class="lead">xxxxxxxxxxx xxxxxx Moonshot AI x 2,8 xxxx xxxxxxxxxx: xxxxxxxx xxxxxxxxx xxxxxx, xxxxxxxxxxx x xxxxx, xxxx xxxxxxxxx x 1 xxx xxxxxxx x xxxxxx xxxxxxxx xxxx x xxxxxxxxxx xx xxxxx-xxxx xxxxxxxxxxxxxx.</p>
+    <div class="stats">
+      <div class="stat"><b>2,8 xxxx</b><span>xxxxxxxxxx, MoE</span></div>
+      <div class="stat"><b>1M</b><span>xxxxxxx xxxxxxxxx</span></div>
+      <div class="stat"><b>#4</b><span>x xxxx (Intelligence Index)</span></div>
+      <div class="stat"><b>~594 xx</b><span>xxxxxxxx xxxx MXFP4</span></div>
+    </div>
+  </div>
+</header>
+
+<section id="about">
+  <div class="container">
+    <h2><span class="n">01</span>x xxxxxx</h2>
+    <div class="grid2">
+      <div>
+        <p>Kimi K3 x xxxxxxxxxxx xxxxxx xxxxxxxxxx xxxxxxxx Moonshot AI (xxxx), xxxxxxxxxxxxxxx Alibaba. xxx xxxxxx xx xxxxx Kimi K2.6 (xxxxxx 2026) x Kimi K2.7 Code (xxxx 2026) x xxxxx xx xxxxxxxxxxxxxxx xxxxxxxxxxx, x xxxxxxxxxxxx xxxxxxx: xxxxxx xxxxxxxxxxxxxxx xxx xxxxxxxxxx xxxxxxxxxx xxxxxxxxxx xxxxxx, xxxxxx x xxxxxxxx xxxxxxxxxxxxx x xxxxxxxxxxxxx xxxxxxxxx.</p>
+        <p>Moonshot xxxxxxxx K3 xxxxxxx x xxxx xxxxxxxx xxxxxxx xxxxxx 3Tx: xxxxxxx xxxxxxxxxx xxxxxx, xxxxx xxxxxxxxxxxxx x xxxxxxx xxxxxxxxxxxxxx xxxxxxxx, x x xxx xxxx xxxxxxxxxxxxxxxx xxxxxxxx.</p>
+      </div>
+      <div>
+        <p>xxxxx xxxxxxxxx <b>16 xxxx 2026 xxxx</b> xxxxx xx xxxx xxxxxxx: xxx-xxxxxx kimi.com, xxxxxxxxx xxxxxxxxxx (iOS, Android, HarmonyOS), xxxxxxxxxx xxxxx Kimi Work, CLI Kimi Code x API. <b>26 xxxx</b> Moonshot xxxxxxxxxxxx xxxxxx xxxx xxxxxx xxx xxxxxxxxx Kimi K3 x xx xxxx xxxxxx xxxxxxxxxxx xxxxx.</p>
+        <p>xxxxxx xxxxxxxx x xxxx xxxxxxxxx: <b>K3 Max</b> (xxx, xxxxxxxxxxxx, xxxxxxxxx xxxxxxxx xxxxxx) x <b>K3 Swarm Max</b> x xxxxxxxxxxxxxxx xxxxxxxxxx Agent Swarm xxx xxxxxxxxxxx xxxxxxxxx xxxxxxxxxxxx xxxxxxxxxx.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="arch">
+  <div class="container">
+    <h2><span class="n">02</span>xxxxxxxxxxx</h2>
+    <p>Kimi K3 xxxxxxxxx xx xxxxxxxxxxx xxxxx xxxxxxxxx (Mixture of Experts): xx 896 xxxxxxxxx xx xxxxxx xxxxx xxxxxxxxxxxx xxxx 16, xxx xxxxxxxxx xxxxxxx xxxxxxxx xxxxx xxxxxxxxxx xxx xxxxxxxxxxx xxxxxxxxx xxxxxx.</p>
+    <table>
+      <tr><th>xxxxxxxx</th><th>xxxxxxxx</th></tr>
+      <tr><td>xxxxx xxxxxxxxxx</td><td>2,8 xxxx</td></tr>
+      <tr><td>xxxxxxxx xxxxxxxx</td><td>16 xx 896 xx xxxxx</td></tr>
+      <tr><td>xxxxxxxxx MoE</td><td>Stable LatentMoE</td></tr>
+      <tr><td>xxxx xxxxxxxxx</td><td>1 048 576 xxxxxxx (~1 xxx)</td></tr>
+      <tr><td>xxxxxxxx xxxxxx</td><td>131 072 xxxxxx (xxxxxxxxxxxxx)</td></tr>
+      <tr><td>xxxxxxxx xxxxxxxx</td><td>Kimi Delta Attention (KDA) x xxxxxxxx xxxxxxxx</td></tr>
+      <tr><td>xxxxxxxx xxxxxxx</td><td>Attention Residuals (AttnRes) x xxxxxxxxxx xxxxxxxxxx xx xxxxx</td></tr>
+      <tr><td>xxxxxxxx</td><td>xxxx MXFP4, xxxxxxxxx MXFP8 (xxxxxxxx x xxxxxx xxxxxxxxxxx)</td></tr>
+      <tr><td>xxxxxxxxxxx</td><td>Per-Head Muon; xxxxxxxxxxxx xxxxxxxxx Quantile Balancing</td></tr>
+      <tr><td>xxxxxxxxxxx</td><td>xxxxx, xxxxxxxxxxx, xxxxx xx xxxxx; xxxxx xx xxxxxx</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="bench" style="background: var(--bg2);">
+  <div class="container">
+    <h2><span class="n">03</span>xxxxxxxxxx xx xxxxxxxxxx</h2>
+    <div class="bench">
+      <div class="brow"><span class="name">GPQA Diamond (xxxxxxx xxxxxxxxxxx)</span><span class="bar"><i style="width:99%"></i></span><span class="val">93,5%</span></div>
+      <div class="brow"><span class="name">Terminal-Bench 2.1 (xxxxxx x xxxxxxxxxx)</span><span class="bar"><i style="width:94%"></i></span><span class="val">88,3%</span></div>
+      <div class="brow"><span class="name">BrowseComp (xxxxxxxx xxx-xxxxx, 1M ctx)</span><span class="bar"><i style="width:97%"></i></span><span class="val">91,2%</span></div>
+      <div class="brow"><span class="name">SWE Marathon (xxxxxxxxxx xxxxxxxxxx xxxxxx)</span><span class="bar"><i style="width:45%"></i></span><span class="val">42,0</span></div>
+      <div class="brow"><span class="name">Program Bench (xxxxxx xxxxxxxxx xx xx)</span><span class="bar"><i style="width:83%"></i></span><span class="val">77,8</span></div>
+      <div class="brow"><span class="name">DeepSWE (xxxxx x xxxxxxxxxxx xxxxx)</span><span class="bar"><i style="width:72%"></i></span><span class="val">67,5</span></div>
+      <div class="brow"><span class="name">Frontend Code Arena (LMArena, Elo)</span><span class="bar"><i style="width:100%"></i></span><span class="val">#1 x 1679</span></div>
+    </div>
+    <p style="margin-top:22px;">K3 xxxxxxx xxxxx x xxxxxxx xx xxxxxxxxxxxx: xxxxxxxxxx xxxxxxxxxxxxx xxxxxxxxxxxx, xxxxxxxxxxxx xxxxxxxx xxxxx x xxxxxxxxx xxxxxxxxx. x xxxxxxxxxxx xxxxxx xxxxxxxxxxxx LMArena xxxxxx xxxxxx xxxxxx xxxxx xx xxxxx Frontend Code, xxxxxx Claude Fable 5 x GPT-5.6 Sol.</p>
+    <figure>
+      <img src="intelligence_index.png" alt="xxxxxx xxxxxxxxxx Artificial Analysis v4.1">
+      <figcaption>xxxxxx xxxxxxxxxx Artificial Analysis v4.1 (xxxxxxxxxxx xxxxxx, xxxx 2026): Kimi K3 x xxxxxxxxx xxxxxx x xxxx, xxxx Claude Opus 4.8.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="weights">
+  <div class="container">
+    <h2><span class="n">04</span>xxxxxxxx xxxx</h2>
+    <div class="grid2">
+      <div>
+        <p>26 xxxx 2026 xxxx Moonshot xxxxxxxxxxxx xxxxxx xxxx K3 x xxxxxxxxxxx xxxxx ~594 xx x xxxxxxx MXFP4 xx Hugging Face xxx xxxxxxxxx Kimi K3 (xxxxxxx, xxxxxxx x Modified MIT). xxx <b>xxxxxxxxxx xxxxxxxx xxxxxx xxxxx x xxxxxxx</b>.</p>
+        <p>xxxxxxxxxxx xxxxxxxx xxxxx xxxxxxxxx x xxxxxxxxx API, xxxxxxx xxxxxxxx xxxxxxxxxxxxxxxx xxxxxxxxxxxxx xxxxxxxxxxxxx xxxxxxxx xxxxxxxxxxxx API.</p>
+      </div>
+      <div>
+        <p>xxxxxx xxxxxxxx xx OpenRouter, Together AI, Modal x Cloudflare Workers AI, x xxxxx xxxxxx xxxxxxxx xxxxxxxxxxxx x xxxxxxxx, x Devin, xxx Cognition xxxxxx xx xxxxxx xxxxxxxx xxxxxxx, xxxxxxxxxxxxxx x xxxxxxxx xx xxxxx xxxxx FrontierCode 1.1.</p>
+        <p>xxxxxxxx xxxxxxx: Moonshot xxxxxxxxxxx xxx xxxxxxxxxxxxxxxx xxxxxxxx xxxxxxxxxxxx xx 64 xxxxxxxxxxx x xxx xxxxxxxxx xxxxxxxx-xxxxxx, x xx xxxxxx xxx xxxxxxxx xxxxxxxxxx.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="price" style="background: var(--bg2);">
+  <div class="container">
+    <h2><span class="n">05</span>xxxx x xxxxxx</h2>
+    <div class="pricing">
+      <div class="price-card">
+        <div class="tag">xxxx x xxxxxxxxx x xxx</div>
+        <div class="val">$0,30</div>
+        <div class="sub">xx xxx xxxxxxx</div>
+      </div>
+      <div class="price-card">
+        <div class="tag">xxxx x xxxxxx xxxx</div>
+        <div class="val">$3,00</div>
+        <div class="sub">xx xxx xxxxxxx</div>
+      </div>
+      <div class="price-card">
+        <div class="tag">xxxxx x xxxxxxx xxxxxxxxxxx</div>
+        <div class="val">$15,00</div>
+        <div class="sub">xx xxx xxxxxxx</div>
+      </div>
+    </div>
+    <p style="margin-top:24px;">API xxxxxxxxx x OpenAI: xxxxxxx URL <code>https://api.moonshot.ai/v1</code>, xxxxxx <code>kimi-k3</code>. x xxxxxxxxxx Kimi: xxxxx Moderato ($19/xxx) xxxx xxxxxxxx 256K, Allegretto ($39/xxx) x xxxxxx xxxx 1M. Moonshot xxxxxxxx xxxxx 90% xxxxxxxxx x xxx xx xxxxxxx xxxxxxxxx, x xx xxxxxx Artificial Analysis xxxxxxxxx xxxxxx x $0,94, xxxxxxxx xxxxx xxxx, xxx x Claude Opus 4.8 ($1,80).</p>
+  </div>
+</section>
+
+<section id="compare">
+  <div class="container">
+    <h2><span class="n">06</span>xxxxx xxxxx xxxxxxxxxx xxxxxxx</h2>
+    <div class="vs">
+      <div class="model me">
+        <h4>Kimi K3</h4>
+        <div class="score">57,1</div>
+        <div class="who">#4 x xxxx x xxxxxx xxxxxxxx xxxxxx x xxxxxxxxxx xxxx</div>
+      </div>
+      <div class="model">
+        <h4>Claude Fable 5</h4>
+        <div class="score">59,9</div>
+        <div class="who">xxxxx xxxxxxx</div>
+      </div>
+      <div class="model">
+        <h4>GPT-5.6 Sol</h4>
+        <div class="score">58,9</div>
+        <div class="who">xxxxxx xxxxx</div>
+      </div>
+      <div class="model">
+        <h4>Claude Opus 4.8</h4>
+        <div class="score">55,7</div>
+        <div class="who">K3 xxxxxxxxx</div>
+      </div>
+    </div>
+    <p style="margin-top:26px;">xx xxxxxxxxxxxx xxxxxxx Artificial Analysis K3 (57,1) xxxxxxxxxxxxx xxxxx GPT-5.6 Sol (58,9) x Claude Opus 4.8 (55,7). xxxxx xxxxxxxx xxxxxxx xxx xxxxxxxx xxxxxxxx, xxxxxxxx GLM-5.2 (51,1) x DeepSeek V4 (44,3). xx xxxxxxxxx x xxxxxxxxxxxxxxxx Kimi K2.6 xxxxxx xxxxx xxxxxx (2,8T xxxxxx 1T), xxxxxxxx xxxx xx xxxxxxxxx x xxxxxxxxx +478 Elo xx xxxxx xxxxxxxxxxxx xxxxxx xxxxxx GDPval-AA.</p>
+  </div>
+</section>
+
+<section id="limits" style="background: var(--bg2);">
+  <div class="container">
+    <h2><span class="n">07</span>xxxxxxxxxxx</h2>
+    <div class="lim">
+      <div class="card"><h3>xxxxxxxxxxxx</h3><p>Artificial Analysis xxxxxxxx xxxxxxx 51% x xxxx, xxx x xxxxxxxxxxxxxxx, xxx xxxxxxxxxx xxxxxxxx.</p></div>
+      <div class="card"><h3>xxxxxxxxxxxxxx</h3><p>xxxxxx xxxxxxxxxx xxxxxxxxxxx xx xxxxxxxxx xxxxxxx xxxxxx: 130 xxx xxxxxxxx xxxxxxx x xxxxxx AA xxxxxx xxxxxxx 63 xxx.</p></div>
+      <div class="card"><h3>xxx xxxxxxx xxxxxx</h3><p>xx xxxxxx xxxxxxxx xxxxxx reasoning xmaxx x xxxx xxxxxxx xxxxxx xxxxxxxxxxxxxx xx xxxxxx xxxxxxxx xxxxxx.</p></div>
+      <div class="card"><h3>xxxxxxx xxxxxxxxxxxxx</h3><p>~594 xx xxxxx x xxxxxxxxxxxx xx 64 xxxxxxxxxxx x xxxxxxxxxxxxxxx xxxxxxx xxxxxxxx xxxx xxxxxxxx.</p></div>
+      <div class="card"><h3>xxxxxxxxxx xxxxxxxxxxxxx</h3><p>xxxxxx xxxxxxx xxxxxxxxx xxxxxxx xx xxxxxxxxxxxx xxx xxxxxxxxxxxxxxx x xxxxxxx xxxxx xxxxxxxxxxx x AGENTS.md.</p></div>
+      <div class="card"><h3>xxxxxx x xxxxx</h3><p>x xxxxxxxx xxxxxxxxxx x API xxxxxxxxxxx xxxxxxxxx xxxxxxxxxx xxxxxx.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>xxxx-xxxxxxxx xxxxxxxxxxxx xx xxxxxx xxxxxxxx xxxxxx (xxxx 2026). xxxxxx xx xxxxxxxxx:</p>
+    <ul class="srcs">
+      <li>xxxxxxxxxxx xxxx Moonshot: kimi.com/blog/kimi-k3</li>
+      <li>GitHub: MoonshotAI/Kimi-K3</li>
+      <li>Hugging Face: moonshotai/Kimi-K3</li>
+      <li>Artificial Analysis: artificialanalysis.ai/models/kimi-k3</li>
+      <li>xxxxxxxxxxxx API: platform.kimi.ai</li>
+      <li>VentureBeat, CNBC (17.07.2026)</li>
+      <li>xxxxx xxxxxxxx: simonwillison.net/2026/Jul/16/kimi-k3</li>
+    </ul>
+  </div>
+</footer>
+
+</body>
+</html>

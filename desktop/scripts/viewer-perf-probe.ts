@@ -35,38 +35,53 @@ for (let i = 0; i < 2000; i++)
   htmlLines.push(`  <div class="card c${i}" data-id="${i}"><span>Item ${i}</span></div>`);
 htmlLines.push("</body></html>");
 
-// ── 1. A window costs a window, not a file ────────────────────────────
+// ── 1. The render path never tokenizes ───────────────────────────────
+//
+// Tokenizing used to happen inside the render, so scrolling into a fresh part
+// of a file blocked for over a second at a time (measured in the shipped app
+// on a 324-line HTML file: 1151ms, then 609ms). Now a window comes back as
+// plain text immediately and the colours arrive from idle time afterwards.
 {
   const t0 = Date.now();
-  const win = windowedLines(htmlLines, "markup", 0, 80);
-  const windowMs = Date.now() - t0;
+  const cold = windowedLines(htmlLines, "markup", 0, 80);
+  const coldMs = Date.now() - t0;
 
   const t1 = Date.now();
   highlightLines(htmlLines.join("\n"), "markup");
   const wholeMs = Date.now() - t1;
 
-  check("the window returns exactly the lines asked for", win.length === 80, win.length);
+  check("a window returns exactly the lines asked for", cold.length === 80, cold.length);
   check(
-    "and costs a fraction of the whole file",
-    windowMs * 3 < wholeMs || wholeMs < 20,
-    `window ${windowMs}ms vs whole ${wholeMs}ms`,
+    "and returns them without tokenizing anything",
+    coldMs * 20 < wholeMs || coldMs <= 2,
+    `window ${coldMs}ms vs whole file ${wholeMs}ms`,
+  );
+  check(
+    "so what it hands back first is plain text",
+    cold.every((l) => typeof l === "string"),
   );
 
-  // Deep into the file, cold: still a window's worth of work, not a file's.
+  // Ask again WITH the callback: colours are prepared in the background.
+  const painted = await new Promise<boolean>((resolve) => {
+    let done = false;
+    windowedLines(htmlLines, "markup", 0, 80, () => {
+      if (!done) {
+        done = true;
+        resolve(true);
+      }
+    });
+    setTimeout(() => resolve(done), 3_000);
+  });
+  check("a block colours itself in the background", painted);
+
+  const warm = windowedLines(htmlLines, "markup", 0, 80);
+  check(
+    "and the next window is coloured",
+    warm.some((l) => typeof l !== "string"),
+  );
   const t2 = Date.now();
-  const deep = windowedLines(htmlLines, "markup", 1500, 1580);
-  const deepMs = Date.now() - t2;
-  check("a window deep in the file is the same size", deep.length === 80, deep.length);
-  check(
-    "and does not tokenize everything before it",
-    deepMs * 3 < wholeMs || wholeMs < 20,
-    `${deepMs}ms`,
-  );
-
-  // Second visit: cached.
-  const t3 = Date.now();
-  windowedLines(htmlLines, "markup", 1500, 1580);
-  check("a revisited window is free", Date.now() - t3 <= 2, `${Date.now() - t3}ms`);
+  windowedLines(htmlLines, "markup", 0, 80);
+  check("a revisited window is free", Date.now() - t2 <= 2, `${Date.now() - t2}ms`);
 }
 
 // ── 2. Windows line up with the file ──────────────────────────────────
