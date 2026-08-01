@@ -1,5 +1,5 @@
 /**
- * Bundles scripts/smoke-probe.ts with the same aliases as the electron build
+ * Bundles a probe with the same aliases as the electron build
  * (electron itself stubbed) and runs it under plain Node. Catches import-time
  * crashes and exercises the vendor tool pipeline end-to-end.
  */
@@ -52,7 +52,7 @@ await build({
     outDir: 'out-smoke',
     emptyOutDir: true,
     rollupOptions: {
-      input: resolve('scripts/smoke-probe.ts'),
+      input: resolve(process.argv[2] ?? 'scripts/smoke-probe.ts'),
       output: {
         entryFileNames: 'smoke-probe.mjs',
         format: 'es',

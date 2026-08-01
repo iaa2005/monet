@@ -79,6 +79,7 @@
     "smoke:stt": "node scripts/build-stt-probe.mjs && electron scripts/stt-settings-probe.cjs",
     "smoke:transfer": "node scripts/build-transfer-probe.mjs && electron scripts/transfer-probe.cjs",
     "smoke:serve": "node scripts/renderer-probe.mjs scripts/sandbox-server-probe.ts",
+    "smoke:lean": "node scripts/smoke-agent.mjs scripts/lean-measure-probe.ts",
     "smoke:plan": "node scripts/build-transfer-probe.mjs && electron scripts/plan-probe.cjs"
   },
   "dependencies": {
