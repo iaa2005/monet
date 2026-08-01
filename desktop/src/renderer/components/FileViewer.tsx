@@ -255,6 +255,11 @@ export function FileViewer({
   const [codeSel, setCodeSel] = useState<CodeSelection | null>(null);
 
   const onBodyMouseUp = (): void => {
+    // The editor reports its own selection. Letting this run over it cleared
+    // the offer on the very mouseup that made it: Monaco keeps no DOM range,
+    // so `selectionLineRange` found nothing and wiped a live selection —
+    // which is why the button flashed and could not be clicked.
+    if (!isMd || mdEdit) return;
     const sel = window.getSelection();
     const host = bodyRef.current;
     const range = host ? selectionLineRange(host, sel) : null;

@@ -177,9 +177,18 @@ const out = await evalJs(`(async () => {
   // ── selection offers itself to the chat ──────────────────────────
   ed.setSelection(new monaco.Selection(1, 1, 2, 1));
   await sleep(500);
-  const addButton = [...document.querySelectorAll("button")].find((b) =>
-    b.textContent.includes("Add to chat"),
-  );
+  const findAdd = () =>
+    [...document.querySelectorAll("button")].find((b) =>
+      b.textContent.includes("Add to chat"),
+    );
+  const addButton = findAdd();
+  // …and SURVIVES the mouseup that ends the drag. Reported from use: the
+  // button flashed and could not be clicked, because the card also listened
+  // for DOM selections and wiped this one on the way up.
+  const editorDom = ed.getDomNode();
+  editorDom?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+  await sleep(400);
+  const addButtonAfterMouseUp = findAdd();
   const hasAddAction = !!ed.getAction("monet.addToChat");
 
   // ── Home cannot edit ─────────────────────────────────────────────
@@ -197,6 +206,7 @@ const out = await evalJs(`(async () => {
     dot,
     dirtyAfterSave,
     addButton: !!addButton,
+    addButtonAfterMouseUp: !!addButtonAfterMouseUp,
     hasAddAction,
     readOnlyInHome,
   };
@@ -227,6 +237,7 @@ check("and the tab shows the dot", out.dot === true);
 check("saving clears it", out.dirtyAfterSave === false);
 check("and the file on disk has the edit", onDisk.includes("export const grown = true;"));
 check("a selection offers itself to the chat", out.addButton === true);
+check("and the offer survives the mouseup", out.addButtonAfterMouseUp === true);
 check("and the same offer is an editor action", out.hasAddAction === true);
 check("Home cannot edit the project", out.readOnlyInHome === true);
 

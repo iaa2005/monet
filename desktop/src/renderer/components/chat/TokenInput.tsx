@@ -26,6 +26,8 @@ import {
 } from "react";
 import { CHIP_ATTR } from "@shared/brand";
 import { chipColors, toneForLabel } from "@shared/selection-tones";
+import { chipIconSvg } from "./chip-icons";
+import type { RefKind } from "@/lib/selection-marks";
 import { refToken, tokenize } from "@/lib/selection-marks";
 import { useIsDark } from "./highlight";
 
@@ -36,7 +38,7 @@ export interface TokenInputHandle {
   /** Replace everything (draft restore, clear after send). */
   setText(text: string): void;
   /** Drop a chip in at the caret. */
-  insertChip(label: string, tone: number): void;
+  insertChip(label: string, tone: number, kind?: RefKind): void;
   /** Caret offset into the plain string, for the "/" menu. */
   caretOffset(): number;
 }
@@ -50,6 +52,10 @@ interface TokenInputProps {
    * hashed and a chip changes shade between the composer and the message.
    */
   tones?: Record<string, number>;
+  /** What KIND a label refers to, asked at draw time rather than passed as a
+   *  snapshot: a mention inserts its chip in the same tick it registers its
+   *  context, so any map handed down as a prop is still the previous one. */
+  kindFor?: (label: string) => RefKind;
   onChange(text: string): void;
   onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void;
   placeholder: string;
@@ -58,20 +64,12 @@ interface TokenInputProps {
 
 
 
-/**
- * lucide's square-mouse-pointer, inline.
- *
- * Written out rather than imported: this chip is built with createElement, not
- * JSX, because the input hands raw nodes to the browser. Same two paths as the
- * React component the transcript uses, so both ends show one icon.
- */
-const ICON =
-  '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
-  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none">' +
-  '<path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/>' +
-  '<path d="m12 12 4 10 1.7-4.3L22 16Z"/></svg>';
-
-function chipNode(label: string, tone: number, dark: boolean): HTMLElement {
+function chipNode(
+  label: string,
+  tone: number,
+  dark: boolean,
+  kind: RefKind,
+): HTMLElement {
   const c = chipColors(tone, dark);
   const el = document.createElement("span");
   el.setAttribute(CHIP_ATTR, label);
@@ -93,7 +91,7 @@ function chipNode(label: string, tone: number, dark: boolean): HTMLElement {
     `color:${c.fg}`,
     `background:${c.bg}`,
   ].join(";");
-  el.innerHTML = ICON;
+  el.innerHTML = chipIconSvg(kind);
   el.appendChild(document.createTextNode(label));
   return el;
 }
@@ -140,17 +138,30 @@ function toneOf(label: string, tones?: Record<string, number>): number {
   return typeof known === "number" ? known : toneForLabel(label);
 }
 
+/** Browser is the fallback: it is what every chip was before kinds existed. */
+function kindOfLabel(label: string, kindFor?: (l: string) => RefKind): RefKind {
+  return kindFor?.(label) ?? "browser";
+}
+
 /** The plain string → DOM. */
 function render(
   root: HTMLElement,
   text: string,
   dark: boolean,
   tones?: Record<string, number>,
+  kindFor?: (label: string) => RefKind,
 ): void {
   root.textContent = "";
   for (const piece of tokenize(text)) {
     if (piece.type === "chip") {
-      root.appendChild(chipNode(piece.label, toneOf(piece.label, tones), dark));
+      root.appendChild(
+        chipNode(
+          piece.label,
+          toneOf(piece.label, tones),
+          dark,
+          kindOfLabel(piece.label, kindFor),
+        ),
+      );
       continue;
     }
     const lines = piece.value.split("\n");
@@ -163,7 +174,7 @@ function render(
 
 export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
   function TokenInput(
-    { initialText, tones, onChange, onKeyDown, placeholder, className },
+    { initialText, tones, kindFor, onChange, onKeyDown, placeholder, className },
     ref,
   ) {
     const boxRef = useRef<HTMLDivElement>(null);
@@ -171,6 +182,8 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
     // current map, not the one captured when they were attached.
     const tonesRef = useRef(tones);
     tonesRef.current = tones;
+    const kindRef = useRef(kindFor);
+    kindRef.current = kindFor;
     const dark = useIsDark();
     // What we last handed out, so an external setText can skip a no-op render
     // that would otherwise move the caret to the end mid-typing.
@@ -179,7 +192,7 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
     useLayoutEffect(() => {
       const box = boxRef.current;
       if (!box) return;
-      render(box, initialText, dark, tonesRef.current);
+      render(box, initialText, dark, tonesRef.current, kindRef.current);
       lastText.current = initialText;
       // Only on mount: after that the DOM is the browser's.
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -211,16 +224,19 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
       setText: (text) => {
         const box = boxRef.current;
         if (!box || text === lastText.current) return;
-        render(box, text, dark, tonesRef.current);
+        render(box, text, dark, tonesRef.current, kindRef.current);
         lastText.current = text;
         placeCaretAtEnd(box);
         onChange(text);
       },
-      insertChip: (label, tone) => {
+      insertChip: (label, tone, kind) => {
         const box = boxRef.current;
         if (!box) return;
         box.focus();
-        insertAtCaret(box, chipNode(label, tone, dark));
+        insertAtCaret(
+          box,
+          chipNode(label, tone, dark, kind ?? kindOfLabel(label, kindRef.current)),
+        );
         emit();
       },
       caretOffset: () => (boxRef.current ? caretOffsetIn(boxRef.current) : 0),
@@ -248,7 +264,12 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
           for (const piece of tokenize(text)) {
             if (piece.type === "chip") {
               frag.appendChild(
-                chipNode(piece.label, toneOf(piece.label, tonesRef.current), dark),
+                chipNode(
+                  piece.label,
+                  toneOf(piece.label, tonesRef.current),
+                  dark,
+                  kindOfLabel(piece.label, kindRef.current),
+                ),
               );
             } else {
               piece.value.split("\n").forEach((line, i) => {

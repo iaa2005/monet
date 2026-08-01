@@ -17,14 +17,16 @@
 
 import {
   hasSelections,
-
   joinSelections,
+  kindOf,
   labelOf,
   refToken,
   splitSelections,
   tokenize,
   usedRefs,
+  type RefKind,
 } from "../src/renderer/lib/selection-marks";
+import { chipIconSvg } from "../src/renderer/components/chat/chip-icons";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {
@@ -266,6 +268,31 @@ const block = (opts: { component?: string; element?: string; url?: string }) =>
     "a mismatched closing tag does not form a block",
     splitSelections("t" + "\n\n" + mismatched).refs.length === 0,
     splitSelections("t" + "\n\n" + mismatched).refs.length,
+  );
+}
+
+// ── A chip says WHAT it is ────────────────────────────────────────────
+//
+// Every reference used to arrive wearing the browser's mouse-pointer square,
+// whatever it was. The icon is picked from the kind, so a kind that quietly
+// falls back to "browser" is the bug this catches.
+{
+  const kinds: RefKind[] = ["browser", "code", "file", "chat"];
+  const icons = kinds.map((k) => chipIconSvg(k));
+  check("every kind draws its own icon", new Set(icons).size === kinds.length, icons.length);
+  check(
+    "and an icon is real markup",
+    icons.every((i) => i.startsWith("<svg") && i.includes("<path")),
+  );
+
+  const iconForTag = (tag: string): string =>
+    chipIconSvg(kindOf(`<${tag} label="x">body</${tag}>`));
+  check(
+    "the block's tag chooses the icon",
+    iconForTag("referenced-code") === chipIconSvg("code") &&
+      iconForTag("referenced-file") === chipIconSvg("file") &&
+      iconForTag("referenced-chat") === chipIconSvg("chat") &&
+      iconForTag("selected-from-browser") === chipIconSvg("browser"),
   );
 }
 

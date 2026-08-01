@@ -11,7 +11,6 @@
  */
 
 import { Fragment } from "react";
-import { SquareMousePointer } from "lucide-react";
 import { chipColors, toneForLabel } from "@shared/selection-tones";
 import {
   REF_TOKEN,
@@ -21,6 +20,7 @@ import {
 import type { ChatAttachmentMeta } from "@/types/chat";
 import { useIsDark } from "./highlight";
 import { useArtifactImage } from "@/components/FileCard";
+import { ChipIcon } from "./chip-icons";
 
 /**
  * One chip. Its own component because the crop needs a hook: in a live session
@@ -62,7 +62,7 @@ function Chip({
           className="size-4 shrink-0 rounded-[3px] object-cover"
         />
       ) : (
-        <SquareMousePointer className="size-3 shrink-0" />
+        <ChipIcon kind={refHit?.kind ?? "browser"} />
       )}
       {label}
     </span>

@@ -31,7 +31,7 @@ import { ModalityBadges } from "@/components/providers/ModalityBadges";
 import type { Modality } from "@/stores/providerStore";
 import { StagedFileTile } from "@/components/FileCard";
 import { GoalStrip } from "./GoalStrip";
-import { refToken, usedRefs } from "@/lib/selection-marks";
+import { kindOf, refToken, usedRefs, type RefKind } from "@/lib/selection-marks";
 import { chatRef as chatMentionRef, fileRef as fileMentionRef } from "@/lib/refs";
 import { toneForLabel } from "@shared/selection-tones";
 import { TokenInput, type TokenInputHandle } from "./TokenInput";
@@ -272,6 +272,15 @@ export function MessageInput({
       ),
     [pendingContext],
   );
+  // Which icon each chip wears — the block's own tag says what it is. Read
+  // from the store rather than from a memo: a mention adds its context and
+  // draws its chip in the same tick, before any re-render.
+  const kindForLabel = useCallback((label: string): RefKind => {
+    const hit = useChatStore
+      .getState()
+      .pendingContext.find((c) => c.label === label);
+    return hit ? kindOf(hit.context ?? "") : "browser";
+  }, []);
   /** Selections already turned into a token, so the effect below runs once each. */
   const tokenised = useRef(new Set<string>());
   const setFiles = useCallback(
@@ -608,7 +617,11 @@ export function MessageInput({
       if (c.pretokenised) continue;
       // The tone comes with the selection; falling back to the label's hash
       // means chips still differ if it ever arrives without one.
-      taRef.current?.insertChip(c.label, c.tone ?? toneForLabel(c.label));
+      taRef.current?.insertChip(
+        c.label,
+        c.tone ?? toneForLabel(c.label),
+        kindOf(c.context ?? ""),
+      );
     }
   }, [pendingContext]);
 
@@ -1204,6 +1217,7 @@ export function MessageInput({
               // A re-staged message (Rewind / Branch) restores its chips from
               // TEXT; these are the tones those selections actually carried.
               tones={selectionTones}
+              kindFor={kindForLabel}
               onChange={(text) => {
                 setInput(text);
                 setCaret(taRef.current?.caretOffset() ?? text.length);
