@@ -38,7 +38,6 @@ import {
 import "dockview-core/dist/styles/dockview.css";
 import "./dock.css";
 import {
-  Columns2,
   ExternalLink,
   Maximize2,
   Minimize2,

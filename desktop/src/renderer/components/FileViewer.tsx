@@ -19,9 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Download,
   ExternalLink,
-  FileText,
   RefreshCw,
-  X,
 } from "lucide-react";
 import { MarkdownViewer } from "./chat/MarkdownViewer";
 import { HighlightedCode } from "./chat/highlight";
