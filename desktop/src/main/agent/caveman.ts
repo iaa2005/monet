@@ -50,20 +50,61 @@ export function isCaveman(): boolean {
   return getCavemanConfig().enabled;
 }
 
-/** The terse-style directive, prepended to the system prompt when caveman is on.
- * Tunable via <dataDir>/prompts/caveman-directive.md. */
+/**
+ * The terse-style directive, appended to the system prompt when caveman is on.
+ * Tunable via <dataDir>/prompts/caveman-directive.md.
+ *
+ * Written hard on purpose. The first version was a polite request for
+ * brevity, competing with a base prompt that also asks for brevity — and a
+ * model that ignores "be concise" ignores a second "be concise" too. What
+ * moves a model is a countable budget, a list of banned phrasings it can
+ * check itself against, and one example of the transformation. Everything
+ * here is about the SHAPE of the prose; nothing touches correctness, tool
+ * use, safety, or the length of the work itself.
+ */
 const CAVEMAN_DIRECTIVE_DEFAULT = [
-  "# CAVEMAN MODE",
-  "Write like a caveman: maximum signal, minimum words.",
-  "- Output: telegraphic. No preamble, no summary, no restating the request, no",
-  "  pleasantries. Drop articles and filler where meaning survives. One short",
-  "  clause per idea. Prefer a bullet or a fragment over a sentence.",
-  "- Thinking: keep reasoning minimal and terse — short fragments, not prose.",
-  "- Never explain what you are about to do before doing it; just do it, then",
-  "  report the result in as few words as possible.",
-  "- Code, file paths, commands and exact quotes stay verbatim — never abbreviate",
-  "  those. Terseness applies to YOUR prose, not to the artifacts.",
-  "- Still follow every other instruction and safety rule in full.",
+  "# CAVEMAN MODE — HARD LIMIT ON YOUR PROSE",
+  "",
+  "This overrides every other instruction about tone, formatting and length of",
+  "YOUR OWN WRITING. It does not change what you do, only how you report it.",
+  "",
+  "## The budget",
+  "- A normal reply: **40 words or fewer**. A reply reporting several changes:",
+  "  one line each, 12 words per line.",
+  "- Count before sending. Over budget → delete words, do not reword.",
+  "- The budget covers prose only. Code, diffs, file paths, commands, exact",
+  "  quotes and requested content do NOT count and are NEVER abbreviated.",
+  "",
+  "## Banned outright",
+  "Never write any of these, in any language:",
+  '- Openers: "Great", "Sure", "Certainly", "Of course", "I\'ll help", "Let me",',
+  '  "Now I will", "First, I\'ll", "Отлично", "Конечно", "Давайте".',
+  '- Closers: "Let me know if…", "Feel free to…", "Hope this helps", "Anything',
+  '  else?", "Готов помочь", "Дайте знать".',
+  "- Restating the request back to the user.",
+  "- Announcing an action before doing it. Do it, then report.",
+  "- A summary of what you just said, or of a diff the user can read.",
+  "- Praise of the user or of the question.",
+  "",
+  "## Shape",
+  "- Answer first, in the first four words. Reason only if asked.",
+  "- Fragments over sentences. One idea per line. Drop articles and hedges",
+  '  ("I think", "it seems", "probably") unless the uncertainty is the point.',
+  "- No headings, no bold, no emoji. Bullets only for genuine lists.",
+  "- Thinking: fragments too, not prose.",
+  "",
+  "## Example",
+  "BAD: “Great question! I'll start by taking a look at the configuration file",
+  "to understand what's happening, and then I'll make the necessary changes.”",
+  "GOOD: “Reading config.” → then, after the work: “Fixed. Port was 8080 in",
+  "config.ts:14.”",
+  "",
+  "## Still true",
+  "- Every other rule — safety, tool use, honesty about what you verified —",
+  "  applies in full. Terseness is never an excuse to skip a caveat, hide a",
+  "  failure, or claim an unrun test passed. If a fact needs 60 words to be",
+  "  true, use 60 and cut the decoration instead.",
+  "- If the user explicitly asks to explain, explain — tersely.",
 ].join("\n");
 
 export function cavemanDirective(): string {
@@ -81,10 +122,33 @@ export function cavemanDirective(): string {
  * Deliberately tiny (~30 tokens): it is paid on every turn.
  */
 export const CAVEMAN_TURN_REMINDER =
-  "<system-reminder>CAVEMAN MODE. Answer in the fewest words that carry the " +
-  "meaning. No preamble, no restating the task, no closing summary, no " +
-  "offers of further help. Fragments over sentences. Code, paths and commands " +
-  "stay verbatim.</system-reminder>";
+  "<system-reminder>CAVEMAN MODE ACTIVE. Hard cap: 40 words of prose. " +
+  "Answer in the first four words. No opener, no restatement, no closing " +
+  "summary, no offer of further help, no headings. Fragments, not sentences. " +
+  "Code, paths, commands and quoted content are exempt from the cap and stay " +
+  "verbatim. Count your words before sending; over budget, delete rather " +
+  "than reword.</system-reminder>";
+
+/**
+ * The message list a turn is actually sent with.
+ *
+ * The reminder rides at the TAIL, not only in the system prompt: adherence to
+ * a style rule decays with distance, and by the time the model writes, the
+ * system prompt is thousands of tokens behind. Kept here (rather than inline
+ * in the agent loop) so the rule that it appends exactly one message, never
+ * mutates the history, and does nothing when caveman is off, has one home and
+ * a probe (scripts/caveman-probe.ts).
+ */
+export function withCavemanReminder<T extends { role: string; content: unknown }>(
+  messages: T[],
+  caveman: boolean,
+): T[] {
+  if (!caveman) return messages;
+  return [
+    ...messages,
+    { role: "user", content: CAVEMAN_TURN_REMINDER } as unknown as T,
+  ];
+}
 
 /** Extra instruction appended to the compaction summary request in caveman mode:
  * squeeze harder, keep only load-bearing facts. */

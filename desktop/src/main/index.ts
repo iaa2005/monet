@@ -356,6 +356,12 @@ app.whenReady().then(() => {
   if (!initBetaGuard()) return;
 
   registerAllIPC();
+  // Rows from chats that no longer exist — a crash, or a version that did not
+  // clean up after a delete. Startup-only: an incognito chat has no session
+  // row while it runs, so sweeping mid-session would erase a live one.
+  void import("./session-purge.js")
+    .then((m) => m.sweepOrphans())
+    .catch(() => {});
 
   // Incognito hygiene: a crash can leave incognito artifacts/sandboxes on
   // disk — sweep them before anything else runs.
@@ -376,14 +382,6 @@ app.whenReady().then(() => {
   // restart is worse than none, since the user thinks the machine is held awake.
   initPowerSaveBlocker();
 
-
-  // One-time: give pre-transcript chats a (text-only) durable transcript.
-  // Deferred + guarded by a marker so it never blocks startup.
-  setTimeout(() => {
-    void import("./migrate-transcripts.js")
-      .then((m) => m.migrateTranscriptsOnce())
-      .catch(() => {});
-  }, 2_000);
 
   // Arm scheduled routines (cron) + the localhost webhook/API trigger server.
   setTimeout(() => {

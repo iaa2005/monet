@@ -12,7 +12,7 @@ import {
 } from "../session-store.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
-import { clearSessionEngine } from "../sandbox/config.js";
+import { purgeSessionData } from "../session-purge.js";
 import { getDataSubdir } from "../data-dir.js";
 import { shadowSlug } from "../agent/checkpoint-store.js";
 
@@ -89,23 +89,10 @@ export function registerSessionsIPC(): void {
   );
 
   ipcMain.handle("sessions:delete", (_e, id: string): boolean => {
-    clearSessionEngine(id); // drop any per-chat sandbox-engine override
-    // Remove the session's artifacts and sandbox directories from disk.
-    const safe = shadowSlug(id);
-    for (const dir of [
-      join(getDataSubdir("artifacts"), safe),
-      join(getDataSubdir("sandboxes"), safe),
-      // The chat's shadow git repo. It was not in this list, so every deleted
-      // chat left its checkpoints behind for good — measured at 78 stores and
-      // 1.7 GB, of which three belonged to sessions that no longer existed.
-      join(getDataSubdir("checkpoints"), safe),
-    ]) {
-      try {
-        if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
-      } catch {
-        /* best-effort */
-      }
-    }
+    // Everything the chat owns — DB rows in both stores, its three
+    // directories, its desk, its goal, its engine override — lives in ONE
+    // function, so a store added later has a single place to register.
+    purgeSessionData(id);
     return store.delete(id);
   });
 

@@ -1278,7 +1278,14 @@ export default function App(): JSX.Element {
               onClick={() => {
                 const store = useChatStore.getState();
                 if (store.incognito) {
-                  // Exiting DESTROYS the chat's data — confirm first.
+                  // Exiting DESTROYS the chat's data — confirm first. But an
+                  // incognito chat nobody typed in has nothing to destroy,
+                  // and a confirmation for deleting nothing is just a click
+                  // in the way.
+                  if (store.messages.length === 0) {
+                    closeIncognito();
+                    return;
+                  }
                   setIncognitoCloseOpen(true);
                   return;
                 }

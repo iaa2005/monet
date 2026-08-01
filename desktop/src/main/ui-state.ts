@@ -74,6 +74,19 @@ export function getUiState(sessionId: string): SessionUiState | null {
   return readAll()[sessionId] ?? null;
 }
 
+/** Forget one chat's desk — part of purging a deleted (or incognito) chat. */
+export function clearUiState(sessionId: string): void {
+  if (!sessionId) return;
+  try {
+    const all = readAll();
+    if (!(sessionId in all)) return;
+    delete all[sessionId];
+    writeFileSync(statePath(), JSON.stringify(all, null, 2), "utf-8");
+  } catch {
+    /* best-effort */
+  }
+}
+
 export function setUiState(sessionId: string, state: SessionUiState): void {
   if (!sessionId) return;
   try {

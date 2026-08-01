@@ -63,7 +63,7 @@ import {
   isCaveman,
   cavemanDirective,
   CAVEMAN_COMPACT_HINT,
-  CAVEMAN_TURN_REMINDER,
+  withCavemanReminder,
 } from "./caveman.js";
 import { clearRevealedTools } from "./revealed-tools.js";
 import { deferredLines } from "./deferred-inventory.js";
@@ -1289,12 +1289,7 @@ async function runAgentScoped(
     // the system prompt is thousands of tokens behind by the time the model
     // writes. Rebuilt per turn and never persisted into `messages`, so it can't
     // accumulate in the transcript or leak into compaction.
-    const turnMessages = cave
-      ? [
-          ...messages,
-          { role: "user" as const, content: CAVEMAN_TURN_REMINDER },
-        ]
-      : messages;
+    const turnMessages = withCavemanReminder(messages, cave);
 
     try {
       await adapter.stream(

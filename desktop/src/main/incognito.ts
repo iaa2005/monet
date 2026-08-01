@@ -15,6 +15,7 @@ import { join } from "path";
 import { getDataSubdir } from "./data-dir.js";
 import { resetConversation } from "./agent/index.js";
 import { wipePyodideSession } from "./sandbox/pyodide-engine.js";
+import { purgeSessionData } from "./session-purge.js";
 
 function safeName(sessionId: string): string {
   return sessionId.replace(/[^a-zA-Z0-9_-]/g, "_") || "session";
@@ -34,9 +35,10 @@ function rmDir(path: string): void {
 /** Wipe every trace of one incognito session. */
 export function purgeIncognitoData(sessionId: string): void {
   if (!sessionId.startsWith("incognito-")) return; // never touch normal chats
-  const safe = safeName(sessionId);
-  rmDir(join(getDataSubdir("artifacts"), safe));
-  rmDir(join(getDataSubdir("sandboxes"), safe));
+  // The same purge a deleted chat gets — an incognito chat used to keep only
+  // its two directories, so its transcript stayed in the database forever
+  // (found one in a real install, next to 462 from ordinary deletes).
+  purgeSessionData(sessionId);
   wipePyodideSession(sessionId);
   resetConversation(sessionId);
   console.log(`[incognito] purged ${sessionId}`);
