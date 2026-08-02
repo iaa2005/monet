@@ -139,6 +139,15 @@ export interface MemoryFileInfo {
   updatedAt: number;
 }
 
+/** Per-workspace lessons the nightly dream distils from failures. */
+export interface ProjectLessons {
+  workspace: string;
+  summary: string;
+  body: string;
+  updatedAt: number;
+  canRollback: boolean;
+}
+
 export interface ReflectDigest {
   headline: string;
   narrative: string;
@@ -660,6 +669,23 @@ export interface ElectronAPI {
       ran: boolean;
       reason?: string;
       summary?: string;
+      touched?: string[];
+      error?: string;
+    }>;
+    lessonsList: () => Promise<ProjectLessons[]>;
+    lessonsState: () => Promise<{
+      lastRunAt: number;
+      lastSummary: string;
+      lastError: string | null;
+      lastTouched: string[];
+      runs: number;
+    }>;
+    lessonsRollback: (workspace: string) => Promise<{ ok: boolean; error?: string }>;
+    lessonsDelete: (workspace: string) => Promise<{ ok: boolean }>;
+    lessonsDream: () => Promise<{
+      ok: boolean;
+      ran: boolean;
+      reason?: string;
       touched?: string[];
       error?: string;
     }>;

@@ -76,6 +76,15 @@ function writeState(state: StateFile): void {
   }
 }
 
+/** Every workspace's remembered pre-existing failures — a signal source for
+ * the lessons dream (a check that stays red is worth a lesson). */
+export function listKnownRed(): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const [cwd, entry] of Object.entries(readState().knownRed))
+    out[cwd] = [...entry.signatures];
+  return out;
+}
+
 /** The known-red store for one workspace, persisted across restarts —
  * a failure the user's own code carries shouldn't cost a fix turn per send. */
 export function knownRedFor(cwd: string): KnownRedStore {

@@ -4,9 +4,9 @@
  * "tell Claude something to remember" box at the bottom.
  */
 import { useEffect, useState } from "react";
-import { ArrowUp, Trash2, X } from "lucide-react";
+import { ArrowUp, ChevronDown, ChevronRight, Trash2, Undo2, X } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import type { ElectronAPI, MemoryFileInfo } from "@/types/electron";
+import type { ElectronAPI, MemoryFileInfo, ProjectLessons } from "@/types/electron";
 import { Select } from "@/components/ui/select";
 
 function api(): ElectronAPI | undefined {
@@ -167,13 +167,38 @@ export function MemorySettings(): JSX.Element {
   const [consState, setConsState] = useState<ConsolidationState | null>(null);
   const [consolidating, setConsolidating] = useState(false);
   const [consolidateMsg, setConsolidateMsg] = useState<string | null>(null);
+  const [lessons, setLessons] = useState<ProjectLessons[]>([]);
+  const [openLesson, setOpenLesson] = useState<string | null>(null);
+  const [dreaming, setDreaming] = useState(false);
+  const [dreamMsg, setDreamMsg] = useState<string | null>(null);
 
   const load = (): void => {
     void api()?.memory.list().then(setFiles);
     void api()?.memory.getConfig().then(setConfig);
     void api()?.memory.consolidationState().then(setConsState).catch(() => {});
+    void api()?.memory.lessonsList().then(setLessons).catch(() => {});
   };
   useEffect(load, []);
+
+  const dreamNow = async (): Promise<void> => {
+    if (dreaming) return;
+    setDreaming(true);
+    setDreamMsg(null);
+    try {
+      const r = await api()?.memory.lessonsDream();
+      if (r?.ran)
+        setDreamMsg(
+          r.touched && r.touched.length > 0
+            ? `Learned in ${r.touched.length} workspace(s) ✓`
+            : "Ran — the signals taught nothing new.",
+        );
+      else if (r?.error) setDreamMsg(`Failed: ${r.error}`);
+      else setDreamMsg(r?.reason ? `Skipped — ${r.reason}` : "Nothing to do.");
+      load();
+    } finally {
+      setDreaming(false);
+    }
+  };
 
   const consolidateNow = async (): Promise<void> => {
     if (consolidating) return;
@@ -307,6 +332,89 @@ export function MemorySettings(): JSX.Element {
         <div className="mt-2 text-xs text-muted-foreground">
           {consolidateMsg ?? describeConsolidation(consState)}
         </div>
+      </div>
+
+      <div className="mt-5">
+        <div className="text-sm font-medium">Project lessons</div>
+        <div className="flex items-start justify-between gap-4">
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Overnight, failures from each workspace — failed commands, chats
+            that stopped on errors, goals that ran out of budget — are
+            distilled into lessons injected only when you work in that folder.
+            A bad night is one click to undo.
+          </p>
+          <button
+            type="button"
+            onClick={() => void dreamNow()}
+            disabled={dreaming}
+            className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+          >
+            {dreaming ? "Learning…" : "Learn now"}
+          </button>
+        </div>
+        {dreamMsg && (
+          <div className="mt-2 text-xs text-muted-foreground">{dreamMsg}</div>
+        )}
+        {lessons.length > 0 && (
+          <div className="mt-2">
+            {lessons.map((l) => {
+              const open = openLesson === l.workspace;
+              const name = l.workspace.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+              return (
+                <div key={l.workspace} className="border-b border-border py-2 last:border-b-0">
+                  <div className="group grid grid-cols-[1rem_10rem_1fr_auto_auto_auto] items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOpenLesson(open ? null : l.workspace)}
+                      className="text-muted-foreground"
+                      title={open ? "Collapse" : "What was learned"}
+                    >
+                      {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                    </button>
+                    <span className="truncate text-sm font-medium" title={l.workspace}>
+                      {name}
+                    </span>
+                    <span className="truncate text-sm text-muted-foreground" title={l.summary}>
+                      {l.summary}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      Updated {agoOf(l.updatedAt)}
+                    </span>
+                    {l.canRollback ? (
+                      <button
+                        type="button"
+                        title="Undo the last learning pass"
+                        onClick={() =>
+                          void api()?.memory.lessonsRollback(l.workspace).then(load)
+                        }
+                        className="rounded-md p-1 text-muted-foreground opacity-0 transition-all hover:bg-black/[0.06] hover:text-foreground group-hover:opacity-100 dark:hover:bg-white/[0.08]"
+                      >
+                        <Undo2 className="size-4" />
+                      </button>
+                    ) : (
+                      <span />
+                    )}
+                    <button
+                      type="button"
+                      title="Forget this workspace's lessons"
+                      onClick={() =>
+                        void api()?.memory.lessonsDelete(l.workspace).then(load)
+                      }
+                      className="rounded-md p-1 text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
+                  {open && (
+                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-black/[0.03] p-3 text-xs leading-relaxed text-muted-foreground dark:bg-white/[0.04]">
+                      {l.body}
+                    </pre>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 pb-4">

@@ -35,10 +35,18 @@ function shouldRunNow(now = new Date()): boolean {
 
 async function tick(): Promise<void> {
   try {
-    if (!shouldRunNow()) return;
-    await runConsolidation();
+    if (shouldRunNow()) await runConsolidation();
   } catch {
     /* never let the scheduler throw into the main process */
+  }
+  // The other half of the dream: per-workspace lessons distilled from what
+  // went wrong. Its own timing state, so a night when user-memory had nothing
+  // to consolidate can still teach the projects.
+  try {
+    const { runLessonsDream, shouldDreamLessonsNow } = await import("./lessons.js");
+    if (shouldDreamLessonsNow()) await runLessonsDream();
+  } catch {
+    /* same rule: the scheduler never throws */
   }
 }
 

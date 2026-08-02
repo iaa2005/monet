@@ -503,6 +503,35 @@ const electronAPI = {
       touched?: string[];
       error?: string;
     }> => ipcRenderer.invoke("memory:consolidate"),
+    lessonsList: (): Promise<
+      {
+        workspace: string;
+        summary: string;
+        body: string;
+        updatedAt: number;
+        canRollback: boolean;
+      }[]
+    > => ipcRenderer.invoke("memory:lessonsList"),
+    lessonsState: (): Promise<{
+      lastRunAt: number;
+      lastSummary: string;
+      lastError: string | null;
+      lastTouched: string[];
+      runs: number;
+    }> => ipcRenderer.invoke("memory:lessonsState"),
+    lessonsRollback: (
+      workspace: string,
+    ): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("memory:lessonsRollback", workspace),
+    lessonsDelete: (workspace: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("memory:lessonsDelete", workspace),
+    lessonsDream: (): Promise<{
+      ok: boolean;
+      ran: boolean;
+      reason?: string;
+      touched?: string[];
+      error?: string;
+    }> => ipcRenderer.invoke("memory:lessonsDream"),
   },
 
   profile: {

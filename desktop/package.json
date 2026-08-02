@@ -29,6 +29,7 @@
     "smoke:goal": "node scripts/renderer-probe.mjs scripts/goal-probe.ts",
     "smoke:verify": "node scripts/renderer-probe.mjs scripts/verify-probe.ts",
     "smoke:judge": "node scripts/renderer-probe.mjs scripts/judge-probe.ts",
+    "smoke:lessons": "node scripts/smoke-agent.mjs scripts/lessons-probe.ts",
     "smoke:acp": "node scripts/acp-probe.mjs",
     "smoke:icons": "node scripts/renderer-probe.mjs scripts/icons-probe.ts",
     "smoke:modal": "node scripts/modal-click-probe.mjs",

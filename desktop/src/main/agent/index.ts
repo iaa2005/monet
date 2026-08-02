@@ -57,6 +57,8 @@ import {
 import { clearSessionMode } from "./session-mode.js";
 import { drainBgResults } from "./bg-agents.js";
 import { buildMemoryPrompt } from "../memory/store.js";
+import { buildLessonsPrompt } from "../memory/lessons.js";
+import { getWorkspacePath } from "../ipc/workspace.js";
 import { getProfilePrompt } from "../profile.js";
 import { tunablePrompt } from "../prompts/index.js";
 import {
@@ -128,14 +130,15 @@ async function buildSystemPrompt(
     const prompt = sections
       .filter(Boolean)
       .join("\n\n");
-    if (prompt.trim().length > 0) return withUserMemory(prompt, includeMemory);
+    if (prompt.trim().length > 0)
+      return withUserMemory(prompt, includeMemory, space);
     throw new Error("vendor system prompt came back empty");
   } catch (err) {
     console.warn(
       "[agent] vendor getSystemPrompt failed, using fallback:",
       err instanceof Error ? err.message : err,
     );
-    return withUserMemory(await getFallbackSystemPrompt(), includeMemory);
+    return withUserMemory(await getFallbackSystemPrompt(), includeMemory, space);
   }
 }
 
@@ -221,13 +224,24 @@ export function agentDisciplinePrompt(): string {
  * working-discipline block, a global user-tunable addendum, and — when caveman
  * mode is on — the terse-style directive. `system-append` is empty by default
  * and applies to BOTH the vendor and fallback prompts. */
-function withUserMemory(prompt: string, includeMemory = true): string {
+function withUserMemory(
+  prompt: string,
+  includeMemory = true,
+  space?: string,
+): string {
   try {
     const extra = [
       getProfilePrompt(),
       // The switch a routine flips: everything else here is style and
       // discipline, but THIS is the user's private notebook.
       includeMemory ? buildMemoryPrompt() : "",
+      // Project lessons ride only into chats working in THAT workspace —
+      // Home has no workspace, and a lesson about this repo's flaky build
+      // belongs in no other folder's context. The run pinned its cwd before
+      // the prompt was built, so the global path is this run's path.
+      includeMemory && space !== "home"
+        ? buildLessonsPrompt(getWorkspacePath())
+        : "",
       tunablePrompt("method", METHOD_DEFAULT),
       tunablePrompt("discipline", DISCIPLINE_DEFAULT),
       tunablePrompt("system-append", ""),
