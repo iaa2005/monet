@@ -70,7 +70,7 @@ export const RESTORABLE_PANEL_IDS = DOCK_PANEL_IDS.filter(
  * viewer component. They come back from the session's viewerPanes ui-state,
  * not from the dock layout, so the sanitizer's ignorance of them is fine.
  */
-export function openViewerPane(id: string): void {
+export function openViewerPane(id: string, raise = true): void {
   const st = useDockStore.getState();
   const api = st.api;
   if (!api) {
@@ -81,7 +81,12 @@ export function openViewerPane(id: string): void {
   }
   const existing = api.getPanel(id);
   if (existing) {
-    existing.api.setActive();
+    // Raising a panel FOCUSES it. Harmless when a click opened the file, and
+    // not harmless at all when something else changed about the card while
+    // the user was typing in it: dockview moves focus to the panel, the
+    // editor's textarea loses it, and the caret disappears mid-word.
+    // Reported as "type a character and the cursor is gone".
+    if (raise) existing.api.setActive();
     return;
   }
   api.addPanel({

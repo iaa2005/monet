@@ -165,14 +165,33 @@ const out = await evalJs(`(async () => {
   // ── typing marks the card dirty, Ctrl+S writes the file ──────────
   const docId = useViewerStore.getState().docs[0]?.id;
   ed.setPosition({ lineNumber: 5, column: 1 });
+  // Focus the editor the way a click does, then type ONE character: the
+  // first keystroke is the one that flips the card to unsaved, and that
+  // used to re-raise the dock panel and pull the caret out from under the
+  // user. Reported as "type a symbol, the dot appears, the cursor is gone".
+  ed.focus();
+  await sleep(200);
+  const focusedBefore = ed.hasTextFocus();
+  ed.trigger("probe", "type", { text: "x" });
+  await sleep(600);
+  const focusedAfterFirstChar = ed.hasTextFocus();
+  const activeIsEditor = !!document.activeElement?.closest(".monaco-editor");
   ed.trigger("probe", "type", { text: "export const grown = true;" });
   await sleep(500);
   const dirtyAfterTyping = !!useViewerStore.getState().docs.find((d) => d.id === docId)?.dirty;
   const dot = !!document.querySelector('.dv-tab [title="Unsaved changes"]');
 
+  // Saving hands the text back to the editor as a new value. Typing THROUGH
+  // that round trip must not lose the keystroke or the caret: the write is
+  // IPC, and a naive "content changed, replace the model" resets both.
+  ed.setPosition({ lineNumber: 5, column: 6 });
   ed.getAction("monet.save")?.run();
-  await sleep(900);
+  ed.trigger("probe", "type", { text: "Z" });
+  await sleep(1200);
   const dirtyAfterSave = !!useViewerStore.getState().docs.find((d) => d.id === docId)?.dirty;
+  const focusedAfterSave = ed.hasTextFocus();
+  const keptTypingThroughSave = ed.getModel().getValue().includes("Z");
+  const caretAfterSave = ed.getPosition()?.lineNumber ?? 0;
 
   // ── selection offers itself to the chat ──────────────────────────
   ed.setSelection(new monaco.Selection(1, 1, 2, 1));
@@ -203,8 +222,14 @@ const out = await evalJs(`(async () => {
     suggestionCount: suggestions.length,
     completionError,
     dirtyAfterTyping,
+    focusedBefore,
+    focusedAfterFirstChar,
+    activeIsEditor,
     dot,
     dirtyAfterSave,
+    focusedAfterSave,
+    keptTypingThroughSave,
+    caretAfterSave,
     addButton: !!addButton,
     addButtonAfterMouseUp: !!addButtonAfterMouseUp,
     hasAddAction,
@@ -233,8 +258,13 @@ check(
   { got: out.suggestions, total: out.suggestionCount, error: out.completionError },
 );
 check("typing marks the card unsaved", out.dirtyAfterTyping === true);
+check("the editor had focus to begin with", out.focusedBefore === true);
+check("and KEEPS it through the first character", out.focusedAfterFirstChar === true);
+check("the caret is still in the editor", out.activeIsEditor === true);
 check("and the tab shows the dot", out.dot === true);
-check("saving clears it", out.dirtyAfterSave === false);
+check("the editor keeps focus through a save", out.focusedAfterSave === true);
+check("a keystroke during the save is not lost", out.keptTypingThroughSave === true);
+check("and the caret stays on its line", out.caretAfterSave === 5, out.caretAfterSave);
 check("and the file on disk has the edit", onDisk.includes("export const grown = true;"));
 check("a selection offers itself to the chat", out.addButton === true);
 check("and the offer survives the mouseup", out.addButtonAfterMouseUp === true);

@@ -481,12 +481,18 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
   // reopen the instant it was closed.
   const viewerDocs = useViewerStore((s) => s.docs);
   const viewerOpen = useDockStore((s) => s.open.includes("viewer"));
+  const viewerActive = useViewerStore((s) => s.activeId);
   useEffect(() => {
     const dock = useDockStore.getState();
     // Every open file gets (or keeps) its card, named after the file; a file
     // that was closed takes its card with it.
+    //
+    // A card that already exists is left ALONE — this effect also runs when a
+    // file merely becomes unsaved or is renamed, and raising the panel then
+    // would pull focus out of the editor the user is typing in. Which card is
+    // in front is the store's business, below.
     for (const doc of viewerDocs) {
-      openViewerPane(doc.id);
+      openViewerPane(doc.id, false);
       const panel = dock.api?.getPanel(doc.id);
       if (panel && panel.title !== doc.file.name)
         panel.api.setTitle(doc.file.name);
@@ -497,6 +503,18 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
         closeViewerPane(panel.id);
     if (viewerDocs.length === 0 && viewerOpen) dock.closePanel("viewer");
   }, [viewerDocs, viewerOpen]);
+
+  // Which card is in front. Separate from the sync above so that raising a
+  // panel happens when the app decides a different file is the one being
+  // looked at — not every time some property of some card changes. The guard
+  // matters: clicking inside a card sets it active too, and re-raising a
+  // panel that is already active is what takes the caret away.
+  useEffect(() => {
+    if (!viewerActive) return;
+    const api = useDockStore.getState().api;
+    const panel = api?.getPanel(viewerActive);
+    if (panel && api?.activePanel?.id !== viewerActive) panel.api.setActive();
+  }, [viewerActive]);
 
   const onReady = useMemo(
     () =>

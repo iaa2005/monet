@@ -229,8 +229,14 @@ export function FileViewer({
     api()
       ?.files.write(filePath, text)
       .then(() => {
-        setContent(text);
-        markDirty(false);
+        // A keystroke can land while the write is in flight — the editor is
+        // then AHEAD of what was just written. Handing it `text` back would
+        // replace the model with stale content and take that keystroke (and
+        // the caret) with it.
+        if (pending.current == null) {
+          setContent(text);
+          markDirty(false);
+        }
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   };
