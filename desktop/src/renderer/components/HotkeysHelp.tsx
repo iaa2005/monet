@@ -25,7 +25,7 @@ export function HotkeysHelp({
 
   return (
     <Modal open={open} onClose={onClose} title="Keyboard shortcuts" className="w-[26rem]">
-      <div className="flex flex-col gap-4 px-4 pb-4">
+      <div className="flex flex-col gap-4">
         {[...sections.entries()].map(([section, defs]) => (
           <div key={section}>
             <div className="mb-1.5 text-xs font-medium text-muted-foreground">

@@ -254,7 +254,8 @@ export function MemorySettings(): JSX.Element {
       </div>
 
       {config.generateMemory && (
-        <div className="mt-3 pl-4">
+        <div className="mt-5">
+          <div className="text-sm font-medium">Memory extraction</div>
           <div className="flex items-center justify-between gap-4">
             <span className="text-sm text-muted-foreground">
               Run extraction at most once per…
@@ -278,7 +279,7 @@ export function MemorySettings(): JSX.Element {
             />
           </div>
           {config.extractEveryMinutes === 0 && (
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-2 text-xs text-muted-foreground">
               Nothing is noted automatically. Memories you ask for explicitly
               still get saved, and nightly consolidation still tidies them up.
             </p>
@@ -286,16 +287,14 @@ export function MemorySettings(): JSX.Element {
         </div>
       )}
 
-      <div className="mt-5 rounded-xl border border-border p-3">
+      <div className="mt-5">
+        <div className="text-sm font-medium">Nightly consolidation</div>
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-sm font-medium">Nightly consolidation</div>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Runs itself around 3–5am when the computer is on (and catches up
-              if it was off). Reads the day's notes with the whole memory in
-              view, merges them in, drops what's stale, and rewrites the index.
-            </p>
-          </div>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Runs itself around 3–5am when the computer is on (and catches up
+            if it was off). Reads the day's notes with the whole memory in
+            view, merges them in, drops what's stale, and rewrites the index.
+          </p>
           <button
             type="button"
             onClick={() => void consolidateNow()}
@@ -310,7 +309,7 @@ export function MemorySettings(): JSX.Element {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+      <div className="flex-1 pb-4">
         {SECTIONS.map(({ key, label }) => {
           const rows = files.filter((f) => f.section === key);
           if (rows.length === 0) return null;
@@ -352,14 +351,14 @@ export function MemorySettings(): JSX.Element {
           );
         })}
         {files.length === 0 && (
-          <div className="mt-8 rounded-xl border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
+          <div className="mt-8 rounded-xl border border-dashed border-border py-23 text-center text-sm text-muted-foreground">
             No memory yet. It builds up as you chat — or tell it something below.
           </div>
         )}
       </div>
 
       {notice && <p className="mb-1 text-xs text-muted-foreground">{notice}</p>}
-      <div className="flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2">
+      <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-2 py-2">
         <input
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -373,7 +372,7 @@ export function MemorySettings(): JSX.Element {
           type="button"
           disabled={!note.trim() || noteBusy}
           onClick={() => void sendNote()}
-          className="flex size-7 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:opacity-90 disabled:opacity-30"
+          className="flex size-7 items-center justify-center rounded-xl bg-foreground text-background transition-opacity hover:opacity-90 disabled:opacity-30"
         >
           <ArrowUp className="size-4" />
         </button>

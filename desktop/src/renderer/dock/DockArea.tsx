@@ -427,7 +427,7 @@ function DockTab(props: IDockviewPanelHeaderProps): JSX.Element {
         />
       )}
       <span
-        className={doc?.preview ? "truncate italic" : "truncate"}
+        className={doc?.preview ? "truncate italic pr-0.5" : "truncate pr-0.5"}
         title={title}
       >
         {title}

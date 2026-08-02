@@ -872,7 +872,7 @@ export default function App(): JSX.Element {
     {
       // The same shortcut Cursor uses, so the habit transfers.
       combo: "mod+shift+d",
-      label: "Design mode (browser)",
+      label: "Design mode",
       section: "Browser",
       action: () => {
         useDockStore.getState().openPanel("browser");
