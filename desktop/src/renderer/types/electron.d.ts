@@ -463,6 +463,11 @@ export interface ElectronAPI {
       path: string,
     ) => Promise<{ ok: boolean; line?: string; error?: string }>;
     reveal: (path: string) => Promise<void>;
+    pasteInto: (
+      targetDir: string,
+      sourcePath: string,
+      cut: boolean,
+    ) => Promise<{ ok: boolean; path?: string; error?: string }>;
   };
   shell: {
     openExternal: (url: string) => Promise<{ ok: boolean }>;

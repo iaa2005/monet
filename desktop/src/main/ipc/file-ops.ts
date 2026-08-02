@@ -8,7 +8,7 @@
  * wrong tree — the kind of bug that must not need an app boot to catch.
  */
 
-import { basename, dirname, extname, join, relative, sep } from "path";
+import { basename, dirname, extname, isAbsolute, join, relative, sep } from "path";
 
 /**
  * A name typed into "New File" / "Rename". Subfolders are allowed ("a/b.ts"
@@ -63,6 +63,26 @@ export function gitignoreLineFor(
   if (!rel || rel.startsWith("..")) return null;
   const posix = rel.split(sep).join("/");
   return `/${posix}${isDirectory ? "/" : ""}`;
+}
+
+/**
+ * Where a pasted entry lands: keep its own name when the slot is free,
+ * otherwise fall into the same "copy / copy 2" numbering a duplicate uses.
+ */
+export function pasteTargetPath(
+  targetDir: string,
+  sourcePath: string,
+  exists: (candidate: string) => boolean,
+): string {
+  const direct = join(targetDir, basename(sourcePath));
+  return exists(direct) ? uniqueDuplicatePath(direct, exists) : direct;
+}
+
+/** True when `child` is `parent` itself or sits anywhere under it — the guard
+ * that keeps a folder from being pasted into its own subtree. */
+export function isPathInside(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
 /** Append a line to .gitignore content, once, keeping the file newline-clean. */

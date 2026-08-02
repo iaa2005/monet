@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ChevronDown,
   AlertTriangle,
+  ClipboardPaste,
   Copy,
   ExternalLink,
   FileText,
@@ -18,6 +19,7 @@ import {
   FolderPlus,
   GitBranch,
   Pencil,
+  Scissors,
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -167,6 +169,16 @@ interface MenuState {
   y: number;
   entry: FileEntry | null;
 }
+
+/**
+ * The in-app file clipboard. Module-level and shared by every tree on
+ * purpose: Copy in the Home sandbox, Paste in the workspace is exactly how a
+ * generated file graduates into the project. Cut is a promise to move when
+ * pasted — nothing happens to the source until then. This is not the OS
+ * clipboard: Electron cannot portably write a file list to it, and a
+ * clipboard that works only inside the app should not pretend otherwise.
+ */
+let fileClipboard: { path: string; name: string; cut: boolean } | null = null;
 
 /** The inline name prompt: what it's for decides the wording and the action. */
 interface NamePrompt {
@@ -627,6 +639,28 @@ export function FileTree({
     return r && q.startsWith(`${r}/`) ? q.slice(r.length + 1) : q;
   };
 
+  /** Paste the in-app clipboard into an entry's folder (or the root). */
+  const pasteInto = async (
+    entry: FileEntry | null,
+  ): Promise<{ ok: boolean; error?: string } | void> => {
+    const clip = fileClipboard;
+    if (!clip) return;
+    const target = entry
+      ? entry.isDirectory
+        ? entry.path
+        : parentOf(entry.path)
+      : rootDir;
+    if (!target) return;
+    const r = await api().files.pasteInto(target, clip.path, clip.cut);
+    if (r.ok) {
+      // A cut is spent by its paste; a copy can be pasted again.
+      if (clip.cut) fileClipboard = null;
+      notice(clip.cut ? `Moved ${clip.name}.` : `Pasted ${clip.name}.`);
+      setRefreshKey((k) => k + 1);
+    }
+    return r;
+  };
+
   /** Close the menu, run the action, surface its failure as a notice. */
   const act =
     (fn: () => void | Promise<{ ok: boolean; error?: string } | void>) =>
@@ -810,6 +844,13 @@ export function FileTree({
                       label="New Folder…"
                       onClick={act(() => setPrompt({ kind: "new-folder", entry }))}
                     />
+                    {fileClipboard && !entry && (
+                      <MenuItem
+                        icon={<ClipboardPaste className="size-4" />}
+                        label={`Paste "${fileClipboard.name}"`}
+                        onClick={act(() => pasteInto(null))}
+                      />
+                    )}
                   </>
                 )}
                 <MenuSep />
@@ -824,13 +865,41 @@ export function FileTree({
                 {entry && (
                   <>
                     <MenuSep />
+                    <MenuItem
+                      icon={<Scissors className="size-4" />}
+                      label="Cut"
+                      onClick={act(() => {
+                        fileClipboard = { path: entry.path, name: entry.name, cut: true };
+                        notice(`Cut ${entry.name} — paste it where it belongs.`);
+                      })}
+                    />
+                    <MenuItem
+                      icon={<Copy className="size-4" />}
+                      label="Copy"
+                      onClick={act(() => {
+                        fileClipboard = { path: entry.path, name: entry.name, cut: false };
+                        notice(`Copied ${entry.name}.`);
+                      })}
+                    />
                     {!lite && (
                       <MenuItem
                         icon={<Copy className="size-4" />}
                         label="Duplicate"
-                        onClick={act(() => api().files.duplicate(entry.path))}
+                        onClick={act(async () => {
+                          const r = await api().files.duplicate(entry.path);
+                          if (r.ok) setRefreshKey((k) => k + 1);
+                          return r;
+                        })}
                       />
                     )}
+                    {!lite && fileClipboard && (
+                      <MenuItem
+                        icon={<ClipboardPaste className="size-4" />}
+                        label={`Paste "${fileClipboard.name}"`}
+                        onClick={act(() => pasteInto(entry))}
+                      />
+                    )}
+                    <MenuSep />
                     <MenuItem
                       icon={<Copy className="size-4" />}
                       label="Copy Path"

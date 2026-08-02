@@ -209,6 +209,12 @@ const electronAPI = {
       ipcRenderer.invoke("files:addToGitignore", root, path),
     reveal: (path: string): Promise<void> =>
       ipcRenderer.invoke("files:reveal", path),
+    pasteInto: (
+      targetDir: string,
+      sourcePath: string,
+      cut: boolean,
+    ): Promise<{ ok: boolean; path?: string; error?: string }> =>
+      ipcRenderer.invoke("files:pasteInto", targetDir, sourcePath, cut),
   },
 
   shell: {

@@ -10,6 +10,8 @@ import { sep } from 'node:path'
 import {
   appendIgnoreLine,
   gitignoreLineFor,
+  isPathInside,
+  pasteTargetPath,
   uniqueDuplicatePath,
   validateEntryName,
 } from '../src/main/ipc/file-ops.js'
@@ -89,6 +91,27 @@ check(
   'a line already present is not doubled',
   appendIgnoreLine('node_modules\n/dist/\n', '/dist/') === null,
 )
+
+// ─── Paste ──────────────────────────────────────────────────────────────
+
+check(
+  'a paste keeps its own name when the slot is free',
+  pasteTargetPath(J('C:', 'dst'), J('C:', 'src', 'a.ts'), () => false) ===
+    J('C:', 'dst', 'a.ts'),
+)
+check(
+  'and falls into copy-numbering when it is taken',
+  pasteTargetPath(
+    J('C:', 'dst'),
+    J('C:', 'src', 'a.ts'),
+    (c) => c === J('C:', 'dst', 'a.ts'),
+  ) === J('C:', 'dst', 'a copy.ts'),
+)
+
+check('a folder contains itself', isPathInside(J('C:', 'a'), J('C:', 'a')))
+check('and its descendants', isPathInside(J('C:', 'a'), J('C:', 'a', 'b', 'c')))
+check('but not its siblings', !isPathInside(J('C:', 'a'), J('C:', 'ab')))
+check('nor its parent', !isPathInside(J('C:', 'a', 'b'), J('C:', 'a')))
 
 console.log(failures === 0 ? '\nALL FILE-OPS CHECKS PASSED' : `\n${failures} FAILED`)
 process.exit(failures === 0 ? 0 : 1)

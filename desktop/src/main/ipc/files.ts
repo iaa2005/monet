@@ -12,6 +12,7 @@ import {
   readdir,
   readFile,
   rename,
+  rm,
   stat,
   writeFile,
 } from "fs/promises";
@@ -21,6 +22,8 @@ import { searchFiles } from "../file-search.js";
 import {
   appendIgnoreLine,
   gitignoreLineFor,
+  isPathInside,
+  pasteTargetPath,
   uniqueDuplicatePath,
   validateEntryName,
 } from "./file-ops.js";
@@ -361,4 +364,42 @@ export function registerFilesIPC(): void {
   ipcMain.handle("files:reveal", (_e, filePath: string): void => {
     shell.showItemInFolder(normPath(filePath));
   });
+
+  // Paste of the in-app file clipboard (Cut = move, Copy = copy). One
+  // handler, because the two differ only in whether the source survives.
+  ipcMain.handle(
+    "files:pasteInto",
+    async (
+      _e,
+      targetDir: string,
+      sourcePath: string,
+      cut: boolean,
+    ): Promise<{ ok: boolean; path?: string; error?: string }> => {
+      const dir = normPath(targetDir);
+      const src = normPath(sourcePath);
+      try {
+        const info = await stat(src);
+        if (info.isDirectory() && isPathInside(src, dir))
+          return { ok: false, error: "Cannot paste a folder into itself." };
+        const target = pasteTargetPath(dir, src, (c) => existsSync(c));
+        if (cut) {
+          // A cut that lands where it started is a no-op, not an error.
+          if (target === src) return { ok: true, path: src };
+          try {
+            await rename(src, target);
+          } catch (err) {
+            // Across volumes rename refuses; fall back to copy + delete.
+            if ((err as NodeJS.ErrnoException)?.code !== "EXDEV") throw err;
+            if (info.isDirectory()) await cp(src, target, { recursive: true });
+            else await copyFile(src, target);
+            await rm(src, { recursive: true, force: true });
+          }
+        } else if (info.isDirectory()) await cp(src, target, { recursive: true });
+        else await copyFile(src, target);
+        return { ok: true, path: target };
+      } catch (err) {
+        return fail(err, "paste");
+      }
+    },
+  );
 }
