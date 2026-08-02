@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { MarkdownViewer } from "./chat/MarkdownViewer";
 import { CodeEditor, type CodeSelection } from "./CodeEditor";
+import { NotebookViewer } from "./NotebookViewer";
 import { codeRef, selectionLineRange } from "@/lib/refs";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
@@ -70,6 +71,7 @@ type PreviewKind =
   | "audio"
   | "video"
   | "text"
+  | "notebook"
   | "none";
 
 const IMAGE_MIME: Record<string, string> = {
@@ -117,6 +119,8 @@ function richKindForName(name: string): PreviewKind | null {
   if (ext === "pdf") return "pdf";
   if (ext === "docx") return "docx";
   if (ext === "xlsx" || ext === "xls") return "xlsx";
+  // A notebook is a document that happens to be JSON — see NotebookViewer.
+  if (ext === "ipynb") return "notebook";
   if (AUDIO_MIME[ext]) return "audio";
   if (VIDEO_MIME[ext]) return "video";
   if (OPAQUE_EXT.has(ext)) return "none";
@@ -141,6 +145,7 @@ function previewKindOf(item: FileViewerItem): PreviewKind {
   if (ext === "pdf") return "pdf";
   if (ext === "docx") return "docx";
   if (ext === "xlsx" || ext === "xls") return "xlsx";
+  if (ext === "ipynb") return "notebook";
   if (item.kind === "text" || TEXT_EXT.test(item.name)) return "text";
   return "none";
 }
@@ -446,6 +451,13 @@ export function FileViewer({
             }
             if (alive) setSheetHtml(parts.join("\n"));
           }
+        } else if (preview === "notebook") {
+          // Read as BYTES, not text: files.read truncates at 400KB and a
+          // notebook carrying two plots is bigger than that — a truncated
+          // notebook is not a smaller notebook, it is invalid JSON.
+          const b64 = await readB64();
+          if (b64 && alive)
+            setArtText(new TextDecoder().decode(b64ToBytes(b64)));
         } else if (preview === "text") {
           if (effPath && source === "artifact") {
             const r = await bridge?.artifacts.readText(effPath);
@@ -608,6 +620,23 @@ export function FileViewer({
               <div
                 className="p-4 text-[13px] [&_.sheet-name]:mb-1 [&_.sheet-name]:mt-4 [&_.sheet-name]:font-semibold [&_.sheet-name]:first:mt-0 [&_.sheet-truncated]:mt-2 [&_.sheet-truncated]:text-xs [&_.sheet-truncated]:text-muted-foreground [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1"
                 dangerouslySetInnerHTML={{ __html: sheetHtml }}
+              />
+            )}
+
+            {!error && preview === "notebook" && artText != null && (
+              <NotebookViewer
+                text={artText}
+                // Same rule as any other file: Home reads, Code edits.
+                canEdit={space === "code" && source === "file" && !!filePath}
+                onDirtyChange={markDirty}
+                onSave={(serialized) => {
+                  if (!filePath) return;
+                  void api()
+                    ?.files.write(filePath, serialized)
+                    .catch((e) =>
+                      setError(e instanceof Error ? e.message : String(e)),
+                    );
+                }}
               />
             )}
 
