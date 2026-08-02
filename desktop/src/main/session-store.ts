@@ -27,6 +27,13 @@ export interface Session {
   space?: string;
   /** Per-chat working directory (restored when the chat is opened). */
   workspace?: string;
+  /**
+   * Why the chat stopped, when it stopped badly. Set when a turn ends in an
+   * error and cleared when the next one starts, so the sidebar can mark a
+   * chat that died — including one that died before the app was last closed,
+   * which is exactly when nobody is watching.
+   */
+  lastError?: string;
 }
 
 export interface ChatMessage {
@@ -97,6 +104,7 @@ interface SessionRow {
   archived?: number;
   pinned?: number;
   workspace?: string | null;
+  last_error?: string | null;
 }
 
 function rowToSession(r: SessionRow): Session {
@@ -109,6 +117,7 @@ function rowToSession(r: SessionRow): Session {
     archived: !!r.archived,
     pinned: !!r.pinned,
     workspace: r.workspace ?? undefined,
+    lastError: r.last_error ?? undefined,
   };
 }
 
@@ -179,6 +188,12 @@ function getDb(): ReturnType<typeof Database> {
     // chats into Recents as if they'd been typed by hand.
     if (!has("routine_id"))
       db.exec("ALTER TABLE sessions ADD COLUMN routine_id TEXT");
+    // Why a chat stopped, when it stopped badly. In the DB rather than in the
+    // renderer's memory because the case that matters is the chat that failed
+    // while the user was elsewhere — and after a restart the renderer knows
+    // nothing about it.
+    if (!has("last_error"))
+      db.exec("ALTER TABLE sessions ADD COLUMN last_error TEXT");
     // Attachment metadata on messages (JSON array of {name,mediaType,kind}).
     const msgCols = db.prepare("PRAGMA table_info(messages)").all() as {
       name: string;
@@ -271,6 +286,7 @@ export class SessionStore {
           workspace?: string | null;
           archived?: number | null;
           pinned?: number | null;
+          last_error?: string | null;
         }
       | undefined;
     if (!s) return null;
@@ -300,6 +316,7 @@ export class SessionStore {
       workspace: s.workspace ?? undefined,
       archived: s.archived === 1,
       pinned: s.pinned === 1,
+      lastError: s.last_error ?? undefined,
       messages: msgs.map((m) => ({
         id: m.id,
         role: m.role as ChatMessage["role"],
@@ -472,6 +489,18 @@ export class SessionStore {
     getDb()
       .prepare("UPDATE sessions SET archived = ? WHERE id = ?")
       .run(archived ? 1 : 0, id);
+  }
+
+  /**
+   * Record (or clear) why a chat stopped.
+   *
+   * Deliberately does NOT touch updated_at: a chat that failed has not been
+   * worked on, and bumping it would reorder the sidebar under the user.
+   */
+  setLastError(id: string, error: string | null): void {
+    getDb()
+      .prepare("UPDATE sessions SET last_error = ? WHERE id = ?")
+      .run(error ?? null, id);
   }
 
   setPinned(id: string, pinned: boolean): void {

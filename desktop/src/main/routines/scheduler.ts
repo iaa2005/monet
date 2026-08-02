@@ -144,6 +144,10 @@ export async function executeRoutine(
       prompt,
       (ev) => {
         if (ev.type === "text_delta") assistantText += ev.text;
+        // A run that fails without throwing leaves its chat behind — mark it,
+        // the way a hand-driven chat is marked, so the sidebar says so.
+        if (ev.type === "error" && ev.error && ev.error !== "Aborted")
+          store.setLastError(session.id, ev.error);
         // Forward every event to the renderer so chatStore can build the
         // full display (tool calls, tool results) and persist it — same
         // pattern as chat:send in ipc/chat.ts.

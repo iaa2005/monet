@@ -302,6 +302,11 @@ export function registerChatIPC(): void {
       seedConversation(sessionId, payload.seed);
     }
 
+    // Continuing a chat is what clears the mark it wears for having failed.
+    // Here rather than on the first token: the user pressed send, so the
+    // trouble is theirs to see again if it repeats.
+    getSessionStore().setLastError(sessionId, null);
+
     // A new send for the same session supersedes its previous run.
     aborts.get(sessionId)?.abort();
     const abort = new AbortController();
@@ -351,6 +356,13 @@ export function registerChatIPC(): void {
     }
 
     const emit = (event: unknown): void => {
+      // A turn that ends badly is remembered by the DATABASE, not just by the
+      // renderer: the chat that fails while the user is in another one — or
+      // while the app is closed afterwards — is the whole reason the mark
+      // exists. A user-pressed Stop is not a failure.
+      const e = event as { type?: string; error?: string };
+      if (e?.type === "error" && e.error && e.error !== "Aborted")
+        getSessionStore().setLastError(sessionId, e.error);
       // Tag every event with its session so the renderer routes it to the
       // right chat even after the user switched away.
       win.webContents.send("chat:token", { sessionId, event });
@@ -410,6 +422,7 @@ export function registerChatIPC(): void {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
+      getSessionStore().setLastError(sessionId, message);
       win.webContents.send("chat:token", {
         sessionId,
         event: { type: "error", error: message },

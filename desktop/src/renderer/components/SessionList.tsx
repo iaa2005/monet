@@ -35,6 +35,8 @@ interface SessionSummary {
   messageCount: number;
   pinned?: boolean;
   archived?: boolean;
+  /** Why the chat stopped, from the database — survives a restart. */
+  lastError?: string;
 }
 
 interface SessionListProps {
@@ -111,6 +113,16 @@ export function SessionList({
     () => new Set(erroredKey ? erroredKey.split(",") : []),
     [erroredKey],
   );
+  // Chats this app run knows something about. What the DATABASE remembers is
+  // the truth for every other chat — including one that failed yesterday —
+  // but for a chat that has since run here, the store is newer.
+  const liveKey = useChatStore((s) => Object.keys(s.sessions).sort().join(","));
+  const liveIds = useMemo(
+    () => new Set(liveKey ? liveKey.split(",") : []),
+    [liveKey],
+  );
+  const failed = (s: SessionSummary): boolean =>
+    liveIds.has(s.id) ? erroredIds.has(s.id) : !!s.lastError;
 
   const loadSessions = async (): Promise<void> => {
     try {
@@ -286,7 +298,7 @@ export function SessionList({
                   className="flex min-w-0 flex-1 items-center gap-2"
                   onClick={() => handleSelect(s.id)}
                 >
-                  {erroredIds.has(s.id) ? (
+                  {failed(s) ? (
                     <ErrorMark className="size-3" />
                   ) : (
                     <span

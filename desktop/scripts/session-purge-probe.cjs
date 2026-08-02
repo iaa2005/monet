@@ -130,6 +130,40 @@ app.whenReady().then(async () => {
   );
   check("and its events", listContextEvents(live.id).length === 1);
 
+  // ── Why a chat stopped outlives the app that was running it ────────
+  //
+  // The sidebar marks a chat that died mid-turn, and the case that matters is
+  // the one nobody saw: it failed while the user was elsewhere, and the app
+  // was closed afterwards. So the reason lives in the DATABASE, and a fresh
+  // read has to find it — a renderer-memory flag would be gone by then.
+  const failed = store.create("Failed chat", "code");
+  check("a new chat carries no error", !store.get(failed.id)?.lastError);
+
+  store.setLastError(failed.id, "API 500: upstream said no");
+  check(
+    "an error is remembered by the row",
+    store.get(failed.id)?.lastError === "API 500: upstream said no",
+    store.get(failed.id)?.lastError,
+  );
+  check(
+    "and by the list the sidebar reads",
+    store.list(50, 0, "code").find((r) => r.id === failed.id)?.lastError ===
+      "API 500: upstream said no",
+  );
+  check(
+    "the chat is not reordered by having failed",
+    store.get(failed.id)?.updatedAt === failed.updatedAt,
+    store.get(failed.id)?.updatedAt,
+  );
+
+  store.setLastError(failed.id, null);
+  check(
+    "continuing the chat clears it",
+    !store.get(failed.id)?.lastError,
+    store.get(failed.id)?.lastError,
+  );
+  store.delete(failed.id);
+
   purgeSessionData(live.id);
   store.delete(live.id);
 

@@ -85,7 +85,15 @@ const out = await evalJs(`(async () => {
   });
   await sleep(300);
 
-  return { before, afterError, afterContinue, storeError, sid };
+  // The database half: the row the sidebar reads carries what a failed chat
+  // left behind, so a chat that died before the last restart still shows it.
+  // (What WRITES it is main, on the turn that fails — see ipc/chat.ts.)
+  const listed = (await window.electronAPI.sessions.list(20, 0, undefined, "all")) ?? [];
+  const carriesField = listed.every(
+    (r) => r.lastError === undefined || typeof r.lastError === "string",
+  );
+
+  return { before, afterError, afterContinue, storeError, sid, carriesField, listed: listed.length };
 })()`);
 
 ws.close();
@@ -114,6 +122,16 @@ check(
   "and the dot comes back",
   out.afterContinue?.dots === out.before?.dots,
   { before: out.before?.dots, after: out.afterContinue?.dots },
+);
+
+// The stored half. What WRITES it is main, on the turn that fails; what this
+// pins down is that the reason survives the trip to the renderer at all — a
+// row that drops the field would leave a chat that died yesterday unmarked
+// today, which is the whole point of storing it.
+check(
+  "the list rows carry the stored reason across the IPC boundary",
+  out.carriesField === true && out.listed > 0,
+  { rows: out.listed },
 );
 
 console.log(failures === 0 ? "\nALL ERROR-MARK CHECKS PASSED" : `\n${failures} FAILED`);
