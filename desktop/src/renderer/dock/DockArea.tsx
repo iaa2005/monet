@@ -176,7 +176,12 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
   files: function FilesDockPanel() {
     const sessionId = useChatStore((s) => s.currentSessionId);
     void sessionId;
-    if (latest.space === "home") return scrollWrap(<SandboxFilesPanel />);
+    // Subscribed, not read off `latest`: the body must FOLLOW a Home ⇄ Code
+    // switch. `latest` updates on App's render, but nothing re-rendered this
+    // panel — so the sandbox tree stayed on screen in Code until the panel
+    // was closed and reopened.
+    const space = useChatStore((s) => s.space);
+    if (space === "home") return scrollWrap(<SandboxFilesPanel />);
     // Click previews, double click keeps — VS Code's idiom, both halves.
     const asFile = (p: string) => ({
       name: p.split(/[/\\]/).pop() || p,
@@ -234,7 +239,8 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
     );
   },
   terminal: function TerminalDockPanel() {
-    const home = latest.space === "home";
+    // Same subscription for the same reason as FilesDockPanel above.
+    const home = useChatStore((s) => s.space) === "home";
     return (
       <div className="h-full min-h-0">
         <PanelBoundary>
