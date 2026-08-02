@@ -162,6 +162,35 @@ app.whenReady().then(async () => {
     !store.get(failed.id)?.lastError,
     store.get(failed.id)?.lastError,
   );
+
+  // ── How the last turn ended, for the chat that ended in silence ────
+  //
+  // A turn that comes back with no text and no tool calls writes nothing
+  // anywhere: no message, no transcript row, no error. The stop reason is
+  // the ONLY record that it happened, which is why it has to survive a
+  // restart like the error does.
+  check("a new chat has no stop reason", !store.get(failed.id)?.lastStopReason);
+
+  store.setLastStopReason(failed.id, "end_turn (empty reply)");
+  check(
+    "the row remembers how the run ended",
+    store.get(failed.id)?.lastStopReason === "end_turn (empty reply)",
+    store.get(failed.id)?.lastStopReason,
+  );
+  check(
+    "and so does the list",
+    store.list(50, 0, "code").find((r) => r.id === failed.id)?.lastStopReason ===
+      "end_turn (empty reply)",
+  );
+  check(
+    "recording it does not reorder the sidebar either",
+    store.get(failed.id)?.updatedAt === failed.updatedAt,
+  );
+  store.setLastStopReason(failed.id, "end_turn");
+  check(
+    "a later ordinary turn overwrites it",
+    store.get(failed.id)?.lastStopReason === "end_turn",
+  );
   store.delete(failed.id);
 
   purgeSessionData(live.id);

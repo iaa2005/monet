@@ -28,6 +28,7 @@ import {
   type RoutineRun,
 } from "./store.js";
 import { routineHistoryBlock } from "../agent/run-notes.js";
+import { stopReasonLabel } from "../agent/empty-turn.js";
 import { catchUpDecision, catchUpNote, stableJitterMs } from "./timing.js";
 
 const timers = new Map<string, NodeJS.Timeout>();
@@ -160,6 +161,13 @@ export async function executeRoutine(
         // the way a hand-driven chat is marked, so the sidebar says so.
         if (ev.type === "error" && ev.error && ev.error !== "Aborted")
           store.setLastError(session.id, ev.error);
+        // Same post-mortem trail a hand-driven chat keeps: a routine that
+        // came back with nothing must not look like one that finished.
+        if (ev.type === "message_stop")
+          store.setLastStopReason(
+            session.id,
+            stopReasonLabel(ev.stop_reason, ev.empty === true),
+          );
         // Forward every event to the renderer so chatStore can build the
         // full display (tool calls, tool results) and persist it — same
         // pattern as chat:send in ipc/chat.ts.

@@ -24,6 +24,7 @@ import {
 } from "../agent/index.js";
 import type { UiPermissionMode } from "../agent/permission-types.js";
 import { injectMessage } from "../agent/injection.js";
+import { stopReasonLabel } from "../agent/empty-turn.js";
 import { expandSlashCommand } from "../agent/skill-tool.js";
 import { abortAllBgAgents, abortBgAgents } from "../agent/bg-agents.js";
 import { getSessionStore } from "../session-store.js";
@@ -361,9 +362,22 @@ export function registerChatIPC(): void {
       // renderer: the chat that fails while the user is in another one — or
       // while the app is closed afterwards — is the whole reason the mark
       // exists. A user-pressed Stop is not a failure.
-      const e = event as { type?: string; error?: string };
+      const e = event as {
+        type?: string;
+        error?: string;
+        stop_reason?: string;
+        empty?: boolean;
+      };
       if (e?.type === "error" && e.error && e.error !== "Aborted")
         getSessionStore().setLastError(sessionId, e.error);
+      // How the turn ended, kept for the same reason: a run that comes back
+      // with nothing leaves no other trace, so "gave up" and "finished" look
+      // identical afterwards. See agent/empty-turn.ts.
+      if (e?.type === "message_stop")
+        getSessionStore().setLastStopReason(
+          sessionId,
+          stopReasonLabel(e.stop_reason, e.empty === true),
+        );
       // Tag every event with its session so the renderer routes it to the
       // right chat even after the user switched away.
       win.webContents.send("chat:token", { sessionId, event });

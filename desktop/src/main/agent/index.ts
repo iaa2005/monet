@@ -60,6 +60,12 @@ import { buildMemoryPrompt } from "../memory/store.js";
 import { buildLessonsPrompt } from "../memory/lessons.js";
 import { getWorkspacePath } from "../ipc/workspace.js";
 import { goalHistoryBlock, goalRunNotes } from "./run-notes.js";
+import {
+  appendNudge,
+  isEmptyReply,
+  MAX_NUDGES,
+  shouldNudge,
+} from "./empty-turn.js";
 import { getProfilePrompt } from "../profile.js";
 import { tunablePrompt } from "../prompts/index.js";
 import {
@@ -1256,6 +1262,12 @@ async function runAgentScoped(
   if (hiddenTurn) hiddenTurns.add(userMsg);
   persistTranscript(sessionId);
 
+  // A model that answers with nothing gets nudged rather than believed —
+  // see empty-turn.ts. Per RUN, so a nudge spent here does not follow the
+  // chat into the next message.
+  let nudgesUsed = 0;
+  let nudgedLastTurn = false;
+
   for (let turn = 0; turn < maxTurns; turn++) {
     if (signal?.aborted) {
       onEvent({ type: "error", error: "Aborted" });
@@ -1429,6 +1441,25 @@ async function runAgentScoped(
         persistTranscript(sessionId);
         continue;
       }
+
+      // Nothing at all came back — no text, no tool calls. That is not an
+      // answer, and taking it as one ends the run mid-task in silence (there
+      // is no content to write, so even the transcript keeps no trace). Send
+      // what a person would send by hand: a bare "." — see empty-turn.ts for
+      // why it joins the last user message instead of becoming a new one, and
+      // why it is bounded.
+      const empty = isEmptyReply(assistantText, toolCalls.length);
+      if (shouldNudge({ emptyReply: empty, nudgesUsed, nudgedLastTurn })) {
+        nudgesUsed++;
+        nudgedLastTurn = true;
+        console.warn(
+          `[agent] empty reply (stop_reason=${lastStopReason ?? "n/a"}) — nudging (${nudgesUsed}/${MAX_NUDGES})`,
+        );
+        appendNudge(messages);
+        persistTranscript(sessionId);
+        continue;
+      }
+
       // Durable, full-fidelity history for a clean reopen / continuation.
       persistTranscript(sessionId);
       onEvent({
@@ -1437,6 +1468,9 @@ async function runAgentScoped(
         // flags max_tokens so a silently truncated reply is visible.
         stop_reason: lastStopReason ?? "end_turn",
         usage: lastUsage,
+        // A run that ends with nothing said: the one distinction a
+        // post-mortem needs, and the only trace such a turn leaves.
+        empty,
       });
       // Code Rewind: snapshot the workspace AFTER the reply is done (never
       // blocks it) so this turn can be restored later. Home has no workspace.
@@ -1453,6 +1487,10 @@ async function runAgentScoped(
       }
       return;
     }
+
+    // The model is working again, so a nudge spent earlier no longer counts
+    // as "the last thing that happened".
+    nudgedLastTurn = false;
 
     // Execute tools through the vendor pipeline with progress events.
     //

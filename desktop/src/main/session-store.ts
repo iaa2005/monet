@@ -34,6 +34,17 @@ export interface Session {
    * which is exactly when nobody is watching.
    */
   lastError?: string;
+  /**
+   * How the chat's last turn ended, in the provider's own word — plus the
+   * note that the reply was empty, when it was.
+   *
+   * A turn that comes back with nothing writes nothing: no text, no tool
+   * call, no transcript row. Without this column a chat that stopped dead
+   * mid-task and a chat that finished politely are the same silence, and the
+   * question "did the model give up, or did the output budget run out?" has
+   * no answer left anywhere by the time anyone asks it.
+   */
+  lastStopReason?: string;
 }
 
 export interface ChatMessage {
@@ -105,6 +116,7 @@ interface SessionRow {
   pinned?: number;
   workspace?: string | null;
   last_error?: string | null;
+  last_stop_reason?: string | null;
 }
 
 function rowToSession(r: SessionRow): Session {
@@ -118,6 +130,7 @@ function rowToSession(r: SessionRow): Session {
     pinned: !!r.pinned,
     workspace: r.workspace ?? undefined,
     lastError: r.last_error ?? undefined,
+    lastStopReason: r.last_stop_reason ?? undefined,
   };
 }
 
@@ -194,6 +207,12 @@ function getDb(): ReturnType<typeof Database> {
     // nothing about it.
     if (!has("last_error"))
       db.exec("ALTER TABLE sessions ADD COLUMN last_error TEXT");
+    // How the last turn ended, in the provider's own word. A turn that comes
+    // back empty writes nothing anywhere else, so without this the only
+    // record of "the model gave up" is that the chat stops — indistinguishable
+    // from a chat that finished.
+    if (!has("last_stop_reason"))
+      db.exec("ALTER TABLE sessions ADD COLUMN last_stop_reason TEXT");
     // Attachment metadata on messages (JSON array of {name,mediaType,kind}).
     const msgCols = db.prepare("PRAGMA table_info(messages)").all() as {
       name: string;
@@ -287,6 +306,7 @@ export class SessionStore {
           archived?: number | null;
           pinned?: number | null;
           last_error?: string | null;
+          last_stop_reason?: string | null;
         }
       | undefined;
     if (!s) return null;
@@ -317,6 +337,7 @@ export class SessionStore {
       archived: s.archived === 1,
       pinned: s.pinned === 1,
       lastError: s.last_error ?? undefined,
+      lastStopReason: s.last_stop_reason ?? undefined,
       messages: msgs.map((m) => ({
         id: m.id,
         role: m.role as ChatMessage["role"],
@@ -501,6 +522,14 @@ export class SessionStore {
     getDb()
       .prepare("UPDATE sessions SET last_error = ? WHERE id = ?")
       .run(error ?? null, id);
+  }
+
+  /** Record how the chat's last turn ended. Same rule as setLastError: this
+   * is bookkeeping about a run, not a edit to the chat, so updated_at stays. */
+  setLastStopReason(id: string, reason: string | null): void {
+    getDb()
+      .prepare("UPDATE sessions SET last_stop_reason = ? WHERE id = ?")
+      .run(reason ?? null, id);
   }
 
   setPinned(id: string, pinned: boolean): void {

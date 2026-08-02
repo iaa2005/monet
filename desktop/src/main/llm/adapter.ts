@@ -94,7 +94,19 @@ export type LLMEvent =
   | { type: "reasoning_delta"; text: string }
   | { type: "user_message"; content: string }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
-  | { type: "message_stop"; stop_reason: string; usage?: LLMUsage }
+  | {
+      type: "message_stop";
+      stop_reason: string;
+      usage?: LLMUsage;
+      /**
+       * The run ended with a reply that had no text and no tool calls. The
+       * only trace such a turn leaves — nothing reaches the transcript —
+       * so it is what tells a post-mortem apart: "end_turn" with nothing in
+       * it is a model that gave up, "max_tokens" with nothing in it is a
+       * reasoning budget that ate the answer.
+       */
+      empty?: boolean;
+    }
   | { type: "error"; error: string }
   | { type: "checkpoint"; sha: string }
   // Goal mode: the state of the session's standing objective, emitted on every
