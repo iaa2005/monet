@@ -159,6 +159,47 @@ export async function snapshotWorkspace(
   }
 }
 
+/**
+ * The workspace's current checkpoint — HEAD of the shadow repo, snapshotting
+ * first if the repo doesn't exist yet. What a goal records as its baseline:
+ * the state of the world before any of its turns ran.
+ */
+export async function currentCheckpoint(
+  sessionId: string,
+  workspace: string | undefined,
+): Promise<string | null> {
+  if (!workspace || !existsSync(workspace)) return null;
+  const gitDir = shadowDir(sessionId);
+  if (isInited(gitDir)) {
+    const rev = await git(workspace, gitDir, ["rev-parse", "HEAD"], 15_000);
+    if (rev.code === 0) return rev.stdout.trim();
+  }
+  return snapshotWorkspace(sessionId, workspace);
+}
+
+/**
+ * The full diff from a checkpoint to the working tree RIGHT NOW — the
+ * completion judge's main evidence. Stages everything first so files created
+ * since the checkpoint appear; the index gets rebuilt by the next snapshot
+ * anyway. Capped: the judge needs the shape of the work, not every line.
+ */
+export async function diffSince(
+  sessionId: string,
+  workspace: string | undefined,
+  sha: string,
+  maxChars = 9_000,
+): Promise<string | null> {
+  if (!workspace || !existsSync(workspace)) return null;
+  const gitDir = shadowDir(sessionId);
+  if (!isInited(gitDir)) return null;
+  if (!/^[0-9a-f]{7,40}$/i.test(sha)) return null;
+  await git(workspace, gitDir, ["add", "-A"], 60_000);
+  const res = await git(workspace, gitDir, ["diff", "--cached", sha], 30_000);
+  if (res.code !== 0) return null;
+  const out = res.stdout.trim();
+  return out.length > maxChars ? `${out.slice(0, maxChars)}\n… (diff truncated)` : out;
+}
+
 export interface CheckpointDiffStat {
   files: number;
   insertions: number;

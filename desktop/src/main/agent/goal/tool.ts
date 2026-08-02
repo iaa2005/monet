@@ -17,8 +17,9 @@ import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import { tunablePrompt } from "../../prompts/index.js";
-import { blockGoal } from "./state.js";
+import { blockGoal, recordJudgeRejection } from "./state.js";
 import { clearGoal, loadGoal, saveGoal } from "./store.js";
+import { judgeCompletion, MAX_JUDGE_REJECTIONS } from "./judge.js";
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
@@ -127,6 +128,51 @@ export const UpdateGoalTool = buildTool({
             isError: true,
           },
         };
+
+      // The judge: before the record is cleared, the claim is reviewed by a
+      // fresh context with the evidence — the project's full checks, and the
+      // diff since the goal's baseline. Capped, and it fails open — see
+      // judge.ts for why both.
+      const rejections = goal.judgeRejections ?? 0;
+      if (rejections < MAX_JUDGE_REJECTIONS) {
+        const space = (context as { space?: string }).space;
+        let cwd: string | undefined;
+        try {
+          const { getCwd } = await import("@vendor/utils/cwd.js");
+          // Home has no project to check — the judge still reads the claim.
+          cwd = space === "home" ? undefined : getCwd();
+        } catch {
+          cwd = undefined;
+        }
+        let diff: string | null = null;
+        if (cwd && goal.baselineSha) {
+          try {
+            const { diffSince } = await import("../checkpoints.js");
+            diff = await diffSince(sessionId, cwd, goal.baselineSha);
+          } catch {
+            /* evidence, not a requirement */
+          }
+        }
+        const verdict = await judgeCompletion({
+          goal,
+          claimedSummary: summary,
+          cwd,
+          diff,
+        });
+        if (verdict.verdict === "reject") {
+          saveGoal(sessionId, recordJudgeRejection(goal, new Date()));
+          return {
+            data: {
+              text:
+                `Completion review (fresh context): NOT accepted — ${verdict.reason}\n\n` +
+                "The goal stays active. Address what the review points at, then " +
+                "call UpdateGoal(complete) again with the evidence.",
+              isError: true,
+            },
+          };
+        }
+      }
+
       clearGoal(sessionId);
       return {
         data: {

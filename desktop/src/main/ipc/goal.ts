@@ -26,6 +26,31 @@ export interface GoalStartInput {
 }
 
 /**
+ * Record the workspace's current checkpoint as the goal's baseline — what the
+ * completion judge diffs against. Fire-and-forget: registration stays sync
+ * (the goal must be on screen before it starts working), and a goal without a
+ * baseline just gives its judge one piece of evidence less.
+ */
+function recordBaseline(sid: string, goalId: string): void {
+  void (async () => {
+    try {
+      const { getSessionStore } = await import("../session-store.js");
+      const { getWorkspacePath } = await import("./workspace.js");
+      const { currentCheckpoint } = await import("../agent/checkpoints.js");
+      const workspace =
+        getSessionStore().get(sid)?.workspace || getWorkspacePath();
+      const sha = await currentCheckpoint(sid, workspace);
+      if (!sha) return;
+      const goal = loadGoal(sid);
+      if (goal && goal.id === goalId && !goal.baselineSha)
+        saveGoal(sid, { ...goal, baselineSha: sha });
+    } catch {
+      /* evidence, not a requirement */
+    }
+  })();
+}
+
+/**
  * Start a goal typed as `/goal <objective>` in the composer.
  *
  * No connector grants: a goal started by typing has none, and every outward
@@ -45,6 +70,7 @@ export function registerGoalFromChat(
   );
   if (!result.ok) return { ok: false, error: result.error };
   saveGoal(sid, result.goal);
+  recordBaseline(sid, result.goal.id);
   return { ok: true };
 }
 
@@ -64,6 +90,7 @@ export function registerGoalIPC(): void {
       const result = createGoal(loadGoal(sid), input, new Date(), randomUUID());
       if (!result.ok) return { ok: false, error: result.error };
       saveGoal(sid, result.goal);
+      recordBaseline(sid, result.goal.id);
       return { ok: true, goal: result.goal };
     },
   );

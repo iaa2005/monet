@@ -78,6 +78,18 @@ export interface Goal {
   connectorGrants: string[];
   budget: GoalBudget;
   stats: GoalStats;
+  /**
+   * Shadow-repo checkpoint of the workspace as the goal started — what the
+   * completion judge diffs against to see what the goal actually changed.
+   * Best-effort: recorded after registration, absent for Home goals.
+   */
+  baselineSha?: string;
+  /**
+   * Completions the judge has sent back. Capped (see judge.ts): a judge that
+   * could reject forever would replace one runaway loop with another, so
+   * after the cap the model's claim stands and the budget is the backstop.
+   */
+  judgeRejections?: number;
   updatedAt: string;
 }
 
@@ -185,6 +197,13 @@ export function resumeGoal(goal: Goal, now: Date): Goal {
     status: "active",
     stopReason: undefined,
     stopDetail: undefined,
+  });
+}
+
+/** The judge sent a completion back — count it against its cap. */
+export function recordJudgeRejection(goal: Goal, now: Date): Goal {
+  return stamp(goal, now, {
+    judgeRejections: (goal.judgeRejections ?? 0) + 1,
   });
 }
 
