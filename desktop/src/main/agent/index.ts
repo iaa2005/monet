@@ -801,6 +801,20 @@ export function lastTurnTokens(sessionId: string): number {
 }
 
 /**
+ * Files the session's last runAgent call actually changed — what gates the
+ * verification loop. Only the dedicated edit tools count: a Bash `git status`
+ * changing nothing must not trigger a typecheck, and the model does its edits
+ * through these tools. Reset at the start of every run, so a fix attempt is
+ * judged by what IT edited, not by what the original turn did.
+ */
+const EDIT_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+const editedFilesBySession = new Map<string, Set<string>>();
+
+export function lastRunEditedFiles(sessionId: string): string[] {
+  return [...(editedFilesBySession.get(sessionId) ?? [])];
+}
+
+/**
  * Estimate what currently fills the model's context window, by category — the
  * same pieces runAgent sends (system prompt, tool schemas, conversation). Token
  * counts are rough (chars/4), matching estimateTokens; the point is the mix,
@@ -1068,6 +1082,9 @@ export async function runAgent(
     }
     lastPromptCwd = runCwd;
   }
+
+  // Fresh slate for the verification gate: this run's edits, not history's.
+  editedFilesBySession.set(sessionId, new Set());
 
   // Only a running session can take a mid-turn injection, and anything still
   // undelivered when this returns is dropped rather than carried into the
@@ -1502,6 +1519,13 @@ async function runAgentScoped(
       // above says the same thing to anyone downstream — the renderer's task
       // panel was doing exactly that, since it only had the event to go on.
       recordFinish(tc.id, result.content, result.isError === true);
+      // A successful edit marks the run as having changed the workspace — the
+      // signal the verification loop gates on.
+      if (!result.isError && EDIT_TOOLS.has(tc.name)) {
+        const p = tc.input.file_path ?? tc.input.notebook_path;
+        if (typeof p === "string" && p)
+          editedFilesBySession.get(sessionId)?.add(p);
+      }
       return {
         tool_use_id: tc.id,
         content: result.content,

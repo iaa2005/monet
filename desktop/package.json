@@ -27,6 +27,7 @@
     "smoke:batching": "node scripts/renderer-probe.mjs scripts/batching-probe.ts",
     "smoke:swarm": "node scripts/renderer-probe.mjs scripts/swarm-probe.ts",
     "smoke:goal": "node scripts/renderer-probe.mjs scripts/goal-probe.ts",
+    "smoke:verify": "node scripts/renderer-probe.mjs scripts/verify-probe.ts",
     "smoke:acp": "node scripts/acp-probe.mjs",
     "smoke:icons": "node scripts/renderer-probe.mjs scripts/icons-probe.ts",
     "smoke:modal": "node scripts/modal-click-probe.mjs",

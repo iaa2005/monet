@@ -20,6 +20,7 @@ import {
   undoPrompts,
   undoableTurnCount,
   lastTurnTokens,
+  lastRunEditedFiles,
 } from "../agent/index.js";
 import type { UiPermissionMode } from "../agent/permission-types.js";
 import { injectMessage } from "../agent/injection.js";
@@ -409,6 +410,7 @@ export function registerChatIPC(): void {
       // with the same permissions, checkpoints and transcript handling.
       const { driveGoal } = await import("../agent/goal/driver.js");
       const { loadGoal } = await import("../agent/goal/store.js");
+      const hadGoal = loadGoal(sessionId) != null;
       if (loadGoal(sessionId)?.status === "active") {
         await driveGoal(
           (prompt) => runAgent(sessionId, prompt, emit, runOptions),
@@ -419,6 +421,39 @@ export function registerChatIPC(): void {
             onGoalEvent: emit,
           },
         );
+      }
+
+      // The verification loop: after a turn that edited files, run the
+      // project's own checks and bounce any failure back as another turn —
+      // see verify/loop.ts. Not in Home (no workspace to check), and not on
+      // goal runs, where the goal driver owns continuation and the judge
+      // owns completion.
+      if (
+        !hadGoal &&
+        payload.space !== "home" &&
+        !abort.signal.aborted &&
+        lastRunEditedFiles(sessionId).length > 0
+      ) {
+        const { getVerifyConfig, knownRedFor } = await import("../verify/state.js");
+        const cfg = getVerifyConfig();
+        if (cfg.enabled) {
+          const { runVerifyLoop } = await import("../verify/loop.js");
+          const outcome = await runVerifyLoop({
+            cwd,
+            runTurn: (prompt) => runAgent(sessionId, prompt, emit, runOptions),
+            isAborted: () => abort.signal.aborted,
+            emit,
+            maxAttempts: cfg.maxAttempts,
+            knownRed: knownRedFor(cwd),
+          });
+          // A loop that gave up leaves the same amber mark a failed turn does —
+          // the chat needs the user, and the sidebar should say so.
+          if (outcome.status === "gave-up")
+            getSessionStore().setLastError(
+              sessionId,
+              `Verification: ${outcome.failure?.check ?? "checks"} still failing`,
+            );
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";

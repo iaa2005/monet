@@ -31,6 +31,7 @@ import { ModalityBadges } from "@/components/providers/ModalityBadges";
 import type { Modality } from "@/stores/providerStore";
 import { StagedFileTile } from "@/components/FileCard";
 import { GoalStrip } from "./GoalStrip";
+import { VerifyStrip } from "./VerifyStrip";
 import { kindOf, refToken, usedRefs, type RefKind } from "@/lib/selection-marks";
 import { chatRef as chatMentionRef, fileRef as fileMentionRef } from "@/lib/refs";
 import { toneForLabel } from "@shared/selection-tones";
@@ -1199,6 +1200,9 @@ export function MessageInput({
         {/* Autonomy needs a visible handle: what is running, how far in, and
             pause/cancel one click away. */}
         <GoalStrip />
+
+        {/* The verification loop's word — checking, fixing, or its verdict. */}
+        <VerifyStrip />
 
         {files.length > 0 && (
           // Same tile as the Content panel, so a file looks the same before

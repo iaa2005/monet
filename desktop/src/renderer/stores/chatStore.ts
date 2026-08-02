@@ -211,6 +211,9 @@ interface SessionState {
   isStreaming: boolean;
   usage: ChatUsage | null;
   error: string | null;
+  /** The verification loop's latest word (checking / fixing / verdict) —
+   * drawn by VerifyStrip. Cleared when the user sends the next message. */
+  verify: Extract<LLMEvent, { type: "verify" }> | null;
   /** Messages queued while streaming — sent automatically when the run ends. */
   queue: ChatMessage[];
   /**
@@ -232,6 +235,7 @@ const EMPTY: SessionState = {
   isStreaming: false,
   usage: null,
   error: null,
+  verify: null,
   queue: [],
   hydrated: false,
 };
@@ -683,6 +687,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
         );
         return { ...prev, messages: msgs };
       }
+      case "verify": {
+        // The strip shows the latest word only — each event replaces the last.
+        return { ...prev, verify: event };
+      }
       case "checkpoint": {
         // Attach the workspace snapshot to the turn's final assistant message
         // so its "Rewind to here" can restore that state.
@@ -899,6 +907,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
         ...p,
         messages: [...p.messages, msg],
         error: null,
+        // The last send's verification verdict is history once a new message
+        // goes out — the loop will speak for itself again if it runs.
+        verify: null,
       }));
       return msg;
     },

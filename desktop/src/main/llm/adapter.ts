@@ -110,6 +110,18 @@ export type LLMEvent =
       /** Why it stopped, when it did. */
       detail?: string;
     }
+  // The verification loop: the harness running the project's own checks after
+  // a turn that edited files, and fixing what they find (see verify/loop.ts).
+  | {
+      type: "verify";
+      phase: "checking" | "fixing" | "clean" | "fixed" | "gave-up" | "known-red";
+      /** Fix turns taken so far. */
+      attempt: number;
+      maxAttempts: number;
+      /** The failing check's name, when there is one. */
+      check?: string;
+      detail?: string;
+    }
   | {
       type: "tool_result";
       toolUseID: string;

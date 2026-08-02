@@ -81,6 +81,16 @@ export type LLMEvent =
       final?: boolean
     }
   | { type: 'checkpoint'; sha: string }
+  /** The verification loop: the harness running the project's own checks
+   * after a turn that edited files (see main/verify/loop.ts). */
+  | {
+      type: 'verify'
+      phase: 'checking' | 'fixing' | 'clean' | 'fixed' | 'gave-up' | 'known-red'
+      attempt: number
+      maxAttempts: number
+      check?: string
+      detail?: string
+    }
   /** Goal mode state, emitted on every change (see agent/goal/driver.ts). */
   | {
       type: 'goal'
