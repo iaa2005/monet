@@ -185,6 +185,30 @@ const electronAPI = {
       name?: string,
     ): Promise<{ ok: boolean; savedTo?: string; error?: string }> =>
       ipcRenderer.invoke("files:saveAs", path, name),
+    create: (
+      parentDir: string,
+      name: string,
+      isDirectory: boolean,
+    ): Promise<{ ok: boolean; path?: string; error?: string }> =>
+      ipcRenderer.invoke("files:create", parentDir, name, isDirectory),
+    rename: (
+      path: string,
+      newName: string,
+    ): Promise<{ ok: boolean; path?: string; error?: string }> =>
+      ipcRenderer.invoke("files:rename", path, newName),
+    duplicate: (
+      path: string,
+    ): Promise<{ ok: boolean; path?: string; error?: string }> =>
+      ipcRenderer.invoke("files:duplicate", path),
+    trash: (path: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("files:trash", path),
+    addToGitignore: (
+      root: string,
+      path: string,
+    ): Promise<{ ok: boolean; line?: string; error?: string }> =>
+      ipcRenderer.invoke("files:addToGitignore", root, path),
+    reveal: (path: string): Promise<void> =>
+      ipcRenderer.invoke("files:reveal", path),
   },
 
   shell: {

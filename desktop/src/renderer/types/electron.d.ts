@@ -445,6 +445,24 @@ export interface ElectronAPI {
       path: string,
       name?: string,
     ) => Promise<{ ok: boolean; savedTo?: string; error?: string }>;
+    create: (
+      parentDir: string,
+      name: string,
+      isDirectory: boolean,
+    ) => Promise<{ ok: boolean; path?: string; error?: string }>;
+    rename: (
+      path: string,
+      newName: string,
+    ) => Promise<{ ok: boolean; path?: string; error?: string }>;
+    duplicate: (
+      path: string,
+    ) => Promise<{ ok: boolean; path?: string; error?: string }>;
+    trash: (path: string) => Promise<{ ok: boolean; error?: string }>;
+    addToGitignore: (
+      root: string,
+      path: string,
+    ) => Promise<{ ok: boolean; line?: string; error?: string }>;
+    reveal: (path: string) => Promise<void>;
   };
   shell: {
     openExternal: (url: string) => Promise<{ ok: boolean }>;

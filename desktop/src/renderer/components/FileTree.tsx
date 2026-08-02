@@ -10,8 +10,15 @@ import {
   ChevronRight,
   ChevronDown,
   AlertTriangle,
+  Copy,
+  ExternalLink,
   FileText,
+  FilePlus,
   FolderOpen,
+  FolderPlus,
+  GitBranch,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsDark } from "@/components/chat/highlight";
@@ -153,6 +160,138 @@ function LargeFileDialog({
   );
 }
 
+/** Where the context menu is open, and on what. `entry: null` = the empty
+ * area below the rows — root-level actions. */
+interface MenuState {
+  x: number;
+  y: number;
+  entry: FileEntry | null;
+}
+
+/** The inline name prompt: what it's for decides the wording and the action. */
+interface NamePrompt {
+  kind: "new-file" | "new-folder" | "rename";
+  /** Directory the new entry lands in (create), or the entry itself (rename). */
+  entry: FileEntry | null;
+}
+
+const PROMPT_TITLES: Record<NamePrompt["kind"], string> = {
+  "new-file": "New file",
+  "new-folder": "New folder",
+  rename: "Rename",
+};
+
+function NamePromptDialog({
+  prompt,
+  initial,
+  onSubmit,
+  onCancel,
+}: {
+  prompt: NamePrompt;
+  initial: string;
+  onSubmit: (name: string) => Promise<string | null>;
+  onCancel: () => void;
+}): JSX.Element {
+  const [value, setValue] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.focus();
+    // Rename selects the stem, like every file manager — the extension is
+    // usually the part being kept.
+    const dot = prompt.kind === "rename" ? initial.lastIndexOf(".") : -1;
+    el.setSelectionRange(0, dot > 0 ? dot : initial.length);
+  }, [prompt.kind, initial]);
+
+  const submit = async (): Promise<void> => {
+    if (busy) return;
+    setBusy(true);
+    const err = await onSubmit(value);
+    setBusy(false);
+    if (err) setError(err);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-[20vh]"
+      onMouseDown={onCancel}
+    >
+      <div
+        className="mx-4 w-full max-w-sm rounded-xl border border-border bg-card p-4 shadow-xl"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="text-sm font-medium">{PROMPT_TITLES[prompt.kind]}</div>
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void submit();
+            if (e.key === "Escape") onCancel();
+          }}
+          spellCheck={false}
+          className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-1.5 font-mono text-[13px] outline-none focus:ring-1 focus:ring-foreground/20"
+        />
+        {error && <p className="mt-1.5 text-xs text-destructive">{error}</p>}
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md px-3 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={busy || !value.trim()}
+            onClick={() => void submit()}
+            className="rounded-md bg-foreground px-3 py-1.5 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {prompt.kind === "rename" ? "Rename" : "Create"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MenuItem({
+  icon,
+  label,
+  danger,
+  onClick,
+}: {
+  icon: JSX.Element;
+  label: string;
+  danger?: boolean;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] transition-colors",
+        danger
+          ? "text-destructive hover:bg-destructive/10"
+          : "hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
+      )}
+    >
+      <span className={cn("shrink-0", danger ? "" : "text-muted-foreground")}>{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+const MenuSep = (): JSX.Element => <div className="my-1 h-px bg-border" />;
+
 /** Directory contents, sorted the way the tree shows them: folders first. */
 function sortEntries(items: FileEntry[]): FileEntry[] {
   return items
@@ -179,6 +318,7 @@ const Row = memo(function Row({
   dark,
   onToggle,
   onOpen,
+  onMenu,
 }: {
   entry: FileEntry;
   depth: number;
@@ -187,6 +327,7 @@ const Row = memo(function Row({
   dark: boolean;
   onToggle: (entry: FileEntry) => void;
   onOpen: (entry: FileEntry) => void;
+  onMenu: (entry: FileEntry, x: number, y: number) => void;
 }): JSX.Element {
   const iconSrc = resolveIcon(entry.name, entry.isDirectory, expanded, dark);
   return (
@@ -196,6 +337,11 @@ const Row = memo(function Row({
       onClick={() => onToggle(entry)}
       onDoubleClick={() => {
         if (!entry.isDirectory) onOpen(entry);
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onMenu(entry, e.clientX, e.clientY);
       }}
     >
       {entry.isDirectory ? (
@@ -256,6 +402,13 @@ export function FileTree({
     path: string;
     size: number;
   } | null>(null);
+  // The context menu and the name prompt it opens. The sandbox tree (an
+  // explicit rootPath) gets the REDUCED menu: those files belong to the
+  // agent's working area — open, reveal, copy, trash; authoring happens in
+  // the workspace tree.
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const [prompt, setPrompt] = useState<NamePrompt | null>(null);
+  const [opNotice, setOpNotice] = useState<string | null>(null);
   // Bumped by the disk watcher. Only open folders refetch — a collapsed one
   // will read fresh from disk whenever it is opened.
   const [refreshKey, setRefreshKey] = useState(0);
@@ -442,6 +595,77 @@ export function FileTree({
     [onOpenFile],
   );
 
+  // ── Context-menu machinery ────────────────────────────────────────────
+  const rootDir = rootPath ?? root?.path;
+  // An explicit rootPath is the sandbox tree — reduced menu (see MenuState).
+  const lite = !!rootPath;
+
+  const openMenu = useCallback(
+    (entry: FileEntry | null, x: number, y: number) =>
+      setMenu({ x, y, entry }),
+    [],
+  );
+
+  useEffect(() => {
+    if (!menu) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setMenu(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menu]);
+
+  const notice = (text: string): void => {
+    setOpNotice(text);
+    window.setTimeout(() => setOpNotice((cur) => (cur === text ? null : cur)), 4000);
+  };
+
+  const parentOf = (p: string): string => p.replace(/[\\/][^\\/]*$/, "");
+  const relOf = (p: string): string => {
+    const r = (rootDir ?? "").replace(/\\/g, "/");
+    const q = p.replace(/\\/g, "/");
+    return r && q.startsWith(`${r}/`) ? q.slice(r.length + 1) : q;
+  };
+
+  /** Close the menu, run the action, surface its failure as a notice. */
+  const act =
+    (fn: () => void | Promise<{ ok: boolean; error?: string } | void>) =>
+    (): void => {
+      setMenu(null);
+      void (async () => {
+        const r = await fn();
+        if (r && "ok" in r && !r.ok) notice(r.error ?? "The operation failed.");
+      })();
+    };
+
+  const submitPrompt = async (name: string): Promise<string | null> => {
+    if (!prompt) return null;
+    const a = api();
+    if (prompt.kind === "rename") {
+      if (!prompt.entry) return "Nothing to rename.";
+      const r = await a.files.rename(prompt.entry.path, name);
+      if (!r.ok) return r.error ?? "Rename failed.";
+    } else {
+      const base = prompt.entry
+        ? prompt.entry.isDirectory
+          ? prompt.entry.path
+          : parentOf(prompt.entry.path)
+        : rootDir;
+      if (!base) return "No folder to create in.";
+      const r = await a.files.create(base, name, prompt.kind === "new-folder");
+      if (!r.ok) return r.error ?? "Create failed.";
+      // A folder you just created into should be open to show the result.
+      if (prompt.entry?.isDirectory) {
+        const dir = prompt.entry.path;
+        setExpanded((cur) => new Set(cur).add(dir));
+      }
+      if (prompt.kind === "new-file" && r.path) onSelectFile?.(r.path);
+    }
+    setPrompt(null);
+    setRefreshKey((k) => k + 1);
+    return null;
+  };
+
   const rows = useMemo(
     () => flattenTree(root?.children ?? [], expanded, childrenOf),
     [root, expanded, childrenOf],
@@ -476,6 +700,12 @@ export function FileTree({
         ref={scrollRef}
         className="flex-1 overflow-auto"
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        onContextMenu={(e) => {
+          // Rows stopPropagation, so reaching here means the empty area —
+          // root-level actions.
+          e.preventDefault();
+          openMenu(null, e.clientX, e.clientY);
+        }}
       >
         {hits !== null ? (
           hits.length === 0 ? (
@@ -490,6 +720,7 @@ export function FileTree({
                   hit={h}
                   dark={dark}
                   onSelectFile={onSelectFile}
+                  onMenu={openMenu}
                 />
               ))}
               {truncated && (
@@ -519,12 +750,157 @@ export function FileTree({
                 dark={dark}
                 onToggle={toggle}
                 onOpen={openEntry}
+                onMenu={openMenu}
               />
             ))}
             <div style={{ height: win.padBottom }} />
           </>
         )}
       </div>
+
+      {opNotice && (
+        <div className="border-t border-border px-2 py-1 text-[11px] text-muted-foreground">
+          {opNotice}
+        </div>
+      )}
+
+      {menu &&
+        (() => {
+          const entry = menu.entry;
+          return (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onMouseDown={() => setMenu(null)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu(null);
+                }}
+              />
+              <div
+                className="fixed z-50 w-56 rounded-lg border border-border bg-card p-1 shadow-xl"
+                style={{
+                  left: Math.min(menu.x, window.innerWidth - 236),
+                  top: Math.min(menu.y, window.innerHeight - 380),
+                }}
+              >
+                {entry && !entry.isDirectory && (
+                  <>
+                    <MenuItem
+                      icon={<FileText className="size-4" />}
+                      label="Open"
+                      onClick={act(() => onSelectFile?.(entry.path))}
+                    />
+                    <MenuItem
+                      icon={<ExternalLink className="size-4" />}
+                      label="Open in Default App"
+                      onClick={act(() => void api().shell.openPath(entry.path))}
+                    />
+                  </>
+                )}
+                {!lite && (
+                  <>
+                    <MenuItem
+                      icon={<FilePlus className="size-4" />}
+                      label="New File…"
+                      onClick={act(() => setPrompt({ kind: "new-file", entry }))}
+                    />
+                    <MenuItem
+                      icon={<FolderPlus className="size-4" />}
+                      label="New Folder…"
+                      onClick={act(() => setPrompt({ kind: "new-folder", entry }))}
+                    />
+                  </>
+                )}
+                <MenuSep />
+                <MenuItem
+                  icon={<FolderOpen className="size-4" />}
+                  label="Reveal in File Explorer"
+                  onClick={act(() => {
+                    const p = entry?.path ?? rootDir;
+                    if (p) void api().files.reveal(p);
+                  })}
+                />
+                {entry && (
+                  <>
+                    <MenuSep />
+                    {!lite && (
+                      <MenuItem
+                        icon={<Copy className="size-4" />}
+                        label="Duplicate"
+                        onClick={act(() => api().files.duplicate(entry.path))}
+                      />
+                    )}
+                    <MenuItem
+                      icon={<Copy className="size-4" />}
+                      label="Copy Path"
+                      onClick={act(() => {
+                        void navigator.clipboard.writeText(entry.path);
+                        notice("Path copied.");
+                      })}
+                    />
+                    {!lite && (
+                      <MenuItem
+                        icon={<Copy className="size-4" />}
+                        label="Copy Relative Path"
+                        onClick={act(() => {
+                          void navigator.clipboard.writeText(relOf(entry.path));
+                          notice("Relative path copied.");
+                        })}
+                      />
+                    )}
+                    {!lite && (
+                      <>
+                        <MenuSep />
+                        <MenuItem
+                          icon={<GitBranch className="size-4" />}
+                          label="Add to .gitignore"
+                          onClick={act(async () => {
+                            if (!rootDir) return;
+                            const r = await api().files.addToGitignore(
+                              rootDir,
+                              entry.path,
+                            );
+                            if (r.ok) notice(`Added ${r.line} to .gitignore.`);
+                            return r;
+                          })}
+                        />
+                      </>
+                    )}
+                    <MenuSep />
+                    {!lite && (
+                      <MenuItem
+                        icon={<Pencil className="size-4" />}
+                        label="Rename…"
+                        onClick={act(() => setPrompt({ kind: "rename", entry }))}
+                      />
+                    )}
+                    {/* Trash, never unlink — a right-click must be recoverable. */}
+                    <MenuItem
+                      icon={<Trash2 className="size-4" />}
+                      label="Move to Trash"
+                      danger
+                      onClick={act(async () => {
+                        const r = await api().files.trash(entry.path);
+                        if (r.ok) setRefreshKey((k) => k + 1);
+                        return r;
+                      })}
+                    />
+                  </>
+                )}
+              </div>
+            </>
+          );
+        })()}
+
+      {prompt && (
+        <NamePromptDialog
+          prompt={prompt}
+          initial={prompt.kind === "rename" ? (prompt.entry?.name ?? "") : ""}
+          onSubmit={submitPrompt}
+          onCancel={() => setPrompt(null)}
+        />
+      )}
 
       {largeFileDialog && (
         <LargeFileDialog
@@ -552,10 +928,12 @@ function SearchRow({
   hit,
   dark,
   onSelectFile,
+  onMenu,
 }: {
   hit: SearchHit;
   dark: boolean;
   onSelectFile?: (path: string) => void;
+  onMenu?: (entry: FileEntry, x: number, y: number) => void;
 }): JSX.Element {
   const iconSrc = resolveIcon(hit.name, hit.isDirectory, false, dark);
   const dir = hit.rel.slice(0, hit.rel.length - hit.name.length - 1);
@@ -567,6 +945,20 @@ function SearchRow({
       )}
       onClick={() => {
         if (!hit.isDirectory) onSelectFile?.(hit.path);
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onMenu?.(
+          {
+            name: hit.name,
+            path: hit.path,
+            isDirectory: hit.isDirectory,
+            isFile: !hit.isDirectory,
+          },
+          e.clientX,
+          e.clientY,
+        );
       }}
     >
       <img

@@ -31,6 +31,7 @@
     "smoke:judge": "node scripts/renderer-probe.mjs scripts/judge-probe.ts",
     "smoke:lessons": "node scripts/smoke-agent.mjs scripts/lessons-probe.ts",
     "smoke:runnotes": "node scripts/smoke-agent.mjs scripts/run-notes-probe.ts",
+    "smoke:fileops": "node scripts/renderer-probe.mjs scripts/file-ops-probe.ts",
     "smoke:acp": "node scripts/acp-probe.mjs",
     "smoke:icons": "node scripts/renderer-probe.mjs scripts/icons-probe.ts",
     "smoke:modal": "node scripts/modal-click-probe.mjs",
