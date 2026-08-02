@@ -9,6 +9,7 @@ import {
   Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ErrorMark } from "@/components/ErrorMark";
 import { ExportChatModal } from "@/components/chat/ExportChatModal";
 import { useChatStore } from "@/stores/chatStore";
 import type { ChatMessage } from "@/types/chat";
@@ -92,6 +93,23 @@ export function SessionList({
   const runningIds = useMemo(
     () => new Set(runningKey ? runningKey.split(",") : []),
     [runningKey],
+  );
+
+  // A chat that STOPPED on an error wears a warning instead of its dot. Same
+  // subscription shape as running, and for the same reason: a set of ids
+  // rather than the state itself, so a streaming flush does not re-render the
+  // whole sidebar. The error clears itself the moment the chat is continued
+  // (startStreaming resets it), so the mark disappears when the trouble does.
+  const erroredKey = useChatStore((s) =>
+    Object.entries(s.sessions)
+      .filter(([, st]) => !!st.error && !st.isStreaming)
+      .map(([id]) => id)
+      .sort()
+      .join(","),
+  );
+  const erroredIds = useMemo(
+    () => new Set(erroredKey ? erroredKey.split(",") : []),
+    [erroredKey],
   );
 
   const loadSessions = async (): Promise<void> => {
@@ -268,17 +286,21 @@ export function SessionList({
                   className="flex min-w-0 flex-1 items-center gap-2"
                   onClick={() => handleSelect(s.id)}
                 >
-                  <span
-                    className={cn(
-                      "size-1.5 shrink-0 rounded-full",
-                      runningIds.has(s.id)
-                        ? "animate-pulse bg-green-text"
-                        : active
-                          ? "bg-link"
-                          : "bg-transparent border-2 border-border",
-                    )}
-                    title={runningIds.has(s.id) ? "Running…" : undefined}
-                  />
+                  {erroredIds.has(s.id) ? (
+                    <ErrorMark className="size-3" />
+                  ) : (
+                    <span
+                      className={cn(
+                        "size-1.5 shrink-0 rounded-full",
+                        runningIds.has(s.id)
+                          ? "animate-pulse bg-green-text"
+                          : active
+                            ? "bg-link"
+                            : "bg-transparent border-2 border-border",
+                      )}
+                      title={runningIds.has(s.id) ? "Running…" : undefined}
+                    />
+                  )}
                   <span className="min-w-0 flex-1">
                     <span
                       className={cn(

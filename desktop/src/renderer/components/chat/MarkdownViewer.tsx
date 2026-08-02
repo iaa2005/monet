@@ -16,6 +16,7 @@ import { ArtifactThumb } from "@/components/ArtifactsPanel";
 import { viewArtifact } from "@/components/artifact-actions";
 import { isWebLink, openLink, wantsExternal } from "@/lib/open-link";
 import { splitMarkdownChunks } from "@/lib/markdown-chunks";
+import { escapeCurrencyDollars } from "@/lib/currency-dollars";
 
 interface MarkdownViewerProps {
   content: string;
@@ -106,7 +107,11 @@ function MarkdownViewerImpl({
   // Extract YAML frontmatter so it can be rendered as a code block.
   const { frontmatter, body } = useMemo(() => {
     const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(raw);
-    return m ? { frontmatter: m[1].trimEnd(), body: m[2] } : { frontmatter: null, body: raw };
+    // Prices are not formulas: "$5 … $10" would otherwise parse as maths and
+    // set the sentence between them in KaTeX italics (lib/currency-dollars).
+    return m
+      ? { frontmatter: m[1].trimEnd(), body: escapeCurrencyDollars(m[2]) }
+      : { frontmatter: null, body: escapeCurrencyDollars(raw) };
   }, [raw]);
 
   // Big documents arrive in pieces; small ones stay exactly as they were.

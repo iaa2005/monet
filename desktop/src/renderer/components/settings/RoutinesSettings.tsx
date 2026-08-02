@@ -49,6 +49,7 @@ import { MicButton } from "@/components/chat/MicButton";
 import { ServiceIcon } from "@/components/directory/shared";
 import { useChatStore } from "@/stores/chatStore";
 import { cn } from "@/lib/utils";
+import { ErrorMark } from "@/components/ErrorMark";
 import type {
   ElectronAPI,
   Routine,
@@ -355,7 +356,11 @@ export function RoutinesSettings({
                 <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Clock className="size-3" />
                   {triggerSentence(r)}
-                  {r.lastStatus && <StatusPill status={r.lastStatus} />}
+                  {r.lastStatus === "error" ? (
+                    <ErrorMark title="Last run failed" className="size-3" />
+                  ) : (
+                    r.lastStatus && <StatusPill status={r.lastStatus} />
+                  )}
                 </div>
               </button>
               <button

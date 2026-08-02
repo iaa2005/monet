@@ -56,6 +56,7 @@
     "smoke:filerows": "node scripts/renderer-probe.mjs scripts/file-rows-probe.ts",
     "smoke:ghbudget": "node scripts/renderer-probe.mjs scripts/gh-budget-probe.ts",
     "smoke:shadow": "node scripts/renderer-probe.mjs scripts/checkpoint-store-probe.ts",
+    "smoke:currency": "node scripts/renderer-probe.mjs scripts/currency-dollar-probe.ts",
     "smoke:latex": "node scripts/renderer-probe.mjs scripts/latex-dollar-probe.ts",
     "smoke:skillnew": "node scripts/renderer-probe.mjs scripts/skill-authoring-probe.ts",
     "smoke:home": "node scripts/renderer-probe.mjs scripts/home-toolset-probe.ts",
