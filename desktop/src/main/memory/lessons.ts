@@ -212,7 +212,12 @@ export function buildLessonsPrompt(workspace: string | undefined): string | null
 // ─── Signals ────────────────────────────────────────────────────────────
 
 export interface LessonSignal {
-  kind: "tool-error" | "chat-error" | "goal-stopped" | "known-red";
+  kind:
+    | "tool-error"
+    | "chat-error"
+    | "goal-stopped"
+    | "known-red"
+    | "budget-spent";
   text: string;
 }
 
@@ -276,6 +281,29 @@ export async function gatherSignals(
       push(r.workspace, {
         kind: "chat-error",
         text: `Chat "${clipText(r.title, 60)}" stopped on: ${clipText(r.last_error, 160)}`,
+      });
+
+    // Runs that hit the wall rather than finishing: the step budget ran out,
+    // or the model answered with nothing. Neither leaves an error behind, so
+    // without this the most instructive failures — a whole run spent on an
+    // approach that could not work — teach nothing.
+    const stuckRows = db
+      .prepare(
+        `SELECT workspace, title, last_stop_reason FROM sessions
+          WHERE last_stop_reason IS NOT NULL
+            AND (last_stop_reason LIKE '%max_turns%'
+                 OR last_stop_reason LIKE '%empty reply%')
+            AND workspace IS NOT NULL AND workspace != ''
+          ORDER BY updated_at DESC LIMIT 20`,
+      )
+      .all() as { workspace: string; title: string; last_stop_reason: string }[];
+    for (const r of stuckRows)
+      push(r.workspace, {
+        kind: "budget-spent",
+        text:
+          `Chat "${clipText(r.title, 60)}" ended on ${r.last_stop_reason} — ` +
+          `the run was cut off rather than finishing, so the approach it was ` +
+          `taking probably could not have worked.`,
       });
 
     // Goals that stopped without completing. Goal files are named by session

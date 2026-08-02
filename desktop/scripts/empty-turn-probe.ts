@@ -11,7 +11,7 @@
 
 import type { LLMMessage } from '../src/main/llm/adapter.js'
 import {
-  appendNudge,
+  appendUserText,
   isEmptyReply,
   MAX_NUDGES,
   NUDGE,
@@ -78,7 +78,7 @@ check('and the budget is small', MAX_NUDGES <= 2, MAX_NUDGES)
       ],
     },
   ]
-  const where = appendNudge(messages)
+  const where = appendUserText(messages)
   const last = messages[messages.length - 1]!
   check('it merges into the tool results', where === 'merged', where)
   check('no new turn is created', messages.length === 2, messages.length)
@@ -97,7 +97,7 @@ check('and the budget is small', MAX_NUDGES <= 2, MAX_NUDGES)
   // plain string. Their words must survive verbatim, and the roles must not
   // end up user-then-user.
   const messages: LLMMessage[] = [{ role: 'user', content: 'сделай график' }]
-  const where = appendNudge(messages)
+  const where = appendUserText(messages)
   const last = messages[messages.length - 1]!
   check('a string prompt is widened, not replaced', where === 'merged')
   check('still one turn', messages.length === 1)
@@ -114,7 +114,7 @@ check('and the budget is small', MAX_NUDGES <= 2, MAX_NUDGES)
   // Not a shape the loop produces — but losing the run would be worse than
   // an extra turn.
   const messages: LLMMessage[] = [{ role: 'assistant', content: 'hm' }]
-  check('an assistant tail gets a real user turn', appendNudge(messages) === 'pushed')
+  check('an assistant tail gets a real user turn', appendUserText(messages) === 'pushed')
   check('which carries the nudge', messages[1]!.content === NUDGE)
 }
 

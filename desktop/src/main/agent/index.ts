@@ -61,11 +61,20 @@ import { buildLessonsPrompt } from "../memory/lessons.js";
 import { getWorkspacePath } from "../ipc/workspace.js";
 import { goalHistoryBlock, goalRunNotes } from "./run-notes.js";
 import {
-  appendNudge,
+  appendUserText,
   isEmptyReply,
   MAX_NUDGES,
   shouldNudge,
 } from "./empty-turn.js";
+import {
+  budgetWarning,
+  callSignature,
+  extensionFor,
+  extensionNote,
+  shouldWarnBudget,
+  stepsLeft,
+  WRAP_UP_PROMPT,
+} from "./turn-budget.js";
 import { getProfilePrompt } from "../profile.js";
 import { tunablePrompt } from "../prompts/index.js";
 import {
@@ -1268,7 +1277,14 @@ async function runAgentScoped(
   let nudgesUsed = 0;
   let nudgedLastTurn = false;
 
-  for (let turn = 0; turn < maxTurns; turn++) {
+  // The step budget MOVES: a run that keeps producing new work earns more
+  // turns, a run repeating itself does not. `maxTurns` is where it starts,
+  // not where it must end — see turn-budget.ts.
+  let budget = maxTurns;
+  let extensionsUsed = 0;
+  const callSignatures: string[] = [];
+
+  for (let turn = 0; turn < budget; turn++) {
     if (signal?.aborted) {
       onEvent({ type: "error", error: "Aborted" });
       onEvent({ type: "message_stop", stop_reason: "abort" });
@@ -1360,12 +1376,16 @@ async function runAgentScoped(
         },
         (event) => {
           if (event.type === "text_delta") assistantText += event.text;
-          if (event.type === "tool_use")
+          if (event.type === "tool_use") {
             toolCalls.push({
               id: event.id,
               name: event.name,
               input: event.input,
             });
+            // What the budget's extension decision is made of: repetition is
+            // the difference between a long job and a stuck one.
+            callSignatures.push(callSignature(event.name, event.input ?? {}));
+          }
           if (event.type === "error") streamError = event.error;
           // Suppress the PER-TURN message_stop: in an agentic run each tool-use
           // turn's stream ends with a message_stop, but the task isn't done —
@@ -1455,7 +1475,7 @@ async function runAgentScoped(
         console.warn(
           `[agent] empty reply (stop_reason=${lastStopReason ?? "n/a"}) — nudging (${nudgesUsed}/${MAX_NUDGES})`,
         );
-        appendNudge(messages);
+        appendUserText(messages);
         persistTranscript(sessionId);
         continue;
       }
@@ -1641,12 +1661,79 @@ async function runAgentScoped(
       if (Array.isArray(last.content))
         last.content.push({ type: "text", text: formatInjection(injected) });
     }
+
+    // At the wall, but still doing new things? Then the wall was in the wrong
+    // place. Bounded and evidence-based: repetition is what refuses it.
+    const extra = extensionFor({
+      turnsDone: turn + 1,
+      budget,
+      extensionsUsed,
+      signatures: callSignatures,
+    });
+    if (extra > 0) {
+      budget += extra;
+      extensionsUsed++;
+      console.log(
+        `[agent] step budget extended by ${extra} to ${budget} (still producing new work)`,
+      );
+      appendUserText(messages, extensionNote(extra, budget));
+    }
+
+    // The step budget exists whether or not the model knows about it, and
+    // until now it did not: it spent forty turns as if they were free and
+    // got cut off mid-thought. One line, once, riding back with the tool
+    // results it is about to read.
+    if (shouldWarnBudget(turn, budget))
+      appendUserText(messages, budgetWarning(stepsLeft(turn, budget)));
+
     persistTranscript(sessionId);
   }
 
-  // Loop fell through maxTurns without a natural end (no more tool calls) —
-  // emit the terminal message_stop anyway so the UI doesn't stay stuck
-  // "streaming" forever.
+  // The step budget ran out with work still in flight. Ending here is what
+  // the loop used to do, and it threw the whole run away: forty turns of
+  // findings and not one word on screen about them. So the run gets ONE more
+  // turn with the tools taken away — it cannot act any more, but it can hand
+  // the work over. See turn-budget.ts.
+  let wrapUpText = "";
+  if (!signal?.aborted) {
+    appendUserText(messages, WRAP_UP_PROMPT);
+    try {
+      await adapter.stream(
+        {
+          model: runModel,
+          system: systemPrompt,
+          messages,
+          // No tools: a model that still believes it can act will spend this
+          // turn on a call nobody will answer, and end in the same silence.
+          tools: [],
+          max_tokens: provider.maxTokens || 16000,
+          temperature: provider.temperature,
+          effort: provider.supportsEffort ? effort : undefined,
+          routing: provider.routing,
+        },
+        (event) => {
+          if (event.type === "text_delta") wrapUpText += event.text;
+          // Ours is the authoritative one, below.
+          if (event.type === "message_stop") return;
+          onEvent(event);
+        },
+        signal,
+      );
+    } catch (err) {
+      // A failed handoff is not worth failing the run over — the turn budget
+      // is the thing that ended it either way.
+      console.warn(
+        `[agent] wrap-up turn failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+    if (wrapUpText) messages.push({ role: "assistant", content: wrapUpText });
+  }
+
   persistTranscript(sessionId);
-  onEvent({ type: "message_stop", stop_reason: "max_turns" });
+  onEvent({
+    type: "message_stop",
+    stop_reason: "max_turns",
+    // Nothing said even after being asked to say something.
+    empty: !wrapUpText.trim(),
+  });
 }

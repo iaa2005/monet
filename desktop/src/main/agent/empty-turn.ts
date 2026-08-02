@@ -52,17 +52,20 @@ export function isEmptyReply(text: string, toolCallCount: number): boolean {
 export type NudgePlacement = "merged" | "pushed" | "none";
 
 /**
- * Put the nudge where it will not break role alternation.
+ * Put a harness-written line where it will not break role alternation.
  *
  * The last message is a user one in every real case (the tool results of the
  * turn that came back empty, or — on an empty first reply — the user's own
  * prompt), and the providers this app speaks to are not all forgiving about
- * two user messages in a row. So the nudge JOINS that message instead of
+ * two user messages in a row. So the line JOINS that message instead of
  * becoming a second one: a text block beside the tool results, which is the
  * same shape mid-turn injections already use. A string body is widened to
  * blocks so the user's own words survive verbatim as their own block.
+ *
+ * Used by the empty-reply nudge and by the step-budget notes alike — what
+ * differs between them is the words, not the placement.
  */
-export function appendNudge(
+export function appendUserText(
   messages: LLMMessage[],
   nudge: string = NUDGE,
 ): NudgePlacement {
