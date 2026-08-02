@@ -132,9 +132,11 @@ export function registerFilesIPC(): void {
   // inside a collapsed folder.
   ipcMain.handle(
     "files:search",
-    async (_event, rootPath: string, query: string) => {
+    async (_event, rootPath: string, query: string, includeHidden?: boolean) => {
       try {
-        return await searchFiles(normPath(rootPath), query);
+        return await searchFiles(normPath(rootPath), query, {
+          includeHidden: includeHidden === true,
+        });
       } catch (err) {
         logFilesError("search", err);
         return { hits: [], truncated: false };

@@ -49,10 +49,17 @@ const SKIP_DIRS = new Set([
   ".vscode",
 ]);
 
-/** Dot-directories are hidden from the tree too — searching them would surface
- * files you cannot then see in the result's context. */
-export function skipDir(name: string): boolean {
-  return name.startsWith(".") || SKIP_DIRS.has(name);
+/**
+ * Whether to walk into a directory.
+ *
+ * SKIP_DIRS is unconditional — `.git` and `node_modules` are noise whatever
+ * the user asked to see. Dot-directories are otherwise skipped only while the
+ * tree is hiding them: searching a folder whose results you cannot then find
+ * in the tree is worse than not searching it.
+ */
+export function skipDir(name: string, includeHidden = false): boolean {
+  if (SKIP_DIRS.has(name)) return true;
+  return !includeHidden && name.startsWith(".");
 }
 
 export interface SearchOptions {
@@ -64,6 +71,9 @@ export interface SearchOptions {
   /** How deep to descend. Deep enough for a real project, shallow enough that
    * a pathological tree cannot run us out of time on its own. */
   maxDepth?: number;
+  /** Match dot-files and descend into dot-folders — set when the tree is
+   * showing them, so search and tree agree about what exists. */
+  includeHidden?: boolean;
 }
 
 /**
@@ -83,6 +93,7 @@ export async function searchFiles(
   const limit = opts.limit ?? 200;
   const budgetMs = opts.budgetMs ?? 3000;
   const maxDepth = opts.maxDepth ?? 12;
+  const includeHidden = opts.includeHidden === true;
   const deadline = Date.now() + budgetMs;
 
   const hits: SearchHit[] = [];
@@ -107,7 +118,9 @@ export async function searchFiles(
       for (const e of entries) {
         const childRel = rel ? `${rel}/${e.name}` : e.name;
         const isDir = e.isDirectory();
-        if (e.name.toLowerCase().includes(q)) {
+        // A hidden entry is a hit only when the tree would show it.
+        const visible = includeHidden || !e.name.startsWith(".");
+        if (visible && e.name.toLowerCase().includes(q)) {
           if (hits.length >= limit) {
             truncated = true;
             return { hits, truncated };
@@ -121,7 +134,7 @@ export async function searchFiles(
         }
         // A skipped folder is skipped for descending, but its own name can
         // still match — the check above already ran.
-        if (isDir && !skipDir(e.name) && depth + 1 <= maxDepth) {
+        if (isDir && !skipDir(e.name, includeHidden) && depth + 1 <= maxDepth) {
           next.push({ dir: join(dir, e.name), rel: childRel, depth: depth + 1 });
         }
       }

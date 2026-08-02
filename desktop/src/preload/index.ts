@@ -158,10 +158,11 @@ const electronAPI = {
     search: (
       rootPath: string,
       query: string,
+      includeHidden?: boolean,
     ): Promise<{
       hits: { name: string; path: string; isDirectory: boolean; rel: string }[];
       truncated: boolean;
-    }> => ipcRenderer.invoke("files:search", rootPath, query),
+    }> => ipcRenderer.invoke("files:search", rootPath, query, includeHidden),
     /** Fires when the workspace changes on disk. Returns an unsubscribe. */
     onChanged: (cb: () => void): (() => void) => {
       const handler = (): void => cb();

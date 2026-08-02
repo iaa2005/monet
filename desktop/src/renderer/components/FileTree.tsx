@@ -13,6 +13,8 @@ import {
   ClipboardPaste,
   Copy,
   ExternalLink,
+  Eye,
+  EyeOff,
   FileText,
   FilePlus,
   FolderOpen,
@@ -304,10 +306,36 @@ function MenuItem({
 
 const MenuSep = (): JSX.Element => <div className="my-1 h-px bg-border" />;
 
+/**
+ * Where "show hidden files" is remembered.
+ *
+ * A view preference, so it lives with the view: localStorage rather than the
+ * session database. It is also read at module load by every tree at once,
+ * which is the point — the sandbox tree and the workspace tree showing
+ * different halves of the same disk would be a puzzle, not a feature.
+ */
+const HIDDEN_KEY = "monet.files.showHidden";
+
+export function readShowHidden(): boolean {
+  try {
+    return localStorage.getItem(HIDDEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeShowHidden(v: boolean): void {
+  try {
+    localStorage.setItem(HIDDEN_KEY, v ? "1" : "0");
+  } catch {
+    /* a preference that cannot be saved still applies to this session */
+  }
+}
+
 /** Directory contents, sorted the way the tree shows them: folders first. */
-function sortEntries(items: FileEntry[]): FileEntry[] {
+function sortEntries(items: FileEntry[], showHidden: boolean): FileEntry[] {
   return items
-    .filter((e) => !e.name.startsWith("."))
+    .filter((e) => showHidden || !e.name.startsWith("."))
     .sort((a, b) => {
       if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
       return a.name.localeCompare(b.name);
@@ -421,6 +449,7 @@ export function FileTree({
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [prompt, setPrompt] = useState<NamePrompt | null>(null);
   const [opNotice, setOpNotice] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(readShowHidden);
   // Bumped by the disk watcher. Only open folders refetch — a collapsed one
   // will read fresh from disk whenever it is opened.
   const [refreshKey, setRefreshKey] = useState(0);
@@ -446,7 +475,9 @@ export function FileTree({
           isDirectory: true,
           isFile: false,
           path: ws,
-          children: sortEntries(items).filter((e) => e.name !== "node_modules"),
+          children: sortEntries(items, showHidden).filter(
+            (e) => e.name !== "node_modules",
+          ),
         });
       } catch {
         if (!cancelled) setRoot(null);
@@ -468,7 +499,7 @@ export function FileTree({
     return () => {
       cancelled = true;
     };
-  }, [rootPath, workspaceVersion]);
+  }, [rootPath, workspaceVersion, showHidden]);
 
   // The folder changed on disk: re-list the root and every open folder. Bounded
   // by what is open, not by what exists — a project with 40k files and three
@@ -480,7 +511,7 @@ export function FileTree({
       try {
         const items = await api().files.list(root.path);
         if (!cancelled) {
-          const children = sortEntries(items).filter(
+          const children = sortEntries(items, showHidden).filter(
             (e) => e.name !== "node_modules",
           );
           setRoot((cur) => (cur ? { ...cur, children } : cur));
@@ -492,7 +523,7 @@ export function FileTree({
         [...expanded].map((p) =>
           api()
             .files.list(p)
-            .then((items) => [p, sortEntries(items)] as const)
+            .then((items) => [p, sortEntries(items, showHidden)] as const)
             .catch(() => null),
         ),
       );
@@ -532,7 +563,7 @@ export function FileTree({
     let cancelled = false;
     const id = setTimeout(() => {
       void api()
-        .files.search(base, q)
+        .files.search(base, q, showHidden)
         .then((r) => {
           if (cancelled) return;
           setHits(r.hits);
@@ -549,7 +580,7 @@ export function FileTree({
       cancelled = true;
       clearTimeout(id);
     };
-  }, [search, rootPath, root?.path, refreshKey]);
+  }, [search, rootPath, root?.path, refreshKey, showHidden]);
 
   const toggle = useCallback(
     (entry: FileEntry): void => {
@@ -583,7 +614,7 @@ export function FileTree({
         void api()
           .files.list(path)
           .then((items) => {
-            setChildrenOf((c) => new Map(c).set(path, sortEntries(items)));
+            setChildrenOf((c) => new Map(c).set(path, sortEntries(items, showHidden)));
           })
           .catch(() => {
             setChildrenOf((c) => new Map(c).set(path, []));
@@ -720,14 +751,38 @@ export function FileTree({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b">
+      <div className="flex items-center border-b">
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search files…"
-          className="w-full px-2 py-1 text-xs"
+          className="min-w-0 flex-1 bg-transparent px-2 py-1 text-xs outline-none"
         />
+        {/* Dot-files are hidden by default because a project root is mostly
+            tooling; the toggle is here rather than in Settings because it is
+            a property of THIS view, and it is remembered. */}
+        <button
+          type="button"
+          onClick={() => {
+            const next = !showHidden;
+            setShowHidden(next);
+            writeShowHidden(next);
+          }}
+          title={showHidden ? "Hide hidden files" : "Show hidden files"}
+          aria-label={showHidden ? "Hide hidden files" : "Show hidden files"}
+          aria-pressed={showHidden}
+          className={cn(
+            "mr-1 shrink-0 rounded p-1 transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]",
+            showHidden ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {showHidden ? (
+            <Eye className="size-3.5" />
+          ) : (
+            <EyeOff className="size-3.5" />
+          )}
+        </button>
       </div>
 
       <div

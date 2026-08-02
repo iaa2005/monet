@@ -427,6 +427,7 @@ export interface ElectronAPI {
     search: (
       rootPath: string,
       query: string,
+      includeHidden?: boolean,
     ) => Promise<{
       hits: { name: string; path: string; isDirectory: boolean; rel: string }[];
       truncated: boolean;
