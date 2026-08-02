@@ -19,8 +19,8 @@ import {
 } from "@/lib/selection-marks";
 import type { ChatAttachmentMeta } from "@/types/chat";
 import { useIsDark } from "./highlight";
-import { useArtifactImage } from "@/components/FileCard";
-import { ChipIcon } from "./chip-icons";
+import { useArtifactImage } from "@/components/artifact-media";
+import { chipIconPaths } from "./chip-icons";
 
 /**
  * One chip. Its own component because the crop needs a hook: in a live session
@@ -62,7 +62,18 @@ function Chip({
           className="size-4 shrink-0 rounded-[3px] object-cover"
         />
       ) : (
-        <ChipIcon kind={refHit?.kind ?? "browser"} />
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="size-3 shrink-0"
+          dangerouslySetInnerHTML={{
+            __html: chipIconPaths(refHit?.kind ?? "browser"),
+          }}
+        />
       )}
       {label}
     </span>

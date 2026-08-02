@@ -13,7 +13,7 @@ import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DiffView } from "./DiffView";
 import { isUnifiedDiff, parseUnifiedDiff } from "./diff-core";
-import { HighlightedCode } from "./highlight";
+import { HighlightedCode } from "./HighlightedCode";
 import { AnsiText } from "./AnsiText";
 import { hasAnsi } from "@/lib/ansi";
 

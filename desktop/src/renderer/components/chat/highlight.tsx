@@ -6,14 +6,14 @@
  * from the `.diff-hl .token.*` rules in globals.css (tuned to match the
  * oneDark / oneLight themes the plain CodeBlock uses).
  *
- * Also exports `HighlightedCode` — a drop-in replacement for
- * react-syntax-highlighter's `<SyntaxHighlighter>` that uses refractor
- * directly (no extra library overhead, no `wrapLongLines` perf hit).
+ * Functions only, deliberately: the component that draws a block lives in
+ * HighlightedCode.tsx. A module that exports both cannot be hot-updated —
+ * React Fast Refresh reloads the page instead, and the conversation on screen
+ * goes with it.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import refractor from "refractor";
-import { cn } from "@/lib/utils";
 import { fixLatexEscapedDollar } from "./latex-dollar";
 
 // Applied once, at import, so every code block gets the corrected grammar.
@@ -101,6 +101,32 @@ function splitIntoLines(nodes: HastNode[]): FlatToken[][] {
   return lines;
 }
 
+/** Whether refractor can highlight this language at all. */
+export function canHighlight(language: string): boolean {
+  return isLanguageKnown(language);
+}
+
+/**
+ * The flat tokens themselves, one array per line.
+ *
+ * The editor needs these rather than elements: Monaco paints its own text and
+ * only asks where each token starts and what it is. Same tokenizer as the
+ * chat's code blocks, so a `.tex` file and a ```latex block in a message are
+ * coloured by the same rules.
+ */
+export function tokenizeLines(code: string, language: string): FlatToken[][] {
+  const plain = (): FlatToken[][] =>
+    code.split("\n").map((l) => [{ cls: "", text: l }]);
+  if (!isLanguageKnown(language)) return plain();
+  try {
+    return splitIntoLines(tokenize(code, language));
+  } catch {
+    return plain();
+  }
+}
+
+export type { FlatToken };
+
 /**
  * Highlight `code`, returning one ReactNode per source line (indexable by
  * 0-based line number). Unknown languages / failures fall back to raw text per
@@ -156,7 +182,7 @@ const MAX_HIGHLIGHT_CHARS = 120_000;
 const HL_CACHE = new Map<string, ReactNode[]>();
 const HL_CACHE_MAX = 40;
 
-function linesFor(code: string, language: string): ReactNode[] {
+export function linesFor(code: string, language: string): ReactNode[] {
   // Small blocks tokenize in microseconds, and a streaming block re-arrives
   // grown on every flush — caching those would only churn the LRU out of the
   // big entries it exists for.
@@ -176,47 +202,4 @@ function linesFor(code: string, language: string): ReactNode[] {
   if (HL_CACHE.size > HL_CACHE_MAX)
     HL_CACHE.delete(HL_CACHE.keys().next().value as string);
   return lines;
-}
-
-export function HighlightedCode({
-  code,
-  language = "text",
-  showLineNumbers = false,
-  className,
-}: {
-  code: string;
-  language?: string;
-  showLineNumbers?: boolean;
-  className?: string;
-}): JSX.Element {
-  const lines = useMemo(() => linesFor(code, language), [code, language]);
-  // Numbers are text, not CSS counters: a counter would restart wherever a
-  // containment boundary begins.
-  const digits = String(lines.length).length;
-  return (
-    <pre
-      className={cn(
-        "diff-hl m-0 whitespace-pre-wrap break-words",
-        showLineNumbers && "show-ln",
-        className,
-      )}
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: "12.5px",
-        lineHeight: "1.6",
-        background: "transparent",
-        padding: "0.75rem",
-        ["--ln-digits" as string]: digits,
-      }}
-    >
-      <code>
-        {lines.map((node, i) => (
-          <span key={i} className="line">
-            {showLineNumbers ? <span className="ln">{i + 1}</span> : null}
-            <span className="cl">{node}</span>
-          </span>
-        ))}
-      </code>
-    </pre>
-  );
 }

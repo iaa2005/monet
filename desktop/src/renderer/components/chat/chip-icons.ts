@@ -36,24 +36,7 @@ export function chipIconSvg(kind: RefKind): string {
   return `<svg ${ATTRS} width="12" height="12" style="flex:none">${PATHS[kind] ?? PATHS.browser}</svg>`;
 }
 
-/** The same icon for the transcript's chip. */
-export function ChipIcon({
-  kind,
-  className,
-}: {
-  kind: RefKind;
-  className?: string;
-}): JSX.Element {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className ?? "size-3 shrink-0"}
-      dangerouslySetInnerHTML={{ __html: PATHS[kind] ?? PATHS.browser }}
-    />
-  );
+/** The bare paths, for the transcript's chip, which is a React element. */
+export function chipIconPaths(kind: RefKind): string {
+  return PATHS[kind] ?? PATHS.browser;
 }

@@ -131,7 +131,7 @@ interface AttachmentPayload {
 const BINARY_CAP = 20 * 1024 * 1024;
 
 /** Which input modality a staged file needs from the model. */
-export function fileModality(
+function fileModality(
   file: File,
 ): "image" | "audio" | "video" | "file" {
   if (file.type.startsWith("image/")) return "image";

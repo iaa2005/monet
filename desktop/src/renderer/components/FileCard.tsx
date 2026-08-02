@@ -25,12 +25,21 @@ import {
   X,
 } from "lucide-react";
 import type { ArtifactItem } from "@/lib/sessionArtifacts";
-import { isPdf, pdfThumbnail } from "@/lib/pdfThumb";
+import { isPdf } from "@/lib/pdfThumb";
 import { useChatStore } from "@/stores/chatStore";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 import { useIsDark } from "@/components/chat/highlight";
 import { fallbackIcon, resolveIcon } from "@/components/icon-resolver";
+import { viewArtifact } from "@/components/artifact-actions";
+import {
+  bytesFromBase64,
+  extOf,
+  openWithOS,
+  typeLabel,
+  useArtifactImage,
+  usePdfThumb,
+} from "@/components/artifact-media";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -38,23 +47,9 @@ function api(): ElectronAPI | undefined {
 
 // ─── Primitives ─────────────────────────────────────────────────────────
 // These live here, in the leaf module, so ArtifactsPanel can build on the
-// cards without the two files importing each other. ArtifactsPanel re-exports
-// them for the callers that have always imported them from there.
-
-export function openArtifact(path?: string): void {
-  if (path) void api()?.artifacts.open(path);
-}
-
-/** Open a file in the in-app viewer drawer. */
-export function viewArtifact(a: {
-  name: string;
-  path?: string;
-  mediaType: string;
-  kind: string;
-  dataUrl?: string;
-}): void {
-  useChatStore.getState().openViewer({ ...a, source: "artifact" });
-}
+// cards without the two files importing each other. The two ACTIONS live in
+// artifact-actions: a file that exports a component and a plain function
+// cannot be hot-updated, and reloading the page loses the conversation.
 
 export function KindIcon({
   kind,
@@ -72,66 +67,6 @@ export function KindIcon({
   if (kind === "image")
     return <ImageIcon className={`${className} shrink-0 text-green-text`} />;
   return <FileText className={`${className} shrink-0 text-muted-foreground`} />;
-}
-
-/** The artifact's image as a data URL, re-read from disk when the in-memory
- * one is gone (chat switch / reload). null until/unless one is available. */
-export function useArtifactImage(a: {
-  dataUrl?: string;
-  path?: string;
-  mediaType: string;
-}): string | null {
-  const [url, setUrl] = useState<string | null>(a.dataUrl ?? null);
-
-  useEffect(() => {
-    if (url || !a.path) return;
-    let alive = true;
-    void api()
-      ?.artifacts.readImage(a.path, a.mediaType)
-      .then((r) => {
-        if (alive && r.ok && r.dataUrl) setUrl(r.dataUrl);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [a.path]);
-
-  return url;
-}
-
-function bytesFromBase64(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-/** Page 1 of a PDF, rendered once and cached by `key`. null key = not a PDF,
- * or nothing to read it from. */
-export function usePdfThumb(
-  key: string | null,
-  load: () => Promise<Uint8Array | null>,
-): string | null {
-  const [url, setUrl] = useState<string | null>(null);
-  // The loader closes over props and is a new function every render; keep it
-  // out of the effect's deps or the render would restart on every tick.
-  const loadRef = useRef(load);
-  loadRef.current = load;
-
-  useEffect(() => {
-    if (!key) return;
-    let alive = true;
-    void pdfThumbnail(key, () => loadRef.current()).then((u) => {
-      if (alive) setUrl(u);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [key]);
-
-  return url;
 }
 
 /** Image preview that falls back to re-reading the on-disk artifact when the
@@ -165,55 +100,6 @@ export function ArtifactThumb({
 }
 
 // ─── Cards ──────────────────────────────────────────────────────────────
-
-export function extOf(name: string): string {
-  const base = name.split(/[\\/]/).pop() ?? name;
-  const dot = base.lastIndexOf(".");
-  return dot > 0 ? base.slice(dot + 1).toLowerCase() : "";
-}
-
-/** Human category for an extension. Only the families worth naming are here —
- * anything else shows its bare extension, which reads better than inventing a
- * label ("TEX" beats "Text · TEX"). */
-const FAMILY: Record<string, string> = {
-  pdf: "Document",
-  doc: "Document",
-  docx: "Document",
-  odt: "Document",
-  rtf: "Document",
-  xls: "Spreadsheet",
-  xlsx: "Spreadsheet",
-  ods: "Spreadsheet",
-  csv: "Spreadsheet",
-  tsv: "Spreadsheet",
-  ppt: "Presentation",
-  pptx: "Presentation",
-  odp: "Presentation",
-  zip: "Archive",
-  tar: "Archive",
-  gz: "Archive",
-  "7z": "Archive",
-  rar: "Archive",
-};
-
-export function typeLabel(a: {
-  name: string;
-  mediaType: string;
-  kind: ArtifactItem["kind"];
-}): string {
-  const ext = extOf(a.name);
-  const family =
-    FAMILY[ext] ??
-    (a.kind === "image"
-      ? "Image"
-      : a.kind === "audio"
-        ? "Audio"
-        : a.kind === "video"
-          ? "Video"
-          : "");
-  const tag = ext ? ext.toUpperCase() : a.mediaType.split("/").pop()?.toUpperCase() ?? "FILE";
-  return family ? `${family} · ${tag}` : tag;
-}
 
 /**
  * One sheet of paper, corner turned down, cut off by the bottom of the card.
@@ -304,10 +190,6 @@ export function StackedDocIcon({
       </span>
     </span>
   );
-}
-
-export function openWithOS(path?: string): void {
-  if (path) void api()?.artifacts.open(path);
 }
 
 /** Save copies of several files into one folder the user picks. */

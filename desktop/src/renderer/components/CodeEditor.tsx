@@ -30,6 +30,7 @@ import {
   modelFor,
   takeReveal,
 } from "./monaco-project";
+import { languageOf } from "./monaco-langs";
 
 self.MonacoEnvironment = {
   // The label is the language service asking. TypeScript and JavaScript share
@@ -96,14 +97,6 @@ export interface CodeSelection {
   text: string;
   top: number;
   left: number;
-}
-
-/** Monaco's id for a file name — its own table, not ours. */
-export function languageOf(fileName: string): string {
-  const ext = "." + (fileName.split(".").pop() ?? "").toLowerCase();
-  for (const lang of monaco.languages.getLanguages())
-    if (lang.extensions?.some((e) => e.toLowerCase() === ext)) return lang.id;
-  return "plaintext";
 }
 
 export function CodeEditor({

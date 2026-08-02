@@ -48,14 +48,21 @@ export const GLOBAL_PANEL_IDS: DockPanelId[] = ["routines"];
 /**
  * Panels a SAVED desk may bring back.
  *
- * The viewer is excluded: it is a window onto one file, opened by clicking
- * that file, and a viewer restored with nothing in it is an empty panel the
- * user has to close. Which file was open belongs to the conversation, not to
- * the furniture. Global panels are excluded for the opposite reason — they
- * are not the chat's to decide.
+ * The viewer IS included, and that is the whole point of coming back to a
+ * chat: a file that was split beside the conversation must come back split
+ * beside it, not stacked wherever a fresh panel lands. The cards themselves
+ * are restored first (viewerStore), so a viewer panel in the layout finds its
+ * file; one that finds nothing is closed by the sync effect in DockArea, which
+ * is what used to be feared here — an empty viewer — and is now handled.
+ *
+ * The sanitizer filters by COMPONENT, so this one entry covers every card:
+ * "viewer", "viewer:2", "viewer:3" all render the viewer component.
+ *
+ * Global panels are excluded for the opposite reason — they are not the
+ * chat's to decide.
  */
 export const RESTORABLE_PANEL_IDS = DOCK_PANEL_IDS.filter(
-  (id) => id !== "viewer" && !GLOBAL_PANEL_IDS.includes(id),
+  (id) => !GLOBAL_PANEL_IDS.includes(id),
 );
 
 /**

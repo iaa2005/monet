@@ -21,6 +21,7 @@
 import * as monaco from "monaco-editor";
 import type { ElectronAPI } from "@/types/electron";
 import { useViewerStore } from "@/stores/viewerStore";
+import { registerExtraLanguages } from "./monaco-langs";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -233,6 +234,10 @@ let configured = false;
 export function configureMonaco(): void {
   if (configured) return;
   configured = true;
+
+  // LaTeX and friends, before any editor exists: a model picks its language
+  // when it is created, and an unregistered extension is plaintext forever.
+  registerExtraLanguages();
 
   // 0.56 moved the language services out of `languages.*` to the top level.
   const ts = monaco.typescript;

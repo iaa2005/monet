@@ -12,7 +12,8 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./CodeBlock";
-import { ArtifactThumb, viewArtifact } from "@/components/ArtifactsPanel";
+import { ArtifactThumb } from "@/components/ArtifactsPanel";
+import { viewArtifact } from "@/components/artifact-actions";
 import { isWebLink, openLink, wantsExternal } from "@/lib/open-link";
 import { splitMarkdownChunks } from "@/lib/markdown-chunks";
 

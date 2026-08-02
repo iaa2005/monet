@@ -22,12 +22,7 @@ import {
 // The view primitives moved to FileCard (the leaf module) so the cards and this
 // panel don't import each other. Re-exported here because half the chat imports
 // them from this path.
-export {
-  ArtifactThumb,
-  KindIcon,
-  openArtifact,
-  viewArtifact,
-} from "@/components/FileCard";
+export { ArtifactThumb, KindIcon } from "@/components/FileCard";
 
 /** Compact strip of the artifacts ONE turn produced — rendered right after
  * the model reply that created them. */

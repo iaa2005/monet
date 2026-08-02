@@ -40,13 +40,14 @@ import {
   X as XIcon,
   type LucideIcon,
 } from "lucide-react";
-import { ArtifactsStrip, viewArtifact } from "@/components/ArtifactsPanel";
+import { ArtifactsStrip } from "@/components/ArtifactsPanel";
+import { viewArtifact } from "@/components/artifact-actions";
+import { FilePreviewTile } from "@/components/FileCard";
 import {
   extOf,
-  FilePreviewTile,
   useArtifactImage,
   usePdfThumb,
-} from "@/components/FileCard";
+} from "@/components/artifact-media";
 import { isPdf } from "@/lib/pdfThumb";
 import {
   sandboxFilesFromOutput,

@@ -17,11 +17,8 @@ import { rendersAsCard } from "./turn-state";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { diffStats, langFromPath } from "./diff-core";
 import { Spinner } from "./WorkingIndicator";
-import {
-  ArtifactThumb,
-  KindIcon,
-  viewArtifact,
-} from "@/components/ArtifactsPanel";
+import { ArtifactThumb, KindIcon } from "@/components/ArtifactsPanel";
+import { viewArtifact } from "@/components/artifact-actions";
 
 // Sandbox tool output carries one line per produced file:
 //   [artifact] <mediaType> <name> :: <absolute path>

@@ -186,12 +186,19 @@ const desk = () => ({
   check("no desk, no panels", deskPanelIds(null).length === 0);
 }
 
-// ── 8. The viewer is furniture nobody saved ───────────────────────────
+// ── 8. A file comes back where it was left ───────────────────────
 //
-// The file preview is a dock panel, but WHICH file was open belongs to the
-// conversation, not to the layout. Restoring the panel would put an empty
-// "Viewer" tab in front of the user on every switch, with nothing in it and
-// a tab to close. So it is a panel the app opens and never restores.
+// The viewer used to be excluded from a restored desk: a file was the chat's,
+// the layout was the desk's, and a viewer panel restored with nothing behind
+// it would be an empty tab to close. Coming back to a chat then meant coming
+// back to the right files in the wrong places — a document split beside the
+// conversation returned stacked on top of it.
+//
+// So the cards ARE restored now (the files themselves come back first, from
+// the session's viewer state), and a panel that finds no file behind it is
+// closed by the sync effect rather than prevented from existing. What this
+// section pins down is the layout half: one entry covers every card, because
+// the sanitizer filters by component and "viewer:2" renders "viewer".
 {
   check(
     "the viewer is a real panel",
@@ -199,39 +206,48 @@ const desk = () => ({
     DOCK_PANEL_IDS.join(", "),
   );
   check(
-    "but not a restorable one",
-    !RESTORABLE_PANEL_IDS.includes("viewer"),
+    "and a restorable one",
+    RESTORABLE_PANEL_IDS.includes("viewer"),
     RESTORABLE_PANEL_IDS.join(", "),
   );
-  // Two exclusions now: the viewer (a file is the chat's, not the desk's) and
-  // the app-level panels (section 9).
   check(
-    "every other panel still restores",
-    RESTORABLE_PANEL_IDS.length ===
-      DOCK_PANEL_IDS.length - 1 - GLOBAL_PANEL_IDS.length,
+    "only the app-level panels are held back",
+    RESTORABLE_PANEL_IDS.length === DOCK_PANEL_IDS.length - GLOBAL_PANEL_IDS.length,
     `${RESTORABLE_PANEL_IDS.length} of ${DOCK_PANEL_IDS.length}`,
   );
 
-  // A desk saved while a file was open: the viewer's group goes, the rest
-  // of the layout survives around it.
+  // A desk saved with two files open, one of them in its own group: both
+  // cards and the group survive the trip.
   const d = desk();
   (d.panels as Record<string, unknown>)["viewer"] = {
     id: "viewer",
     contentComponent: "viewer",
     title: "notes.md",
   };
-  d.grid.root.data.push(leaf("gv", ["viewer"]));
+  (d.panels as Record<string, unknown>)["viewer:2"] = {
+    id: "viewer:2",
+    contentComponent: "viewer",
+    title: "App.tsx",
+  };
+  d.grid.root.data.push(leaf("gv", ["viewer", "viewer:2"]));
   const out = sanitizeDockLayout(d, RESTORABLE_PANEL_IDS)!;
-  check("a saved viewer does not come back", !("viewer" in (out.panels as object)));
-  const root = (out.grid as { root: { data: { data: { id: string } }[] } }).root;
+  check("a saved file card comes back", "viewer" in (out.panels as object));
   check(
-    "and its group leaves with it",
-    !root.data.some((n) => n.data.id === "gv"),
-    root.data.length,
+    "and so does the second one, id and all",
+    "viewer:2" in (out.panels as object),
+    Object.keys(out.panels as object).join(", "),
+  );
+  const root = (out.grid as { root: { data: { data: { id: string; views?: string[] } }[] } }).root;
+  const group = root.data.find((n) => n.data.id === "gv");
+  check("in the group they were left in", !!group, root.data.map((n) => n.data.id).join(","));
+  check(
+    "with both cards in it",
+    (group?.data.views ?? []).join(",") === "viewer,viewer:2",
+    group?.data.views,
   );
   check(
-    "while the rest of the desk survives",
-    Object.keys(out.panels as object).length === 5,
+    "and the rest of the desk untouched",
+    Object.keys(out.panels as object).length === 7,
     Object.keys(out.panels as object).join(", "),
   );
 }
