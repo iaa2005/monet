@@ -21,11 +21,13 @@ import { getSessionStore } from "../session-store.js";
 import {
   getRoutine,
   listRoutines,
+  listRuns,
   recordRun,
   updateRoutine,
   type Routine,
   type RoutineRun,
 } from "./store.js";
+import { routineHistoryBlock } from "../agent/run-notes.js";
 import { catchUpDecision, catchUpNote, stableJitterMs } from "./timing.js";
 
 const timers = new Map<string, NodeJS.Timeout>();
@@ -120,6 +122,16 @@ export async function executeRoutine(
   if (routine.condition?.kind === "agent" && routine.condition.prompt) {
     effective = withCondition(routine.condition.prompt, effective);
     useGate = true;
+  }
+
+  // The retrospective: what the last runs did (or how they failed) rides into
+  // this one, so run N+1 continues instead of restarting — and a run that
+  // failed yesterday gets its cause addressed rather than rediscovered.
+  try {
+    const history = routineHistoryBlock(listRuns(routine.id, 6));
+    if (history) effective = `${effective}\n\n${history}`;
+  } catch {
+    /* continuity, not correctness */
   }
   const prompt = effective;
 

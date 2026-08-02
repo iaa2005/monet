@@ -108,6 +108,32 @@ function stop(
       : pauseGoal(goal, now, reason, detail);
   saveGoal(opts.sessionId, next);
   emitGoal(opts, next);
+
+  // A budget stop is a retrospective too: the next goal in this workspace
+  // should know this one ran out rather than rediscover it. Fire-and-forget —
+  // the driver never waits on continuity bookkeeping.
+  if (as === "blocked") {
+    void (async () => {
+      try {
+        const { getSessionStore } = await import("../../session-store.js");
+        const { getWorkspacePath } = await import("../../ipc/workspace.js");
+        const { addGoalRunNote } = await import("../run-notes.js");
+        const workspace =
+          getSessionStore().get(opts.sessionId)?.workspace || getWorkspacePath();
+        if (workspace)
+          addGoalRunNote(workspace, {
+            at: now.toISOString(),
+            outcome: "blocked",
+            reason,
+            objective: goal.objective,
+            note: detail,
+            turns: goal.stats.turns,
+          });
+      } catch {
+        /* continuity, not correctness */
+      }
+    })();
+  }
 }
 
 function emitGoal(opts: DriveOptions, goal: Goal): void {

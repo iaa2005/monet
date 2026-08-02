@@ -59,6 +59,7 @@ import { drainBgResults } from "./bg-agents.js";
 import { buildMemoryPrompt } from "../memory/store.js";
 import { buildLessonsPrompt } from "../memory/lessons.js";
 import { getWorkspacePath } from "../ipc/workspace.js";
+import { goalHistoryBlock, goalRunNotes } from "./run-notes.js";
 import { getProfilePrompt } from "../profile.js";
 import { tunablePrompt } from "../prompts/index.js";
 import {
@@ -1211,9 +1212,20 @@ async function runAgentScoped(
   // inside an <untrusted_objective> envelope; see goal/inject.ts for why.
   const activeGoal = loadGoal(sessionId);
   if (activeGoal) {
+    // What earlier goals in this workspace did — continuity, not ceremony.
+    // Home has no workspace to remember.
+    let history: string | undefined;
+    if (activeGoal.status === "active" && space !== "home") {
+      try {
+        history =
+          goalHistoryBlock(goalRunNotes(getWorkspacePath())) ?? undefined;
+      } catch {
+        /* the reminder stands on its own */
+      }
+    }
     const note =
       activeGoal.status === "active"
-        ? activeGoalReminder(activeGoal)
+        ? activeGoalReminder(activeGoal, history)
         : idleGoalNote(activeGoal);
     turnContent = mergeBackgroundResults([note], turnContent);
   }

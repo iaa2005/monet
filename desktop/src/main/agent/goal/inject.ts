@@ -29,8 +29,10 @@ function envelope(tag: string, text: string): string {
   return `<${tag}>\n${escapeUntrusted(text)}\n</${tag}>`;
 }
 
-/** The reminder injected at the start of each goal turn. */
-export function activeGoalReminder(goal: Goal): string {
+/** The reminder injected at the start of each goal turn. `history` is the
+ * pre-formatted run-notes block (agent/run-notes.ts) — what earlier goals in
+ * this workspace did and where they stopped. */
+export function activeGoalReminder(goal: Goal, history?: string): string {
   const lines: string[] = [
     "# Goal mode is active",
     "",
@@ -45,6 +47,8 @@ export function activeGoalReminder(goal: Goal): string {
 
   if (goal.completionCriterion)
     lines.push("", envelope("untrusted_criterion", goal.completionCriterion));
+
+  if (history) lines.push("", history);
 
   lines.push(
     "",

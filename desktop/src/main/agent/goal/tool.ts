@@ -129,21 +129,24 @@ export const UpdateGoalTool = buildTool({
           },
         };
 
+      // Where this goal worked — the judge checks there, and the run note is
+      // filed there. Home has no workspace: the judge still reads the claim,
+      // the note is simply not kept.
+      const space = (context as { space?: string }).space;
+      let cwd: string | undefined;
+      try {
+        const { getCwd } = await import("@vendor/utils/cwd.js");
+        cwd = space === "home" ? undefined : getCwd();
+      } catch {
+        cwd = undefined;
+      }
+
       // The judge: before the record is cleared, the claim is reviewed by a
       // fresh context with the evidence — the project's full checks, and the
       // diff since the goal's baseline. Capped, and it fails open — see
       // judge.ts for why both.
       const rejections = goal.judgeRejections ?? 0;
       if (rejections < MAX_JUDGE_REJECTIONS) {
-        const space = (context as { space?: string }).space;
-        let cwd: string | undefined;
-        try {
-          const { getCwd } = await import("@vendor/utils/cwd.js");
-          // Home has no project to check — the judge still reads the claim.
-          cwd = space === "home" ? undefined : getCwd();
-        } catch {
-          cwd = undefined;
-        }
         let diff: string | null = null;
         if (cwd && goal.baselineSha) {
           try {
@@ -174,6 +177,23 @@ export const UpdateGoalTool = buildTool({
       }
 
       clearGoal(sessionId);
+      // The retrospective: the model's own evidence-bearing summary becomes
+      // the note the NEXT goal in this workspace starts with. Zero extra
+      // tokens — the value is in carrying it forward.
+      if (cwd) {
+        try {
+          const { addGoalRunNote } = await import("../run-notes.js");
+          addGoalRunNote(cwd, {
+            at: new Date().toISOString(),
+            outcome: "complete",
+            objective: goal.objective,
+            note: summary,
+            turns: goal.stats.turns,
+          });
+        } catch {
+          /* continuity, not correctness */
+        }
+      }
       return {
         data: {
           text: `Goal complete after ${goal.stats.turns} turn(s). Tell the user what you did and what the evidence was.`,
@@ -186,6 +206,24 @@ export const UpdateGoalTool = buildTool({
       sessionId,
       blockGoal(goal, new Date(), "model-blocked", detail),
     );
+    // A block is a retrospective too — the wall gets named for the next run.
+    try {
+      const space = (context as { space?: string }).space;
+      if (space !== "home") {
+        const { getCwd } = await import("@vendor/utils/cwd.js");
+        const { addGoalRunNote } = await import("../run-notes.js");
+        addGoalRunNote(getCwd(), {
+          at: new Date().toISOString(),
+          outcome: "blocked",
+          reason: "model-blocked",
+          objective: goal.objective,
+          note: detail,
+          turns: goal.stats.turns,
+        });
+      }
+    } catch {
+      /* continuity, not correctness */
+    }
     return {
       data: {
         text: `Goal blocked: ${detail}\n\nStop working on it and tell the user what you need from them.`,
