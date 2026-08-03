@@ -6,8 +6,7 @@
  */
 
 import { ipcMain, BrowserWindow } from "electron";
-import { APP_NAME } from "@shared/brand.js";
-import { appIconPath } from "../app-icon.js";
+import { isUntitled, cleanTitle, TITLE_PLACEHOLDER } from "../auto-title.js";
 import {
   runAgent,
   resetConversation,
@@ -258,11 +257,20 @@ const aborts = new Map<string, AbortController>();
  * complete() call produces a 3-6 word title (in the user's language), the DB
  * row is renamed, and the renderer is notified so the header and sidebar
  * update. Fire-and-forget — a failure just leaves "New Session".
+ *
+ * `wasUntitled` is read at the START of the turn, not here, and that is the
+ * whole point: the renderer saves the chat mid-stream and stamps a provisional
+ * title on it — the first 60 characters of the user's message. Deciding here
+ * meant finding that stamp already in place and concluding the chat had a
+ * name, so no chat was ever renamed and every one of them was called by its
+ * own opening line. A rename the user typed happened before the turn and is
+ * therefore still respected.
  */
 async function maybeAutoTitle(
   win: BrowserWindow,
   sessionId: string,
   firstMessage: string,
+  wasUntitled: boolean,
 ): Promise<void> {
   try {
     if (
@@ -272,9 +280,7 @@ async function maybeAutoTitle(
     )
       return;
     const store = getSessionStore();
-    const existing = store.get(sessionId);
-    if (!existing || (existing.title && existing.title !== "New Session"))
-      return;
+    if (!wasUntitled || !store.get(sessionId)) return;
     const provider = getProviderManager().getActive();
     if (!provider) return;
     const adapter = createAdapter(provider);
@@ -288,18 +294,20 @@ async function maybeAutoTitle(
           content: `Name this chat. Its first message:\n\n${firstMessage.slice(0, 500)}`,
         },
       ],
-      max_tokens: 24,
+      // A reasoning model spends its budget thinking before it answers, and
+      // the old 24 tokens bought nothing but a truncated thought: the reply
+      // came back literally empty, so no chat was ever renamed. Measured on
+      // deepseek-v4-pro — 256 was still empty for a two-clause first message,
+      // 1024 lands it. Four words cost nothing; a nameless chat costs a name.
+      effort: "minimal",
+      max_tokens: 1024,
     });
-    const title = (typeof res.content === "string" ? res.content : "")
-      .trim()
-      .replace(/^["'«]+|["'»]+$/g, "")
-      .split("\n")[0]
-      .slice(0, 60);
+    const title = cleanTitle(res.content);
     if (!title) return;
     store.updateTitle(sessionId, title);
     win.webContents.send("sessions:titleChanged", { sessionId, title });
   } catch {
-    /* cosmetic — keep "New Session" */
+    /* cosmetic — keep the provisional name */
   }
 }
 
@@ -309,6 +317,10 @@ export function registerChatIPC(): void {
     if (!win) throw new Error("No window");
 
     const sessionId = payload.sessionId || "default";
+    // Read BEFORE anything runs: by the time the turn ends the renderer has
+    // saved the chat with a provisional title taken from this very message,
+    // and nothing downstream could still tell a fresh chat from a named one.
+    const wasUntitled = isUntitled(getSessionStore().get(sessionId)?.title);
     // Prefer the durable full-fidelity transcript (tool blocks included); the
     // renderer's text-only `seed` is only a fallback for chats that have none
     // (seedConversation is a no-op once the transcript is loaded).
@@ -501,6 +513,17 @@ export function registerChatIPC(): void {
       if (aborts.get(sessionId) === abort) aborts.delete(sessionId);
     }
 
+    // First completed exchange names the chat (uses the ORIGINAL message,
+    // not the slash-expanded one). Started before the notification and awaited
+    // by it: the first turn of a new chat is exactly the one whose toast has
+    // nothing to call it yet.
+    const titling = maybeAutoTitle(
+      win,
+      sessionId,
+      payload.message,
+      wasUntitled,
+    );
+
     // The turn is over. Tell the user only if they could not have seen it —
     // see turn-notify.ts for every case, and for why a routine never counts.
     void (async () => {
@@ -520,12 +543,17 @@ export function registerChatIPC(): void {
         if (!decision.notify) return;
         const { Notification } = await import("electron");
         if (!Notification.isSupported()) return;
-        const icon = appIconPath();
+        // No `icon`: on Windows that is appLogoOverride — the big round
+        // picture beside the text — while the small logo next to the app name
+        // comes from the Start Menu shortcut the installer writes with this
+        // AppUserModelID. Two pictures of the same thing, one of them huge.
+        // The chat's name is worth waiting for: the first turn of a new chat
+        // is exactly the one whose toast has nothing to call it yet.
+        await titling.catch(() => {});
         const row = store.get(sessionId);
         const n = new Notification({
-          title: row?.title || APP_NAME,
+          title: row?.title || TITLE_PLACEHOLDER,
           body: notificationBody(replyText, row?.lastError),
-          ...(icon ? { icon } : {}),
           silent: false,
         });
         // Clicking it does the obvious thing: bring the app up on that chat.
@@ -541,10 +569,6 @@ export function registerChatIPC(): void {
         /* a notification is never worth failing a turn over */
       }
     })();
-
-    // First completed exchange names the chat (uses the ORIGINAL message,
-    // not the slash-expanded one).
-    void maybeAutoTitle(win, sessionId, payload.message);
 
     // Background memory extraction (Settings → Memory, throttled, best-effort).
     void (async () => {

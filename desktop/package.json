@@ -32,6 +32,7 @@
     "smoke:lessons": "node scripts/smoke-agent.mjs scripts/lessons-probe.ts",
     "smoke:runnotes": "node scripts/smoke-agent.mjs scripts/run-notes-probe.ts",
     "smoke:turnnotify": "node scripts/smoke-agent.mjs scripts/turn-notify-probe.ts",
+    "smoke:autotitle": "node scripts/smoke-agent.mjs scripts/auto-title-probe.ts",
     "smoke:fileops": "node scripts/renderer-probe.mjs scripts/file-ops-probe.ts",
     "smoke:emptyturn": "node scripts/renderer-probe.mjs scripts/empty-turn-probe.ts",
     "smoke:turnbudget": "node scripts/renderer-probe.mjs scripts/turn-budget-probe.ts",
