@@ -66,6 +66,7 @@ import { DirectoryModal } from "@/components/directory/DirectoryModal";
 import { AboutPanel } from "@/components/AboutPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { OnboardingIntro } from "@/components/OnboardingIntro";
+import { ConnectorAuthToast } from "@/components/ConnectorAuthToast";
 import { Modal } from "@/components/ui/modal";
 import {
   DropdownMenu,
@@ -1058,6 +1059,10 @@ export default function App(): JSX.Element {
       {showOnboarding && (
         <OnboardingIntro onDone={() => setShowOnboarding(false)} />
       )}
+      {/* Connectors whose OAuth grant went stale while the app was closed.
+          Says so once, with a button each — instead of the app deciding on
+          its own to open the browser. */}
+      {!showOnboarding && <ConnectorAuthToast />}
       {/* Fade-out layer (old painting) */}
       <div
         ref={fadeRef}

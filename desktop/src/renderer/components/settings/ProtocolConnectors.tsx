@@ -244,9 +244,21 @@ export function ProtocolConnectors(): JSX.Element {
   const [results, setResults] = useState<Record<string, string>>({});
   const [permsFor, setPermsFor] = useState<string | null>(null);
 
+  /** Accounts the app KNOWS need a browser — a "Sign in" button that is
+   * always there just teaches people to click it for nothing. */
+  const [authNeeds, setAuthNeeds] = useState<Record<string, string>>({});
+
   const load = (): void => {
     void api()?.connectors.presets().then(setServices).catch(() => {});
     void api()?.connectors.list().then(setAccounts).catch(() => {});
+    void api()
+      ?.connectors.authNeeds()
+      .then((list) =>
+        setAuthNeeds(
+          Object.fromEntries((list ?? []).map((n) => [n.accountId, n.reason])),
+        ),
+      )
+      .catch(() => {});
   };
   useEffect(load, []);
 
@@ -355,24 +367,31 @@ export function ProtocolConnectors(): JSX.Element {
                       <Check className="size-3.5" /> works
                     </span>
                   )}
-                  {/* An expired OAuth-MCP grant is a normal event, not a
-                      reason to delete the account and start over. */}
-                  {svc?.auth?.kind === "oauth-mcp" && (
+                  {/* An expired grant is a normal event, not a reason to
+                      delete the account — but the button only exists while
+                      signing in is actually the thing to do. */}
+                  {svc?.auth?.kind === "oauth-mcp" && authNeeds[a.id] && (
                     <button
                       type="button"
                       onClick={() => void reauth(a)}
                       disabled={testing === a.id || !a.enabled}
-                      title="Authorise this connector again in the browser"
-                      className={cn(
-                        "rounded-md px-2 py-1 text-xs font-medium disabled:opacity-40",
-                        res && res !== "ok" && /auth|401|token/i.test(res)
-                          ? "text-brand hover:text-brand"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
+                      title={
+                        authNeeds[a.id] === "never-signed-in"
+                          ? "This connector has never been authorised"
+                          : "Its access expired — authorise it again"
+                      }
+                      className="rounded-md px-2 py-1 text-xs font-medium text-brand disabled:opacity-40"
                     >
                       Sign in
                     </button>
                   )}
+                  {svc?.auth?.kind === "oauth-mcp" &&
+                    !authNeeds[a.id] &&
+                    a.enabled && (
+                      <span className="text-xs text-muted-foreground">
+                        authorised
+                      </span>
+                    )}
                   <button
                     type="button"
                     onClick={() => void test(a.id)}

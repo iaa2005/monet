@@ -135,6 +135,25 @@ export function registerConnectorsIPC(): void {
     return { ok };
   });
 
+  /**
+   * Which connectors are waiting on a browser.
+   *
+   * Asked once at launch (for the banner) and by the Connectors page (so a
+   * row shows "Sign in" only when signing in is the thing to do). Connects
+   * first, because "has a token" and "the token still works" are different
+   * questions and only the second one is worth interrupting the user about.
+   */
+  ipcMain.handle("connectors:authNeeds", async () => {
+    try {
+      const { ensureConnected } = await import("../mcp/manager.js");
+      await ensureConnected();
+    } catch {
+      /* a server that cannot start is reported by its own status below */
+    }
+    const { mcpAuthNeeds } = await import("../connectors/mcp-auth-state.js");
+    return mcpAuthNeeds();
+  });
+
   // The cheapest real call proving the stored credential works. Every service
   // carries its own `test` — the field is type-required, because a missing Test
   // branch once reported "works" for a connector that had never been contacted.

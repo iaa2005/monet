@@ -144,6 +144,50 @@ const TOKENS = JSON.stringify({ access_token: 'at', refresh_token: 'rt' })
   )
 }
 
+// ─── Who actually needs the browser ─────────────────────────────────────
+//
+// A "Sign in" button that is always there teaches people to click it for
+// nothing, and clicking it burns a working grant. So the app answers the
+// question instead of delegating it — and must not answer "yes" for a
+// server that is merely offline.
+{
+  const { authNeedFor, isAuthFailure } = await import(
+    '../src/main/connectors/mcp-auth-state.js'
+  )
+
+  check('no token at all → sign in', authNeedFor(false, undefined) === 'never-signed-in')
+  check(
+    'a connected server needs nothing',
+    authNeedFor(true, { status: 'connected' }) === null,
+  )
+  check(
+    'a refused token → sign in again',
+    authNeedFor(true, { status: 'error', error: 'Missing Authorization' }) === 'expired',
+  )
+  check(
+    'a 401 counts too',
+    authNeedFor(true, { status: 'error', error: 'HTTP 401 Unauthorized' }) === 'expired',
+  )
+  check(
+    'but a network failure does NOT send anyone to a login page',
+    authNeedFor(true, { status: 'error', error: 'getaddrinfo ENOTFOUND api.example.org' }) === null,
+  )
+  check(
+    'nor does a server error',
+    authNeedFor(true, { status: 'error', error: 'Internal Server Error (500)' }) === null,
+  )
+  check(
+    'a server still connecting is not a verdict',
+    authNeedFor(true, { status: 'connecting' }) === null,
+  )
+  check(
+    'the wordings real servers use are all recognised',
+    ['Missing Authorization', 'invalid_token', 'invalid_grant', '401', 'token_expired', 'Forbidden']
+      .every(isAuthFailure),
+  )
+  check('and an empty message is not one', !isAuthFailure(undefined) && !isAuthFailure(''))
+}
+
 rmSync(tempData, { recursive: true, force: true })
 rmSync(join(process.cwd(), 'monet-bootstrap.json'), { force: true })
 

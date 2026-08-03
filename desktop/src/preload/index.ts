@@ -1016,6 +1016,16 @@ const electronAPI = {
       presetId: string;
     }): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("connectors:mcpOAuthSignIn", opts),
+    /** Connectors whose OAuth grant is missing or refused. */
+    authNeeds: (): Promise<
+      {
+        accountId: string;
+        presetId: string;
+        label: string;
+        reason: "never-signed-in" | "expired";
+        detail?: string;
+      }[]
+    > => ipcRenderer.invoke("connectors:authNeeds"),
   },
 
   sandbox: {

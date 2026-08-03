@@ -139,6 +139,15 @@ export interface MemoryFileInfo {
   updatedAt: number;
 }
 
+/** A connector whose OAuth grant is missing or was refused. */
+export interface McpAuthNeed {
+  accountId: string;
+  presetId: string;
+  label: string;
+  reason: "never-signed-in" | "expired";
+  detail?: string;
+}
+
 /** Per-workspace lessons the nightly dream distils from failures. */
 export interface ProjectLessons {
   workspace: string;
@@ -1045,6 +1054,7 @@ export interface ElectronAPI {
     mcpOAuthSignIn: (opts: {
       presetId: string;
     }) => Promise<{ ok: boolean; error?: string }>;
+    authNeeds: () => Promise<McpAuthNeed[]>;
   };
   sandbox: {
     getConfig: () => Promise<{ engine: string }>;
