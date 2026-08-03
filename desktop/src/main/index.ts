@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { EventEmitter } from "node:events";
 import { registerAllIPC } from "./ipc/index.js";
 import { createTray } from "./tray.js";
+import { appIconPath } from "./app-icon.js";
 import { applyDataDirEnv } from "./data-dir.js";
 import { recordTitle, recordVisit } from "./browser/bookmarks.js";
 import { purgeIncognitoLeftovers } from "./incognito.js";
@@ -224,6 +225,9 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     title: APP_NAME,
+    // Packaged builds take the icon from the exe; a dev launch is plain
+    // Electron and shows Electron's own logo unless it is handed one.
+    ...(appIconPath() ? { icon: appIconPath() as string } : {}),
     // Hide the native title bar but keep the resizable window frame so we can
     // draw a custom header + window controls (looks native, not Electron).
     titleBarStyle: "hidden",
@@ -301,6 +305,9 @@ function openSecondaryWindow(): void {
     minHeight: 600,
     show: false,
     title: APP_NAME,
+    // Packaged builds take the icon from the exe; a dev launch is plain
+    // Electron and shows Electron's own logo unless it is handed one.
+    ...(appIconPath() ? { icon: appIconPath() as string } : {}),
     titleBarStyle: "hidden",
     backgroundColor: "#f7f6f1",
     webPreferences: {
@@ -338,6 +345,16 @@ function openSecondaryWindow(): void {
   } else {
     win.loadFile(join(__dirname, "../renderer/index.html"));
   }
+}
+
+// Windows attributes every toast to an AppUserModelID. Unset, that is
+// "electron.app.Electron" — which is what the notification then calls itself.
+// Packaged, it must equal electron-builder's appId so the toast matches the
+// Start Menu shortcut the installer wrote (that shortcut is where Windows
+// reads the app's name and icon from). In dev there is no such shortcut, so
+// Windows falls back to printing the id itself — hence the readable name.
+if (process.platform === "win32") {
+  app.setAppUserModelId(app.isPackaged ? "com.codemonet.desktop" : APP_NAME);
 }
 
 app.whenReady().then(() => {
