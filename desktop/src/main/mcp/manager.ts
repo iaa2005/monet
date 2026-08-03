@@ -18,7 +18,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { getDataDir } from "../data-dir.js";
 import { getService } from "../connectors/services/registry.js";
 import { getSecret, listAccounts } from "../connectors/store.js";
-import { ConnectorOAuthProvider } from "../connectors/lib/mcp-oauth-provider.js";
+import { connectorAuthProvider } from "../connectors/lib/mcp-oauth-provider.js";
 import { mcpAuthProvider } from "./oauth/index.js";
 import { filterTools, resolveHeaders } from "./config-rules.js";
 
@@ -216,13 +216,18 @@ async function connectServer(name: string, config: McpServerConfig): Promise<voi
     } else if (config.url) {
       const url = new URL(config.url);
       if (config._accountId) {
-        // Remote OAuth MCP: the SDK handles auth (discovery, DCR, PKCE, token
-        // refresh) via the authProvider. Tokens live in the encrypted secret.
-        const authProvider = new ConnectorOAuthProvider(config._accountId);
+        // Remote OAuth MCP. The provider REFRESHES silently and refuses to
+        // open a browser: this path runs before every turn and on every
+        // reconnect, and a provider that may redirect turns one expired
+        // token into a tab per attempt. Undefined when nothing is stored, so
+        // the 401 surfaces and the UI can offer "Sign in" — same rule as the
+        // hand-added servers below.
+        const authProvider = connectorAuthProvider(config._accountId);
+        const opts = authProvider ? { authProvider } : {};
         transport =
           config.type === "sse"
-            ? new SSEClientTransport(url, { authProvider })
-            : new StreamableHTTPClientTransport(url, { authProvider });
+            ? new SSEClientTransport(url, opts)
+            : new StreamableHTTPClientTransport(url, opts);
       } else {
         // Hand-written remote server. Remote MCP is OAuth 2.1 and rejects a
         // pasted bearer token, so a stored OAuth grant is used when this

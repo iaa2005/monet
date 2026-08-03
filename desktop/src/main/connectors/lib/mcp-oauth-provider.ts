@@ -1,18 +1,39 @@
 /**
- * OAuthClientProvider for remote MCP servers (RFC 9728 + RFC 7591 DCR).
+ * OAuth for connector-backed remote MCP servers (RFC 9728 + RFC 7591 DCR).
  *
  * The MCP SDK's auth() is a two-step orchestrator:
- *  1. auth(provider, { serverUrl }) → discovery + DCR + builds auth URL → REDIRECT
+ *  1. auth(provider, { serverUrl }) → discovery + DCR + authorization URL → REDIRECT
  *  2. auth(provider, { serverUrl, authorizationCode }) → exchange → AUTHORIZED
  *
- * Between steps, a loopback HTTP server captures the callback code. This
- * module runs both steps and bridges the provider's methods to the encrypted
- * secret store — the same safeStorage-backed persistence Google OAuth uses.
+ * Between the steps a loopback listener captures the code. This module runs
+ * both and bridges the provider to the encrypted secret store.
+ *
+ * Three rules here were learned the hard way, from a connector that opened
+ * half a dozen browser tabs on every launch and then could not be signed in
+ * at all without deleting it:
+ *
+ * **A background connection never opens a browser.** The transport calls
+ * auth() itself on a 401. Given a provider, the SDK's answer to "no usable
+ * token" is to start an interactive flow — from a reconnect nobody asked
+ * for, that means tabs appearing while the user is doing something else,
+ * one per attempt, and `ensureConnected()` runs before every turn. A
+ * background provider refuses to redirect: it can still REFRESH silently,
+ * which is the only thing a background connection should be able to do.
+ *
+ * **One flow owns its own state.** The listener, its port, the CSRF state
+ * and the PKCE verifier belong to a single sign-in. They used to be module
+ * globals, so a second attempt overwrote the first one's verifier and
+ * redirect port — and the tab the user actually completed then failed the
+ * exchange, permanently, because the stored verifier was somebody else's.
+ *
+ * **The registered redirect_uri is the real one.** The listener starts
+ * BEFORE registration, so `http://127.0.0.1:<port>` is what gets registered
+ * and what comes back. Registering `127.0.0.1:0` and rewriting the port
+ * afterwards is rejected by any server that checks — which is the point of
+ * registering it.
  */
 
 import { APP_NAME } from "@shared/brand.js";
-import { createServer, type Server } from "node:http";
-import { randomBytes } from "node:crypto";
 import { shell } from "electron";
 import {
   auth,
@@ -24,71 +45,62 @@ import type {
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { patchSecret, getSecret } from "../store.js";
+import { startCallbackServer } from "../../mcp/oauth/callback.js";
 
-const CLIENT_METADATA: OAuthClientMetadata = {
-  client_name: APP_NAME,
-  redirect_uris: ["http://127.0.0.1:0"],
-  grant_types: ["authorization_code", "refresh_token"],
-  token_endpoint_auth_method: "none",
-};
-
-/** The callback URL the loopback server is listening on. */
-let callbackUrl: string | undefined;
-/** Resolves when the loopback server captures the auth code. */
-let codeResolver: ((code: string) => void) | undefined;
-let activeServer: Server | undefined;
+const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
 
 /**
- * Run the full OAuth flow for a remote MCP server.
- * Called from the IPC layer; stores tokens in the connector's encrypted secret.
+ * Sign-ins in flight, by account. A second request joins the first instead
+ * of starting a rival flow — two flows for one account cannot both win, and
+ * the loser used to leave the account's verifier pointing at its own attempt.
  */
-export async function signInRemoteMcp(
-  accountId: string,
-  serverUrl: string,
-): Promise<void> {
-  const provider = new ConnectorOAuthProvider(accountId);
+const inFlight = new Map<string, Promise<void>>();
 
-  // Step 1: discovery + DCR + authorization URL. The SDK calls
-  // redirectToAuthorization(), which starts the loopback server and opens
-  // the browser. auth() returns REDIRECT — we then wait for the code.
-  callbackUrl = undefined;
-  codeResolver = undefined;
-  const result1 = await auth(provider, { serverUrl });
-  if (result1 !== "REDIRECT")
-    throw new Error(`MCP OAuth: unexpected result ${result1}.`);
-
-  // Wait for the loopback server to capture the code.
-  if (!callbackUrl) throw new Error("MCP OAuth: no callback URL set.");
-  const code = await new Promise<string>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error("Timed out waiting for MCP sign-in (5 minutes)."));
-    }, 5 * 60_000);
-    codeResolver = (c) => {
-      clearTimeout(timeout);
-      resolve(c);
-    };
-  });
-
-  // Step 2: exchange the code for tokens. The SDK loads the verifier from
-  // the provider, calls the token endpoint, and saves tokens via the provider.
-  const result2 = await auth(provider, { serverUrl, authorizationCode: code });
-  if (result2 !== "AUTHORIZED")
-    throw new Error(`MCP OAuth: token exchange failed (${result2}).`);
+/** Raised when a background connection would have needed the browser. */
+export class InteractiveAuthRequired extends Error {
+  constructor(readonly accountId: string) {
+    super("This connector needs you to sign in again.");
+    this.name = "InteractiveAuthRequired";
+  }
 }
 
 export class ConnectorOAuthProvider implements OAuthClientProvider {
-  constructor(private accountId: string) {}
+  /** Set only for an interactive flow; absent means "must not redirect". */
+  private redirect: string | undefined;
+  private csrfState: string | undefined;
 
-  get redirectUrl(): string | URL {
-    return callbackUrl ?? "http://127.0.0.1:0";
+  constructor(
+    private accountId: string,
+    private readonly interactive = false,
+  ) {}
+
+  bindFlow(redirectUrl: string, state: string): void {
+    this.redirect = redirectUrl;
+    this.csrfState = state;
+  }
+
+  get redirectUrl(): string | URL | undefined {
+    return this.redirect;
   }
 
   get clientMetadata(): OAuthClientMetadata {
-    return CLIENT_METADATA;
+    return {
+      client_name: APP_NAME,
+      // The real listener, or nothing: a placeholder port would be
+      // registered and then never used.
+      redirect_uris: this.redirect ? [this.redirect] : [],
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      token_endpoint_auth_method: "none",
+    };
   }
 
-  async state(): Promise<string> {
-    return randomBytes(16).toString("hex");
+  /** The SDK reads this when building the authorization URL, so the value
+   * has to be the one the listener will check the callback against. */
+  state(): string {
+    if (!this.csrfState)
+      throw new Error("OAuth state was not set before starting the flow.");
+    return this.csrfState;
   }
 
   clientInformation(): OAuthClientInformationMixed | undefined {
@@ -118,54 +130,15 @@ export class ConnectorOAuthProvider implements OAuthClientProvider {
   }
 
   saveTokens(tokens: OAuthTokens): void {
-    patchSecret(this.accountId, {
-      mcpOauthTokens: JSON.stringify(tokens),
-    });
+    // A refresh returns a new access token and often a rotated refresh
+    // token; both replace what was stored, which is what keeps a long-idle
+    // account signed in instead of sending it back to the browser.
+    patchSecret(this.accountId, { mcpOauthTokens: JSON.stringify(tokens) });
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
-    // Start a loopback server on a random port. The SDK built the auth URL
-    // with redirect_uri from redirectUrl (which was 127.0.0.1:0 before the
-    // server started); we rewrite it to the real port so the provider
-    // matches.
-    const server = createServer((req, res) => {
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      const code = url.searchParams.get("code");
-      const err = url.searchParams.get("error");
-      if (err) {
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        res.end(
-          "<!doctype html><body style='font:15px system-ui;display:grid;place-items:center;height:90vh'>" +
-            "<div style='text-align:center'><h2>Sign-in cancelled</h2><p>You can close this tab.</p></div></body>",
-        );
-        server.close();
-        return;
-      }
-      if (code) {
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        res.end(
-          "<!doctype html><body style='font:15px system-ui;display:grid;place-items:center;height:90vh'>" +
-            "<div style='text-align:center'><h2>Signed in</h2><p>Close this tab and return to the app.</p></div></body>",
-        );
-        server.close();
-        if (codeResolver) codeResolver(code);
-        return;
-      }
-      res.writeHead(404).end();
-    });
-
-    activeServer = server;
-    await new Promise<void>((resolve) => {
-      server.listen(0, "127.0.0.1", () => resolve());
-    });
-    const port = (server.address() as { port: number }).port;
-    callbackUrl = `http://127.0.0.1:${port}`;
-
-    // Rewrite the redirect_uri in the authorization URL to the real port.
-    const fixedUrl = new URL(authorizationUrl.toString());
-    fixedUrl.searchParams.set("redirect_uri", callbackUrl);
-
-    void shell.openExternal(fixedUrl.toString());
+    if (!this.interactive) throw new InteractiveAuthRequired(this.accountId);
+    await shell.openExternal(authorizationUrl.toString());
   }
 
   saveCodeVerifier(codeVerifier: string): void {
@@ -183,5 +156,63 @@ export class ConnectorOAuthProvider implements OAuthClientProvider {
       mcpClientSecret: "",
       mcpCodeVerifier: "",
     });
+  }
+}
+
+/**
+ * The provider a BACKGROUND connection may use, or undefined.
+ *
+ * Undefined without stored tokens on purpose: an empty provider makes the
+ * transport start an interactive flow from a reconnect, and a plain 401 is
+ * what lets the UI offer "Sign in" instead.
+ */
+export function connectorAuthProvider(
+  accountId: string,
+): OAuthClientProvider | undefined {
+  if (!getSecret(accountId).mcpOauthTokens) return undefined;
+  return new ConnectorOAuthProvider(accountId, false);
+}
+
+/** Run the browser sign-in for a connector account. Resolves once tokens are
+ * stored. Concurrent calls for the same account share one flow. */
+export function signInRemoteMcp(
+  accountId: string,
+  serverUrl: string,
+): Promise<void> {
+  const running = inFlight.get(accountId);
+  if (running) return running;
+  const p = runSignIn(accountId, serverUrl).finally(() =>
+    inFlight.delete(accountId),
+  );
+  inFlight.set(accountId, p);
+  return p;
+}
+
+async function runSignIn(accountId: string, serverUrl: string): Promise<void> {
+  const provider = new ConnectorOAuthProvider(accountId, true);
+
+  // Listener first: its port is what gets registered and what comes back.
+  const callback = await startCallbackServer();
+  provider.bindFlow(callback.url, callback.state);
+
+  try {
+    const first = await auth(provider, { serverUrl });
+    if (first === "AUTHORIZED") return; // a refresh was enough
+    if (first !== "REDIRECT")
+      throw new Error(`Unexpected result from the OAuth start: ${first}.`);
+
+    const code = await callback.waitForCode(SIGN_IN_TIMEOUT_MS);
+
+    const second = await auth(provider, { serverUrl, authorizationCode: code });
+    if (second !== "AUTHORIZED")
+      throw new Error(`Token exchange did not complete (${second}).`);
+  } catch (e) {
+    // A half-finished flow leaves a verifier that matches nothing. Left
+    // behind, it is what makes the NEXT attempt fail too — the state the
+    // user could only clear by deleting the connector.
+    patchSecret(accountId, { mcpCodeVerifier: "" });
+    throw e;
+  } finally {
+    callback.close();
   }
 }

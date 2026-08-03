@@ -267,6 +267,26 @@ export function ProtocolConnectors(): JSX.Element {
     load();
   };
 
+  /**
+   * Re-authorise an OAuth-MCP account in place.
+   *
+   * A remote MCP grant expires, and until now the row offered no way back:
+   * Test said "Missing Authorization", and the only thing that worked was
+   * the trash can followed by installing the connector again. The sign-in is
+   * a singleton per service, so this replaces the credential on the account
+   * that is already there — permissions and all.
+   */
+  const reauth = async (a: { id: string; presetId: string }): Promise<void> => {
+    setTesting(a.id);
+    const r = await api()?.connectors.mcpOAuthSignIn({ presetId: a.presetId });
+    setResults((p) => ({
+      ...p,
+      [a.id]: r?.ok ? "ok" : (r?.error ?? "Sign-in failed."),
+    }));
+    setTesting(null);
+    load();
+  };
+
   // Off = tools vanish from the model's set and any MCP server shuts down,
   // without throwing the credential away.
   const setEnabled = async (id: string, enabled: boolean): Promise<void> => {
@@ -334,6 +354,24 @@ export function ProtocolConnectors(): JSX.Element {
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Check className="size-3.5" /> works
                     </span>
+                  )}
+                  {/* An expired OAuth-MCP grant is a normal event, not a
+                      reason to delete the account and start over. */}
+                  {svc?.auth?.kind === "oauth-mcp" && (
+                    <button
+                      type="button"
+                      onClick={() => void reauth(a)}
+                      disabled={testing === a.id || !a.enabled}
+                      title="Authorise this connector again in the browser"
+                      className={cn(
+                        "rounded-md px-2 py-1 text-xs font-medium disabled:opacity-40",
+                        res && res !== "ok" && /auth|401|token/i.test(res)
+                          ? "text-brand hover:text-brand"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      Sign in
+                    </button>
                   )}
                   <button
                     type="button"
