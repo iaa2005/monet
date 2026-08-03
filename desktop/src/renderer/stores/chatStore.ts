@@ -308,6 +308,13 @@ interface ChatStore {
   currentSessionId?: string;
   /** Bumped whenever sessions change, so the sidebar reloads. */
   sessionsVersion: number;
+  /**
+   * Bumped when the model's CONTEXT changed without the transcript changing —
+   * an undone prompt, a manual compaction. The chat draws a map of what the
+   * model can still read (lib/context-map.ts) and would otherwise keep the
+   * old one: dropping a prompt adds no message to react to.
+   */
+  contextVersion: number;
   /** Bumped when the effective working directory changes (e.g. a chat with
    * its own saved folder was opened) so WorkspacePicker refreshes. */
   workspaceVersion: number;
@@ -390,6 +397,7 @@ interface ChatStore {
   openExpandedSubAgent: (sa: SubAgentState | null) => void;
   setSpace: (v: string) => void;
   bumpSessions: () => void;
+  bumpContext: () => void;
   bumpWorkspace: () => void;
   /** Seed a session's message list (e.g. loaded from the DB). Does NOT clobber
    * a session that's currently streaming in the background. */
@@ -796,6 +804,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     usage: null,
     currentSessionId: undefined,
     sessionsVersion: 0,
+    contextVersion: 0,
     workspaceVersion: 0,
     incognito: false,
     composerDraft: "",
@@ -870,6 +879,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
     setSpace: (v) => set({ space: v }),
     bumpSessions: () =>
       set((s) => ({ sessionsVersion: s.sessionsVersion + 1 })),
+    bumpContext: () =>
+      set((s) => ({ contextVersion: s.contextVersion + 1 })),
     bumpWorkspace: () =>
       set((s) => ({ workspaceVersion: s.workspaceVersion + 1 })),
 

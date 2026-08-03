@@ -630,6 +630,13 @@ export function registerChatIPC(): void {
       manual: ev.payload.manual === true,
       beforeTokens: (ev.payload.beforeTokens as number) ?? null,
       afterTokens: (ev.payload.afterTokens as number) ?? null,
+      // What the chat needs to draw the line the model reads from: turn
+      // counts either side of the event, and how many turns earlier
+      // compactions had already taken off the front. See lib/context-map.ts.
+      undo: ev.payload.undo === true,
+      userTurnsBefore: (ev.payload.userTurnsBefore as number) ?? null,
+      userTurnsAfter: (ev.payload.userTurnsAfter as number) ?? null,
+      headOffset: (ev.payload.headOffset as number) ?? null,
     }));
   });
 

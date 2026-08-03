@@ -64,6 +64,13 @@ import type { ChatMessage, ToolCall } from "@/types/chat";
 import { SelectionText } from "./SelectionText";
 import { joinSelections, splitSelections, usedRefs } from "@/lib/selection-marks";
 import {
+  buildContextMap,
+  describeRange,
+  outOfContextRanges,
+  type ContextEventInfo,
+  type OutRange,
+} from "@/lib/context-map";
+import {
   copyTargets as computeCopyTargets,
   rendersAsCard,
   shouldShowWorking,
@@ -499,6 +506,42 @@ type GroupedItem =
   | ChatMessage
   | { type: "tool-group"; id: string; calls: ToolCall[] }
   | { type: "artifact-strip"; id: string; items: ArtifactItem[] };
+
+/**
+ * The line the model reads from — drawn where the context actually begins
+ * again, with what happened and when.
+ *
+ * Above it the messages stay on screen but are dimmed and struck with a
+ * brand-coloured edge: still yours to read, no longer the model's.
+ */
+function ContextBreak({ ranges }: { ranges: OutRange[] }): JSX.Element {
+  return (
+    <div className="my-1 flex items-center gap-2 px-1">
+      <div className="h-px flex-1 bg-brand/40" />
+      <div className="flex flex-col items-center gap-0.5">
+        {ranges.map((r) => (
+          <span
+            key={r.id}
+            className="rounded-full border border-brand/30 bg-brand/10 px-2 py-0.5 text-[10px] text-muted-foreground"
+            title={`${describeRange(r)} · ${new Date(r.at).toLocaleString()}`}
+          >
+            {describeRange(r)} ·{" "}
+            {new Date(r.at).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </span>
+        ))}
+      </div>
+      <div className="h-px flex-1 bg-brand/40" />
+    </div>
+  );
+}
+
+/** What an out-of-context message looks like: present, but plainly not the
+ * model's any more. */
+const OUT_OF_CONTEXT_CLASS =
+  "relative opacity-55 saturate-50 before:absolute before:-left-2 before:top-0 before:h-full before:w-0.5 before:rounded-full before:bg-brand/40";
 
 /** Artifacts produced per TURN, keyed by the index of the turn's last
  * message — the strip renders right after that message, like the official
@@ -1029,6 +1072,55 @@ export function ChatView({
     [messages, transcriptMode],
   );
 
+  // ── What the model can still read ──────────────────────────────────
+  // A compaction folds the front of the chat into a summary; "Undo last
+  // prompt" drops the tail. Neither touches what is on screen, so without
+  // this the user reads a conversation half of which, to the model, never
+  // happened. See lib/context-map.ts.
+  const [ctxEvents, setCtxEvents] = useState<ContextEventInfo[]>([]);
+  // Re-read when the transcript grows (an auto-compaction happens mid-run)
+  // and when something changed the context WITHOUT changing the transcript —
+  // an undone prompt adds no message to notice.
+  const contextVersion = useChatStore((s) => s.contextVersion);
+  const ctxVersion = messages.length + contextVersion * 100000;
+  useEffect(() => {
+    let alive = true;
+    void api()
+      ?.chat.contextEvents(sessionId ?? "default")
+      .then((evs) => {
+        if (alive) setCtxEvents((evs ?? []) as ContextEventInfo[]);
+      })
+      .catch(() => {
+        /* the transcript reads fine without the map */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [sessionId, ctxVersion]);
+
+  const contextMap = useMemo(
+    () =>
+      buildContextMap(
+        messages.map((m) => m.role),
+        outOfContextRanges(ctxEvents),
+      ),
+    [messages, ctxEvents],
+  );
+
+  /** Message index behind a grouped item — tool groups and artifact strips
+   * carry it in their id (see groupMessages). */
+  const indexOfItem = useMemo(() => {
+    const byId = new Map<string, number>();
+    messages.forEach((m, i) => byId.set(m.id, i));
+    return (item: GroupedItem): number => {
+      if ("type" in item) {
+        const n = Number(item.id.slice(item.id.indexOf("-") + 1));
+        return Number.isFinite(n) ? n : -1;
+      }
+      return byId.get(item.id) ?? -1;
+    };
+  }, [messages]);
+
   // ── Windowing ──────────────────────────────────────────────────────
   // A long chat renders only its tail: the last `reveal` grouped items plus
   // whatever the user has scrolled back into. Scrolling to the top mounts
@@ -1252,6 +1344,19 @@ export function ChatView({
                     : grouped.slice(windowStart).flatMap((item, j) => {
                     const i = windowStart + j;
                     const copyBtn = copyTargets.get(i);
+                    // Where this item sits relative to what the model can
+                    // still read — see lib/context-map.ts.
+                    const msgIdx = indexOfItem(item);
+                    const outOfCtx = msgIdx >= 0 && contextMap.out.has(msgIdx);
+                    const breakHere =
+                      msgIdx >= 0 ? contextMap.markers.get(msgIdx) : undefined;
+                    const withBreak = (nodes: JSX.Element[]): JSX.Element[] =>
+                      breakHere
+                        ? [
+                            <ContextBreak key={`br-${msgIdx}`} ranges={breakHere} />,
+                            ...nodes,
+                          ]
+                        : nodes;
                     if ("type" in item && item.type === "tool-group") {
                       const el = (
                         <MessageScrollerItem
@@ -1260,7 +1365,7 @@ export function ChatView({
                           scrollAnchor={
                             !showWorking && i === grouped.length - 1
                           }
-                          className={copyBtn ? "peer/turn" : undefined}
+                          className={cn(copyBtn && "peer/turn", outOfCtx && OUT_OF_CONTEXT_CLASS)}
                         >
                           <ToolCallBubble
                             toolCall={item.calls[0]}
@@ -1269,8 +1374,8 @@ export function ChatView({
                           />
                         </MessageScrollerItem>
                       );
-                      if (!copyBtn) return [el];
-                      return [el, <CopyRow key={`copy-${i}`} text={copyBtn} />];
+                      if (!copyBtn) return withBreak([el]);
+                      return withBreak([el, <CopyRow key={`copy-${i}`} text={copyBtn} />]);
                     }
                     if ("type" in item && item.type === "artifact-strip") {
                       const el = (
@@ -1280,20 +1385,20 @@ export function ChatView({
                           scrollAnchor={
                             !showWorking && i === grouped.length - 1
                           }
-                          className={copyBtn ? "peer/turn" : undefined}
+                          className={cn(copyBtn && "peer/turn", outOfCtx && OUT_OF_CONTEXT_CLASS)}
                         >
                           <ArtifactsStrip items={item.items} />
                         </MessageScrollerItem>
                       );
-                      if (!copyBtn) return [el];
-                      return [el, <CopyRow key={`copy-${i}`} text={copyBtn} />];
+                      if (!copyBtn) return withBreak([el]);
+                      return withBreak([el, <CopyRow key={`copy-${i}`} text={copyBtn} />]);
                     }
                     const el = (
                       <MessageScrollerItem
                         key={item.id}
                         messageId={item.id}
                         scrollAnchor={!showWorking && i === grouped.length - 1}
-                        className={copyBtn ? "peer/turn" : undefined}
+                        className={cn(copyBtn && "peer/turn", outOfCtx && OUT_OF_CONTEXT_CLASS)}
                       >
                         <MessageRow
                           msg={item as ChatMessage}
@@ -1301,9 +1406,17 @@ export function ChatView({
                         />
                       </MessageScrollerItem>
                     );
-                    if (!copyBtn) return [el];
-                    return [el, <CopyRow key={`copy-${i}`} text={copyBtn} />];
+                    if (!copyBtn) return withBreak([el]);
+                    return withBreak([el, <CopyRow key={`copy-${i}`} text={copyBtn} />]);
                   })}
+
+                  {/* Events whose region runs to the end of the transcript —
+                      an Undo of the very last prompt has nothing after it. */}
+                  {contextMap.trailing.length > 0 && (
+                    <MessageScrollerItem messageId="__ctx-tail">
+                      <ContextBreak ranges={contextMap.trailing} />
+                    </MessageScrollerItem>
+                  )}
 
                   {showWorking && (
                     <MessageScrollerItem messageId="__working" scrollAnchor>

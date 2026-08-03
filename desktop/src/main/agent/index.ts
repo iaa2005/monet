@@ -89,6 +89,7 @@ import { browserDirective } from "./browser-directive.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import {
   loadTranscriptWithMeta,
+  listContextEvents,
   replaceTranscript,
   clearTranscript,
   recordContextEvent,
@@ -534,6 +535,10 @@ export async function compactSessionNow(
       manual: true,
       beforeTokens: before,
       afterTokens: after,
+      // Where the context now starts, in turns — see contextHeadOffset.
+      userTurnsBefore: countUserTurns(beforeSnapshot),
+      userTurnsAfter: countUserTurns(messages),
+      headOffset: contextHeadOffset(sessionId),
       before: beforeSnapshot,
       after: messages.map((m) => ({ ...m })),
     });
@@ -687,7 +692,15 @@ export async function rewindTranscriptToUserTurn(
   msgs.length = cut; // truncate in place — keeps the conversations Map ref
   persistTranscript(sessionId);
   if (removed > 0)
-    recordContextEvent(sessionId, "rewind", { keepUserTurns, removed });
+    recordContextEvent(sessionId, "rewind", {
+      keepUserTurns,
+      removed,
+      // The TRANSCRIPT's own count, not the display's: the map is drawn in
+      // context turns and translated by headOffset.
+      userTurnsBefore: boundaries,
+      userTurnsAfter: keepUserTurns,
+      headOffset: contextHeadOffset(sessionId),
+    });
   // Discarded turns leave stale derived state.
   lastUsageBySession.delete(sessionId);
   dropSessionContext(sessionId);
@@ -710,6 +723,35 @@ export async function undoableTurnCount(sessionId: string): Promise<number> {
   const msgs = conversations.get(sessionId);
   if (!msgs) return 0;
   return msgs.filter(isUserTurnBoundary).length;
+}
+
+/** User turns in a message list — the unit the context map is drawn in. */
+function countUserTurns(msgs: LLMMessage[]): number {
+  return msgs.filter(isUserTurnBoundary).length;
+}
+
+/**
+ * How many user turns this chat has already lost off the FRONT of its
+ * context, summed over every compaction so far.
+ *
+ * The transcript renumbers itself after a compaction — turn 1 of the context
+ * is no longer turn 1 of the conversation — while the chat on screen keeps
+ * every message it ever showed. This offset is what translates between them,
+ * and it is why each event records the count it saw: with it, the renderer
+ * can say exactly which messages the model can no longer read.
+ */
+function contextHeadOffset(sessionId: string): number {
+  try {
+    return listContextEvents(sessionId)
+      .filter((e) => e.type === "compact")
+      .reduce((n, e) => {
+        const before = Number(e.payload.userTurnsBefore ?? 0);
+        const after = Number(e.payload.userTurnsAfter ?? 0);
+        return n + Math.max(0, before - after);
+      }, 0);
+  } catch {
+    return 0;
+  }
 }
 
 /**
@@ -1338,6 +1380,10 @@ async function runAgentScoped(
           manual: false,
           beforeTokens,
           afterTokens: estimateTokens(messages),
+          // Where the context now starts, in turns — see contextHeadOffset.
+          userTurnsBefore: countUserTurns(beforeSnapshot),
+          userTurnsAfter: countUserTurns(messages),
+          headOffset: contextHeadOffset(sessionId),
           before: beforeSnapshot,
           after: messages.map((m) => ({ ...m })),
         });

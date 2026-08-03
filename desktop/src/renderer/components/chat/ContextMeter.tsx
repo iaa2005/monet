@@ -163,6 +163,9 @@ export function ContextMeter({
     if (!r) return;
     setUndone((n) => n + r.removed);
     setRefreshKey((k) => k + 1);
+    // The transcript on screen did not change — only what the model can read
+    // did. Without this the chat keeps drawing the old map.
+    useChatStore.getState().bumpContext();
   };
 
   // Recompute whenever the session, space, or the visible message tokens change
