@@ -796,6 +796,14 @@ export async function undoPrompts(
     undo: true,
     removedTurns: removed,
     fidelity: result.fidelity,
+    // The counts ride on THIS event, not on the inner rewind's: undo is the
+    // only truncation that leaves the messages on screen, so it is the only
+    // one the chat should mark as out of context. A rewind or a resend trims
+    // the display along with the transcript — nothing is left behind to mark,
+    // and marking it would dim the messages sent AFTERWARDS.
+    userTurnsBefore: available,
+    userTurnsAfter: keep,
+    headOffset: contextHeadOffset(sessionId),
   });
 
   return { removed, turnsLeft: keep, messagesDropped: Math.max(0, before - after) };

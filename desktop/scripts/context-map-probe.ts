@@ -83,7 +83,7 @@ check(
 {
   // 5 turns, the last one undone.
   const ranges = outOfContextRanges([
-    ev({ id: 'u1', type: 'rewind', userTurnsBefore: 5, userTurnsAfter: 4, headOffset: 0 }),
+    ev({ id: 'u1', type: 'rewind', undo: true, userTurnsBefore: 5, userTurnsAfter: 4, headOffset: 0 }),
   ])
   check('covering the TAIL', ranges[0]!.from === 4 && ranges[0]!.to === 5, ranges[0])
   const map = buildContextMap(roles(5), ranges)
@@ -99,7 +99,7 @@ check(
 {
   // Undone, then the conversation continued: the gap is in the MIDDLE.
   const ranges = outOfContextRanges([
-    ev({ id: 'u1', type: 'rewind', userTurnsBefore: 5, userTurnsAfter: 4, headOffset: 0 }),
+    ev({ id: 'u1', type: 'rewind', undo: true, userTurnsBefore: 5, userTurnsAfter: 4, headOffset: 0 }),
   ])
   const map = buildContextMap(roles(7), ranges)
   check('only turn 4 is out', map.out.has(12) && !map.out.has(15) && !map.out.has(9))
@@ -118,7 +118,7 @@ check(
   // The undo's counts are CONTEXT-relative: headOffset translates them.
   const ranges = outOfContextRanges([
     ev({ id: 'c1', type: 'compact', userTurnsBefore: 10, userTurnsAfter: 4, headOffset: 0 }),
-    ev({ id: 'u1', type: 'rewind', userTurnsBefore: 5, userTurnsAfter: 4, headOffset: 6 }),
+    ev({ id: 'u1', type: 'rewind', undo: true, userTurnsBefore: 5, userTurnsAfter: 4, headOffset: 6 }),
   ])
   check('two ranges', ranges.length === 2, ranges)
   check('the compaction still covers 0–6', ranges[0]!.from === 0 && ranges[0]!.to === 6)
@@ -160,6 +160,34 @@ check(
   check(
     'an empty chat maps to nothing',
     buildContextMap([], ranges).out.size === 0,
+  )
+}
+
+// ─── A rewind is not an undo ────────────────────────────────────────────
+//
+// Both truncate the transcript, but a rewind (or a resend) trims the DISPLAY
+// with it: nothing is left on screen to mark. Marking it anyway dimmed the
+// message the user sent NEXT, because a new turn inherits the number the
+// removed one had — reported from a real chat on 2026-08-03, where a rewind
+// of turn 0 greyed out the prompt typed straight after it.
+{
+  const rewind = ev({
+    id: 'r1',
+    type: 'rewind',
+    userTurnsBefore: 1,
+    userTurnsAfter: 0,
+    headOffset: 0,
+  })
+  check('a plain rewind marks nothing', outOfContextRanges([rewind]).length === 0)
+  const map = buildContextMap(roles(2), outOfContextRanges([rewind]))
+  check(
+    'so the message sent after it stays readable',
+    map.out.size === 0 && map.markers.size === 0 && map.trailing.length === 0,
+    { out: [...map.out] },
+  )
+  check(
+    'while the same shape with undo:true still marks',
+    outOfContextRanges([{ ...rewind, undo: true }]).length === 1,
   )
 }
 

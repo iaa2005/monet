@@ -82,7 +82,11 @@ export function outOfContextRanges(events: ContextEventInfo[]): OutRange[] {
         afterTokens: e.afterTokens ?? null,
         manual: e.manual,
       });
-    } else if (e.type === "rewind") {
+    } else if (e.type === "rewind" && e.undo === true) {
+      // ONLY an undo. A rewind or a resend truncates the transcript too, but
+      // it trims the display to match — nothing is left on screen to mark,
+      // and marking it anyway would dim whatever the user sent NEXT, since
+      // those messages inherit the turn numbers the removed ones had.
       // The tail was dropped: everything the context kept stays, the rest of
       // what was there at the time is gone.
       out.push({
