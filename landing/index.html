@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Code Monet — interactive feature demos</title>
+<style>
+/* ─────────────────────────────────────────────────────────────────────
+   Tokens lifted verbatim from the app (src/renderer/styles/globals.css),
+   dark theme. Change them here and every demo follows, exactly like the
+   product does.
+   ───────────────────────────────────────────────────────────────────── */
+:root{
+  --radius:5px;
+  --bg-000:#121212;   /* editor-deep: panels, the conversation */
+  --bg-100:#181818;   /* chrome: window, header, sidebar */
+  --bg-200:#1f1f1f;   /* raised: inputs, menus, popovers */
+  --bg-300:#262626;   /* selection / active */
+  --bg-400:#323232;   /* strong hover */
+  --text-000:#d4d4d4;
+  --text-200:#bdbdbd;
+  --text-400:#9e9e9e;
+  --brand:#fb8a4c;                /* hsl(20 95% 62%) */
+  --brand-dim:rgba(251,138,76,.14);
+  --brand-line:rgba(251,138,76,.42);
+  --border:#333;
+  --green:#6fa65a;
+  --green-bg:rgba(111,166,90,.16);
+  --red:#f45252;
+  --red-bg:rgba(244,82,82,.14);
+  /* syntax, from the app's .dark .diff-hl palette */
+  --tok-key:#c586c0; --tok-str:#ce9178; --tok-num:#b5cea8;
+  --tok-fn:#dcdcaa; --tok-var:#9cdcfe; --tok-com:#6a9955; --tok-cls:#4ec9b0;
+  --font-sans:"Inter",-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --font-mono:ui-monospace,"Cascadia Code","Segoe UI Mono",Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg-100);color:var(--text-000);
+  font-family:var(--font-sans);font-size:15px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:rgba(251,138,76,.35)}
+
+/* ── hero: the whole app, on a Monet ──────────────────────────────── */
+.stage{margin:36px 0 8px;padding:38px;border-radius:calc(var(--radius) * 2);position:relative;overflow:hidden;
+  background:
+    radial-gradient(120% 90% at 15% 15%, rgba(150,178,196,.55), transparent 60%),
+    radial-gradient(90% 80% at 80% 25%, rgba(96,124,148,.5), transparent 62%),
+    radial-gradient(70% 60% at 30% 85%, rgba(108,140,110,.5), transparent 60%),
+    radial-gradient(50% 40% at 70% 78%, rgba(196,150,168,.38), transparent 60%),
+    linear-gradient(160deg,#3d5568,#2c4152 45%,#33453f);
+}
+/* The brushwork. Blurred on purpose: unblurred, repeating gradients read as
+   a screen door rather than as paint. */
+.stage::after{content:"";position:absolute;inset:-40px;opacity:.32;mix-blend-mode:overlay;pointer-events:none;
+  filter:blur(7px);
+  background-image:
+    repeating-linear-gradient(104deg, rgba(255,255,255,.5) 0 3px, transparent 3px 16px),
+    repeating-linear-gradient(-6deg, rgba(0,0,0,.4) 0 4px, transparent 4px 22px),
+    repeating-linear-gradient(70deg, rgba(255,236,214,.35) 0 2px, transparent 2px 26px);}
+/* the water-lily flecks */
+.stage::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background-image:
+    radial-gradient(8px 4px at 18% 72%, rgba(238,196,206,.9), transparent 70%),
+    radial-gradient(11px 5px at 26% 80%, rgba(232,222,190,.75), transparent 70%),
+    radial-gradient(9px 4px at 62% 86%, rgba(238,196,206,.8), transparent 70%),
+    radial-gradient(14px 6px at 74% 66%, rgba(178,206,168,.7), transparent 70%),
+    radial-gradient(10px 5px at 44% 90%, rgba(178,206,168,.6), transparent 70%);}
+.win{position:relative;z-index:1;border-radius:var(--radius);overflow:hidden;border:1px solid #2a2a2a;
+  box-shadow:0 40px 90px rgba(0,0,0,.55);background:var(--bg-100)}
+.win .tb{display:flex;align-items:center;height:34px;padding:0 10px;background:var(--bg-100);
+  border-bottom:1px solid var(--border);font-size:12.5px;color:var(--text-400);gap:8px}
+.win .tb .brand{font-family:var(--font-serif);font-size:15px;color:var(--text-000)}
+.win .tb .sp{margin-left:auto;display:flex;gap:14px;font-size:12px}
+.win .body{display:grid;grid-template-columns:186px minmax(0,1fr) minmax(0,1.06fr);min-height:520px}
+.sb{background:var(--bg-100);border-right:1px solid var(--border);padding:8px 0;font-size:13px}
+.sb .tabs{display:flex;border-bottom:1px solid var(--border);margin:-8px 0 8px}
+.sb .tabs span{flex:1;text-align:center;padding:7px 0;font-size:12.5px;color:var(--text-400)}
+.sb .tabs span.on{color:var(--text-000);background:var(--bg-000)}
+.sb .it{display:flex;align-items:center;gap:8px;padding:5px 12px;color:var(--text-400);font-size:13px}
+.sb .lbl{padding:10px 12px 4px;font-size:11px;color:var(--text-400);text-transform:none}
+.sb .chat{display:flex;gap:8px;padding:5px 12px;align-items:flex-start}
+.sb .chat.on{background:var(--bg-300)}
+.sb .chat .mk{width:7px;height:7px;border-radius:50%;border:1.5px solid #3f3f3f;margin-top:5px;flex:none}
+.sb .chat.live .mk{background:var(--green);border-color:var(--green)}
+.sb .chat .tt{font-size:12.5px;color:var(--text-200);line-height:1.25}
+.sb .chat .mt{font-size:10.5px;color:var(--text-400)}
+.warn-tri{color:var(--brand);font-size:11px;margin-top:2px;flex:none}
+.chatcol{background:var(--bg-000);display:flex;flex-direction:column;min-width:0}
+.chatcol .flow{flex:1;padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0}
+.dockcol{background:var(--bg-000);border-left:1px solid var(--border);display:flex;flex-direction:column;min-width:0}
+.dtabs{display:flex;align-items:center;gap:2px;padding:0 6px;height:32px;background:var(--bg-100);border-bottom:1px solid var(--border)}
+.dtabs button{background:transparent;border:0;border-bottom:1.5px solid transparent;color:var(--text-400);
+  font:12.5px var(--font-sans);padding:7px 10px;cursor:pointer}
+.dtabs button.on{color:var(--text-000);border-bottom-color:var(--brand)}
+.dbody{flex:1;overflow:hidden;position:relative}
+.urlbar{display:flex;align-items:center;gap:8px;padding:6px 9px;border-bottom:1px solid var(--border);
+  font:11.5px var(--font-mono);color:var(--text-400);background:var(--bg-100)}
+.page{background:#f6f4ef;color:#1b1b1b;padding:22px 24px;height:100%;overflow:hidden}
+.page h5{font-family:var(--font-serif);font-weight:400;font-size:26px;margin:0 0 10px}
+.page p{font-size:12.5px;line-height:1.55;color:#3a3a3a;margin:0 0 10px;max-width:44ch}
+.picked{position:relative;display:inline-block;outline:2px solid #2f7ae5;border-radius:2px;padding:1px 3px}
+.picked .tagbadge{position:absolute;left:-2px;top:-19px;background:#2f7ae5;color:#fff;font:10px var(--font-sans);
+  padding:1px 6px;border-radius:3px;white-space:nowrap}
+.term{background:#0e0e0e;height:100%;padding:10px 12px;font:11.5px/1.7 var(--font-mono);color:var(--text-400);overflow:hidden}
+.term .ok{color:var(--green)} .term .pr{color:var(--brand)}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--bg-300);border:1px solid var(--border);
+  border-radius:3px;padding:1px 7px;font:11.5px var(--font-mono);color:var(--text-000)}
+.hero-note{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;color:var(--text-400);font-size:12.5px}
+.hero-note b{color:var(--text-000);font-weight:500}
+@media(max-width:1000px){.win .body{grid-template-columns:1fr}.sb,.dockcol{display:none}}
+
+/* ── page scaffolding ─────────────────────────────────────────────── */
+.wrap{max-width:1240px;margin:0 auto;padding:0 24px}
+header.top{padding:72px 0 8px}
+h1{font-family:var(--font-serif);font-size:64px;line-height:1.05;margin:0 0 12px;font-weight:400}
+.lede{color:var(--text-400);font-size:19px;max-width:44ch;margin:0 0 28px}
+.btn-hero{display:inline-block;background:#ededed;color:#141414;border:0;border-radius:999px;
+  padding:11px 20px;font:500 15px var(--font-sans);cursor:pointer}
+section.band{padding:64px 0 8px}
+h2{font-size:26px;margin:0 0 6px;font-weight:600;letter-spacing:-.01em}
+.band > .wrap > p.sub{color:var(--text-400);margin:0 0 26px;max-width:60ch}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+.card{background:var(--bg-000);border:1px solid var(--border);border-radius:var(--radius);padding:18px 18px 20px}
+.card h3{margin:0 0 6px;font-size:16px;font-weight:600}
+.card p.d{margin:0 0 14px;color:var(--text-400);font-size:14px;line-height:1.45}
+.hint{margin-top:10px;font-size:12px;color:var(--text-400)}
+.hint b{color:var(--brand);font-weight:500}
+footer{padding:80px 0 60px;color:var(--text-400);font-size:13px}
+
+/* ── shared app chrome ────────────────────────────────────────────── */
+.app{background:var(--bg-000);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.app .bar{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;
+  background:var(--bg-100);border-bottom:1px solid var(--border);font-size:12px;color:var(--text-400)}
+.dot{width:9px;height:9px;border-radius:50%;background:#3a3a3a}
+.stream{padding:12px;display:flex;flex-direction:column;gap:8px;min-height:230px}
+.msg-user{align-self:flex-end;max-width:78%;background:var(--bg-200);border-radius:var(--radius);
+  padding:7px 11px;font-size:13.5px}
+.msg-ai{align-self:flex-start;max-width:88%;font-size:13.5px;color:var(--text-000)}
+.tool{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:var(--radius);
+  padding:6px 9px;font:12px/1.3 var(--font-mono);color:var(--text-400);background:var(--bg-100)}
+.tool .nm{color:var(--text-000)}
+.tool .add{color:var(--green)}
+.composer{display:flex;align-items:center;gap:8px;margin:10px 12px 12px;padding:8px 10px;
+  background:var(--bg-200);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text-400)}
+.composer .send{margin-left:auto;width:26px;height:26px;border-radius:50%;background:#e8e8e8;color:#141414;
+  display:grid;place-items:center;font-size:13px}
+.act{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+button.act-btn{background:var(--bg-200);color:var(--text-000);border:1px solid var(--border);
+  border-radius:var(--radius);padding:6px 11px;font:500 12.5px var(--font-sans);cursor:pointer}
+button.act-btn:hover{background:var(--bg-300)}
+button.act-btn.primary{background:var(--brand);border-color:var(--brand);color:#1a1a1a}
+button.act-btn.primary:hover{filter:brightness(1.07)}
+button.act-btn:disabled{opacity:.4;cursor:default}
+.spin{display:inline-block;width:11px;height:11px;border:1.6px solid var(--text-400);
+  border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.fade{animation:fd .28s ease both}
+@keyframes fd{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* ── 1. verification strip ────────────────────────────────────────── */
+.vstrip{display:flex;align-items:center;gap:8px;margin:0 12px;padding:7px 10px;
+  border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-100);font-size:12.5px;color:var(--text-400)}
+.vstrip.ok{border-color:rgba(111,166,90,.45)}
+.vstrip.warn{border-color:var(--brand-line)}
+.vstrip .ico{width:14px;text-align:center}
+.check-out{margin:8px 12px 0;padding:8px 10px;border:1px solid var(--border);border-left:2px solid var(--red);
+  border-radius:var(--radius);background:var(--bg-100);font:11.5px/1.5 var(--font-mono);color:var(--text-400);white-space:pre-wrap}
+
+/* ── 2. goal + judge ──────────────────────────────────────────────── */
+.goalstrip{margin:12px 12px 0;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-100);overflow:hidden}
+.goalstrip .row{display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12.5px}
+.goalstrip .obj{color:var(--text-400);font-size:12px}
+.goalstrip .prog{height:2px;background:var(--bg-300)}
+.goalstrip .prog i{display:block;height:100%;background:var(--green);width:12%}
+.pill{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid var(--border);color:var(--text-400)}
+.pill.live{color:var(--green);border-color:rgba(111,166,90,.45)}
+.pill.done{color:var(--green);border-color:rgba(111,166,90,.45)}
+.verdict{margin:0 12px;border:1px solid var(--border);border-left:2px solid var(--red);border-radius:var(--radius);
+  background:var(--bg-100);padding:9px 11px;font-size:12.5px;color:var(--text-200)}
+.verdict.pass{border-left-color:var(--green)}
+.verdict b{display:block;margin-bottom:3px;color:var(--text-000);font-size:12px;font-weight:600}
+.verdict code{font-family:var(--font-mono);font-size:11.5px;color:var(--tok-str)}
+
+/* ── 3. context map ───────────────────────────────────────────────── */
+.turn{display:flex;flex-direction:column;gap:8px;transition:opacity .3s,filter .3s}
+.turn.out{opacity:.5;filter:saturate(.5);position:relative}
+.turn.out::before{content:"";position:absolute;left:-8px;top:0;bottom:0;width:2px;border-radius:2px;background:var(--brand-line)}
+.ctxbreak{display:flex;align-items:center;gap:8px;margin:2px 0}
+.ctxbreak i{flex:1;height:1px;background:var(--brand-line)}
+.ctxbreak span{border:1px solid var(--brand-line);background:var(--brand-dim);color:var(--text-400);
+  border-radius:999px;padding:2px 9px;font-size:10.5px;white-space:nowrap}
+.meter{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-400);margin:0 12px 10px}
+.meter .barr{flex:1;height:4px;border-radius:2px;background:var(--bg-300);overflow:hidden}
+.meter .barr i{display:block;height:100%;background:var(--brand);width:62%;transition:width .35s}
+
+/* ── 4. project lessons ───────────────────────────────────────────── */
+.lrow{display:grid;grid-template-columns:14px 1fr auto auto;gap:9px;align-items:center;
+  padding:8px 2px;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer}
+.lrow:last-of-type{border-bottom:0}
+.lrow .ws{font-weight:500}
+.lrow .sm{color:var(--text-400);font-size:12px}
+.lbody{margin:0 0 10px 23px;padding:9px 11px;background:var(--bg-100);border:1px solid var(--border);
+  border-radius:var(--radius);font-size:12.5px;color:var(--text-400);line-height:1.6}
+.lbody b{color:var(--text-000);font-weight:500}
+.new-lesson{border-left:2px solid var(--brand);padding-left:9px}
+
+/* ── 5. notebook ──────────────────────────────────────────────────── */
+.nbbar{display:flex;align-items:center;gap:10px;padding:6px 11px;border-bottom:1px solid var(--border);
+  font-size:11.5px;color:var(--text-400);background:var(--bg-100)}
+.seg{margin-left:auto;display:flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.seg button{background:transparent;border:0;color:var(--text-400);font:12px var(--font-sans);padding:3px 10px;cursor:pointer}
+.seg button.on{background:var(--bg-300);color:var(--text-000)}
+.cell{border:1px solid var(--border);border-radius:var(--radius);margin:10px 12px;overflow:hidden}
+.cell .head{display:flex}
+.cell .gut{width:44px;flex:none;border-right:1px solid var(--border);padding-top:9px;text-align:right;
+  padding-right:8px;font:11px var(--font-mono);color:var(--text-400)}
+.cell .src{flex:1;min-width:0;padding:9px 11px;font:13px/1.55 var(--font-mono);white-space:pre-wrap;outline:none}
+.cell .md{flex:1;padding:2px 12px 8px}
+.cell .md h4{font-family:var(--font-serif);font-weight:400;font-size:19px;margin:10px 0 4px}
+.cell .md p{margin:0 0 8px;font-size:13.5px;color:var(--text-200)}
+.out{border-top:1px solid var(--border);background:rgba(255,255,255,.03);padding:9px 11px}
+.out pre{margin:0;font:12px/1.5 var(--font-mono);color:var(--text-400);white-space:pre-wrap}
+.json{margin:10px 12px;padding:10px;background:var(--bg-100);border:1px solid var(--border);border-radius:var(--radius);
+  font:11.5px/1.55 var(--font-mono);color:var(--text-400);white-space:pre-wrap;max-height:290px;overflow:auto}
+.k{color:var(--tok-key)}.s{color:var(--tok-str)}.n{color:var(--tok-num)}
+.f{color:var(--tok-fn)}.v{color:var(--tok-var)}.c{color:var(--tok-com)}.cl{color:var(--tok-cls)}
+
+/* ── 6. file tree ─────────────────────────────────────────────────── */
+.tree{padding:6px 4px;min-height:330px;position:relative;user-select:none}
+.trow{display:flex;align-items:center;gap:6px;height:22px;padding:0 6px;border-radius:3px;font-size:13px;cursor:default}
+.trow:hover{background:var(--bg-300)}
+.trow.sel{background:var(--bg-300)}
+.tw{width:13px;color:var(--text-400);font-size:10px}
+.menu{position:absolute;z-index:5;min-width:212px;background:var(--bg-200);border:1px solid var(--border);
+  border-radius:var(--radius);padding:4px;box-shadow:0 12px 32px rgba(0,0,0,.55)}
+.menu button{display:flex;width:100%;align-items:center;gap:8px;background:transparent;border:0;color:var(--text-000);
+  font:13px var(--font-sans);padding:5px 8px;border-radius:3px;cursor:pointer;text-align:left}
+.menu button:hover{background:var(--bg-300)}
+.menu button.danger{color:var(--red)}
+.menu button.danger:hover{background:var(--red-bg)}
+.menu .sep{height:1px;background:var(--border);margin:4px 2px}
+.dialog{position:absolute;inset:0;background:rgba(0,0,0,.4);display:grid;place-items:start center;padding-top:56px;z-index:6}
+.dialog .box{width:min(320px,86%);background:var(--bg-200);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.dialog input{width:100%;margin-top:8px;background:var(--bg-000);border:1px solid var(--border);border-radius:var(--radius);
+  color:var(--text-000);font:13px var(--font-mono);padding:6px 9px;outline:none}
+.dialog input:focus{border-color:var(--brand)}
+.dialog .btns{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+
+/* ── details grid ─────────────────────────────────────────────────── */
+.details{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.det{background:var(--bg-000);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;font-size:13.5px}
+.det b{color:var(--brand);font-weight:500}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Code Monet</h1>
+    <p class="lede">An agent that checks its own work — with whatever model you bring.</p>
+    <button class="btn-hero">Download beta for Windows ↓</button>
+  </header>
+
+  <!-- ══════════ intro: the whole app in one frame ══════════ -->
+  <div class="stage">
+    <div class="win">
+      <div class="tb">
+        <span class="brand">Code Monet</span>
+        <span class="sp"><span>File</span><span>View</span><span>Agent</span></span>
+      </div>
+      <div class="body">
+
+        <!-- sidebar -->
+        <aside class="sb">
+          <div class="tabs"><span>Home</span><span class="on">Code</span><span>Chat</span></div>
+          <div class="it">＋ New session</div>
+          <div class="it">↑ Import session</div>
+          <div class="it">⚡ Routines</div>
+          <div class="lbl">Recents</div>
+          <div class="chat on live"><span class="mk"></span><span>
+            <span class="tt">Canvas editor + OAuth</span><br><span class="mt">18 msgs · now</span></span></div>
+          <div class="chat"><span class="warn-tri">⚠</span><span>
+            <span class="tt">Nightly data export</span><br><span class="mt">stopped on an error · 2h</span></span></div>
+          <div class="chat"><span class="mk"></span><span>
+            <span class="tt">Jupyter: 3D surface</span><br><span class="mt">41 msgs · 5h</span></span></div>
+          <div class="chat"><span class="mk"></span><span>
+            <span class="tt">C++ solver benchmarks</span><br><span class="mt">12 msgs · 1d</span></span></div>
+          <div class="chat"><span class="mk"></span><span>
+            <span class="tt">LaTeX paper draft</span><br><span class="mt">7 msgs · 2d</span></span></div>
+        </aside>
+
+        <!-- conversation -->
+        <div class="chatcol">
+          <div class="flow">
+            <div class="msg-user">add a canvas editor to the app and wire it to the toolbar</div>
+            <div class="tool"><span class="nm">Read</span> app/page.tsx, components/Toolbar.tsx</div>
+            <div class="tool"><span class="nm">Write</span> components/CanvasEditor.tsx <span class="add">+126</span></div>
+            <div class="tool"><span class="nm">Edit</span> components/Toolbar.tsx <span class="add">+8 −1</span></div>
+            <div class="msg-ai">Editor mounts behind the toolbar and shares its pointer state, so a
+              drag never starts under a button.</div>
+            <div class="vstrip ok" style="margin:2px 0"><span class="ico">✓</span>
+              <span>Checks passed after 1 fix — typecheck, lint</span></div>
+            <div class="ctxbreak"><i></i><span>Auto-compacted — earlier turns summarised · 48k → 12k · 11:49</span><i></i></div>
+            <div class="msg-ai">Preview is running on <span style="font-family:var(--font-mono);color:var(--tok-str)">:3000</span>.
+              Pick any element in it and I’ll work on that exact node.</div>
+          </div>
+          <div class="goalstrip" style="margin:0 12px">
+            <div class="row"><span class="pill live">Working</span>
+              <span class="obj">ship the canvas editor with tests green</span>
+              <span style="margin-left:auto;color:var(--text-400);font-size:11.5px">turn 6/60</span></div>
+            <div class="prog"><i style="width:10%"></i></div>
+          </div>
+          <div class="composer" style="align-items:flex-start;flex-wrap:wrap;gap:6px">
+            <span class="chip">⟨ CanvasEditor.tsx : 12–40 ⟩</span>
+            <span class="chip">⟨ span.tagline ⟩</span>
+            <span style="width:100%;color:var(--text-400)">make the tagline match the brand voice…</span>
+            <span style="font-size:11px;color:var(--text-400)">24.7k · 3% · deepseek-v4-pro</span>
+            <span class="send" style="margin-left:auto">↑</span>
+          </div>
+        </div>
+
+        <!-- dock -->
+        <div class="dockcol">
+          <div class="dtabs" id="d-tabs">
+            <button class="on" data-p="browser">Browser</button>
+            <button data-p="nb">3d_plot.ipynb</button>
+            <button data-p="term">Terminal</button>
+            <button data-p="files">Files</button>
+          </div>
+          <div class="dbody" id="d-body"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-note">
+    <span><b>Click the dock tabs</b> — browser, notebook, terminal and files are panels of one window.</span>
+    <span><b>⚠</b> in the sidebar is a chat that died while you were elsewhere.</span>
+  </div>
+</div>
+
+<!-- ══════════ 1 ══════════ -->
+<section class="band"><div class="wrap">
+  <h2>The harness does what the model can’t be trusted to do</h2>
+  <p class="sub">Every guarantee below is enforced by the app, not requested from the model. That is what makes a cheap model dependable.</p>
+
+  <div class="grid">
+
+    <!-- verification loop -->
+    <div class="card">
+      <h3>Verification runs itself</h3>
+      <p class="d">Your project’s own checks run after every change the agent makes. A failure comes back as its next prompt, not as your problem.</p>
+      <div class="app">
+        <div class="bar"><span class="dot"></span> Chat · monet-web</div>
+        <div class="stream" id="v-stream">
+          <div class="msg-user">add a pow() helper to math.ts</div>
+        </div>
+        <div id="v-strip"></div>
+        <div class="composer"><span>Type / for commands</span><span class="send">↑</span></div>
+      </div>
+      <div class="act">
+        <button class="act-btn primary" id="v-run">Run it</button>
+        <button class="act-btn" id="v-reset">Reset</button>
+      </div>
+      <p class="hint">Nothing was configured: the checks came from <b>package.json</b>.</p>
+    </div>
+
+    <!-- judge -->
+    <div class="card">
+      <h3>The agent doesn’t grade its own homework</h3>
+      <p class="d">Before a goal can close, a fresh context reads the diff and the test output and decides. Confident “done” doesn’t survive it.</p>
+      <div class="app">
+        <div class="bar"><span class="dot"></span> Goal · parser-js</div>
+        <div class="goalstrip">
+          <div class="row">
+            <span class="pill live" id="j-pill">Working</span>
+            <span class="obj">write a math expression parser and make the tests pass</span>
+            <span style="margin-left:auto;color:var(--text-400);font-size:11.5px" id="j-turn">turn 3/25</span>
+          </div>
+          <div class="prog"><i id="j-bar"></i></div>
+        </div>
+        <div class="stream" id="j-stream" style="min-height:190px">
+          <div class="msg-ai">Parser and evaluator are written. Marking the goal complete.</div>
+        </div>
+        <div class="composer"><span>Type / for commands</span><span class="send">↑</span></div>
+      </div>
+      <div class="act">
+        <button class="act-btn primary" id="j-claim">Claim “complete”</button>
+        <button class="act-btn" id="j-reset">Reset</button>
+      </div>
+      <p class="hint">The judge runs the <b>full tier</b> — tests and build, too slow for every turn, exactly right for “is it finished”.</p>
+    </div>
+
+    <!-- step budget -->
+    <div class="card">
+      <h3>A step budget that bends</h3>
+      <p class="d">More steps for a run still producing new work, none for one repeating itself — and when it ends, a handoff instead of silence.</p>
+      <div class="app">
+        <div class="bar"><span class="dot"></span> Run · 40 steps</div>
+        <div class="stream" id="b-stream" style="min-height:220px">
+          <div class="tool"><span class="nm">Bash</span> npm run build</div>
+        </div>
+      </div>
+      <div class="act">
+        <button class="act-btn primary" id="b-work">Run that keeps working</button>
+        <button class="act-btn" id="b-loop">Run stuck in a loop</button>
+      </div>
+      <p class="hint">Told apart by <b>evidence</b>, not by asking the model whether it would like more steps.</p>
+    </div>
+
+  </div>
+</div></section>
+
+<!-- ══════════ 2 ══════════ -->
+<section class="band"><div class="wrap">
+  <h2>Nothing is hidden from you</h2>
+  <p class="sub">The chat is not a transcript of what the model remembers. So the app shows you the difference instead of letting you guess.</p>
+
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(440px,1fr))">
+
+    <!-- context map -->
+    <div class="card">
+      <h3>See what the model can still read</h3>
+      <p class="d">Compaction folds the beginning of a chat, undo drops the end. Both stay on your screen — dimmed, with the line where context resumes.</p>
+      <div class="app">
+        <div class="bar"><span class="dot"></span> Chat · 4 prompts in context</div>
+        <div class="stream" id="c-stream" style="min-height:300px"></div>
+        <div class="meter">
+          <span id="c-count">4 prompts in context</span>
+          <span class="barr"><i id="c-bar"></i></span>
+          <span id="c-pct">62%</span>
+        </div>
+      </div>
+      <div class="act">
+        <button class="act-btn" id="c-undo">Undo last prompt</button>
+        <button class="act-btn" id="c-compact">Compact now</button>
+        <button class="act-btn" id="c-reset">Reset</button>
+      </div>
+      <p class="hint">Dimmed, not deleted: still <b>yours</b> to read, no longer the model’s.</p>
+    </div>
+
+    <!-- lessons -->
+    <div class="card">
+      <h3>It dreams about your failures</h3>
+      <p class="d">At night the app reads what went wrong in each folder — failed commands, chats that stopped, budgets spent — and writes lessons that load only there.</p>
+      <div class="app">
+        <div class="bar"><span class="dot"></span> Settings · Memory</div>
+        <div style="padding:10px 12px 12px">
+          <div style="font-size:12px;color:var(--text-400);margin-bottom:6px">Project lessons</div>
+          <div id="l-list"></div>
+          <div id="l-status" style="font-size:11.5px;color:var(--text-400);margin-top:8px"></div>
+        </div>
+      </div>
+      <div class="act">
+        <button class="act-btn primary" id="l-learn">Learn now</button>
+        <button class="act-btn" id="l-undo" disabled>Undo last night</button>
+      </div>
+      <p class="hint">A memory the machine writes is only acceptable if a bad night is <b>one click</b> to undo.</p>
+    </div>
+
+  </div>
+</div></section>
+
+<!-- ══════════ 3 ══════════ -->
+<section class="band"><div class="wrap">
+  <h2>Real files, real formats</h2>
+  <p class="sub">The things you actually open all day, treated as documents rather than as text the agent happens to write.</p>
+
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(440px,1fr))">
+
+    <!-- notebook -->
+    <div class="card">
+      <h3>A notebook opens as a notebook</h3>
+      <p class="d">Rendered prose, highlighted code, real outputs. It saves back as nbformat line arrays, keeping every field it doesn’t understand.</p>
+      <div class="app">
+        <div class="nbbar">
+          <span id="nb-meta">2 cells · Python 3 (ipykernel)</span>
+          <span class="seg">
+            <button id="nb-doc" class="on">Notebook</button>
+            <button id="nb-json">Raw .ipynb</button>
+          </span>
+        </div>
+        <div id="nb-view"></div>
+      </div>
+      <p class="hint">The code cell is <b>editable</b> — click into it and type.</p>
+    </div>
+
+    <!-- file tree -->
+    <div class="card">
+      <h3>A file tree that manages files</h3>
+      <p class="d">New, rename, duplicate, trash, .gitignore — and a clipboard that carries a file from the agent’s sandbox straight into your project.</p>
+      <div class="app">
+        <div class="bar"><span class="dot"></span> Files · monet-web</div>
+        <div class="tree" id="tree"></div>
+      </div>
+      <p class="hint"><b>Right-click any row.</b> Delete goes to the OS trash — a right-click must be recoverable.</p>
+    </div>
+
+  </div>
+</div></section>
+
+<!-- ══════════ details ══════════ -->
+<section class="band"><div class="wrap">
+  <h2>Details we sweated</h2>
+  <p class="sub">The parts nobody writes on a landing page, which is exactly why they are worth writing here.</p>
+  <div class="details">
+    <div class="det"><b>$5</b> stays five dollars. It never becomes a LaTeX formula.</div>
+    <div class="det">A preview tab stays <b>italic</b> until you decide to keep it.</div>
+    <div class="det">The caret <b>doesn’t jump</b> when the agent saves the file under you.</div>
+    <div class="det">A chat that died while you were away <b>still says so</b> after a restart.</div>
+    <div class="det">Hidden files: <b>one eye</b>, and it remembers.</div>
+    <div class="det">Delete goes to the <b>OS trash</b>, never unlink.</div>
+    <div class="det" style="grid-column:1/-1">Nothing ships until a <b>probe proves it fails</b> on broken code.</div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">Interactive demos — every panel above is the real product’s styling, driven by its real logic.</div></footer>
+
+<script>
+const $ = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
+const el = (h)=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstElementChild};
+const wait = (ms)=>new Promise(r=>setTimeout(r,ms));
+
+/* ═══ 0. the hero dock ═══════════════════════════════════════════════
+   The same four panels the real window docks: a browser you can point at,
+   the notebook, the terminal and the tree. Clicking a tab swaps the panel,
+   exactly like dragging one in the app. */
+const HERO_PANELS = {
+  browser:`
+    <div class="urlbar">← → ⟳ &nbsp;http://localhost:3000</div>
+    <div class="page">
+      <h5>Acme Labs</h5>
+      <p>Software creation is changing. We are a group of researchers, engineers and
+         technologists inventing at the edge of what is useful and possible.</p>
+      <p style="margin-top:30px"><span class="picked"><span class="tagbadge">span.tagline · picked → chip</span>
+         We have much to learn, try, and build.</span></p>
+      <p style="margin-top:18px;font-size:11.5px;color:#6b6b6b">Console: 0 errors · 0 warnings</p>
+    </div>`,
+  nb:`<div style="height:100%;overflow:hidden">
+      <div class="nbbar"><span>2 cells · Python 3 (ipykernel)</span></div>
+      <div class="cell" style="margin:10px"><div class="head"><div class="gut"></div><div class="md">
+        <h4 style="font-size:17px">3D surface</h4><p style="font-size:12.5px">Built with matplotlib.</p></div></div></div>
+      <div class="cell" style="margin:10px"><div class="head"><div class="gut">[1]</div>
+        <div class="src" style="font-size:12px"><span class="k">import</span> numpy <span class="k">as</span> np
+Z = np.<span class="f">sin</span>(np.<span class="f">sqrt</span>(X<span class="k">**</span><span class="n">2</span> + Y<span class="k">**</span><span class="n">2</span>))
+ax.<span class="f">plot_surface</span>(X, Y, Z, cmap=<span class="s">'viridis'</span>)</div></div>
+        <div class="out" id="hero-plot"></div></div>
+    </div>`,
+  term:`<div class="term"><span class="pr">$</span> npm run build
+  ▲ Next.js 15.1 · compiling…
+  Collecting page data
+  Generating static pages (48/48)
+  <span class="ok">✓ Compiled successfully in 3.8s</span>
+
+<span class="pr">$</span> npm test
+  <span class="ok">21 passing</span> (0.4s)
+
+<span class="pr">$</span> <span style="color:var(--text-000)">▍</span></div>`,
+  files:`<div class="tree" style="min-height:0;height:100%;padding:8px 6px">
+      <div class="trow"><span class="tw">▾</span>📁 app</div>
+      <div class="trow" style="padding-left:22px">📘 layout.tsx</div>
+      <div class="trow" style="padding-left:22px">📘 page.tsx</div>
+      <div class="trow"><span class="tw">▾</span>📁 components</div>
+      <div class="trow" style="padding-left:22px">📘 CanvasEditor.tsx</div>
+      <div class="trow" style="padding-left:22px">📘 Toolbar.tsx</div>
+      <div class="trow"><span class="tw">▸</span>📁 lib</div>
+      <div class="trow"><span class="tw"></span>⚙️ package.json</div>
+      <div class="trow"><span class="tw"></span>📄 README.md</div>
+    </div>`,
+};
+function heroPanel(p){
+  $('#d-body').innerHTML = HERO_PANELS[p];
+  $$('#d-tabs button').forEach(b=>b.classList.toggle('on', b.dataset.p===p));
+  if(p==='nb') $('#hero-plot').innerHTML = PLOT;
+}
+$$('#d-tabs button').forEach(b=>b.onclick=()=>heroPanel(b.dataset.p));
+
+/* ═══ 1. verification loop ═══════════════════════════════════════════
+   The real sequence: an edited turn triggers the fast tier, a red check
+   becomes the next prompt, the fix re-runs it. */
+const vStream=$('#v-stream'), vStrip=$('#v-strip');
+const vBase = vStream.innerHTML;
+let vBusy=false;
+function strip(cls,ico,text){vStrip.innerHTML='';vStrip.append(el(
+  `<div class="vstrip ${cls} fade"><span class="ico">${ico}</span><span>${text}</span></div>`))}
+$('#v-run').onclick = async ()=>{
+  if(vBusy) return; vBusy=true;
+  vStream.innerHTML=vBase;
+  vStream.append(el(`<div class="tool fade"><span class="nm">Write</span> math.ts <span class="add">+4</span></div>`));
+  await wait(500);
+  strip('','<span class="spin"></span>','Running project checks…');
+  await wait(1100);
+  strip('warn','⚠','<b style="color:var(--text-000);font-weight:500">typecheck</b>&nbsp; failed — fixing (1/3)');
+  vStream.append(el(`<div class="check-out fade">$ npm run typecheck
+math.ts:4:28 - error TS2554: Expected 2 arguments, but got 1.</div>`));
+  await wait(1200);
+  vStream.append(el(`<div class="msg-ai fade">The helper took one argument where the signature promises two. Fixing it.</div>`));
+  vStream.append(el(`<div class="tool fade"><span class="nm">Edit</span> math.ts <span class="add">+1 −1</span></div>`));
+  strip('','<span class="spin"></span>','Re-running checks after fix 1/3…');
+  await wait(1200);
+  strip('ok','✓','Checks passed after 1 fix');
+  vBusy=false;
+};
+$('#v-reset').onclick = ()=>{vStream.innerHTML=vBase;vStrip.innerHTML='';};
+
+/* ═══ 2. completion judge ════════════════════════════════════════════ */
+const jStream=$('#j-stream'); const jBase=jStream.innerHTML;
+let jStage=0;
+function jReset(){jStage=0;jStream.innerHTML=jBase;$('#j-pill').className='pill live';
+  $('#j-pill').textContent='Working';$('#j-turn').textContent='turn 3/25';$('#j-bar').style.width='12%';
+  $('#j-claim').disabled=false;$('#j-claim').textContent='Claim “complete”';}
+$('#j-reset').onclick=jReset;
+$('#j-claim').onclick = async ()=>{
+  const b=$('#j-claim'); b.disabled=true;
+  if(jStage===0){
+    jStream.append(el(`<div class="tool fade"><span class="nm">UpdateGoal</span> status: complete</div>`));
+    await wait(700);
+    jStream.append(el(`<div class="tool fade"><span class="spin"></span> running full checks — test, build</div>`));
+    await wait(1300);
+    jStream.append(el(`<div class="verdict fade"><b>Completion review (fresh context): NOT accepted</b>
+      test fails (<code>npm test</code>): the suite requires <code>needed.ts</code> exporting
+      <code>NEEDED</code>. The goal stays active.</div>`));
+    $('#j-turn').textContent='turn 4/25'; $('#j-bar').style.width='16%';
+    jStage=1; b.textContent='Fix it and claim again'; b.disabled=false;
+  } else {
+    jStream.append(el(`<div class="tool fade"><span class="nm">Write</span> needed.ts <span class="add">+1</span></div>`));
+    await wait(500);
+    jStream.append(el(`<div class="tool fade"><span class="nm">Bash</span> npm test → <span class="add">all tests green</span></div>`));
+    await wait(800);
+    jStream.append(el(`<div class="verdict pass fade"><b>Completion review: accepted</b>
+      21 tests pass and the diff matches the objective.</div>`));
+    $('#j-pill').className='pill done'; $('#j-pill').textContent='Complete';
+    $('#j-bar').style.width='20%'; b.textContent='Done';
+  }
+};
+
+/* ═══ 3. step budget ═════════════════════════════════════════════════ */
+const bStream=$('#b-stream');
+async function budget(kind){
+  bStream.innerHTML='';
+  const varied=['npm run build','node scripts/seed.js','git status --short','npm test -- --filter api'];
+  for(let i=0;i<4;i++){
+    const cmd = kind==='loop' ? 'BrowserReadPage {}' : varied[i];
+    bStream.append(el(`<div class="tool fade"><span class="nm">${kind==='loop'?'BrowserReadPage':'Bash'}</span> ${cmd}</div>`));
+    await wait(330);
+  }
+  if(kind==='work'){
+    bStream.append(el(`<div class="vstrip ok fade" style="margin:2px 0">
+      <span class="ico">＋</span><span>Step budget extended by 20 (to 60) — this run is still producing new work</span></div>`));
+    await wait(700);
+    bStream.append(el(`<div class="tool fade"><span class="nm">Edit</span> api/routes.ts <span class="add">+18 −2</span></div>`));
+  } else {
+    bStream.append(el(`<div class="vstrip warn fade" style="margin:2px 0">
+      <span class="ico">⚠</span><span>Same call, same arguments — no extension. 40 steps stand.</span></div>`));
+    await wait(700);
+    bStream.append(el(`<div class="msg-ai fade"><b>Handoff:</b> the notebook file is written and valid;
+      the cell still will not execute because the kernel queue is stuck. Next step: run
+      <code style="font-family:var(--font-mono);color:var(--tok-str)">jupyter nbconvert --execute</code> instead of driving the UI.</div>`));
+  }
+}
+$('#b-work').onclick=()=>budget('work');
+$('#b-loop').onclick=()=>budget('loop');
+
+/* ═══ 4. context map ═════════════════════════════════════════════════
+   Turn ordinals are the unit, exactly like lib/context-map.ts: a compaction
+   takes turns off the FRONT, an undo off the BACK. */
+const cStream=$('#c-stream');
+const TURNS=[
+  ['set up the Next.js app router','Created app/layout.tsx and app/page.tsx.'],
+  ['add Google OAuth','Wired next-auth with the Google provider.'],
+  ['now the canvas editor','Added CanvasEditor.tsx with pointer handling.'],
+  ['make the toolbar sticky','Toolbar now pins to the top on scroll.'],
+];
+let outFront=0, outBack=0, marks=[];
+function renderCtx(){
+  cStream.innerHTML='';
+  TURNS.forEach((t,i)=>{
+    const isOut = i<outFront || i>=TURNS.length-outBack;
+    const mk = marks.find(m=>m.at===i);
+    if(mk) cStream.append(el(`<div class="ctxbreak fade"><i></i><span>${mk.text}</span><i></i></div>`));
+    cStream.append(el(`<div class="turn ${isOut?'out':''}">
+      <div class="msg-user">${t[0]}</div><div class="msg-ai">${t[1]}</div></div>`));
+  });
+  const tail = marks.find(m=>m.at===TURNS.length);
+  if(tail) cStream.append(el(`<div class="ctxbreak fade"><i></i><span>${tail.text}</span><i></i></div>`));
+  const live=TURNS.length-outFront-outBack;
+  $('#c-count').textContent=`${live} prompt${live===1?'':'s'} in context`;
+  const pct=Math.max(8,Math.round(live/TURNS.length*62));
+  $('#c-bar').style.width=pct+'%'; $('#c-pct').textContent=pct+'%';
+}
+$('#c-undo').onclick=()=>{
+  if(outFront+outBack>=TURNS.length) return;
+  outBack++;
+  marks=marks.filter(m=>m.kind!=='undo');
+  marks.push({kind:'undo',at:TURNS.length,text:`Undo — ${outBack} prompt${outBack===1?'':'s'} dropped from context · 11:23`});
+  renderCtx();
+};
+$('#c-compact').onclick=()=>{
+  if(outFront>0) return;
+  outFront=2;
+  marks.push({kind:'compact',at:2,text:'Auto-compacted — earlier turns summarised · 5.2k → 2.2k · 11:49'});
+  renderCtx();
+};
+$('#c-reset').onclick=()=>{outFront=0;outBack=0;marks=[];renderCtx()};
+renderCtx();
+
+/* ═══ 5. project lessons ═════════════════════════════════════════════ */
+const LESSONS=[
+  {ws:'claude-code', sum:'LaTeX, dev-server ports, Windows processes', open:false, learned:false,
+   body:`• <b>tectonic</b> fails on Cyrillic — use <b>xelatex</b> with fontspec.<br>
+         • Port <b>5173</b> is usually taken; kill the listener before starting vite.<br>
+         • On Windows kill processes with <b>taskkill</b>; git’s <code>kill</code> does nothing.`},
+  {ws:'code-monet-web', sum:'Missing README, dead font URL', open:false, learned:false,
+   body:`• There is no <b>README.md</b> in this root — stop trying to read it.<br>
+         • The remote <b>copernicus.css</b> returns 404; the font must be vendored.`},
+];
+function renderLessons(){
+  const host=$('#l-list'); host.innerHTML='';
+  LESSONS.forEach((l,i)=>{
+    host.append(el(`<div class="lrow" data-i="${i}">
+      <span class="tw">${l.open?'▾':'▸'}</span>
+      <span><span class="ws">${l.ws}</span> <span class="sm">— ${l.sum}</span></span>
+      <span class="sm">${l.learned?'just now':'2d ago'}</span>
+      <span class="sm">↺</span></div>`));
+    if(l.open) host.append(el(`<div class="lbody fade">${l.body}
+      ${l.learned?`<div class="new-lesson" style="margin-top:8px">• <b>npm test</b> needs the dev server stopped first — three runs failed on a busy port.</div>`:''}</div>`));
+  });
+  host.querySelectorAll('.lrow').forEach(r=>r.onclick=()=>{
+    const i=+r.dataset.i; LESSONS[i].open=!LESSONS[i].open; renderLessons();
+  });
+}
+$('#l-learn').onclick=async ()=>{
+  const b=$('#l-learn'); b.disabled=true;
+  $('#l-status').innerHTML='<span class="spin"></span> reading 41 failed commands, 3 stopped chats…';
+  await wait(1400);
+  LESSONS[0].learned=true; LESSONS[0].open=true; LESSONS[0].sum='LaTeX, ports, Windows, test runner';
+  renderLessons();
+  $('#l-status').textContent='Learned 1 new lesson in claude-code.';
+  $('#l-undo').disabled=false; b.disabled=false;
+};
+$('#l-undo').onclick=()=>{
+  LESSONS[0].learned=false; LESSONS[0].sum='LaTeX, dev-server ports, Windows processes';
+  renderLessons(); $('#l-status').textContent='Rolled back to last night’s version.';
+  $('#l-undo').disabled=true;
+};
+renderLessons();
+
+/* ═══ 6. notebook ════════════════════════════════════════════════════ */
+const nbView=$('#nb-view');
+const PLOT=`<svg viewBox="0 0 320 150" width="100%" style="max-width:340px">
+  <defs><linearGradient id="g" x1="0" y1="1" x2="1" y2="0">
+    <stop offset="0" stop-color="#440154"/><stop offset=".5" stop-color="#21918c"/><stop offset="1" stop-color="#fde725"/>
+  </linearGradient></defs>
+  ${Array.from({length:13},(_,i)=>{const y=18+i*9;
+    const d=Array.from({length:26},(_,j)=>{const x=14+j*11.5;
+      const w=Math.sin((j-12.5)/3.4)*Math.cos((i-6)/3)*13*(1-i/26);
+      return `${j?'L':'M'}${x.toFixed(1)},${(y-w).toFixed(1)}`}).join('');
+    return `<path d="${d}" fill="none" stroke="url(#g)" stroke-width="1.1" opacity="${0.35+i*0.05}"/>`}).join('')}
+  <text x="8" y="145" fill="#9e9e9e" font-size="8" font-family="monospace">z = sin(sqrt(x² + y²))</text>
+</svg>`;
+const NB_DOC=`
+<div class="cell"><div class="head"><div class="gut"></div><div class="md">
+  <h4>3D surface</h4><p>An example of a 3D surface built with matplotlib.</p></div></div></div>
+<div class="cell"><div class="head"><div class="gut">[1]</div>
+  <div class="src" contenteditable="true" spellcheck="false"><span class="k">import</span> numpy <span class="k">as</span> np
+<span class="k">import</span> matplotlib.pyplot <span class="k">as</span> plt
+
+x = np.<span class="f">linspace</span>(<span class="n">-5</span>, <span class="n">5</span>, <span class="n">100</span>)
+X, Y = np.<span class="f">meshgrid</span>(x, x)
+Z = np.<span class="f">sin</span>(np.<span class="f">sqrt</span>(X<span class="k">**</span><span class="n">2</span> + Y<span class="k">**</span><span class="n">2</span>))
+
+fig = plt.<span class="f">figure</span>()
+ax = fig.<span class="f">add_subplot</span>(<span class="n">111</span>, projection=<span class="s">'3d'</span>)
+ax.<span class="f">plot_surface</span>(X, Y, Z, cmap=<span class="s">'viridis'</span>)
+plt.<span class="f">show</span>()</div></div>
+  <div class="out">${PLOT}</div></div>`;
+const NB_JSON=`<div class="json">{
+ <span class="s">"cells"</span>: [
+  {
+   <span class="s">"cell_type"</span>: <span class="s">"markdown"</span>,
+   <span class="s">"metadata"</span>: {},
+   <span class="s">"source"</span>: [<span class="s">"# 3D surface\\n"</span>, <span class="s">"\\n"</span>, <span class="s">"An example of a 3D surface built with matplotlib."</span>]
+  },
+  {
+   <span class="s">"cell_type"</span>: <span class="s">"code"</span>,
+   <span class="s">"execution_count"</span>: <span class="n">1</span>,
+   <span class="s">"outputs"</span>: [
+    {
+     <span class="s">"output_type"</span>: <span class="s">"display_data"</span>,
+     <span class="s">"data"</span>: {
+      <span class="s">"image/png"</span>: <span class="s">"iVBORw0KGgoAAAANSUhEUgAAAoAAAAHgCAYAAAA10dzkAAAAOXRFWHRTb2Z0d2FyZQBNYXRw
+bG90bGliIHZlcnNpb24zLjkuMiwgaHR0cHM6Ly9tYXRwbG90bGliLm9yZy8h5oaZAAAACXBIWXMA
+AA9hAAAPYQGoP6dpAAEAAElEQVR4nOzdd3wU1RbA8d/M9k1PSCEQeg2919Cb..."</span>
+     }
+    }
+   ],
+   <span class="s">"source"</span>: [<span class="s">"import numpy as np\\n"</span>, <span class="s">"import matplotlib.pyplot as plt\\n"</span>, <span class="s">"\\n"</span>, <span class="s">"x = np.linspace(-5, 5, 100)\\n"</span>, <span class="s">"X, Y = np.meshgrid(x, x)\\n"</span>, <span class="s">"Z = np.sin(np.sqrt(X**2 + Y**2))\\n"</span>]
+  }
+ ],
+ <span class="s">"metadata"</span>: {<span class="s">"kernelspec"</span>: {<span class="s">"display_name"</span>: <span class="s">"Python 3 (ipykernel)"</span>}},
+ <span class="s">"nbformat"</span>: <span class="n">4</span>, <span class="s">"nbformat_minor"</span>: <span class="n">5</span>
+}</div>`;
+function nbShow(doc){
+  nbView.innerHTML = doc?NB_DOC:NB_JSON;
+  $('#nb-doc').classList.toggle('on',doc); $('#nb-json').classList.toggle('on',!doc);
+  $('#nb-meta').textContent = doc ? '2 cells · Python 3 (ipykernel)' : '3d_plot.ipynb · 41 KB of JSON';
+}
+$('#nb-doc').onclick=()=>nbShow(true); $('#nb-json').onclick=()=>nbShow(false);
+nbShow(true);
+
+/* ═══ 7. file tree ═══════════════════════════════════════════════════ */
+const tree=$('#tree');
+let FILES=[
+  {n:'app',d:1},{n:'components',d:1},{n:'lib',d:1},
+  {n:'package.json',d:0},{n:'README.md',d:0},{n:'tsconfig.json',d:0},
+];
+let clip=null;
+function icon(f){return f.d?'📁':(f.n.endsWith('.json')?'⚙️':f.n.endsWith('.md')?'📄':'📘')}
+function renderTree(){
+  tree.querySelectorAll('.trow').forEach(n=>n.remove());
+  FILES.forEach((f,i)=>{
+    const r=el(`<div class="trow" data-i="${i}"><span class="tw">${f.d?'▸':''}</span>
+      <span>${icon(f)}</span><span>${f.n}</span></div>`);
+    r.oncontextmenu=(e)=>{e.preventDefault();openMenu(e,i)};
+    tree.insertBefore(r,tree.firstChild&&tree.firstChild.classList&&tree.firstChild.classList.contains('menu')?tree.firstChild:null);
+  });
+}
+function closeMenu(){tree.querySelectorAll('.menu,.dialog').forEach(n=>n.remove())}
+function openMenu(e,i){
+  closeMenu();
+  const f=FILES[i];
+  const rect=tree.getBoundingClientRect();
+  const m=el(`<div class="menu fade" style="left:0;top:0;visibility:hidden">
+    <button data-a="open">📄 Open</button>
+    <button data-a="new">＋ New File…</button>
+    <button data-a="folder">📁 New Folder…</button>
+    <div class="sep"></div>
+    <button data-a="cut">✂ Cut</button>
+    <button data-a="copy">⧉ Copy</button>
+    <button data-a="dup">⧉ Duplicate</button>
+    ${clip?`<button data-a="paste">📋 Paste “${clip}”</button>`:''}
+    <div class="sep"></div>
+    <button data-a="path">⧉ Copy Relative Path</button>
+    <button data-a="git">⑂ Add to .gitignore</button>
+    <div class="sep"></div>
+    <button data-a="rename">✎ Rename…</button>
+    <button class="danger" data-a="trash">🗑 Move to Trash</button>
+  </div>`);
+  tree.append(m);
+  // The card clips its own overflow, so the menu is placed only after it can
+  // be MEASURED: a menu with its last three items shaved off is worse than
+  // one that opens a little above the pointer.
+  const mh=m.offsetHeight, mw=m.offsetWidth;
+  m.style.left = Math.max(0, Math.min(e.clientX-rect.left, rect.width-mw-6)) + 'px';
+  m.style.top  = Math.max(0, Math.min(e.clientY-rect.top,  rect.height-mh-6)) + 'px';
+  m.style.visibility='visible';
+  m.querySelectorAll('button').forEach(b=>b.onclick=()=>act(b.dataset.a,i));
+}
+function act(a,i){
+  const f=FILES[i]; closeMenu();
+  if(a==='trash'){FILES=FILES.filter((_,k)=>k!==i);renderTree();note(`Moved ${f.n} to the OS trash — recoverable.`);}
+  else if(a==='dup'){const ext=f.n.includes('.')?'.'+f.n.split('.').pop():'';const stem=ext?f.n.slice(0,-ext.length):f.n;
+    FILES.splice(i+1,0,{n:`${stem} copy${ext}`,d:f.d});renderTree();note('Duplicated with “copy” numbering.')}
+  else if(a==='cut'||a==='copy'){clip=f.n;note(`${a==='cut'?'Cut':'Copied'} ${f.n} — the clipboard also reaches the Home sandbox.`)}
+  else if(a==='paste'){FILES.splice(i+1,0,{n:clip,d:0});clip=null;renderTree();note('Pasted into this folder.')}
+  else if(a==='new'||a==='folder'||a==='rename') nameDialog(a,i);
+  else if(a==='git') note(`Added /${f.n} to .gitignore — rooted, and never doubled.`);
+  else if(a==='path') note(`Copied “src/${f.n}”.`);
+  else note(`Opened ${f.n}.`);
+}
+function nameDialog(a,i){
+  const title=a==='rename'?'Rename':a==='folder'?'New folder':'New file';
+  const init=a==='rename'?FILES[i].n:'';
+  const d=el(`<div class="dialog"><div class="box">
+    <div style="font-size:13px;font-weight:500">${title}</div>
+    <input value="${init}" spellcheck="false" />
+    <div class="btns"><button class="act-btn" data-x="c">Cancel</button>
+    <button class="act-btn primary" data-x="k">${a==='rename'?'Rename':'Create'}</button></div>
+  </div></div>`);
+  tree.append(d);
+  const inp=d.querySelector('input'); inp.focus();
+  const dot=init.lastIndexOf('.'); inp.setSelectionRange(0,dot>0?dot:init.length);
+  const done=(ok)=>{
+    if(ok&&inp.value.trim()){
+      if(a==='rename') FILES[i].n=inp.value.trim();
+      else FILES.splice(i+1,0,{n:inp.value.trim(),d:a==='folder'?1:0});
+      renderTree(); note(a==='rename'?'Renamed in place — a path with “/” would be a move, and moves ask.':'Created. Nested paths make their folders, VS Code style.');
+    }
+    closeMenu();
+  };
+  d.querySelectorAll('button').forEach(b=>b.onclick=()=>done(b.dataset.x==='k'));
+  inp.onkeydown=(e)=>{if(e.key==='Enter')done(true);if(e.key==='Escape')done(false)};
+}
+function note(t){
+  let n=$('#t-note');
+  if(!n){n=el('<div id="t-note" class="hint" style="margin:6px 8px 0"></div>');tree.parentElement.append(n)}
+  n.innerHTML=`<b>·</b> ${t}`;
+}
+document.addEventListener('click',(e)=>{if(!e.target.closest('.menu')&&!e.target.closest('.dialog'))closeMenu()});
+renderTree();
+
+/* The hero starts on the browser panel — PLOT is defined by now, so the
+   notebook tab has its figure the first time it is clicked. */
+heroPanel('browser');
+</script>
+</body>
+</html>
