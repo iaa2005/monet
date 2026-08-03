@@ -369,6 +369,8 @@ export interface ElectronAPI {
     }) => Promise<{ ok: boolean }>;
     abort: (sessionId?: string) => Promise<{ ok: boolean }>;
     /** Apply a permission-mode change to a turn already running. */
+    setVisibleSession: (sessionId?: string) => Promise<{ ok: boolean }>;
+    onFocusSession: (cb: (sessionId: string) => void) => () => void;
     setPermissionMode: (
       sessionId: string,
       mode: string,

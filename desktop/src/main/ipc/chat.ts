@@ -6,6 +6,8 @@
  */
 
 import { ipcMain, BrowserWindow } from "electron";
+import { APP_NAME } from "@shared/brand.js";
+import { appIconPath } from "../app-icon.js";
 import {
   runAgent,
   resetConversation,
@@ -236,6 +238,17 @@ function modeDirectiveFor(mode: string): string | undefined {
   return def ? tunablePrompt(`mode-${mode}`, def) : undefined;
 }
 
+/**
+ * The chat the renderer currently has on screen, as the renderer last said.
+ *
+ * Main cannot see this and it decides whether a finished turn is worth a
+ * desktop notification: an answer that arrived in the chat you are reading is
+ * not news. Undefined means the renderer has not told us yet, which reads as
+ * "no chat is visible" — the safe side, since the worst case is one extra
+ * notification rather than a silent one that was needed.
+ */
+let visibleSessionId: string | undefined;
+
 // Per-session abort controllers so multiple chats can run (and be stopped)
 // independently, and so switching chats doesn't cancel a background run.
 const aborts = new Map<string, AbortController>();
@@ -357,6 +370,10 @@ export function registerChatIPC(): void {
       if (expanded) message = expanded;
     }
 
+    /** The reply so far, for the first line of a notification the user may
+     * never need. Per send, so it cannot leak between turns. */
+    let replyText = "";
+
     const emit = (event: unknown): void => {
       // A turn that ends badly is remembered by the DATABASE, not just by the
       // renderer: the chat that fails while the user is in another one — or
@@ -367,9 +384,13 @@ export function registerChatIPC(): void {
         error?: string;
         stop_reason?: string;
         empty?: boolean;
+        text?: string;
       };
       if (e?.type === "error" && e.error && e.error !== "Aborted")
         getSessionStore().setLastError(sessionId, e.error);
+      // The reply as it streams, kept only to put its first line in a
+      // notification the user may never need — cleared with the turn.
+      if (e?.type === "text_delta" && e.text) replyText += e.text;
       // How the turn ended, kept for the same reason: a run that comes back
       // with nothing leaves no other trace, so "gave up" and "finished" look
       // identical afterwards. See agent/empty-turn.ts.
@@ -480,6 +501,47 @@ export function registerChatIPC(): void {
       if (aborts.get(sessionId) === abort) aborts.delete(sessionId);
     }
 
+    // The turn is over. Tell the user only if they could not have seen it —
+    // see turn-notify.ts for every case, and for why a routine never counts.
+    void (async () => {
+      try {
+        const { shouldNotifyTurnEnd, notificationBody } = await import(
+          "../turn-notify.js"
+        );
+        const store = getSessionStore();
+        const decision = shouldNotifyTurnEnd({
+          sessionId,
+          visibleSessionId,
+          windowFocused: !win.isDestroyed() && win.isFocused() && !win.isMinimized(),
+          windowVisible: !win.isDestroyed() && win.isVisible(),
+          isRoutineChat: !!store.routineIdOf(sessionId),
+          aborted: abort.signal.aborted,
+        });
+        if (!decision.notify) return;
+        const { Notification } = await import("electron");
+        if (!Notification.isSupported()) return;
+        const icon = appIconPath();
+        const row = store.get(sessionId);
+        const n = new Notification({
+          title: row?.title || APP_NAME,
+          body: notificationBody(replyText, row?.lastError),
+          ...(icon ? { icon } : {}),
+          silent: false,
+        });
+        // Clicking it does the obvious thing: bring the app up on that chat.
+        n.on("click", () => {
+          if (win.isDestroyed()) return;
+          if (!win.isVisible()) win.show();
+          if (win.isMinimized()) win.restore();
+          win.focus();
+          win.webContents.send("chat:focusSession", sessionId);
+        });
+        n.show();
+      } catch {
+        /* a notification is never worth failing a turn over */
+      }
+    })();
+
     // First completed exchange names the chat (uses the ORIGINAL message,
     // not the slash-expanded one).
     void maybeAutoTitle(win, sessionId, payload.message);
@@ -511,6 +573,16 @@ export function registerChatIPC(): void {
       // model had switched the chat to plan — left plan mode on with no way
       // to leave it.
       clearSessionMode(sessionId);
+      return { ok: true };
+    },
+  );
+
+  /** The renderer says which chat is on screen (and undefined when none is).
+   * Read only when a turn ends — see the note on visibleSessionId. */
+  ipcMain.handle(
+    "chat:setVisibleSession",
+    (_e, sessionId?: string): { ok: boolean } => {
+      visibleSessionId = sessionId || undefined;
       return { ok: true };
     },
   );

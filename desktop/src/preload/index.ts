@@ -48,6 +48,16 @@ const electronAPI = {
     abort: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:abort", sessionId),
     /** Apply a permission-mode change to a turn already running. */
+    /** Tell main which chat is on screen, so a finished turn in another one
+     * (or behind another window) can raise a desktop notification. */
+    setVisibleSession: (sessionId?: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("chat:setVisibleSession", sessionId),
+    /** Main asks the UI to open a chat — a clicked notification. */
+    onFocusSession: (cb: (sessionId: string) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, id: string): void => cb(id);
+      ipcRenderer.on("chat:focusSession", handler);
+      return () => ipcRenderer.off("chat:focusSession", handler);
+    },
     setPermissionMode: (
       sessionId: string,
       mode: string,

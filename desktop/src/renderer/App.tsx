@@ -579,6 +579,15 @@ export default function App(): JSX.Element {
     useChatStore.getState().setSpace(appMode);
   }, [appMode]);
 
+  // Main cannot see which chat is on screen, and it is what decides whether a
+  // finished turn deserves a desktop notification. Told on every switch,
+  // including away from all of them.
+  const visibleSessionId = useChatStore((s) => s.currentSessionId);
+  useEffect(() => {
+    void api()?.chat.setVisibleSession?.(visibleSessionId);
+  }, [visibleSessionId]);
+
+
   // Resolve THIS chat's engine + whether it has a shell. Re-read when the chat
   // changes and when Settings closes (the global default may have changed).
   useEffect(() => {
@@ -746,6 +755,13 @@ export default function App(): JSX.Element {
     },
     [handleSelectSession],
   );
+
+  // A clicked notification: main raises the window, the UI opens that chat.
+  useEffect(() => {
+    return api()?.chat.onFocusSession?.((id) => {
+      void openChatById(id);
+    });
+  }, [openChatById]);
 
   const handleImport = useCallback(async () => {
     try {
