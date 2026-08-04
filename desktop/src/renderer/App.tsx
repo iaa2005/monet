@@ -462,13 +462,6 @@ export default function App(): JSX.Element {
         (saved?.browserTabs ?? []).map((t: { url: string }) => t.url),
         saved?.activeTab ?? 0,
       );
-      // A desk that has tabs shows its browser: a guest tab merged into a
-      // chat that never saved a dock layout would otherwise sit invisible.
-      // And a desk WITHOUT tabs closes it — a stale layout was leaving an
-      // empty browser panel standing in chats that never asked for one.
-      if ((saved?.browserTabs ?? []).length > 0)
-        useDockStore.getState().openPanel("browser");
-      else useDockStore.getState().closePanel("browser");
       b.setLayout(saved?.browserExpanded ? "expanded" : "panel");
       // The files this chat had open, pane by pane — restored before the
       // desk so the pane-sync effect recreates their panels on the new wing.
@@ -479,6 +472,14 @@ export default function App(): JSX.Element {
           kind: "layout",
           layout: saved.dockLayout as Record<string, unknown>,
         });
+        // AFTER the layout, not before it: applyDesk repaints the panels
+        // wholesale, so an earlier openPanel("browser") was silently undone
+        // — the desk had its tab, the user saw no browser until they
+        // clicked the button themselves. Tabs present → panel shown; none →
+        // no stale empty browser either.
+        if ((saved?.browserTabs ?? []).length > 0)
+          useDockStore.getState().openPanel("browser");
+        else useDockStore.getState().closePanel("browser");
       } else {
         // A desk saved by a pre-dock build: one tab and maybe a terminal.
         const open: DockPanelId[] = [];

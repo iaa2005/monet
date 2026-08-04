@@ -51,6 +51,13 @@ export async function openHeadlessTab(
   });
   // The window must never flash up, whatever the page requests.
   win.setMenuBarVisibility(false);
+  // Nor may its CHILDREN: a page's target=_blank or window.open() would
+  // otherwise spawn a fully visible BrowserWindow over the user's screen —
+  // the "она открыла на полную ширину" flash. Popups join the hidden layer.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    void openHeadlessTab(sessionId, url);
+    return { action: "deny" };
+  });
   const list = tabsOf(sessionId);
   list.push({ win });
   bySession.set(sessionId, list);
