@@ -1107,6 +1107,7 @@ export interface ElectronAPI {
     checkPodman: () => Promise<{ ok: boolean; error?: string; needsWsl?: boolean }>;
     isPodmanReady: () => Promise<{ ok: boolean }>;
     warmPodman: (sessionId?: string) => Promise<{ ok: boolean }>;
+    adoptDefault: (sessionId: string) => Promise<{ moved: number }>;
     getSessionConfig: (
       sessionId: string,
     ) => Promise<{ engine: string; override: string | null }>;

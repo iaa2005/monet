@@ -979,6 +979,8 @@ export function MessageInput({
             void bridge.sandbox.setSessionConfig(s.id, pendingEngine);
             store.setPendingSandboxEngine(null);
           }
+          // So do any files the zero state left in the "default" sandbox.
+          void bridge.sandbox.adoptDefault(s.id).catch(() => {});
           store.bumpSessions();
           // A new chat adopts the current working directory as its own.
           void bridge.workspace

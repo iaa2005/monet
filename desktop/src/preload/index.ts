@@ -1114,6 +1114,9 @@ const electronAPI = {
       ipcRenderer.invoke("sandbox:isPodmanReady"),
     warmPodman: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("sandbox:warmPodman", sessionId),
+    /** Move the zero-state ("default") sandbox files onto a newborn session. */
+    adoptDefault: (sessionId: string): Promise<{ moved: number }> =>
+      ipcRenderer.invoke("sandbox:adoptDefault", sessionId),
     getSessionConfig: (
       sessionId: string,
     ): Promise<{ engine: string; override: string | null }> =>

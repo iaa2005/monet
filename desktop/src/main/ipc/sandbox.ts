@@ -131,6 +131,33 @@ export function registerSandboxIPC(): void {
     sandboxWorkDir(sessionId || "default"),
   );
 
+  // A zero-state chat works in the "default" sandbox until its first send
+  // creates the session. Whatever landed there belongs to the newborn chat —
+  // leaving it under "default" silently donates it to the NEXT zero-state.
+  ipcMain.handle(
+    "sandbox:adoptDefault",
+    async (_e, sessionId: string): Promise<{ moved: number }> => {
+      const { readdir, rename } = await import("fs/promises");
+      const { join } = await import("path");
+      const from = sandboxWorkDir("default");
+      const to = sandboxWorkDir(sessionId);
+      let moved = 0;
+      try {
+        for (const name of await readdir(from)) {
+          try {
+            await rename(join(from, name), join(to, name));
+            moved += 1;
+          } catch {
+            /* locked or colliding file — leave it rather than fail the send */
+          }
+        }
+      } catch {
+        /* no default dir yet — nothing to adopt */
+      }
+      return { moved };
+    },
+  );
+
   // Does this chat's engine have a shell? (Home terminal button visibility.)
   ipcMain.handle("sandbox:supportsShell", (_e, sessionId?: string): { ok: boolean } => ({
     ok: sandboxSupportsShell(sessionId || "default"),

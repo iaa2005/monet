@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Square, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { INTERRUPT_MARK, useChatStore } from "@/stores/chatStore";
 import type { ElectronAPI } from "@/types/electron";
@@ -77,7 +77,10 @@ export function VoiceMode({
   onClose: () => void;
 }): JSX.Element {
   const [phase, setPhase] = useState<Phase>("listening");
-  const [level, setLevel] = useState(0);
+  const levelRef = useRef(0);
+  const outLevelRef = useRef(0);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const outAnalyserRef = useRef<AnalyserNode | null>(null);
   const [note, setNote] = useState<string>("");
 
   const alive = useRef(true);
@@ -178,7 +181,13 @@ export function VoiceMode({
     const ctx = (audioCtxRef.current ??= new AudioContext());
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.connect(ctx.destination);
+    // Through an analyser, so the wave breathes with the spoken audio too.
+    if (!outAnalyserRef.current) {
+      outAnalyserRef.current = ctx.createAnalyser();
+      outAnalyserRef.current.fftSize = 512;
+      outAnalyserRef.current.connect(ctx.destination);
+    }
+    src.connect(outAnalyserRef.current);
     src.onended = () => {
       vlog("play-end");
       playingRef.current = false;
@@ -297,7 +306,7 @@ export function VoiceMode({
           sum += v * v;
         }
         const rms = Math.sqrt(sum / data.length);
-        setLevel(rms);
+        levelRef.current = rms;
         const voiced = rms > 0.02;
         // Barge-in: half a second of loud, uninterrupted voice — not one
         // frame of the app hearing itself.
@@ -403,11 +412,76 @@ export function VoiceMode({
     }
   };
 
+  // ONE soft blurred wave (Tesla-Grok style), amplitude = the louder of the
+  // two voices. Canvas, because CSS can only breathe a bar up and down.
+  useEffect(() => {
+    let raf = 0;
+    const colors: Record<Phase, [number, number, number]> = {
+      listening: [16, 185, 129],
+      thinking: [245, 158, 11],
+      speaking: [167, 92, 250],
+      error: [244, 63, 94],
+    };
+    const draw = (t: number): void => {
+      const canvas = canvasRef.current;
+      const c = canvas?.getContext("2d");
+      if (canvas && c) {
+        const w = (canvas.width = canvas.offsetWidth);
+        const h = (canvas.height = canvas.offsetHeight);
+        c.clearRect(0, 0, w, h);
+        const glow = Math.min(
+          1,
+          Math.max(levelRef.current * 5, outLevelRef.current * 3.5),
+        );
+        const [r, g, b] = colors[phaseRef.current];
+        const amp = 10 + glow * (h * 0.6);
+        c.beginPath();
+        c.moveTo(0, h);
+        for (let x = 0; x <= w; x += 4) {
+          // A single slow hump travelling right, softly enveloped at edges.
+          const env = Math.sin((x / w) * Math.PI) ** 1.5;
+          const y =
+            h -
+            10 -
+            (0.6 + 0.4 * Math.sin(x * 0.006 + t * 0.0018)) * amp * env;
+          c.lineTo(x, y);
+        }
+        c.lineTo(w, h);
+        c.closePath();
+        const grad = c.createLinearGradient(0, h - 110, 0, h);
+        grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
+        grad.addColorStop(1, `rgba(${r},${g},${b},${0.35 + glow * 0.45})`);
+        c.fillStyle = grad;
+        c.fill();
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     alive.current = true;
+    const data = new Uint8Array(256);
+    const outMeter = setInterval(() => {
+      const a = outAnalyserRef.current;
+      if (!a || !playingRef.current) {
+        outLevelRef.current = 0;
+        return;
+      }
+      a.getByteTimeDomainData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = (data[i] - 128) / 128;
+        sum += v * v;
+      }
+      outLevelRef.current = Math.sqrt(sum / data.length);
+    }, 60);
     void listen();
     return () => {
       alive.current = false;
+      clearInterval(outMeter);
       stopPlayback();
       if (watchRef.current) clearInterval(watchRef.current);
       recRef.current?.stream && recRef.current.state !== "inactive" && recRef.current.stop();
@@ -417,7 +491,6 @@ export function VoiceMode({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const orbScale = 1 + Math.min(0.45, level * 3.5);
   const colors: Record<Phase, string> = {
     listening: "from-emerald-400/70 to-teal-500/70",
     thinking: "from-amber-400/70 to-orange-500/70",
@@ -432,60 +505,45 @@ export function VoiceMode({
   };
 
   return (
-    <div className="fixed bottom-24 right-6 z-[120] flex w-64 flex-col items-center rounded-2xl border border-border bg-card/95 p-4 shadow-2xl backdrop-blur-md">
-      <button
-        type="button"
-        onClick={onClose}
-        title="Выйти из голосового режима"
-        className="absolute right-2 top-2 rounded-full p-1 text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
-      >
-        <X className="size-4" />
-      </button>
-
-      {/* The orb: outer breathing glow + inner level-driven core. */}
-      <button
-        type="button"
-        onClick={() => {
-          if (phaseRef.current === "speaking") {
-            stopPlayback();
-            setPh("listening");
-          } else onClose();
-        }}
-        className="relative mt-1 flex size-24 items-center justify-center"
-        title={phase === "speaking" ? "Перебить" : "Выйти"}
-      >
-        <div
+    <>
+      {/* The blurred voice wave along the bottom, over every chat. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[110]">
+        <canvas ref={canvasRef} className="block h-32 w-full blur-xl" />
+      </div>
+      {/* A small status capsule — the only clickable part. */}
+      <div className="fixed bottom-3 right-4 z-[120] flex items-center gap-2 rounded-full border border-border bg-card/90 py-1 pl-3 pr-1 shadow-lg backdrop-blur-md">
+        <span
           className={cn(
-            "absolute inset-0 rounded-full bg-gradient-to-br opacity-30 blur-xl transition-all duration-500",
-            colors[phase],
-            phase === "thinking" && "animate-pulse",
+            "size-2 rounded-full",
+            phase === "listening" && "animate-pulse bg-emerald-500",
+            phase === "thinking" && "animate-pulse bg-amber-500",
+            phase === "speaking" && "animate-pulse bg-violet-500",
+            phase === "error" && "bg-red-500",
           )}
         />
-        <div
-          className={cn(
-            "absolute inset-2 rounded-full bg-gradient-to-br opacity-40 transition-all duration-300",
-            colors[phase],
-          )}
-          style={{ transform: `scale(${phase === "listening" ? orbScale : 1})` }}
-        />
-        <div
-          className={cn(
-            "relative size-12 rounded-full bg-gradient-to-br shadow-xl transition-all duration-200",
-            colors[phase],
-            phase === "speaking" && "animate-[pulse_1.2s_ease-in-out_infinite]",
-          )}
-          style={{
-            transform: `scale(${phase === "listening" ? orbScale : phase === "speaking" ? 1.06 : 1})`,
-          }}
-        />
-      </button>
-
-      <div className="mt-3 text-xs font-medium text-foreground">{label[phase]}</div>
-      {note && (
-        <div className="mt-1 line-clamp-2 max-w-full px-1 text-center text-[11px] text-muted-foreground">
-          {note}
-        </div>
-      )}
-    </div>
+        <span className="max-w-56 truncate text-xs text-foreground">{label[phase]}</span>
+        {phase === "speaking" && (
+          <button
+            type="button"
+            onClick={() => {
+              stopPlayback();
+              setPh("listening");
+            }}
+            title="Перебить"
+            className="rounded-full p-1 text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+          >
+            <Square className="size-3" />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onClose}
+          title="Выйти из голосового режима"
+          className="rounded-full p-1 text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+        >
+          <X className="size-3.5" />
+        </button>
+      </div>
+    </>
   );
 }
