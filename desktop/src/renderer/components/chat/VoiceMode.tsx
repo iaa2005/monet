@@ -97,7 +97,6 @@ export function VoiceMode({
   const audioQueueRef = useRef<AudioBuffer[]>([]);
   const synthBusyRef = useRef(false);
   const playingRef = useRef(false);
-  const spokenRef = useRef(0); // sentences of the current reply already queued
   /** Exactly one recording loop. It used to be restarted from three places —
    * after transcribing, from the speech queue, from the reply watcher — and
    * the parallel loops each heard the same utterance: the message went out
@@ -190,7 +189,6 @@ export function VoiceMode({
 
   /** Watch the streaming reply and feed finished sentences to the voice. */
   const watchReply = (): void => {
-    spokenRef.current = 0;
     if (watchRef.current) clearInterval(watchRef.current);
     // Anchor to the reply that does not exist yet. Right after send() the
     // newest assistant message is still the PREVIOUS reply, and feeding it
@@ -198,24 +196,38 @@ export function VoiceMode({
     const st0 = useChatStore.getState();
     const baseline = [...st0.messages].reverse().find((m) => m.role === "assistant")?.id;
     vlog("watch-start", { baseline: baseline ?? null });
+    // Per-message sentence counters: a run with tools produces SEVERAL
+    // assistant chunks (text → tool → text…), and a single counter over
+    // "the latest one" skipped or repeated whatever sat between tools. A
+    // chunk that is no longer the newest message is final by definition —
+    // it gets spoken right away, while the tool is still running.
+    const spoken = new Map<string, number>();
     watchRef.current = setInterval(() => {
       const st = useChatStore.getState();
       const msgs = st.messages;
-      const last = [...msgs].reverse().find((m) => m.role === "assistant");
-      if (!last?.content || last.id === baseline) return;
-      const done = !st.isStreaming;
-      const sentences = completeSentences(last.content, done);
-      while (spokenRef.current < sentences.length) {
-        vlog("sentence-queued", sentences[spokenRef.current].slice(0, 60));
-        queueRef.current.push(sentences[spokenRef.current]);
-        spokenRef.current += 1;
-        pump();
+      const bi = baseline ? msgs.findIndex((m) => m.id === baseline) : -1;
+      const fresh = msgs
+        .slice(bi + 1)
+        .filter((m) => m.role === "assistant" && m.content);
+      let queuedTotal = 0;
+      for (const m of fresh) {
+        const isNewest = msgs[msgs.length - 1]?.id === m.id;
+        const done = !isNewest || !st.isStreaming;
+        const sentences = completeSentences(m.content, done);
+        let n = spoken.get(m.id) ?? 0;
+        while (n < sentences.length) {
+          vlog("sentence-queued", sentences[n].slice(0, 60));
+          queueRef.current.push(sentences[n]);
+          n += 1;
+          pump();
+        }
+        spoken.set(m.id, n);
+        queuedTotal += n;
       }
-      if (done) {
-        vlog("stream-done", { queued: spokenRef.current });
+      if (!st.isStreaming) {
+        vlog("stream-done", { queued: queuedTotal });
         if (watchRef.current) clearInterval(watchRef.current);
         watchRef.current = null;
-        // A reply with no speakable text still returns to listening.
         if (!playingRef.current && queueRef.current.length === 0) {
           setPh("listening");
         }
