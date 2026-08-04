@@ -366,6 +366,7 @@ export interface ElectronAPI {
       mode?: string;
       space?: string;
       effort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+      voiceGender?: "female" | "male";
       attachments?: {
         name: string;
         mediaType: string;

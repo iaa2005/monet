@@ -845,11 +845,11 @@ export function MessageInput({
   // Voice Mode renders at App level (this component remounts when the first
   // message creates the session); it reaches send() through the store.
   useEffect(() => {
-    useChatStore.getState().registerVoiceSend((text) => void send(text));
+    useChatStore.getState().registerVoiceSend((text) => void send(text, true));
     return () => useChatStore.getState().registerVoiceSend(null);
   });
 
-  const send = async (overrideText?: string): Promise<void> => {
+  const send = async (overrideText?: string, voice?: boolean): Promise<void> => {
     // Voice Mode hands the utterance in directly: routing it through the
     // input state met a stale closure here and silently sent nothing.
     let text = (overrideText ?? input).trim();
@@ -1043,6 +1043,13 @@ export function MessageInput({
         store.space === "home" && mode !== "bypassPermissions"
           ? "default"
           : mode;
+      // A spoken run carries the voice's gender: Russian first-person verbs
+      // agree with it, and a male voice reading "я закончила" is absurd.
+      let voiceGender: "female" | "male" | undefined;
+      if (voice) {
+        const vs = await bridge.stt.getSettings().catch(() => null);
+        voiceGender = vs?.ttsVoice?.startsWith("M") ? "male" : "female";
+      }
       await bridge.chat.send({
         sessionId,
         message: text,
@@ -1051,6 +1058,7 @@ export function MessageInput({
         space: store.space,
         effort: activeModel?.supportsEffort ? (effort ?? undefined) : undefined,
         attachments,
+        voiceGender,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send message");

@@ -63,6 +63,8 @@ interface ChatSendPayload {
   space?: string;
   /** Reasoning effort ("low" | "medium" | "high"); absent = provider default. */
   effort?: EffortLevel;
+  /** Voice Mode: the reply is spoken aloud by a voice of this gender. */
+  voiceGender?: "female" | "male";
 }
 
 /**
@@ -235,6 +237,30 @@ const MODE_DIRECTIVES: Record<string, string> = {
 function modeDirectiveFor(mode: string): string | undefined {
   const def = MODE_DIRECTIVES[mode];
   return def ? tunablePrompt(`mode-${mode}`, def) : undefined;
+}
+
+/**
+ * The directive a SPOKEN run gets. Two things only a voice needs: gender
+ * agreement (Russian first-person verbs carry it — a male voice saying
+ * "я закончила" is absurd), and the expression tags the synthesiser
+ * understands. Tunable via <dataDir>/prompts/voice-mode.md.
+ */
+function voiceDirectiveFor(
+  gender: "female" | "male" | undefined,
+): string | undefined {
+  if (!gender) return undefined;
+  const noun = gender === "female" ? "female" : "male";
+  return tunablePrompt(
+    "voice-mode",
+    [
+      `Your reply is read aloud by a ${noun} voice.`,
+      "In gendered languages (e.g. Russian) make first-person forms agree",
+      `with that ${noun} voice. Speak briefly and conversationally — a few`,
+      "sentences, no headings, no code blocks, no markdown lists. You may",
+      "add the spoken-expression tags <laugh>, <sigh>, <breath> inline where",
+      "they fit naturally; the reader hears them but never sees them.",
+    ].join("\n"),
+  );
 }
 
 /**
@@ -423,7 +449,10 @@ export function registerChatIPC(): void {
 
     const runOptions = {
       signal: abort.signal,
-      modeDirective: modeDirectiveFor(mode),
+      modeDirective:
+        [modeDirectiveFor(mode), voiceDirectiveFor(payload.voiceGender)]
+          .filter(Boolean)
+          .join("\n\n") || undefined,
       permissionMode: () => livePermissionMode.get(sessionId) ?? mode,
       requestPermission: (ask: Parameters<typeof requestPermissionFromRenderer>[1]) =>
         requestPermissionFromRenderer(win, ask),

@@ -42,6 +42,8 @@ const electronAPI = {
       mode?: string;
       space?: string;
       effort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+      /** Set on Voice Mode sends: the reply is read aloud by this voice. */
+      voiceGender?: "female" | "male";
       attachments?: {
         name: string;
         mediaType: string;
