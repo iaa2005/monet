@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { STORAGE_PREFIX } from "@shared/brand";
 import {
+  AudioLines,
   ArrowUp,
   ChevronDown,
   Check,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import { MicButton } from "./MicButton";
+import { VoiceMode } from "./VoiceMode";
 import { ContextMeter } from "./ContextMeter";
 import { CheckpointPicker } from "./CheckpointPicker";
 import {
@@ -841,6 +843,15 @@ export function MessageInput({
     }
   };
 
+  const [voiceMode, setVoiceMode] = useState(false);
+  // Voice Mode bypasses the composer text box: the utterance goes straight
+  // through the same send path a typed message uses.
+  const sendVoiceText = (text: string): void => {
+    applyText(text);
+    // Let the input state settle before send() reads it.
+    setTimeout(() => void send(), 30);
+  };
+
   const send = async (): Promise<void> => {
     let text = input.trim();
     if (!text) return;
@@ -1423,6 +1434,14 @@ export function MessageInput({
                   applyText((input ? input.trimEnd() + " " : "") + t)
                 }
               />
+              <button
+                type="button"
+                title="Voice Mode — разговор голосом"
+                onClick={() => setVoiceMode(true)}
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+              >
+                <AudioLines className="size-4" />
+              </button>
             </div>
 
             <div className="flex min-w-0 items-center gap-1.5">
@@ -1611,6 +1630,12 @@ export function MessageInput({
           </div>
         </div>
       </div>
+      {voiceMode && (
+        <VoiceMode
+          onSend={sendVoiceText}
+          onClose={() => setVoiceMode(false)}
+        />
+      )}
     </div>
   );
 }

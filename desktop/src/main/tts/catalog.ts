@@ -91,31 +91,4 @@ export function ttsFileName(f: TtsFile): string {
   return f.path.split("/").pop() as string;
 }
 
-/**
- * The expression tags Supertonic actually understands, per its README. The
- * chat model is told to use exactly these; anything else a model invents is
- * stripped before synthesis rather than read aloud as angle brackets.
- */
-export const TTS_TAGS = ["<laugh>", "<sigh>", "<breath>"] as const;
-
-/**
- * Split off expression tags for display: the UI hides them, the voice keeps
- * them. Unknown look-alike tags (<whisper>…) are dropped from BOTH — reading
- * "less-than whisper" aloud is worse than losing the nuance.
- */
-export function stripTtsTags(text: string): string {
-  return text
-    .replace(/<\/?(?:laugh|sigh|breath|pause|whisper|slow|fast|loud|quiet|chuckle|gasp|yawn|cough)>/gi, "")
-    .replace(/[ \t]{2,}/g, " ");
-}
-
-/** What the synthesiser should see: known tags kept, unknown ones removed. */
-export function textForSpeech(text: string): string {
-  const known = new Set(TTS_TAGS.map((t) => t.toLowerCase()));
-  return text
-    .replace(/<\/?[a-z_]{2,12}>/gi, (m) => {
-      const bare = m.replace("/", "").toLowerCase();
-      return known.has(bare) ? bare : "";
-    })
-    .replace(/[ \t]{2,}/g, " ");
-}
+export { TTS_TAGS, stripTtsTags, textForSpeech } from "@shared/voice-tags.js";

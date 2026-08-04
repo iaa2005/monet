@@ -30,6 +30,8 @@ export interface SttSettings {
   localModel: string;
   /** Which downloaded GigaAM model the on-device engine uses. */
   nativeModel: string;
+  /** Supertonic voice for read-aloud and Voice Mode (F1…M5). */
+  ttsVoice: string;
   /** "" = auto-detect. */
   language: string;
   /** MediaDevices deviceId of the chosen microphone. */
@@ -43,6 +45,7 @@ const DEFAULTS: SttSettings = {
   model: "",
   localModel: "Xenova/whisper-base",
   nativeModel: DEFAULT_STT_MODEL,
+  ttsVoice: "F1",
   language: "",
   deviceId: "",
 };

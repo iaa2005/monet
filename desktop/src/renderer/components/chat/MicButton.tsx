@@ -20,14 +20,13 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Loader2, Mic, Square } from "lucide-react";
+import { Check, ChevronDown, Loader2, Mic, Settings2, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 // Vite-native worker import — more dependable than `new Worker(new URL(...))`
 // in electron-vite dev mode (a worker that fails to LOAD dies silently).
 import SttWorker from "../../workers/stt-worker?worker";
-import { Select } from "@/components/ui/select";
-import { SttModelPicker } from "./SttModelPicker";
+import { useChatStore } from "@/stores/chatStore";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -478,7 +477,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
   }
 
   // ── Housekeeping ───────────────────────────────────────────────────────
-  const PANEL_WIDTH = 576; // w-[36rem]
+  const PANEL_WIDTH = 320; // w-80
   useLayoutEffect(() => {
     if (!menuOpen) return;
     const place = (): void => {
@@ -613,10 +612,9 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
         <div
           ref={panelRef}
           style={{ left: anchor.left, bottom: anchor.bottom }}
-          className="fixed z-[100] flex w-[36rem] flex-col rounded-lg border border-border bg-card p-2 shadow-lg"
+          className="fixed z-[100] flex w-80 flex-col rounded-lg border border-border bg-card p-2 shadow-lg"
         >
-          <div className="grid max-h-[65vh] grid-cols-[minmax(0,15rem)_minmax(0,1fr)] gap-x-3 overflow-y-auto overflow-x-hidden">
-            <div className="min-w-0">
+          <div className="max-h-[70vh] overflow-y-auto">
           <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Microphone
           </div>
@@ -661,106 +659,19 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
             </div>
           </div>
 
-            </div>
 
-            <div className="min-w-0 border-l border-border pl-3">
-          <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Transcription
-          </div>
-          <div className="flex flex-col gap-1 px-1 pb-2">
-            {(
-              [
-                ["ondevice", "On-device — GigaAM (best for Russian)"],
-                ["local", "On-device — Whisper (WASM)"],
-                ["cloud", "Cloud — OpenAI-compatible API"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => saveSetting("engine", id, setEngine)}
-                className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
-              >
-                <span className="flex w-4 justify-center">
-                  {engine === id && <Check className="size-3.5 text-link" />}
-                </span>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <div className="mb-1.5 h-px bg-border" />
-          <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Parameters &amp; models
-          </div>
-
-          {engine === "ondevice" ? (
-            <SttModelPicker
-              selected={nativeModel}
-              onSelect={(v) => saveSetting("nativeModel", v, setNativeModel)}
-            />
-          ) : engine === "local" ? (
-            <div className="flex flex-col gap-1.5 px-1 pb-1">
-              <div className="flex gap-1.5">
-                <Select
-                  ariaLabel="Local model"
-                  value={localModel}
-                  onChange={(v) => saveSetting("localModel", v, setLocalModel)}
-                  className="w-3/5 justify-between"
-                  options={LOCAL_MODELS.map((m) => ({
-                    value: m.id,
-                    label: m.label,
-                  }))}
-                />
-                <Select
-                  ariaLabel="Language"
-                  value={language}
-                  onChange={(v) => saveSetting("language", v, setLanguage)}
-                  className="w-2/5 justify-between"
-                  options={[
-                    { value: "", label: "Auto language" },
-                    { value: "ru", label: "Русский" },
-                    { value: "en", label: "English" },
-                  ]}
-                />
-              </div>
-              <div className="text-[11px] leading-snug text-muted-foreground">
-                The model downloads on first use and is cached — after that it
-                works offline. No API key needed.
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-1.5 px-1 pb-1">
-              <input
-                value={endpoint}
-                onChange={(e) =>
-                  saveSetting("endpoint", e.target.value, setEndpoint)
-                }
-                placeholder="https://api.groq.com/openai/v1/audio/transcriptions"
-                spellCheck={false}
-                className="w-full rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-link"
-              />
-              <div className="flex gap-1.5">
-                <input
-                  value={sttKey}
-                  onChange={(e) => saveSetting("key", e.target.value, setSttKey)}
-                  placeholder="API key"
-                  type="password"
-                  spellCheck={false}
-                  className="w-1/2 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-link"
-                />
-                <input
-                  value={model}
-                  onChange={(e) => saveSetting("model", e.target.value, setModel)}
-                  placeholder="whisper-large-v3"
-                  spellCheck={false}
-                  className="w-1/2 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-link"
-                />
-              </div>
-            </div>
-          )}
-
-            </div>
+          <div className="-mx-1 my-1.5 h-px bg-border" />
+          <button
+            type="button"
+            onClick={() => {
+              closeMenu();
+              useChatStore.getState().requestOpenSettings("voice");
+            }}
+            className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[13px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+          >
+            <Settings2 className="size-3.5" />
+            Voice settings — engines, models, voices
+          </button>
           </div>
 
           {status && (

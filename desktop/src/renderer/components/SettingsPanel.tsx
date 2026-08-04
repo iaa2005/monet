@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   Settings2,
+  Mic,
   Boxes,
   Info,
   Check,
@@ -27,6 +28,7 @@ import { ReflectSettings } from "@/components/settings/ReflectSettings";
 import { ConnectorsSettings } from "@/components/settings/ConnectorsSettings";
 import { AutomationSettings } from "@/components/settings/AutomationSettings";
 import { AdvancedSettings } from "@/components/settings/AdvancedSettings";
+import { VoiceSettings } from "@/components/settings/VoiceSettings";
 import { ProtocolConnectors } from "@/components/settings/ProtocolConnectors";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -87,6 +89,7 @@ function StorageSection(): JSX.Element {
 
 type Section =
   | "general"
+  | "voice"
   | "providers"
   | "sandbox"
   | "automation"
@@ -110,6 +113,7 @@ const NAV: {
       { id: "providers", label: "Providers", icon: Boxes },
       { id: "sandbox", label: "Sandbox", icon: FlaskConical },
       { id: "automation", label: "Automation", icon: MousePointerClick },
+      { id: "voice", label: "Voice", icon: Mic },
       { id: "memory", label: "Memory", icon: Brain },
       { id: "reflect", label: "Reflect", icon: Sun },
       { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
@@ -577,6 +581,7 @@ export function SettingsPanel({
         {section === "providers" && <ProviderSettings />}
         {section === "sandbox" && <SandboxSection />}
         {section === "automation" && <AutomationSettings />}
+        {section === "voice" && <VoiceSettings />}
         {section === "memory" && <MemorySettings />}
         {section === "reflect" && <ReflectSettings />}
         {section === "services" && <ProtocolConnectors />}

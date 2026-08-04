@@ -18,6 +18,7 @@ import { isWebLink, openLink, wantsExternal } from "@/lib/open-link";
 import { splitMarkdownChunks } from "@/lib/markdown-chunks";
 import { escapeCurrencyDollars } from "@/lib/currency-dollars";
 import { splitFrontmatter } from "@/lib/frontmatter";
+import { stripTtsTags } from "@shared/voice-tags";
 
 interface MarkdownViewerProps {
   content: string;
@@ -113,7 +114,8 @@ function MarkdownViewerImpl({
     // set the sentence between them in KaTeX italics (lib/currency-dollars).
     return {
       frontmatter: split.frontmatter,
-      body: escapeCurrencyDollars(split.body),
+      // Spoken-expression tags (<laugh>…) are for the voice, not the eyes.
+      body: escapeCurrencyDollars(stripTtsTags(split.body)),
     };
   }, [raw]);
 
