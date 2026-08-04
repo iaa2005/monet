@@ -974,6 +974,7 @@ export function MessageInput({
         )) as { id: string } | undefined;
         if (s?.id) {
           sessionId = s.id;
+          store.markSessionBorn(s.id);
           store.setCurrentSessionId(s.id);
           if (voice) store.setVoiceSession(s.id);
           if (pinVoiceAnchor) store.setVoiceSession(s.id);

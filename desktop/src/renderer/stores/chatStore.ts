@@ -376,6 +376,12 @@ export interface ChatStore {
   setPendingSandboxEngine: (
     e: "pyodide" | "subprocess" | "docker" | null,
   ) => void;
+  /** The session send() just created from the zero state. The desk effect
+   * must NOT "restore" its empty record over the live desk — but a plain
+   * RETURN from the zero state to an old chat must restore as usual, and
+   * undefined→id alone cannot tell those apart. */
+  justBornSessionId: string | null;
+  markSessionBorn: (id: string | null) => void;
   voiceSendFn: ((text: string) => void) | null;
   registerVoiceSend: (fn: ((text: string) => void) | null) => void;
 
@@ -918,6 +924,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
     setVoiceSession: (id) => set({ voiceSessionId: id }),
     pendingSandboxEngine: null,
     setPendingSandboxEngine: (e) => set({ pendingSandboxEngine: e }),
+    justBornSessionId: null,
+    markSessionBorn: (id) => set({ justBornSessionId: id }),
     registerVoiceSend: (fn) => set({ voiceSendFn: fn }),
     openExpandedSubAgent: (ref) => {
       if (ref) useViewerStore.getState().closeAll();

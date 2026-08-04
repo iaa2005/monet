@@ -411,18 +411,25 @@ export default function App(): JSX.Element {
         viewerPanes: useViewerStore.getState().serialize(),
       });
     }
-    const wasZeroState = restoredFor.current === undefined && leaving === undefined;
     restoredFor.current = currentSessionId;
     if (!currentSessionId || currentSessionId.startsWith("incognito")) {
       // Entering the zero state (New chat without a sidebar entry): a clean
-      // desk, not the previous chat's panels still standing.
+      // desk, not the previous chat's panels still standing — and no empty
+      // browser panel left over from them either.
       useBrowserStore.getState().restoreTabs([], 0);
+      useDockStore.getState().closePanel("browser");
       return;
     }
-    // undefined → id is a session being BORN in send(), not a chat switch:
-    // the desk on screen belongs to this very chat, and "restoring" the
-    // brand-new session's empty record wiped whatever the agent had opened.
-    if (wasZeroState) return;
+    // A session send() JUST created is not a chat switch — the desk on
+    // screen belongs to this very chat, and "restoring" the newborn's empty
+    // record wiped whatever the agent had opened. Explicitly marked by
+    // send(): the old undefined→id heuristic also swallowed a plain RETURN
+    // from the zero state to an existing chat, whose desk then never came
+    // back.
+    if (useChatStore.getState().justBornSessionId === currentSessionId) {
+      useChatStore.getState().markSessionBorn(null);
+      return;
+    }
 
     let cancelled = false;
     void Promise.all(guestMerges)
