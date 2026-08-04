@@ -75,8 +75,12 @@ export function hasInjections(sessionId: string): boolean {
  */
 export function formatInjection(notes: string[]): string {
   const body = notes.join("\n\n");
+  // Steering, not a brake: listen, but keep the goal. Only an explicit
+  // "stop" or redirect abandons the current plan.
   return (
-    `[The user sent this WHILE you were working — it is a new instruction, ` +
-    `not tool output. Take it into account before your next step.]\n\n${body}`
+    `[The user said this WHILE you were working — steering, not tool ` +
+    `output. Weigh it into your next step, but KEEP PURSUING your current ` +
+    `objective unless it explicitly tells you to stop or change course. ` +
+    `Do not restart work that is already done.]\n\n${body}`
   );
 }

@@ -401,11 +401,18 @@ export function VoiceMode({
           const sid = st.voiceSessionId;
           const running = sid ? st.sessions[sid]?.isStreaming : st.isStreaming;
           if (running && sid) {
-            // Queue it for the chat: it goes out the moment the run ends.
-            // inject() interrupted the step mid-flight and the transcript
-            // came up wearing a red "Stopped".
-            useChatStore.getState().enqueueMessage(sid, clean);
-            vlog("queued-to-chat");
+            // Inject: it rides into the run between steps, shows up in the
+            // chat via the user_message event, and interrupts nothing. The
+            // red "Stopped" came from the OTHER path — chat:send into a busy
+            // session aborts its run.
+            const r = await api()?.chat.inject(sid, clean);
+            vlog("injected", { ok: r?.ok });
+            if (!r?.ok) {
+              // The run ended between our check and the inject — normal send.
+              onSend(clean);
+              vlog("sent");
+              watchReply();
+            }
           } else {
             onSend(clean);
             vlog("sent");
