@@ -370,6 +370,12 @@ export interface ChatStore {
    * start a second one. */
   voiceSessionId?: string;
   setVoiceSession: (id?: string) => void;
+  /** Sandbox engine picked in the ZERO state, before any session exists —
+   * applied to the session the moment send() creates it. */
+  pendingSandboxEngine: "pyodide" | "subprocess" | "docker" | null;
+  setPendingSandboxEngine: (
+    e: "pyodide" | "subprocess" | "docker" | null,
+  ) => void;
   voiceSendFn: ((text: string) => void) | null;
   registerVoiceSend: (fn: ((text: string) => void) | null) => void;
 
@@ -908,6 +914,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
         voiceSessionId: v ? st.currentSessionId : undefined,
       })),
     setVoiceSession: (id) => set({ voiceSessionId: id }),
+    pendingSandboxEngine: null,
+    setPendingSandboxEngine: (e) => set({ pendingSandboxEngine: e }),
     registerVoiceSend: (fn) => set({ voiceSendFn: fn }),
     openExpandedSubAgent: (ref) => {
       if (ref) useViewerStore.getState().closeAll();

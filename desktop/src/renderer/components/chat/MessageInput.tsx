@@ -973,6 +973,12 @@ export function MessageInput({
           sessionId = s.id;
           store.setCurrentSessionId(s.id);
           if (voice) store.setVoiceSession(s.id);
+          // An engine picked before the session existed belongs to it now.
+          const pendingEngine = store.pendingSandboxEngine;
+          if (pendingEngine) {
+            void bridge.sandbox.setSessionConfig(s.id, pendingEngine);
+            store.setPendingSandboxEngine(null);
+          }
           store.bumpSessions();
           // A new chat adopts the current working directory as its own.
           void bridge.workspace

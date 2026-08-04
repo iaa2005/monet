@@ -611,13 +611,15 @@ export default function App(): JSX.Element {
   // Resolve THIS chat's engine + whether it has a shell. Re-read when the chat
   // changes and when Settings closes (the global default may have changed).
   useEffect(() => {
-    if (appMode !== "home" || !currentSessionId) {
+    if (appMode !== "home") {
       setHomeShellSupported(false);
       return;
     }
     let alive = true;
+    // Zero state (no session yet): the "default" key answers with the global
+    // default engine, so the header picker can exist before the first send.
     void api()
-      ?.sandbox.getSessionConfig(currentSessionId)
+      ?.sandbox.getSessionConfig(currentSessionId ?? "default")
       .then((c) => {
         if (!alive) return;
         setSessionEngine(c.engine as "pyodide" | "subprocess" | "docker");
@@ -633,13 +635,17 @@ export default function App(): JSX.Element {
   const changeSessionEngine = useCallback(
     (engine: "pyodide" | "subprocess" | "docker") => {
       const sid = currentSessionId;
-      if (!sid) return;
       setSessionEngine(engine);
       const hasShell = engine !== "pyodide";
       setHomeShellSupported(hasShell);
       // Pyodide has no terminal — take the panel out of the dock with it.
       if (!hasShell) useDockStore.getState().closePanel("terminal");
-      void api()?.sandbox.setSessionConfig(sid, engine);
+      if (sid) {
+        void api()?.sandbox.setSessionConfig(sid, engine);
+      } else {
+        // No session yet: hold the choice, send() applies it at birth.
+        useChatStore.getState().setPendingSandboxEngine(engine);
+      }
     },
     [currentSessionId],
   );
@@ -1201,7 +1207,7 @@ export default function App(): JSX.Element {
           </IconBtn>
           {/* Per-chat sandbox engine (VM). Global default unless pinned here —
               files carry over on switch, only the runtime changes. */}
-          {appMode === "home" && currentSessionId && !incognito && (
+          {appMode === "home" && !incognito && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
