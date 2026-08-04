@@ -138,6 +138,7 @@
     "marked": "^18.0.5",
     "monaco-editor": "^0.56.0",
     "nodemailer": "^9.0.3",
+    "onnxruntime-node": "^1.27.0",
     "pdfjs-dist": "^6.1.200",
     "picomatch": "^4.0.5",
     "proper-lockfile": "^4.1.2",
