@@ -138,6 +138,16 @@ export async function ensureTab(url: string, timeoutMs = 10_000): Promise<void> 
  * taken is a screenshot they cannot check.
  */
 export async function revealPanel(): Promise<void> {
+  // An off-screen run's page lives in the hidden layer, which paints frames
+  // without being shown — revealing the panel here opened a browser in
+  // whatever chat the USER was reading. Only a run whose chat is visible
+  // needs (or deserves) the panel brought up.
+  {
+    const { currentRunSession } = await import("../agent/run-session.js");
+    const { getVisibleChatSession } = await import("../visible-session.js");
+    const sid = currentRunSession();
+    if (sid && sid !== getVisibleChatSession()) return;
+  }
   const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
   if (!win || win.isDestroyed()) return;
   win.webContents.send("browser:reveal");
