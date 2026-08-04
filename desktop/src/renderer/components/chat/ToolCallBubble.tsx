@@ -638,12 +638,13 @@ function SubAgentBubble({ toolCall, inGroup }: { toolCall: ToolCall; inGroup?: b
   const messages = sa?.messages ?? [];
   const [collapsed, setCollapsed] = useState(false);
 
+  // A reference, not a copy: the panel looks the state up live, so a child
+  // that is still working keeps filling the panel in.
   const expand = (): void => {
-    useChatStore.getState().openExpandedSubAgent({
-      agentType,
-      description,
-      status: running ? "running" : "done",
-      messages,
+    const s = useChatStore.getState();
+    s.openExpandedSubAgent({
+      sessionId: s.currentSessionId ?? "default",
+      toolCallId: toolCall.id,
     });
   };
 

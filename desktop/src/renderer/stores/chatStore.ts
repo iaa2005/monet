@@ -12,6 +12,7 @@
 import { create } from "zustand";
 import { useViewerStore } from "./viewerStore";
 import { STORAGE_PREFIX } from "@shared/brand";
+import { findSubAgentCall } from "../lib/subagent";
 import type {
   ChatAttachmentMeta,
   ChatMessage,
@@ -206,6 +207,13 @@ export interface StagedAttachment {
   url?: string;
 }
 
+/** Which Task call the expanded panel is showing — the live state is looked
+ * up from the session's messages every render, so it keeps streaming. */
+export interface ExpandedSubAgentRef {
+  sessionId: string;
+  toolCallId: string;
+}
+
 interface SessionState {
   messages: ChatMessage[];
   isStreaming: boolean;
@@ -295,7 +303,7 @@ export function markInterrupted(msgs: ChatMessage[]): ChatMessage[] {
   ];
 }
 
-interface ChatStore {
+export interface ChatStore {
   // Per-session state (keyed by sessionId).
   sessions: Record<string, SessionState>;
 
@@ -351,8 +359,13 @@ interface ChatStore {
    * session switching. */
   forkRequest: string | null;
 
-  /** Sub-agent expanded to fill the chat area (like FileViewer). */
-  expandedSubAgent: SubAgentState | null;
+  /** Sub-agent expanded to fill the chat area (like FileViewer).
+   *
+   * A REFERENCE, not a copy. The child's transcript grows for as long as it
+   * runs, and a snapshot taken at click time froze the moment it was opened —
+   * the only way to see the rest was to close the panel and open it again.
+   * Read it with `expandedSubAgentState()`. */
+  expandedSubAgent: ExpandedSubAgentRef | null;
   /** Current workspace ("home" | "code") — new chats are tagged with it so
    * Home and Code keep separate Recents. Mirrors App's appMode. */
   space: string;
@@ -394,7 +407,7 @@ interface ChatStore {
     /** `preview: false` pins the card — a double click rather than a click. */
     opts?: { preview?: boolean },
   ) => void;
-  openExpandedSubAgent: (sa: SubAgentState | null) => void;
+  openExpandedSubAgent: (ref: ExpandedSubAgentRef | null) => void;
   setSpace: (v: string) => void;
   bumpSessions: () => void;
   bumpContext: () => void;
@@ -872,9 +885,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
         useViewerStore.getState().closeAll();
       }
     },
-    openExpandedSubAgent: (sa) => {
-      if (sa) useViewerStore.getState().closeAll();
-      set({ expandedSubAgent: sa });
+    openExpandedSubAgent: (ref) => {
+      if (ref) useViewerStore.getState().closeAll();
+      set({ expandedSubAgent: ref });
     },
     setSpace: (v) => set({ space: v }),
     bumpSessions: () =>
@@ -1308,3 +1321,18 @@ if (
   (import.meta.env.DEV || !(window as { electronAPI?: unknown }).electronAPI)
 )
   (window as unknown as { __monetChat?: unknown }).__monetChat = useChatStore;
+
+/**
+ * The expanded sub-agent's Task call, or null when nothing is expanded (or the
+ * call has since been rewound out of the transcript).
+ *
+ * Returns the tool call itself rather than a derived view: zustand compares
+ * selector results by identity, and a freshly built object every render is an
+ * infinite loop. The call object IS replaced on each sub-agent event, which is
+ * exactly when the panel should redraw.
+ */
+export function expandedSubAgentCall(s: ChatStore): ToolCall | null {
+  const ref = s.expandedSubAgent;
+  if (!ref) return null;
+  return findSubAgentCall(s.sessions[ref.sessionId]?.messages, ref.toolCallId);
+}

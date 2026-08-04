@@ -2,6 +2,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   lazy,
   Suspense,
@@ -84,7 +85,8 @@ import {
   ResizableHandle,
 } from "@/components/ui/resizable";
 import type { ImperativePanelHandle } from "react-resizable-panels";
-import { useChatStore } from "@/stores/chatStore";
+import { useChatStore, expandedSubAgentCall } from "@/stores/chatStore";
+import { subAgentView } from "@/lib/subagent";
 import { cn } from "@/lib/utils";
 import { RoutinesList } from "@/components/RoutinesList";
 import type { ChatMessage } from "@/types/chat";
@@ -251,7 +253,13 @@ export default function App(): JSX.Element {
   const incognito = useChatStore((s) => s.incognito);
   const openFileRequest = useChatStore((s) => s.openFileRequest);
   const openChangesRequest = useChatStore((s) => s.openChangesRequest);
-  const expandedSubAgent = useChatStore((s) => s.expandedSubAgent);
+  // Live, not a snapshot: a sub-agent that is still running keeps writing
+  // into the panel instead of freezing at the moment it was opened.
+  const expandedSubAgentCallRef = useChatStore(expandedSubAgentCall);
+  const expandedSubAgent = useMemo(
+    () => subAgentView(expandedSubAgentCallRef),
+    [expandedSubAgentCallRef],
+  );
   const closeExpandedSubAgent = useCallback(
     () => useChatStore.getState().openExpandedSubAgent(null),
     [],
