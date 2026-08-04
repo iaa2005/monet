@@ -1171,8 +1171,13 @@ export async function runAgent(
   // next turn — see injection.ts.
   markRunning(sessionId);
   try {
-    return await runWithCwdOverride(runCwd, () =>
-      runAgentScoped(sessionId, userContent, onEvent, options),
+    // Scope the run to its session so deep tool code (browser tabs) can tell
+    // whose desk it is working for. See agent/run-session.ts.
+    const { runSession } = await import("./run-session.js");
+    return await runSession.run(sessionId, () =>
+      runWithCwdOverride(runCwd, () =>
+        runAgentScoped(sessionId, userContent, onEvent, options),
+      ),
     );
   } finally {
     markStopped(sessionId);

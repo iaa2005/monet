@@ -97,7 +97,10 @@ export async function ensureTab(url: string, timeoutMs = 10_000): Promise<void> 
   if (!win) throw new Error("No app window is open.");
 
   const registered = new Promise<void>((resolve) => waiters.push(resolve));
-  win.webContents.send("browser:openTab", url);
+  // Tag the request with the run's session: the renderer files the tab on
+  // that chat's desk instead of whichever chat is on screen.
+  const { currentRunSession } = await import("../agent/run-session.js");
+  win.webContents.send("browser:openTab", url, currentRunSession());
 
   let timer: NodeJS.Timeout | undefined;
   const expired = new Promise<void>((resolve) => {

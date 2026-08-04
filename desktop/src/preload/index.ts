@@ -923,8 +923,11 @@ const electronAPI = {
     activateTab: (tabId: string): Promise<void> =>
       ipcRenderer.invoke("browser:activateTab", tabId),
     /** A page asked for target=_blank; main routed it back for a new tab. */
-    onOpenTab: (cb: (url: string) => void): (() => void) => {
-      const handler = (_e: unknown, url: string): void => cb(url);
+    onOpenTab: (
+      cb: (url: string, ownerSessionId?: string) => void,
+    ): (() => void) => {
+      const handler = (_e: unknown, url: string, owner?: string): void =>
+        cb(url, owner);
       ipcRenderer.on("browser:openTab", handler);
       return () => ipcRenderer.off("browser:openTab", handler);
     },

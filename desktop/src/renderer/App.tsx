@@ -289,9 +289,14 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const bridge = api();
     if (!bridge) return;
-    const offOpen = bridge.browser.onOpenTab((url) => {
+    const offOpen = bridge.browser.onOpenTab((url, owner) => {
       useDockStore.getState().openPanel("browser");
-      useBrowserStore.getState().openTab(url);
+      const id = useBrowserStore.getState().openTab(url);
+      // A tab opened by another chat's run is a guest here: mark its owner
+      // so the desk save files it with that chat, not this one.
+      const cur = useChatStore.getState().currentSessionId;
+      if (owner && owner !== cur)
+        useBrowserStore.getState().patchTab(id, { ownerSession: owner });
     });
     // A link clicked somewhere in the app — chat, docs, a tool result.
     const offPending = useBrowserStore.subscribe((s) => {
@@ -354,10 +359,35 @@ export default function App(): JSX.Element {
     const leaving = restoredFor.current;
     if (leaving && leaving !== currentSessionId && !leaving.startsWith("incognito")) {
       const b = useBrowserStore.getState();
+      const real = b.tabs.filter((t) => t.url !== "about:blank");
+      // Guests go home: a tab another chat's run opened while this chat was
+      // on screen is saved onto ITS owner's desk, not smeared onto this one.
+      const mine = real.filter((t) => !t.ownerSession || t.ownerSession === leaving);
+      const guests = real.filter((t) => t.ownerSession && t.ownerSession !== leaving);
+      const byOwner = new Map<string, string[]>();
+      for (const t of guests) {
+        const list = byOwner.get(t.ownerSession as string) ?? [];
+        list.push(t.url);
+        byOwner.set(t.ownerSession as string, list);
+      }
+      for (const [owner, urls] of byOwner) {
+        void bridge.browser.uiState.get(owner).then((saved) => {
+          const have = new Set((saved?.browserTabs ?? []).map((x: { url: string }) => x.url));
+          const merged = [
+            ...(saved?.browserTabs ?? []),
+            ...urls.filter((u) => !have.has(u)).map((u) => ({ url: u })),
+          ];
+          void bridge.browser.uiState.set(owner, {
+            ...(saved ?? {}),
+            browserTabs: merged,
+            activeTab: saved?.activeTab ?? 0,
+          });
+        });
+      }
       void bridge.browser.uiState.set(leaving, {
         dockLayout: useDockStore.getState().layoutJson ?? undefined,
-        browserTabs: b.tabs.filter((t) => t.url !== "about:blank").map((t) => ({ url: t.url })),
-        activeTab: Math.max(0, b.tabs.findIndex((t) => t.id === b.activeId)),
+        browserTabs: mine.map((t) => ({ url: t.url })),
+        activeTab: Math.max(0, mine.findIndex((t) => t.id === b.activeId)),
         browserExpanded: b.layout === "expanded",
         viewerPanes: useViewerStore.getState().serialize(),
       });

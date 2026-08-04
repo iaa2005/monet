@@ -992,7 +992,7 @@ export interface ElectronAPI {
     registerTab: (tabId: string, webContentsId: number) => Promise<void>;
     unregisterTab: (tabId: string) => Promise<void>;
     activateTab: (tabId: string) => Promise<void>;
-    onOpenTab: (cb: (url: string) => void) => () => void;
+    onOpenTab: (cb: (url: string, ownerSessionId?: string) => void) => () => void;
     uiState: {
       get: (sessionId: string) => Promise<SessionUiState | null>;
       set: (sessionId: string, state: SessionUiState) => Promise<void>;

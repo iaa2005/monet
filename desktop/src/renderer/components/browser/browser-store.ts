@@ -13,6 +13,9 @@ export type BrowserLayout = "panel" | "expanded";
 
 export interface BrowserTab {
   id: string;
+  /** The chat whose RUN opened this tab, when it was not the chat on screen.
+   * Desk saves route such tabs to their owner's SessionUiState. */
+  ownerSession?: string;
   /**
    * Where the page actually is (from did-navigate). Also what a remounting
    * BrowserView loads: close the right panel and reopen it and you land where
