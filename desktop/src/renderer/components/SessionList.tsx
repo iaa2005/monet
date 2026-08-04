@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import {
+  AudioLines,
   MoreVertical,
   Pin,
   Pencil,
@@ -172,6 +173,10 @@ export function SessionList({
 
   // "Group by" renders section headers between rows. Buckets are computed from
   // what's already loaded — grouping changes presentation, not the query.
+  // The chat the voice conversation lives in — visible from any other chat.
+  const voiceSessionId = useChatStore((st) =>
+    st.voiceModeOpen ? st.voiceSessionId : undefined,
+  );
   const grouped = useMemo((): { title: string; items: SessionSummary[] }[] => {
     const mode = filters?.group ?? "none";
     if (mode === "date") {
@@ -320,6 +325,12 @@ export function SessionList({
                         active ? "text-foreground" : "text-muted-foreground",
                       )}
                     >
+                      {voiceSessionId === s.id && (
+                        <AudioLines
+                          className="size-3 shrink-0 animate-pulse text-violet-500"
+                          aria-label="Voice Mode здесь"
+                        />
+                      )}
                       {s.pinned && (
                         <Pin className="size-3 shrink-0 text-muted-foreground/70" />
                       )}
