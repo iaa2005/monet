@@ -451,6 +451,10 @@ app.on("will-quit", () => {
   void import("./browser/headless.js")
     .then((m) => m.destroyAllHeadless())
     .catch(() => {});
+  // Background sandbox containers, likewise.
+  void import("./sandbox/bg-tasks.js")
+    .then((m) => m.killAllBgTasks())
+    .catch(() => {});
   // Kill the managed Browser Use instance so it doesn't outlive the app.
   void import("./browser/chrome.js")
     .then((m) => m.shutdownBrowser())

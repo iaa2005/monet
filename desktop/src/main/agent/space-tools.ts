@@ -13,6 +13,9 @@
 export const HOME_TOOL_NAMES = new Set([
   "RunPython",
   "RunCommand",
+  // Long installs and builds run detached; the turn keeps thinking.
+  "RunCommandBackground",
+  "BackgroundOutput",
   "SandboxList",
   "SandboxRead",
   "SandboxWrite",
@@ -54,6 +57,8 @@ export const HOME_TOOL_NAMES = new Set([
 export const SANDBOX_ONLY_NAMES = new Set([
   "RunPython",
   "RunCommand",
+  "RunCommandBackground",
+  "BackgroundOutput",
   "SandboxList",
   "SandboxRead",
   "SandboxWrite",

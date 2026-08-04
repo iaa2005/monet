@@ -80,8 +80,9 @@ export async function runInSandbox(
 export async function runCommandInSandbox(
   sessionId: string,
   command: string,
+  signal?: AbortSignal,
 ): Promise<SandboxRunResult> {
-  const raw = await runPodmanCommand(sessionId, command);
+  const raw = await runPodmanCommand(sessionId, command, signal);
   const files = raw.files.map((f) => ({
     name: f.name,
     path: saveArtifactBuffer(sessionId, f.name, f.bytes),

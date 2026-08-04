@@ -84,9 +84,24 @@ function decodeWindowsOutput(data: Buffer): string {
   return data.toString("utf8");
 }
 
-function run(
+/** The persistent pip env every sandbox container shares — see RunCommand. */
+export const PIP_ENV_ARGS = [
+  "-e", "PIP_TARGET=/work/.pip",
+  "-e", "PYTHONPATH=/work/.pip",
+  "-e", "PATH=/work/.pip/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+];
+
+/** Raw podman invocation — background tasks manage their own containers. */
+export function podmanRaw(
   args: string[],
   opts: { stdin?: string; timeoutMs?: number; cwd?: string } = {},
+): ReturnType<typeof run> {
+  return run(args, opts);
+}
+
+function run(
+  args: string[],
+  opts: { stdin?: string; timeoutMs?: number; cwd?: string; signal?: AbortSignal } = {},
 ): Promise<{ code: number | null; stdout: string; stderr: string; spawnError?: string }> {
   return new Promise((resolve) => {
     const stdoutChunks: Buffer[] = [];
@@ -99,6 +114,20 @@ function run(
       windowsHide: true,
       env: { ...process.env, WSL_UTF8: "1" },
     });
+    // Stop must actually stop: the run's abort signal kills the podman
+    // process, and with it the attached container — Ctrl-C finally reaches
+    // the tool instead of only silencing the model.
+    if (opts.signal) {
+      const onAbort = (): void => {
+        try {
+          child.kill();
+        } catch {
+          /* already gone */
+        }
+      };
+      if (opts.signal.aborted) onAbort();
+      else opts.signal.addEventListener("abort", onAbort, { once: true });
+    }
     const timer = setTimeout(() => {
       if (!done) {
         stderrChunks.push(Buffer.from(`\n[sandbox] killed after ${(opts.timeoutMs ?? SANDBOX_TIMEOUT_MS) / 1000}s`, "utf8"));
@@ -920,6 +949,7 @@ export function podmanExec(
 export async function runPodmanCommand(
   sessionId: string,
   command: string,
+  signal?: AbortSignal,
 ): Promise<EngineResult> {
   const image = await ensureImage();
   if (!image.ok) return { ok: false, stdout: "", stderr: "", files: [], error: image.error };
@@ -936,7 +966,7 @@ export async function runPodmanCommand(
     "-e", "PYTHONPATH=/work/.pip",
     "-e", "PATH=/work/.pip/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "-w", "/work", IMAGE_TAG, "sh", "-lc", command,
-  ], { timeoutMs: RUN_COMMAND_TIMEOUT_MS });
+  ], { timeoutMs: RUN_COMMAND_TIMEOUT_MS, signal });
   // Surface any files the command wrote into /work, same as RunPython — so
   // e.g. `python3 -c "...save('out.png')"` shows up as an artifact.
   const after = snapshotFiles(dir);

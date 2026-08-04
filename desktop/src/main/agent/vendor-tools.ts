@@ -38,6 +38,10 @@ import { WebFetchTool, WebSearchTool } from "./web-tools.js";
 import { RunPythonTool } from "./sandbox-tool.js";
 import { RunCommandTool } from "./podman-command-tool.js";
 import {
+  RunCommandBackgroundTool,
+  BackgroundOutputTool,
+} from "./bg-command-tool.js";
+import {
   ListMcpResourcesTool,
   ReadMcpResourceTool,
 } from "./mcp-resource-tools.js";
@@ -251,6 +255,8 @@ const ALL_TOOLS = [
   WebSearchTool,
   RunPythonTool,
   RunCommandTool,
+  RunCommandBackgroundTool,
+  BackgroundOutputTool,
   ListMcpResourcesTool,
   ReadMcpResourceTool,
   SandboxListTool,

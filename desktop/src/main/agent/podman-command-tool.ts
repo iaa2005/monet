@@ -52,7 +52,11 @@ export const RunCommandTool = buildTool({
     if (getSessionEngine(sessionId) !== "docker") {
       return { data: { text: "RunCommand is available only with the Podman sandbox.", isError: true } };
     }
-    const r = await runCommandInSandbox(sessionId, command);
+    const r = await runCommandInSandbox(
+      sessionId,
+      command,
+      (context as { abortController?: AbortController }).abortController?.signal,
+    );
     const parts: string[] = [];
     if (r.stdout.trim()) parts.push(r.stdout.trimEnd());
     if (r.stderr.trim()) parts.push(`[stderr]\n${r.stderr.trimEnd()}`);
