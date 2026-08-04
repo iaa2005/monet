@@ -243,23 +243,31 @@ function modeDirectiveFor(mode: string): string | undefined {
  * The directive a SPOKEN run gets. Two things only a voice needs: gender
  * agreement (Russian first-person verbs carry it — a male voice saying
  * "я закончила" is absurd), and the expression tags the synthesiser
- * understands. Tunable via <dataDir>/prompts/voice-mode.md.
+ * understands. Tunable via <dataDir>/prompts/voice-mode-<gender>.md.
  */
 function voiceDirectiveFor(
   gender: "female" | "male" | undefined,
 ): string | undefined {
   if (!gender) return undefined;
-  const noun = gender === "female" ? "female" : "male";
+  // Concrete forms, not descriptions: "agree first-person gender" slid
+  // right past DeepSeek, «говори „я сделал“» does not.
+  const forms =
+    gender === "female"
+      ? "«я сделала», «я закончила», «я готова»"
+      : "«я сделал», «я закончил», «я готов»";
+  // One tunable key PER GENDER: tunablePrompt caches by key, and a single
+  // "voice-mode" key froze whichever gender happened to run first — the male
+  // voice spent a day introducing itself in the feminine.
   return tunablePrompt(
-    "voice-mode",
+    `voice-mode-${gender}`,
     [
-      `Your reply is read aloud by a ${noun} voice.`,
-      "In gendered languages (e.g. Russian) make first-person forms agree",
-      `with that ${noun} voice. Speak briefly and conversationally — a few`,
-      "sentences, no headings, no code blocks, no markdown lists. You may",
-      "add the spoken-expression tags <laugh>, <sigh>, <breath> inline where",
-      "they fit naturally; the reader hears them but never sees them.",
-    ].join("\n"),
+      `Your reply is read aloud by a ${gender} voice. In Russian, ALWAYS use`,
+      `${gender} first-person forms: ${forms}. This is mandatory.`,
+      "Speak briefly and conversationally — a few sentences, no headings,",
+      "no code blocks, no markdown lists. You may add the spoken-expression",
+      "tags <laugh>, <sigh>, <breath> inline where they fit naturally; the",
+      "reader hears them but never sees them.",
+    ].join(String.fromCharCode(10)),
   );
 }
 
