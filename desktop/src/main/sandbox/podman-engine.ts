@@ -25,7 +25,7 @@ import {
 
 // Bump the tag when the Containerfile changes — ensureImage() skips the build
 // when the tag already exists, so a new tag forces the updated image.
-const IMAGE_TAG = "monet-sandbox:v2";
+const IMAGE_TAG = "monet-sandbox:v3";
 const BUILD_TIMEOUT_MS = 15 * 60_000;
 // RunCommand (tectonic, npm, etc.) gets a longer leash than RunPython.
 const RUN_COMMAND_TIMEOUT_MS = 5 * 60_000;
@@ -46,6 +46,9 @@ RUN curl -fsSL https://github.com/tectonic-typesetting/tectonic/releases/downloa
     | tar -xz -C /usr/local/bin tectonic \\
  || echo "tectonic install failed - LaTeX unavailable in this image"
 RUN pip install --no-cache-dir fpdf2 python-docx openpyxl matplotlib pandas numpy Pillow
+# Jupyter ships IN the image: agents kept pip-installing it per-container and
+# watching it evaporate — a notebook server is a first-class ask, not a luxury.
+RUN pip install --no-cache-dir notebook nbconvert ipykernel plotly
 WORKDIR /work
 `.trimStart();
 
@@ -924,6 +927,14 @@ export async function runPodmanCommand(
   const before = snapshotFiles(dir);
   const result = await run([
     "run", "--rm", "-v", `${dir}:/work`, "-v", "monet-pip-cache:/root/.cache/pip",
+    // pip installs land in /work/.pip: every RunCommand is a FRESH container
+    // from the image, so a plain `pip install` evaporated before the next
+    // call — the agent watched "Successfully installed" turn into "No module
+    // named". /work persists, and ServeSandbox mounts the same folder, so an
+    // install made here is visible to the server container too.
+    "-e", "PIP_TARGET=/work/.pip",
+    "-e", "PYTHONPATH=/work/.pip",
+    "-e", "PATH=/work/.pip/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "-w", "/work", IMAGE_TAG, "sh", "-lc", command,
   ], { timeoutMs: RUN_COMMAND_TIMEOUT_MS });
   // Surface any files the command wrote into /work, same as RunPython — so
@@ -974,6 +985,13 @@ export async function runPodman(
     "PYTHONIOENCODING=utf-8",
     "-e",
     "PYTHONUTF8=1",
+    // Same persistent pip target as RunCommand — see the note there.
+    "-e",
+    "PIP_TARGET=/work/.pip",
+    "-e",
+    "PYTHONPATH=/work/.pip",
+    "-e",
+    "PATH=/work/.pip/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     IMAGE_TAG,
     "python",
     scriptName,

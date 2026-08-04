@@ -128,6 +128,14 @@ export function serveArgs(opts: {
     // except through this publish.
     "-p",
     `127.0.0.1:${opts.hostPort}:${opts.containerPort}`,
+    // The same persistent pip target the run containers use: a server like
+    // `jupyter notebook` must see what a previous RunCommand pip-installed.
+    "-e",
+    "PIP_TARGET=/work/.pip",
+    "-e",
+    "PYTHONPATH=/work/.pip",
+    "-e",
+    "PATH=/work/.pip/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     IMAGE_TAG,
     "sh",
     "-lc",
