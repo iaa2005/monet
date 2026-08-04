@@ -39,6 +39,7 @@ import { askPlanApprovalFromRenderer } from "./plan.js";
 import { clearSessionMode } from "../agent/session-mode.js";
 import { tunablePrompt } from "../prompts/index.js";
 import { getWorkspacePath } from "./workspace.js";
+import { sandboxWorkDir } from "../sandbox/podman-engine.js";
 import type { LLMContentBlock } from "../llm/adapter.js";
 
 interface ChatAttachment {
@@ -380,7 +381,13 @@ export function registerChatIPC(): void {
     // the renderer's fire-and-forget workspace:set on session-open hasn't
     // landed yet.
     const sessionRow = getSessionStore().get(sessionId);
-    const cwd = sessionRow?.workspace || getWorkspacePath();
+    // Home never sees the Code workspace: its run's cwd IS the chat's sandbox.
+    // The global path used to leak into the prompt's env block here, and the
+    // model announced a folder its Home tools could not even touch.
+    const cwd =
+      payload.space === "home"
+        ? sandboxWorkDir(sessionId)
+        : sessionRow?.workspace || getWorkspacePath();
 
     const mode =
       payload.mode && VALID_MODES.has(payload.mode)
