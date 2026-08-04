@@ -17,6 +17,7 @@ import { viewArtifact } from "@/components/artifact-actions";
 import { isWebLink, openLink, wantsExternal } from "@/lib/open-link";
 import { splitMarkdownChunks } from "@/lib/markdown-chunks";
 import { escapeCurrencyDollars } from "@/lib/currency-dollars";
+import { splitFrontmatter } from "@/lib/frontmatter";
 
 interface MarkdownViewerProps {
   content: string;
@@ -104,14 +105,16 @@ function MarkdownViewerImpl({
   content: raw,
   className,
 }: MarkdownViewerProps): JSX.Element {
-  // Extract YAML frontmatter so it can be rendered as a code block.
+  // Extract YAML frontmatter so it can be rendered as a code block — but only
+  // when it IS frontmatter and not a horizontal rule (see lib/frontmatter).
   const { frontmatter, body } = useMemo(() => {
-    const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(raw);
+    const split = splitFrontmatter(raw);
     // Prices are not formulas: "$5 … $10" would otherwise parse as maths and
     // set the sentence between them in KaTeX italics (lib/currency-dollars).
-    return m
-      ? { frontmatter: m[1].trimEnd(), body: escapeCurrencyDollars(m[2]) }
-      : { frontmatter: null, body: escapeCurrencyDollars(raw) };
+    return {
+      frontmatter: split.frontmatter,
+      body: escapeCurrencyDollars(split.body),
+    };
   }, [raw]);
 
   // Big documents arrive in pieces; small ones stay exactly as they were.
