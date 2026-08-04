@@ -97,21 +97,21 @@ export function SttModelPicker({
               isSelected ? "border-link/40 bg-link/[0.06]" : "border-transparent",
             )}
           >
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-start gap-1.5">
               <button
                 type="button"
                 onClick={() => {
                   onSelect(m.id);
                   if (!m.installed && !p) install(m.id);
                 }}
-                className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                className="flex min-w-0 flex-1 items-start gap-1.5 text-left"
               >
-                <span className="flex w-4 shrink-0 justify-center">
+                <span className="flex w-4 shrink-0 justify-center pt-0.5">
                   {isSelected && <Check className="size-3.5 text-link" />}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px]">{m.label}</span>
-                  <span className="block truncate text-[11px] text-muted-foreground">
+                  <span className="block text-[13px] leading-snug">{m.label}</span>
+                  <span className="block text-[11px] leading-snug text-muted-foreground">
                     {m.languages} · {mb(m.bytes)}
                     {m.punctuation ? " · punctuation" : ""}
                   </span>
@@ -122,7 +122,7 @@ export function SttModelPicker({
                   type="button"
                   onClick={() => void api()?.stt.cancelInstall(m.id)}
                   title="Cancel download"
-                  className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                  className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
                 >
                   <X className="size-3.5" />
                 </button>
@@ -135,7 +135,7 @@ export function SttModelPicker({
                       .then(refresh)
                   }
                   title="Delete the downloaded files"
-                  className="rounded p-0.5 text-muted-foreground hover:text-destructive"
+                  className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive"
                 >
                   <Trash2 className="size-3.5" />
                 </button>
@@ -144,7 +144,7 @@ export function SttModelPicker({
                   type="button"
                   onClick={() => install(m.id)}
                   title={`Download ${mb(m.bytes)}`}
-                  className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                  className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
                 >
                   <Download className="size-3.5" />
                 </button>

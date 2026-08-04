@@ -18,7 +18,8 @@
  * every launch". The old localStorage values are migrated once, then dropped.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown, Loader2, Mic, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
@@ -250,6 +251,13 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
   }
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  /** Where the panel sits on screen. It is portalled to <body> and positioned
+   * by hand: inside the composer it was clipped by the first ancestor with
+   * `overflow: hidden` — the right half of it simply disappeared. */
+  const [anchor, setAnchor] = useState<{ left: number; bottom: number } | null>(
+    null,
+  );
   const barRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -470,11 +478,43 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
   }
 
   // ── Housekeeping ───────────────────────────────────────────────────────
+  const PANEL_WIDTH = 576; // w-[36rem]
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    const place = (): void => {
+      const r = rootRef.current?.getBoundingClientRect();
+      if (!r) return;
+      // Left-aligned with the button, pulled back when that would run off the
+      // right edge of the window.
+      const left = Math.max(
+        8,
+        Math.min(r.left, window.innerWidth - PANEL_WIDTH - 8),
+      );
+      setAnchor({ left, bottom: window.innerHeight - r.top + 6 });
+    };
+    place();
+    window.addEventListener("resize", place);
+    // Capture: the composer scrolls inside its own container, not the window.
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [menuOpen]);
+
   useEffect(() => {
     // Close on outside click.
     if (!menuOpen) return;
     const handler = (e: MouseEvent): void => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+      const target = e.target as HTMLElement | null;
+      // The model and language lists are Radix popups: they render in a portal
+      // at the end of <body>, so by the DOM they are ALWAYS outside this
+      // panel. Without this, picking a Whisper model closed the whole thing.
+      if (target?.closest?.("[data-radix-popper-content-wrapper]")) return;
+      // The panel itself lives in a portal, so "inside the button" is not the
+      // whole test any more.
+      if (panelRef.current?.contains(target as Node)) return;
+      if (rootRef.current && !rootRef.current.contains(target as Node)) {
         closeMenu();
       }
     };
@@ -565,11 +605,17 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
         </div>
       )}
 
-      {menuOpen && (
+      {menuOpen &&
+        anchor &&
+        createPortal(
         // Two columns: with four downloadable models the single column grew
         // taller than the window and the top of it went off-screen.
-        <div className="absolute bottom-full left-0 z-50 mb-1.5 flex w-[34rem] flex-col rounded-lg border border-border bg-card p-2 shadow-lg">
-          <div className="grid max-h-[65vh] grid-cols-2 gap-x-3 overflow-y-auto">
+        <div
+          ref={panelRef}
+          style={{ left: anchor.left, bottom: anchor.bottom }}
+          className="fixed z-[100] flex w-[36rem] flex-col rounded-lg border border-border bg-card p-2 shadow-lg"
+        >
+          <div className="grid max-h-[65vh] grid-cols-[minmax(0,15rem)_minmax(0,1fr)] gap-x-3 overflow-y-auto overflow-x-hidden">
             <div className="min-w-0">
           <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Microphone
@@ -589,12 +635,12 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
                   key={d.deviceId}
                   type="button"
                   onClick={() => void selectDevice(d.deviceId)}
-                  className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                  className="flex w-full items-start gap-1.5 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
                 >
-                  <span className="flex w-4 justify-center">
+                  <span className="flex w-4 shrink-0 justify-center pt-0.5">
                     {selected && <Check className="size-3.5 text-link" />}
                   </span>
-                  <span className="truncate">
+                  <span className="min-w-0 leading-snug break-words">
                     {d.label || `Microphone ${d.deviceId.slice(0, 6)}`}
                   </span>
                 </button>
@@ -621,7 +667,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
           <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Transcription
           </div>
-          <div className="flex flex-col gap-1 px-1 pb-1">
+          <div className="flex flex-col gap-1 px-1 pb-2">
             {(
               [
                 ["ondevice", "On-device — GigaAM (best for Russian)"],
@@ -641,6 +687,11 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
                 {label}
               </button>
             ))}
+          </div>
+
+          <div className="mb-1.5 h-px bg-border" />
+          <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Parameters &amp; models
           </div>
 
           {engine === "ondevice" ? (
@@ -724,8 +775,9 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
               {hint}
             </div>
           )}
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 }
