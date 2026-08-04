@@ -16,9 +16,11 @@ import { safeStorage } from "electron";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getDataDir } from "./data-dir.js";
+import { DEFAULT_STT_MODEL } from "./stt/catalog.js";
 
 export interface SttSettings {
-  /** "local" (in-renderer whisper) or "cloud" (OpenAI-compatible endpoint). */
+  /** "local" (in-renderer whisper), "ondevice" (GigaAM via sherpa-onnx in
+   * main) or "cloud" (OpenAI-compatible endpoint). */
   engine: string;
   endpoint: string;
   /** Cloud only. Stored encrypted; travels to the renderer in the clear
@@ -26,6 +28,8 @@ export interface SttSettings {
   key: string;
   model: string;
   localModel: string;
+  /** Which downloaded GigaAM model the on-device engine uses. */
+  nativeModel: string;
   /** "" = auto-detect. */
   language: string;
   /** MediaDevices deviceId of the chosen microphone. */
@@ -38,6 +42,7 @@ const DEFAULTS: SttSettings = {
   key: "",
   model: "",
   localModel: "Xenova/whisper-base",
+  nativeModel: DEFAULT_STT_MODEL,
   language: "",
   deviceId: "",
 };

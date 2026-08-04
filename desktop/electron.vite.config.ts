@@ -81,6 +81,10 @@ export default defineConfig({
           // Sandbox Python runs in a worker_thread so heavy computations
           // never freeze the app. Loaded via new Worker(new URL(...)).
           'pyodide-worker': resolve('src/main/sandbox/pyodide.worker.ts'),
+          // On-device speech recognition (sherpa-onnx) runs in its own
+          // process: the native module takes main down when loaded inside
+          // one of its threads, and decoding blocks whatever runs it.
+          'gigaam-child': resolve('src/main/stt/gigaam.child.ts'),
         },
       },
     },

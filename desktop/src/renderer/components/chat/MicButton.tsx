@@ -26,6 +26,7 @@ import type { ElectronAPI } from "@/types/electron";
 // in electron-vite dev mode (a worker that fails to LOAD dies silently).
 import SttWorker from "../../workers/stt-worker?worker";
 import { Select } from "@/components/ui/select";
+import { SttModelPicker } from "./SttModelPicker";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -197,6 +198,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
   const [sttKey, setSttKey] = useState<string>("");
   const [model, setModel] = useState<string>("");
   const [localModel, setLocalModel] = useState<string>("Xenova/whisper-base");
+  const [nativeModel, setNativeModel] = useState<string>("gigaam-v3-rnnt-punct");
   const [language, setLanguage] = useState<string>("");
 
   // Load from main, migrating anything the old localStorage build left behind.
@@ -229,6 +231,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
       setSttKey(saved.key);
       setModel(saved.model);
       setLocalModel(saved.localModel);
+      setNativeModel(saved.nativeModel);
       setLanguage(saved.language);
     })();
     return () => {
@@ -422,6 +425,29 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
           showError(
             "No speech recognized — try again, a bit longer and closer to the mic.",
           );
+      } else if (engine === "ondevice") {
+        // GigaAM in main: the audio never leaves the machine, and the model
+        // writes its own punctuation.
+        setStatus("Preparing audio…");
+        const pcm = await blobToPCM16k(blob);
+        if (pcm.length / 16000 < 0.5) {
+          showError("Recording too short — hold the mic and speak.");
+          return;
+        }
+        setStatus("Transcribing…");
+        // A copy: the buffer is transferred to main's worker, and the one the
+        // AudioContext handed us is not ours to give away.
+        const samples = new Float32Array(pcm);
+        const res = await api()?.stt.transcribePcm({
+          modelId: nativeModel,
+          samples,
+          sampleRate: 16000,
+        });
+        console.log(`[stt] gigaam: ${res?.ms}ms, ok=${res?.ok}`);
+        if (res?.ok && res.text) onText(res.text);
+        else if (res?.ok)
+          showError("No speech recognized — try again, closer to the mic.");
+        else showError(res?.error || "Transcription failed");
       } else {
         setStatus("Transcribing…");
         const audioBase64 = await blobToBase64(blob);
@@ -468,7 +494,9 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
 
   /** Optimistic in the UI, durable in main. */
   const saveSetting = (
-    field: keyof typeof LEGACY_KEYS,
+    // Every settings field, not just the ones the localStorage build had —
+    // `nativeModel` postdates that migration and has no legacy key.
+    field: keyof typeof LEGACY_KEYS | "nativeModel",
     value: string,
     set: (v: string) => void,
   ): void => {
@@ -538,7 +566,11 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
       )}
 
       {menuOpen && (
-        <div className="absolute bottom-full left-0 z-50 mb-1.5 w-80 rounded-lg border border-border bg-card p-2 shadow-lg">
+        // Two columns: with four downloadable models the single column grew
+        // taller than the window and the top of it went off-screen.
+        <div className="absolute bottom-full left-0 z-50 mb-1.5 flex w-[34rem] flex-col rounded-lg border border-border bg-card p-2 shadow-lg">
+          <div className="grid max-h-[65vh] grid-cols-2 gap-x-3 overflow-y-auto">
+            <div className="min-w-0">
           <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Microphone
           </div>
@@ -583,15 +615,17 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
             </div>
           </div>
 
-          <div className="-mx-1 my-1.5 h-px bg-border" />
+            </div>
 
+            <div className="min-w-0 border-l border-border pl-3">
           <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Transcription
           </div>
           <div className="flex flex-col gap-1 px-1 pb-1">
             {(
               [
-                ["local", "Local — free, on-device (Whisper)"],
+                ["ondevice", "On-device — GigaAM (best for Russian)"],
+                ["local", "On-device — Whisper (WASM)"],
                 ["cloud", "Cloud — OpenAI-compatible API"],
               ] as const
             ).map(([id, label]) => (
@@ -609,7 +643,12 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
             ))}
           </div>
 
-          {engine === "local" ? (
+          {engine === "ondevice" ? (
+            <SttModelPicker
+              selected={nativeModel}
+              onSelect={(v) => saveSetting("nativeModel", v, setNativeModel)}
+            />
+          ) : engine === "local" ? (
             <div className="flex flex-col gap-1.5 px-1 pb-1">
               <div className="flex gap-1.5">
                 <Select
@@ -669,6 +708,9 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
               </div>
             </div>
           )}
+
+            </div>
+          </div>
 
           {status && (
             <div className="mx-1 mb-1 flex items-center gap-1.5 rounded-md bg-black/[0.04] px-2 py-1 text-[12px] text-muted-foreground dark:bg-white/[0.06]">

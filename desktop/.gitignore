@@ -4,6 +4,9 @@ dist/
 release/
 *.log
 out-smoke/
+# Probes point the data dir at a temp folder; the electron stub's userData
+# is the project directory, so this lands here. Never the real one.
+monet-bootstrap.json
 out-dirprobe/
 out-measure/
 out-seed/

@@ -9,12 +9,22 @@
  * used to produce.)
  */
 
-import { ipcMain } from "electron";
+import { ipcMain, BrowserWindow } from "electron";
 import {
   getSttSettings,
   setSttSettings,
   type SttSettings,
 } from "../stt-settings.js";
+import {
+  cancelInstall,
+  installModel,
+  listSttModels,
+  removeModel,
+  sttNativeAvailable,
+  transcribePcm,
+  type InstallProgress,
+  type SttModelStatus,
+} from "../stt/gigaam.js";
 
 interface SttPayload {
   audioBase64: string;
@@ -42,6 +52,33 @@ export function registerSttIPC(): void {
   ipcMain.handle(
     "stt:setSettings",
     (_e, patch: Partial<SttSettings>): SttSettings => setSttSettings(patch),
+  );
+
+  // ── On-device GigaAM (sherpa-onnx) ────────────────────────────────────
+  // Whisper-in-the-renderer stays where it is; this is the second local
+  // engine, and it is the one that knows Russian.
+  ipcMain.handle("stt:nativeAvailable", (): boolean => sttNativeAvailable());
+  ipcMain.handle("stt:models", (): Promise<SttModelStatus[]> => listSttModels());
+  ipcMain.handle(
+    "stt:installModel",
+    async (e, id: string): Promise<{ ok: boolean; error?: string }> => {
+      const send = (p: InstallProgress): void => {
+        const win = BrowserWindow.fromWebContents(e.sender);
+        if (win && !win.isDestroyed()) win.webContents.send("stt:modelProgress", p);
+      };
+      return installModel(id, send);
+    },
+  );
+  ipcMain.handle("stt:cancelInstall", (_e, id: string): boolean =>
+    cancelInstall(id),
+  );
+  ipcMain.handle("stt:removeModel", (_e, id: string) => removeModel(id));
+  ipcMain.handle(
+    "stt:transcribePcm",
+    (
+      _e,
+      p: { modelId: string; samples: Float32Array; sampleRate: number },
+    ) => transcribePcm(p.modelId, p.samples, p.sampleRate ?? 16000),
   );
 
   ipcMain.handle(

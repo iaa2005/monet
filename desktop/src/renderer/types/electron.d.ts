@@ -17,6 +17,10 @@ import type { Bookmark, Visit } from "../main/browser/bookmark-store.js";
 import type { ServerConfig, ServerState } from "../main/browser/servers.js";
 import type { SessionUiState } from "../main/ui-state.js";
 import type { SttSettings } from "../main/stt-settings.js";
+import type {
+  InstallProgress,
+  SttModelStatus,
+} from "../main/stt/gigaam.js";
 import type { Plan, PlanTodoStatus } from "@shared/plan";
 import type { ChatMessage } from "./chat";
 
@@ -24,6 +28,7 @@ export type { BrowserConfig, DevServer, BrowserSelection, ServerConfig, ServerSt
 export type { Bookmark, Visit };
 export type { SessionUiState };
 export type { SttSettings };
+export type { InstallProgress, SttModelStatus };
 export type { Plan, PlanTodoStatus };
 export type {
   BrowserEngine,
@@ -894,6 +899,17 @@ export interface ElectronAPI {
     }) => Promise<{ ok: boolean; text?: string; error?: string }>;
     getSettings: () => Promise<SttSettings>;
     setSettings: (patch: Partial<SttSettings>) => Promise<SttSettings>;
+    nativeAvailable: () => Promise<boolean>;
+    models: () => Promise<SttModelStatus[]>;
+    installModel: (id: string) => Promise<{ ok: boolean; error?: string }>;
+    cancelInstall: (id: string) => Promise<boolean>;
+    removeModel: (id: string) => Promise<{ ok: boolean }>;
+    transcribePcm: (p: {
+      modelId: string;
+      samples: Float32Array;
+      sampleRate: number;
+    }) => Promise<{ ok: boolean; text?: string; error?: string; ms?: number }>;
+    onModelProgress: (cb: (p: InstallProgress) => void) => () => void;
   };
   goal: {
     get: (sessionId: string) => Promise<GoalRecord | null>;

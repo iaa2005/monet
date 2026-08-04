@@ -20,6 +20,10 @@ import type { Bookmark, Visit } from "../main/browser/bookmark-store.js";
 import type { ServerConfig, ServerState } from "../main/browser/servers.js";
 import type { SessionUiState } from "../main/ui-state.js";
 import type { SttSettings } from "../main/stt-settings.js";
+import type {
+  InstallProgress,
+  SttModelStatus,
+} from "../main/stt/gigaam.js";
 
 const electronAPI = {
   platform: process.platform,
@@ -784,6 +788,30 @@ const electronAPI = {
       ipcRenderer.invoke("stt:getSettings"),
     setSettings: (patch: Partial<SttSettings>): Promise<SttSettings> =>
       ipcRenderer.invoke("stt:setSettings", patch),
+
+    /** On-device GigaAM (sherpa-onnx in main) — the Russian-speaking engine. */
+    nativeAvailable: (): Promise<boolean> =>
+      ipcRenderer.invoke("stt:nativeAvailable"),
+    models: (): Promise<SttModelStatus[]> => ipcRenderer.invoke("stt:models"),
+    installModel: (id: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("stt:installModel", id),
+    cancelInstall: (id: string): Promise<boolean> =>
+      ipcRenderer.invoke("stt:cancelInstall", id),
+    removeModel: (id: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("stt:removeModel", id),
+    /** 16 kHz mono PCM straight from the recorder — no file, no CORS, no key. */
+    transcribePcm: (p: {
+      modelId: string;
+      samples: Float32Array;
+      sampleRate: number;
+    }): Promise<{ ok: boolean; text?: string; error?: string; ms?: number }> =>
+      ipcRenderer.invoke("stt:transcribePcm", p),
+    onModelProgress: (cb: (p: InstallProgress) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, p: InstallProgress): void =>
+        cb(p);
+      ipcRenderer.on("stt:modelProgress", handler);
+      return () => ipcRenderer.off("stt:modelProgress", handler);
+    },
   },
 
   goal: {
