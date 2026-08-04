@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare, Square, X } from "lucide-react";
+import { ClipboardList, MessageSquare, Square, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { INTERRUPT_MARK, useChatStore } from "@/stores/chatStore";
 import type { ElectronAPI } from "@/types/electron";
@@ -89,6 +89,16 @@ export function VoiceMode({
   const away = useChatStore(
     (st) => !!st.voiceSessionId && st.currentSessionId !== st.voiceSessionId,
   );
+  const planWaiting = useChatStore((st) => {
+    const sid = st.voiceSessionId;
+    const msgs = sid ? st.sessions[sid]?.messages : undefined;
+    if (!msgs) return false;
+    return msgs.some(
+      (m) =>
+        m.toolCall?.name === "ExitPlanMode" &&
+        (m.toolCall.status === "running" || m.toolCall.status === "pending"),
+    );
+  });
   const runningTool = useChatStore((st) => {
     const sid = st.voiceSessionId;
     const msgs = sid ? st.sessions[sid]?.messages : undefined;
@@ -140,6 +150,8 @@ export function VoiceMode({
    * that was sounding: the queue kept refilling and she talked on. Lifted
    * when a new reply starts. */
   const mutedRef = useRef(false);
+  /** Plans already announced by voice, by tool-call id. */
+  const planSpokenRef = useRef<Set<string>>(new Set());
 
   const stopPlayback = (): void => {
     queueRef.current = [];
@@ -308,6 +320,29 @@ export function VoiceMode({
         }
         spoken.set(m.id, n);
         queuedTotal += n;
+      }
+      // A plan waiting for approval is worth a sentence: the card sits in
+      // the chat, and with the user away nothing else would say so.
+      for (const m of msgs) {
+        const tc = m.toolCall;
+        if (
+          tc?.name === "ExitPlanMode" &&
+          (tc.status === "running" || tc.status === "pending") &&
+          !planSpokenRef.current.has(tc.id)
+        ) {
+          planSpokenRef.current.add(tc.id);
+          const title =
+            typeof tc.input?.title === "string" ? (tc.input.title as string) : "";
+          const phrase = title
+            ? `Я подготовила план «${title}». Вернись в чат — посмотри и одобри.`
+            : "План готов и ждёт твоего одобрения в чате.";
+          if (!mutedRef.current && !spokenTextsRef.current.has(phrase)) {
+            spokenTextsRef.current.add(phrase);
+            vlog("plan-announced", title || "(untitled)");
+            queueRef.current.push(phrase);
+            pump();
+          }
+        }
       }
       if (streaming) sawStreaming = true;
       if (!streaming && (sawStreaming || queuedTotal > 0)) {
@@ -602,7 +637,21 @@ export function VoiceMode({
           <span className="min-w-0 flex-1 truncate text-xs text-foreground">
             {label[phase]}
           </span>
-          {away && (
+          {away && planWaiting && (
+            <button
+              type="button"
+              onClick={() => {
+                const sid = useChatStore.getState().voiceSessionId;
+                if (sid) useChatStore.getState().setCurrentSessionId(sid);
+              }}
+              title="План ждёт одобрения — открыть чат"
+              className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-600 hover:bg-amber-500/25 dark:text-amber-400"
+            >
+              <ClipboardList className="size-3" />
+              План
+            </button>
+          )}
+          {away && !planWaiting && (
             <button
               type="button"
               onClick={() => {
