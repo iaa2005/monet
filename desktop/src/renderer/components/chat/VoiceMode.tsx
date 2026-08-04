@@ -174,11 +174,17 @@ export function VoiceMode({
     }
     const buf = audioQueueRef.current.shift();
     if (!buf) {
+      // The VOICE chat's stream, not whatever chat is on screen: switching
+      // chats made this read the other chat's idle state and cut the phase
+      // (and the narration) short.
+      const stv = useChatStore.getState();
+      const vsid = stv.voiceSessionId;
+      const vStreaming = vsid ? stv.sessions[vsid]?.isStreaming : stv.isStreaming;
       if (
         phaseRef.current === "speaking" &&
         !synthBusyRef.current &&
         queueRef.current.length === 0 &&
-        !useChatStore.getState().isStreaming
+        !vStreaming
       ) {
         setPh("listening");
       }
