@@ -362,8 +362,18 @@ export default function App(): JSX.Element {
         viewerPanes: useViewerStore.getState().serialize(),
       });
     }
+    const wasZeroState = restoredFor.current === undefined && leaving === undefined;
     restoredFor.current = currentSessionId;
-    if (!currentSessionId || currentSessionId.startsWith("incognito")) return;
+    if (!currentSessionId || currentSessionId.startsWith("incognito")) {
+      // Entering the zero state (New chat without a sidebar entry): a clean
+      // desk, not the previous chat's panels still standing.
+      useBrowserStore.getState().restoreTabs([], 0);
+      return;
+    }
+    // undefined → id is a session being BORN in send(), not a chat switch:
+    // the desk on screen belongs to this very chat, and "restoring" the
+    // brand-new session's empty record wiped whatever the agent had opened.
+    if (wasZeroState) return;
 
     let cancelled = false;
     void bridge.browser.uiState.get(currentSessionId).then((saved) => {

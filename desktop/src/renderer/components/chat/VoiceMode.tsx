@@ -365,9 +365,9 @@ export function VoiceMode({
           }
           vlog("transcribed", { ms: Date.now() - tStt, text: res.text.slice(0, 80) });
           const clean = res.text.trim();
-          // Keyboard clatter transcribes into a syllable or two; sending it
-          // re-anchored the reply watcher and struck the running answer dumb.
-          if (clean.replace(/[^\p{L}\p{N}]/gu, "").length < 4) {
+          // Only the unpronounceable is noise: «Да» and «Есть» are answers.
+          // Keystroke junk is mostly caught earlier by the sustained-voice gate.
+          if (clean.replace(/[^\p{L}\p{N}]/gu, "").length < 1) {
             vlog("discarded-junk", clean);
             setPh("listening");
             void listen();
