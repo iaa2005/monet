@@ -487,6 +487,29 @@ export function VoiceMode({
           const st = useChatStore.getState();
           const sid = st.voiceSessionId;
           const running = sid ? st.sessions[sid]?.isStreaming : st.isStreaming;
+          // A plan awaiting approval answers to the VOICE first: «приступай»
+          // approves it, anything else spoken goes back as the revision note
+          // — the same two buttons the card offers, without touching them.
+          {
+            const { usePlanStore } = await import("@/stores/planStore");
+            const planReq = usePlanStore.getState().request;
+            if (planReq && sid && planReq.sessionId === sid) {
+              const approve =
+                /(приступ|начина|поехал|запускай|одобря|соглас|давай\s+(делай|строй|работай)|строй|делай\s+план|go ahead|approve|build)/i.test(
+                  clean,
+                );
+              vlog("plan-decision", { approve, text: clean.slice(0, 60) });
+              api()?.plan.respond(
+                planReq.id,
+                approve ? "approve" : "keep-planning",
+                approve ? undefined : clean,
+              );
+              usePlanStore.setState({ request: null });
+              setPh("listening");
+              void listen();
+              return;
+            }
+          }
           if (running && sid) {
             // Inject: it rides into the run between steps, shows up in the
             // chat via the user_message event, and interrupts nothing. The

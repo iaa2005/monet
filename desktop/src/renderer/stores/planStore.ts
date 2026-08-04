@@ -106,8 +106,11 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       const sid = (req as PlanRequest).sessionId;
       if (sid) usePlanStore.getState().load(sid);
       // A prepared plan opens its panel, like Cursor opening the .plan.md
-      // tab. openPanel queues the reveal if the dock is not up yet.
-      useDockStore.getState().openPanel("plan");
+      // tab — but only in ITS OWN chat. With the user reading another chat
+      // the empty plan panel used to pop open there; the voice pill and the
+      // sidebar already say a plan is waiting.
+      const curNow = useChatStore.getState().currentSessionId ?? "default";
+      if (!sid || sid === curNow) useDockStore.getState().openPanel("plan");
     });
   }
 }
