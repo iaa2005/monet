@@ -21,6 +21,7 @@ import {
   type TtsStatus,
 } from "../tts/engine.js";
 import { stripTtsTags, textForSpeech, TTS_TAGS } from "../tts/catalog.js";
+import { markdownForSpeech } from "@shared/voice-tags.js";
 
 export function registerTtsIPC(): void {
   ipcMain.handle("tts:available", (): boolean => ttsNativeAvailable());
@@ -47,7 +48,7 @@ export function registerTtsIPC(): void {
       _e,
       p: { text: string; voice: string; lang?: string; steps?: number; speed?: number },
     ): Promise<SpeakResult> =>
-      speak({ ...p, text: textForSpeech(p.text) }),
+      speak({ ...p, text: markdownForSpeech(textForSpeech(p.text)) }),
   );
   // Pure helpers the renderer needs for display; shipped over IPC rather than
   // duplicated so the tag list has exactly one home.

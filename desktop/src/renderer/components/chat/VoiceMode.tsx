@@ -103,6 +103,10 @@ export function VoiceMode({
    * twice and the second send stopped the first one's run. */
   const loopRef = useRef(false);
   const watchRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Everything already spoken, by TEXT. Tool-heavy runs rebuild transcript
+   * messages with fresh ids, which reset any id-keyed counter and replayed
+   * the whole reply; the words themselves do not change identity. */
+  const spokenTextsRef = useRef<Set<string>>(new Set());
 
   const stopPlayback = (): void => {
     queueRef.current = [];
@@ -126,11 +130,14 @@ export function VoiceMode({
     vlog("tts-request", text.slice(0, 60));
     try {
       const settings = await api()?.stt.getSettings();
+      // Starving speaker → fewer flow-matching steps: the first sentence of
+      // a reply lands ~40% sooner; once audio is queued ahead, quality wins.
+      const urgent = audioQueueRef.current.length === 0 && !playingRef.current;
       const r = await api()?.tts.speak({
         text,
         voice: settings?.ttsVoice || "F1",
         lang: "na",
-        steps: 6,
+        steps: urgent ? 4 : 8,
       });
       if (!alive.current) return;
       if (r?.ok && r.samplesBase64) {
@@ -204,7 +211,12 @@ export function VoiceMode({
     const spoken = new Map<string, number>();
     watchRef.current = setInterval(() => {
       const st = useChatStore.getState();
-      const msgs = st.messages;
+      // The voice conversation's OWN chat — switching chats must not
+      // re-point the loop at whatever is on screen.
+      const sid = st.voiceSessionId;
+      const sess = sid ? st.sessions[sid] : undefined;
+      const msgs = sess?.messages ?? st.messages;
+      const streaming = sess ? sess.isStreaming : st.isStreaming;
       const bi = baseline ? msgs.findIndex((m) => m.id === baseline) : -1;
       const fresh = msgs
         .slice(bi + 1)
@@ -212,19 +224,22 @@ export function VoiceMode({
       let queuedTotal = 0;
       for (const m of fresh) {
         const isNewest = msgs[msgs.length - 1]?.id === m.id;
-        const done = !isNewest || !st.isStreaming;
+        const done = !isNewest || !streaming;
         const sentences = completeSentences(m.content, done);
         let n = spoken.get(m.id) ?? 0;
         while (n < sentences.length) {
-          vlog("sentence-queued", sentences[n].slice(0, 60));
-          queueRef.current.push(sentences[n]);
+          const key = sentences[n].replace(/\s+/g, " ").trim();
           n += 1;
+          if (spokenTextsRef.current.has(key)) continue;
+          spokenTextsRef.current.add(key);
+          vlog("sentence-queued", key.slice(0, 60));
+          queueRef.current.push(key);
           pump();
         }
         spoken.set(m.id, n);
         queuedTotal += n;
       }
-      if (!st.isStreaming) {
+      if (!streaming) {
         vlog("stream-done", { queued: queuedTotal });
         if (watchRef.current) clearInterval(watchRef.current);
         watchRef.current = null;
@@ -232,7 +247,7 @@ export function VoiceMode({
           setPh("listening");
         }
       }
-    }, 250);
+    }, 150);
   };
 
   /** One utterance: record until ~1.3 s of silence, transcribe, send. */

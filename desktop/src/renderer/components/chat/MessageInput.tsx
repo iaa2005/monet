@@ -842,6 +842,12 @@ export function MessageInput({
     }
   };
 
+  const voiceBusyElsewhere = useChatStore(
+    (st) =>
+      st.voiceModeOpen &&
+      st.voiceSessionId !== undefined &&
+      st.voiceSessionId !== st.currentSessionId,
+  );
   // Voice Mode renders at App level (this component remounts when the first
   // message creates the session); it reaches send() through the store.
   useEffect(() => {
@@ -947,7 +953,9 @@ export function MessageInput({
     staged.forEach((f) => f.url && URL.revokeObjectURL(f.url));
 
     const incognito = store.incognito;
-    let sessionId = store.currentSessionId;
+    // A voice send belongs to the voice conversation's chat, not to whatever
+    // chat the user switched to while the loop was listening.
+    let sessionId = (voice ? store.voiceSessionId : undefined) ?? store.currentSessionId;
     if (incognito) {
       // Transient in-memory session — never persisted, never in Recents. Keep
       // a stable id so the agent's multi-turn conversation map still works.
@@ -964,6 +972,7 @@ export function MessageInput({
         if (s?.id) {
           sessionId = s.id;
           store.setCurrentSessionId(s.id);
+          if (voice) store.setVoiceSession(s.id);
           store.bumpSessions();
           // A new chat adopts the current working directory as its own.
           void bridge.workspace
@@ -1444,9 +1453,14 @@ export function MessageInput({
               />
               <button
                 type="button"
-                title="Voice Mode — разговор голосом"
+                title={
+                  voiceBusyElsewhere
+                    ? "Voice Mode уже работает в другом чате"
+                    : "Voice Mode — разговор голосом"
+                }
+                disabled={voiceBusyElsewhere}
                 onClick={() => useChatStore.getState().setVoiceModeOpen(true)}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground disabled:opacity-40 dark:hover:bg-white/[0.08]"
               >
                 <AudioLines className="size-4" />
               </button>

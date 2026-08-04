@@ -365,6 +365,11 @@ export interface ChatStore {
    * unspoken. The composer registers its send function here instead. */
   voiceModeOpen: boolean;
   setVoiceModeOpen: (v: boolean) => void;
+  /** The chat the voice conversation belongs to. Switching chats must not
+   * re-point the loop: it keeps speaking ITS chat, and other chats cannot
+   * start a second one. */
+  voiceSessionId?: string;
+  setVoiceSession: (id?: string) => void;
   voiceSendFn: ((text: string) => void) | null;
   registerVoiceSend: (fn: ((text: string) => void) | null) => void;
 
@@ -522,13 +527,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
       await api.save({ id: sessionId, title, messages: toSave, space });
 
-// Dev-only: probes driven over CDP import this module by URL, and vite's HMR
-// suffixes can hand them a SECOND instance whose state nobody uses. The
-// window hook is the one address that always points at the real store.
-if (import.meta.env.DEV) {
-  (window as unknown as { __chatStore?: typeof useChatStore }).__chatStore =
-    useChatStore;
-}
       get().bumpSessions();
     } catch {
       /* offline / DB unavailable — keep the in-memory buffer */
@@ -904,7 +902,12 @@ if (import.meta.env.DEV) {
         useViewerStore.getState().closeAll();
       }
     },
-    setVoiceModeOpen: (v) => set({ voiceModeOpen: v }),
+    setVoiceModeOpen: (v) =>
+      set((st) => ({
+        voiceModeOpen: v,
+        voiceSessionId: v ? st.currentSessionId : undefined,
+      })),
+    setVoiceSession: (id) => set({ voiceSessionId: id }),
     registerVoiceSend: (fn) => set({ voiceSendFn: fn }),
     openExpandedSubAgent: (ref) => {
       if (ref) useViewerStore.getState().closeAll();
@@ -1356,4 +1359,12 @@ export function expandedSubAgentCall(s: ChatStore): ToolCall | null {
   const ref = s.expandedSubAgent;
   if (!ref) return null;
   return findSubAgentCall(s.sessions[ref.sessionId]?.messages, ref.toolCallId);
+}
+
+// Dev-only: probes driven over CDP import this module by URL, and vite's HMR
+// suffixes can hand them a SECOND instance whose state nobody uses. The
+// window hook is the one address that always points at the real store.
+if (import.meta.env.DEV) {
+  (window as unknown as { __chatStore?: typeof useChatStore }).__chatStore =
+    useChatStore;
 }

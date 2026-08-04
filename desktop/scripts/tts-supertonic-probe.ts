@@ -30,6 +30,7 @@ const {
   stripTtsTags,
   textForSpeech,
 } = await import('../src/main/tts/catalog.js')
+const { markdownForSpeech } = await import('../src/shared/voice-tags.js')
 const { ttsStatus, ttsNativeAvailable, speak } = await import('../src/main/tts/engine.js')
 
 let failures = 0
@@ -78,6 +79,13 @@ check(
 check(
   'markdown comparisons survive the stripper',
   stripTtsTags('a < b и x <= y, а <code> не тег речи') === 'a < b и x <= y, а <code> не тег речи',
+)
+
+const md = '**Что я сделала:**\n- создала `app.py`\n- открыла [сайт](https://x.dev)\n# Итог'
+check(
+  'markdown flattens for the mouth: bold, code, bullets, links',
+  markdownForSpeech(md) === 'Что я сделала:\nсоздала app.py\nоткрыла сайт\nИтог',
+  markdownForSpeech(md),
 )
 
 // ─── Install state ──────────────────────────────────────────────────────

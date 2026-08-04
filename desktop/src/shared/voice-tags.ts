@@ -35,3 +35,25 @@ export function textForSpeech(text: string): string {
     })
     .replace(/[ \t]{2,}/g, " ");
 }
+
+/**
+ * Markdown, flattened for a mouth instead of a screen.
+ *
+ * The voice directive asks for prose, but a model deep in a task still emits
+ * **bold**, `code`, headings and bullets — and a synthesiser reads the
+ * asterisks. Links keep their text, code keeps its content, list markers and
+ * emphasis vanish.
+ */
+export function markdownForSpeech(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/[ 	]{2,}/g, " ");
+}
