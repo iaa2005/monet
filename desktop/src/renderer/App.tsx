@@ -457,8 +457,11 @@ export default function App(): JSX.Element {
       );
       // A desk that has tabs shows its browser: a guest tab merged into a
       // chat that never saved a dock layout would otherwise sit invisible.
+      // And a desk WITHOUT tabs closes it — a stale layout was leaving an
+      // empty browser panel standing in chats that never asked for one.
       if ((saved?.browserTabs ?? []).length > 0)
         useDockStore.getState().openPanel("browser");
+      else useDockStore.getState().closePanel("browser");
       b.setLayout(saved?.browserExpanded ? "expanded" : "panel");
       // The files this chat had open, pane by pane — restored before the
       // desk so the pane-sync effect recreates their panels on the new wing.
@@ -1691,14 +1694,6 @@ export default function App(): JSX.Element {
                   )}
                   {/* The file preview is a dock panel now (see DockArea) —
                       it opens beside the chat instead of covering it. */}
-                  {voiceModeOpen && (
-                    <VoiceMode
-                      onSend={(t) => useChatStore.getState().voiceSendFn?.(t)}
-                      onClose={() =>
-                        useChatStore.getState().setVoiceModeOpen(false)
-                      }
-                    />
-                  )}
                   {expandedSubAgent && (
                     <div className="!absolute inset-0 z-10 flex h-full flex-col glass-panel bg-card overflow-hidden">
                       <div className="relative shrink-0 border-b border-border px-4 py-3">
@@ -1869,6 +1864,16 @@ export default function App(): JSX.Element {
       </Modal>
 
       <PermissionHost />
+      {/* Voice Mode lives at the ROOT, outside every portalled chat subtree:
+          mounted inside one, a chat switch remounted it — playback died
+          mid-sentence and the loop restarted, which read as "she starts
+          listening and never finishes what she was saying". */}
+      {voiceModeOpen && (
+        <VoiceMode
+          onSend={(t) => useChatStore.getState().voiceSendFn?.(t)}
+          onClose={() => useChatStore.getState().setVoiceModeOpen(false)}
+        />
+      )}
       </div>
     </div>
   );
