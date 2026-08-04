@@ -233,6 +233,12 @@ export function VoiceMode({
     // chunk that is no longer the newest message is final by definition —
     // it gets spoken right away, while the tool is still running.
     const spoken = new Map<string, number>();
+    let lastDiag = 0;
+    // The stream must be SEEN alive before its silence means "over": send()
+    // only flips the on-screen session's flag optimistically, so with another
+    // chat open the voice session reads false until DeepSeek's first token —
+    // and the watcher was killing itself 150 ms after the send.
+    let sawStreaming = false;
     watchRef.current = setInterval(() => {
       const st = useChatStore.getState();
       // The voice conversation's OWN chat — switching chats must not
@@ -245,6 +251,18 @@ export function VoiceMode({
       const fresh = msgs
         .slice(bi + 1)
         .filter((m) => m.role === "assistant" && m.content);
+      // Watchdog for the silent-watch bug: once a second, say what we see.
+      if (Date.now() - lastDiag > 1000) {
+        lastDiag = Date.now();
+        vlog("watch-tick", {
+          sid: sid ?? null,
+          haveSession: !!sess,
+          msgs: msgs.length,
+          fresh: fresh.length,
+          streaming,
+          muted: mutedRef.current,
+        });
+      }
       let queuedTotal = 0;
       for (const m of fresh) {
         const isNewest = msgs[msgs.length - 1]?.id === m.id;
@@ -264,7 +282,8 @@ export function VoiceMode({
         spoken.set(m.id, n);
         queuedTotal += n;
       }
-      if (!streaming) {
+      if (streaming) sawStreaming = true;
+      if (!streaming && (sawStreaming || queuedTotal > 0)) {
         vlog("stream-done", { queued: queuedTotal });
         if (watchRef.current) clearInterval(watchRef.current);
         watchRef.current = null;
