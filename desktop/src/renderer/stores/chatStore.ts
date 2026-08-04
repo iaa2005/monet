@@ -438,8 +438,10 @@ export interface ChatStore {
   addUserMessage: (
     content: string,
     attachments?: ChatAttachmentMeta[],
+    /** Voice Mode sends into ITS chat, not the one on screen. */
+    sessionId?: string,
   ) => ChatMessage;
-  startStreaming: () => void;
+  startStreaming: (sessionId?: string) => void;
   finishStreaming: (usage?: ChatUsage) => void;
   setError: (error: string) => void;
   clearMessages: () => void;
@@ -951,7 +953,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       mutate(id, () => ({ ...EMPTY, messages, hydrated: true }));
     },
 
-    addUserMessage: (content, attachments) => {
+    addUserMessage: (content, attachments, sessionId) => {
       const msg: ChatMessage = {
         id: generateId(),
         role: "user",
@@ -959,7 +961,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         timestamp: Date.now(),
         ...(attachments && attachments.length > 0 ? { attachments } : {}),
       };
-      mutate(targetId(), (p) => ({
+      mutate(sessionId ?? targetId(), (p) => ({
         ...p,
         messages: [...p.messages, msg],
         error: null,
@@ -970,8 +972,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
       return msg;
     },
 
-    startStreaming: () =>
-      mutate(targetId(), (p) => ({ ...p, isStreaming: true, error: null })),
+    startStreaming: (sessionId) =>
+      mutate(sessionId ?? targetId(), (p) => ({
+        ...p,
+        isStreaming: true,
+        error: null,
+      })),
 
     finishStreaming: (usage) =>
       mutate(targetId(), (p) =>

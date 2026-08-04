@@ -956,6 +956,9 @@ export function MessageInput({
     // A voice send belongs to the voice conversation's chat, not to whatever
     // chat the user switched to while the loop was listening.
     let sessionId = (voice ? store.voiceSessionId : undefined) ?? store.currentSessionId;
+    // A voice send without an anchor pins the conversation to wherever this
+    // message lands — never silently adopts the NEXT chat the user opens.
+    const pinVoiceAnchor = voice && !store.voiceSessionId;
     if (incognito) {
       // Transient in-memory session — never persisted, never in Recents. Keep
       // a stable id so the agent's multi-turn conversation map still works.
@@ -973,6 +976,7 @@ export function MessageInput({
           sessionId = s.id;
           store.setCurrentSessionId(s.id);
           if (voice) store.setVoiceSession(s.id);
+          if (pinVoiceAnchor) store.setVoiceSession(s.id);
           // An engine picked before the session existed belongs to it now.
           const pendingEngine = store.pendingSandboxEngine;
           if (pendingEngine) {
@@ -995,7 +999,15 @@ export function MessageInput({
       }
     }
 
-    const seed = store.messages
+    if (pinVoiceAnchor && sessionId) store.setVoiceSession(sessionId);
+
+    // Seed and display target THE chat this message belongs to. A voice send
+    // aimed at its own chat used to seed from and draw into whatever chat was
+    // on screen — the bubble landed in a stranger's transcript.
+    const targetMsgs =
+      (sessionId && store.sessions[sessionId]?.messages) ||
+      (sessionId === store.currentSessionId || !sessionId ? store.messages : []);
+    const seed = targetMsgs
       .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
       .map((m) => ({
         role: m.role as "user" | "assistant",
@@ -1044,8 +1056,8 @@ export function MessageInput({
         }),
       );
     }
-    addUserMessage(text, displayAttachments);
-    startStreaming();
+    addUserMessage(text, displayAttachments, sessionId);
+    startStreaming(sessionId);
 
     try {
       if (!bridge) return;
@@ -1467,7 +1479,27 @@ export function MessageInput({
                     : "Voice Mode — разговор голосом"
                 }
                 disabled={voiceBusyElsewhere}
-                onClick={() => useChatStore.getState().setVoiceModeOpen(true)}
+                onClick={() => {
+                  void (async () => {
+                    const st = useChatStore.getState();
+                    // A zero-state chat has no id to anchor the conversation
+                    // to — and an unanchored voice send goes to whatever chat
+                    // is open when you finish talking. Make the session first.
+                    if (!st.currentSessionId) {
+                      const s = (await api()?.sessions.create(
+                        "New Session",
+                        st.space,
+                      )) as { id: string } | undefined;
+                      if (s?.id) {
+                        st.setCurrentSessionId(s.id);
+                        st.bumpSessions();
+                        const ws = await api()?.workspace.get().catch(() => null);
+                        if (ws) void api()?.sessions.setWorkspace(s.id, ws);
+                      }
+                    }
+                    useChatStore.getState().setVoiceModeOpen(true);
+                  })();
+                }}
                 className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground disabled:opacity-40 dark:hover:bg-white/[0.08]"
               >
                 <AudioLines className="size-4" />
