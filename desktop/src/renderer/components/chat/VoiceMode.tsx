@@ -28,9 +28,12 @@ type Phase = "listening" | "thinking" | "speaking" | "error";
 
 /** One line per event, greppable: the whole conversation becomes a timeline. */
 function vlog(event: string, detail?: unknown): void {
+  // One STRING per line: objects logged as objects reach the CDP collector
+  // as the literal word "Object", which is no detail at all.
   console.log(
-    `[voice] ${new Date().toISOString().slice(11, 23)} ${event}`,
-    detail === undefined ? "" : detail,
+    `[voice] ${new Date().toISOString().slice(11, 23)} ${event} ${
+      detail === undefined ? "" : typeof detail === "string" ? detail : JSON.stringify(detail)
+    }`,
   );
 }
 
@@ -88,6 +91,11 @@ export function VoiceMode({
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const queueRef = useRef<string[]>([]);
+  /** Decoded audio waiting to play: synthesis runs AHEAD of playback. It used
+   * to start only when the previous sentence finished sounding, and those
+   * 1.5–2 s of synthesis were an audible hole between every two sentences. */
+  const audioQueueRef = useRef<AudioBuffer[]>([]);
+  const synthBusyRef = useRef(false);
   const playingRef = useRef(false);
   const spokenRef = useRef(0); // sentences of the current reply already queued
   /** Exactly one recording loop. It used to be restarted from three places —
@@ -99,6 +107,7 @@ export function VoiceMode({
 
   const stopPlayback = (): void => {
     queueRef.current = [];
+    audioQueueRef.current = [];
     playingRef.current = false;
     try {
       sourceRef.current?.stop();
@@ -108,42 +117,59 @@ export function VoiceMode({
     sourceRef.current = null;
   };
 
-  /** Speak the queue head; chains itself until the queue drains. */
-  const pump = async (): Promise<void> => {
-    if (playingRef.current || !alive.current) return;
+  /** Stage 1: synthesise ahead — one sentence in flight, results queued. */
+  const synthPump = async (): Promise<void> => {
+    if (synthBusyRef.current || !alive.current) return;
     const text = queueRef.current.shift();
-    if (!text) {
-      // Nothing left: if the model has also finished, go back to listening.
-      if (phaseRef.current === "speaking" && !useChatStore.getState().isStreaming) {
+    if (!text) return;
+    synthBusyRef.current = true;
+    const tReq = Date.now();
+    vlog("tts-request", text.slice(0, 60));
+    try {
+      const settings = await api()?.stt.getSettings();
+      const r = await api()?.tts.speak({
+        text,
+        voice: settings?.ttsVoice || "F1",
+        lang: "na",
+        steps: 6,
+      });
+      if (!alive.current) return;
+      if (r?.ok && r.samplesBase64) {
+        vlog("tts-done", { ms: Date.now() - tReq, synthMs: r.ms });
+        const bin = atob(r.samplesBase64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const samples = new Float32Array(bytes.buffer);
+        const ctx = (audioCtxRef.current ??= new AudioContext());
+        const buf = ctx.createBuffer(1, samples.length, r.sampleRate ?? 44100);
+        buf.copyToChannel(samples, 0);
+        audioQueueRef.current.push(buf);
+        void playPump();
+      }
+    } finally {
+      synthBusyRef.current = false;
+    }
+    void synthPump();
+  };
+
+  /** Stage 2: play what is ready, in order, with no gap in between. */
+  const playPump = (): void => {
+    if (playingRef.current || !alive.current) return;
+    const buf = audioQueueRef.current.shift();
+    if (!buf) {
+      if (
+        phaseRef.current === "speaking" &&
+        !synthBusyRef.current &&
+        queueRef.current.length === 0 &&
+        !useChatStore.getState().isStreaming
+      ) {
         setPh("listening");
       }
       return;
     }
     playingRef.current = true;
     setPh("speaking");
-    const tReq = Date.now();
-    vlog("tts-request", text.slice(0, 60));
-    const settings = await api()?.stt.getSettings();
-    const r = await api()?.tts.speak({
-      text,
-      voice: settings?.ttsVoice || "F1",
-      lang: "na",
-      steps: 6,
-    });
-    if (!alive.current) return;
-    if (!r?.ok || !r.samplesBase64) {
-      playingRef.current = false;
-      void pump();
-      return;
-    }
-    vlog("tts-done", { ms: Date.now() - tReq, synthMs: r.ms });
-    const bin = atob(r.samplesBase64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const samples = new Float32Array(bytes.buffer);
     const ctx = (audioCtxRef.current ??= new AudioContext());
-    const buf = ctx.createBuffer(1, samples.length, r.sampleRate ?? 44100);
-    buf.copyToChannel(samples, 0);
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.connect(ctx.destination);
@@ -151,11 +177,15 @@ export function VoiceMode({
       vlog("play-end");
       playingRef.current = false;
       sourceRef.current = null;
-      void pump();
+      playPump();
     };
     sourceRef.current = src;
-    vlog("play-start", { seconds: +(buf.duration).toFixed(2) });
+    vlog("play-start", { seconds: +buf.duration.toFixed(2) });
     src.start();
+  };
+
+  const pump = (): void => {
+    void synthPump();
   };
 
   /** Watch the streaming reply and feed finished sentences to the voice. */
@@ -179,7 +209,7 @@ export function VoiceMode({
         vlog("sentence-queued", sentences[spokenRef.current].slice(0, 60));
         queueRef.current.push(sentences[spokenRef.current]);
         spokenRef.current += 1;
-        void pump();
+        pump();
       }
       if (done) {
         vlog("stream-done", { queued: spokenRef.current });
@@ -224,6 +254,12 @@ export function VoiceMode({
 
       let heard = false;
       let silentSince = Date.now();
+      // Barge-in wants PROOF, not a blip: Chromium's echo cancellation only
+      // subtracts WebRTC audio, so the app's own voice from the speakers
+      // reaches this mic as ordinary sound and was stopping the playback
+      // mid-word. Direct speech into the mic is both louder and sustained;
+      // speaker echo at conversation volume is neither.
+      let bargeTicks = 0;
       const meter = setInterval(() => {
         if (!alive.current) return;
         analyser.getByteTimeDomainData(data);
@@ -235,11 +271,18 @@ export function VoiceMode({
         const rms = Math.sqrt(sum / data.length);
         setLevel(rms);
         const voiced = rms > 0.02;
-        // Barge-in: sustained voice while the app is talking wins.
-        if (phaseRef.current === "speaking" && voiced) {
-          vlog("barge-in", { rms: +rms.toFixed(3) });
-          stopPlayback();
-          setPh("listening");
+        // Barge-in: half a second of loud, uninterrupted voice — not one
+        // frame of the app hearing itself.
+        if (phaseRef.current === "speaking") {
+          bargeTicks = rms > 0.06 ? bargeTicks + 1 : 0;
+          if (bargeTicks >= 8) {
+            vlog("barge-in", { rms: +rms.toFixed(3) });
+            bargeTicks = 0;
+            stopPlayback();
+            setPh("listening");
+          }
+        } else {
+          bargeTicks = 0;
         }
         if (phaseRef.current !== "listening") return;
         if (voiced) {
