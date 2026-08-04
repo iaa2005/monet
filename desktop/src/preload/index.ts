@@ -931,6 +931,13 @@ const electronAPI = {
       ipcRenderer.on("browser:openTab", handler);
       return () => ipcRenderer.off("browser:openTab", handler);
     },
+    /** Hidden browser layer: pages a run keeps while its chat is off screen. */
+    adoptHeadless: (sessionId: string): Promise<string[]> =>
+      ipcRenderer.invoke("browser:adoptHeadless", sessionId),
+    toHeadless: (sessionId: string, urls: string[]): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("browser:toHeadless", sessionId, urls),
+    hasHeadless: (sessionId: string): Promise<boolean> =>
+      ipcRenderer.invoke("browser:hasHeadless", sessionId),
     /** Per-chat layout: panel, terminal, browser tabs. */
     uiState: {
       get: (sessionId: string): Promise<SessionUiState | null> =>

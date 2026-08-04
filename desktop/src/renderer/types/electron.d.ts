@@ -993,6 +993,9 @@ export interface ElectronAPI {
     unregisterTab: (tabId: string) => Promise<void>;
     activateTab: (tabId: string) => Promise<void>;
     onOpenTab: (cb: (url: string, ownerSessionId?: string) => void) => () => void;
+    adoptHeadless: (sessionId: string) => Promise<string[]>;
+    toHeadless: (sessionId: string, urls: string[]) => Promise<{ ok: boolean }>;
+    hasHeadless: (sessionId: string) => Promise<boolean>;
     uiState: {
       get: (sessionId: string) => Promise<SessionUiState | null>;
       set: (sessionId: string, state: SessionUiState) => Promise<void>;

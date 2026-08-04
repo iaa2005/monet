@@ -361,12 +361,25 @@ export default function App(): JSX.Element {
     if (leaving && leaving !== currentSessionId && !leaving.startsWith("incognito")) {
       const b = useBrowserStore.getState();
       const real = b.tabs.filter((t) => t.url !== "about:blank");
+      // A still-running chat keeps working after you leave: its tabs move
+      // into the HIDDEN layer so the run drives them off-screen, instead of
+      // haunting whatever chat you switch to. Page state does not survive
+      // the hop (the hidden layer reopens by URL) — a reading agent copes.
+      const leavingStreams =
+        useChatStore.getState().sessions[leaving]?.isStreaming === true;
       // Awaited below: restoring the destination BEFORE a guest tab finishes
       // moving home read an empty desk — "I come back and the browser is
       // gone" was this race, not a lost tab.
       // Guests go home: a tab another chat's run opened while this chat was
       // on screen is saved onto ITS owner's desk, not smeared onto this one.
       const mine = real.filter((t) => !t.ownerSession || t.ownerSession === leaving);
+      if (leavingStreams && mine.length > 0) {
+        guestMerges.push(
+          bridge.browser
+            .toHeadless(leaving, mine.map((t) => t.url))
+            .catch(() => ({ ok: false })),
+        );
+      }
       const guests = real.filter((t) => t.ownerSession && t.ownerSession !== leaving);
       const byOwner = new Map<string, string[]>();
       for (const t of guests) {
@@ -413,7 +426,25 @@ export default function App(): JSX.Element {
 
     let cancelled = false;
     void Promise.all(guestMerges)
-      .then(() => bridge.browser.uiState.get(currentSessionId))
+      .then(async () => {
+        // Pages the run kept alive off-screen come into the visible panel.
+        const adopted = await bridge.browser
+          .adoptHeadless(currentSessionId)
+          .catch(() => [] as string[]);
+        const saved = await bridge.browser.uiState.get(currentSessionId);
+        if (adopted.length === 0) return saved;
+        const have = new Set(
+          (saved?.browserTabs ?? []).map((x: { url: string }) => x.url),
+        );
+        return {
+          ...(saved ?? {}),
+          browserTabs: [
+            ...(saved?.browserTabs ?? []),
+            ...adopted.filter((u) => !have.has(u)).map((u) => ({ url: u })),
+          ],
+          activeTab: saved?.activeTab ?? 0,
+        };
+      })
       .then((saved) => {
       if (cancelled) return;
       // A saved desk is restored even when it is empty — closing everything

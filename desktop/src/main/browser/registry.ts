@@ -92,6 +92,19 @@ export function listTabs(): TabInfo[] {
  * the wrong page. So main asks and waits for the registration to come back.
  */
 export async function ensureTab(url: string, timeoutMs = 10_000): Promise<void> {
+  // Off-screen run: its pages live in the hidden layer. The visible panel is
+  // not touched at all — the user asked in chat A and is reading chat B.
+  {
+    const { currentRunSession } = await import("../agent/run-session.js");
+    const { getVisibleChatSession } = await import("../visible-session.js");
+    const sid = currentRunSession();
+    console.log(`[headless] ensureTab sid=${sid?.slice(0, 8) ?? "none"} visible=${getVisibleChatSession()?.slice(0, 8) ?? "none"}`);
+    if (sid && sid !== getVisibleChatSession()) {
+      const { headlessContents, openHeadlessTab } = await import("./headless.js");
+      if (!headlessContents(sid)) await openHeadlessTab(sid, url);
+      return;
+    }
+  }
   if (activeContents()) return;
   const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
   if (!win) throw new Error("No app window is open.");

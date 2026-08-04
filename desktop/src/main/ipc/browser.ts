@@ -62,7 +62,31 @@ export function registerBrowserIPC(): void {
       win.webContents.send("browser:serversChanged");
   });
 
-  ipcMain.handle("browser:getConfig", (): BrowserConfig => getBrowserConfig());
+    // ── The hidden browser layer (per-chat, off-screen runs) ──────────────
+  ipcMain.handle(
+    "browser:adoptHeadless",
+    async (_e, sessionId: string): Promise<string[]> => {
+      const { adoptHeadless } = await import("../browser/headless.js");
+      return adoptHeadless(sessionId);
+    },
+  );
+  ipcMain.handle(
+    "browser:toHeadless",
+    async (_e, sessionId: string, urls: string[]): Promise<{ ok: boolean }> => {
+      const { moveToHeadless } = await import("../browser/headless.js");
+      await moveToHeadless(sessionId, urls ?? []);
+      return { ok: true };
+    },
+  );
+  ipcMain.handle(
+    "browser:hasHeadless",
+    async (_e, sessionId: string): Promise<boolean> => {
+      const { hasHeadless } = await import("../browser/headless.js");
+      return hasHeadless(sessionId);
+    },
+  );
+
+ipcMain.handle("browser:getConfig", (): BrowserConfig => getBrowserConfig());
   ipcMain.handle(
     "browser:setConfig",
     (_e, patch: Partial<BrowserConfig>): BrowserConfig => {

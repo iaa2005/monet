@@ -40,6 +40,7 @@ import { clearSessionMode } from "../agent/session-mode.js";
 import { tunablePrompt } from "../prompts/index.js";
 import { getWorkspacePath } from "./workspace.js";
 import { sandboxWorkDir } from "../sandbox/podman-engine.js";
+import { setVisibleChatSession } from "../visible-session.js";
 import type { LLMContentBlock } from "../llm/adapter.js";
 
 interface ChatAttachment {
@@ -282,6 +283,13 @@ function voiceDirectiveFor(
  * notification rather than a silent one that was needed.
  */
 let visibleSessionId: string | undefined;
+
+/** The chat the user is looking at, as the renderer last reported. The
+ * browser layer uses it to decide whether a run's page may live in the
+ * visible panel or must stay in the hidden layer. */
+export function getVisibleChatSession(): string | undefined {
+  return visibleSessionId;
+}
 
 // Per-session abort controllers so multiple chats can run (and be stopped)
 // independently, and so switching chats doesn't cancel a background run.
@@ -651,6 +659,7 @@ export function registerChatIPC(): void {
     "chat:setVisibleSession",
     (_e, sessionId?: string): { ok: boolean } => {
       visibleSessionId = sessionId || undefined;
+      setVisibleChatSession(visibleSessionId);
       return { ok: true };
     },
   );

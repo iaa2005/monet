@@ -18,6 +18,9 @@ import { getBrowserConfig, type BrowserEngine } from "./config.js";
 import { activeContents, revealPanel } from "./registry.js";
 import { getExternalTransport } from "./external.js";
 import { ensureLogging, stopLogging } from "./logs.js";
+import { currentRunSession } from "../agent/run-session.js";
+import { getVisibleChatSession } from "../visible-session.js";
+import { headlessContents } from "./headless.js";
 
 export interface Rect {
   x: number;
@@ -346,6 +349,14 @@ export async function getTransport(): Promise<BrowserTransport> {
 }
 
 function embeddedFromActiveTab(): BrowserTransport {
+  // A run whose chat is not on screen drives ITS hidden page, never the
+  // visible panel — the panel belongs to whatever chat the user is reading.
+  const sid = currentRunSession();
+  if (sid && sid !== getVisibleChatSession()) {
+    const hidden = headlessContents(sid);
+    if (hidden) return embeddedTransport(hidden);
+    throw new NoPageError();
+  }
   const wc = activeContents();
   if (!wc) throw new NoPageError();
   return embeddedTransport(wc);

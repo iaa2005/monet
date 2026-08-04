@@ -447,6 +447,10 @@ app.whenReady().then(() => {
 });
 
 app.on("will-quit", () => {
+  // Hidden per-chat browser windows must not outlive the app.
+  void import("./browser/headless.js")
+    .then((m) => m.destroyAllHeadless())
+    .catch(() => {});
   // Kill the managed Browser Use instance so it doesn't outlive the app.
   void import("./browser/chrome.js")
     .then((m) => m.shutdownBrowser())
