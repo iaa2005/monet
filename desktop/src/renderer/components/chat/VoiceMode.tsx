@@ -26,6 +26,14 @@ function api(): ElectronAPI | undefined {
 
 type Phase = "listening" | "thinking" | "speaking" | "error";
 
+/** One line per event, greppable: the whole conversation becomes a timeline. */
+function vlog(event: string, detail?: unknown): void {
+  console.log(
+    `[voice] ${new Date().toISOString().slice(11, 23)} ${event}`,
+    detail === undefined ? "" : detail,
+  );
+}
+
 /**
  * Sentences ready to speak: complete ones during streaming, the tail after.
  *
@@ -113,6 +121,8 @@ export function VoiceMode({
     }
     playingRef.current = true;
     setPh("speaking");
+    const tReq = Date.now();
+    vlog("tts-request", text.slice(0, 60));
     const settings = await api()?.stt.getSettings();
     const r = await api()?.tts.speak({
       text,
@@ -126,6 +136,7 @@ export function VoiceMode({
       void pump();
       return;
     }
+    vlog("tts-done", { ms: Date.now() - tReq, synthMs: r.ms });
     const bin = atob(r.samplesBase64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -137,11 +148,13 @@ export function VoiceMode({
     src.buffer = buf;
     src.connect(ctx.destination);
     src.onended = () => {
+      vlog("play-end");
       playingRef.current = false;
       sourceRef.current = null;
       void pump();
     };
     sourceRef.current = src;
+    vlog("play-start", { seconds: +(buf.duration).toFixed(2) });
     src.start();
   };
 
@@ -149,19 +162,27 @@ export function VoiceMode({
   const watchReply = (): void => {
     spokenRef.current = 0;
     if (watchRef.current) clearInterval(watchRef.current);
+    // Anchor to the reply that does not exist yet. Right after send() the
+    // newest assistant message is still the PREVIOUS reply, and feeding it
+    // to the queue replayed the last answer before the new one arrived.
+    const st0 = useChatStore.getState();
+    const baseline = [...st0.messages].reverse().find((m) => m.role === "assistant")?.id;
+    vlog("watch-start", { baseline: baseline ?? null });
     watchRef.current = setInterval(() => {
       const st = useChatStore.getState();
       const msgs = st.messages;
       const last = [...msgs].reverse().find((m) => m.role === "assistant");
-      if (!last?.content) return;
+      if (!last?.content || last.id === baseline) return;
       const done = !st.isStreaming;
       const sentences = completeSentences(last.content, done);
       while (spokenRef.current < sentences.length) {
+        vlog("sentence-queued", sentences[spokenRef.current].slice(0, 60));
         queueRef.current.push(sentences[spokenRef.current]);
         spokenRef.current += 1;
         void pump();
       }
       if (done) {
+        vlog("stream-done", { queued: spokenRef.current });
         if (watchRef.current) clearInterval(watchRef.current);
         watchRef.current = null;
         // A reply with no speakable text still returns to listening.
@@ -199,6 +220,7 @@ export function VoiceMode({
       const chunks: Blob[] = [];
       rec.ondataavailable = (e) => chunks.push(e.data);
       rec.start();
+      vlog("loop-start");
 
       let heard = false;
       let silentSince = Date.now();
@@ -215,15 +237,18 @@ export function VoiceMode({
         const voiced = rms > 0.02;
         // Barge-in: sustained voice while the app is talking wins.
         if (phaseRef.current === "speaking" && voiced) {
+          vlog("barge-in", { rms: +rms.toFixed(3) });
           stopPlayback();
           setPh("listening");
         }
         if (phaseRef.current !== "listening") return;
         if (voiced) {
+          if (!heard) vlog("speech-start", { rms: +rms.toFixed(3) });
           heard = true;
           silentSince = Date.now();
         } else if (heard && Date.now() - silentSince > 1300) {
           heard = false;
+          vlog("speech-end");
           clearInterval(meter);
           rec.stop();
         }
@@ -246,6 +271,7 @@ export function VoiceMode({
           const audio = await dctx.decodeAudioData(buf);
           const pcm = new Float32Array(audio.getChannelData(0));
           void dctx.close();
+          const tStt = Date.now();
           const res = await api()?.stt.transcribePcm({
             modelId: settings?.nativeModel || "gigaam-v3-rnnt-punct",
             samples: pcm,
@@ -258,8 +284,10 @@ export function VoiceMode({
             void listen();
             return;
           }
+          vlog("transcribed", { ms: Date.now() - tStt, text: res.text.slice(0, 80) });
           setNote(res.text);
           onSend(res.text);
+          vlog("sent");
           watchReply();
           // Keep the mic loop alive for barge-in while the reply speaks.
           void listen();
