@@ -359,6 +359,15 @@ export interface ChatStore {
    * session switching. */
   forkRequest: string | null;
 
+  /** Voice Mode lives at App level: the composer REMOUNTS when the first
+   * message of a chat creates the session, and a voice loop mounted inside
+   * it died mid-conversation — the widget vanished and the reply went
+   * unspoken. The composer registers its send function here instead. */
+  voiceModeOpen: boolean;
+  setVoiceModeOpen: (v: boolean) => void;
+  voiceSendFn: ((text: string) => void) | null;
+  registerVoiceSend: (fn: ((text: string) => void) | null) => void;
+
   /** Sub-agent expanded to fill the chat area (like FileViewer).
    *
    * A REFERENCE, not a copy. The child's transcript grows for as long as it
@@ -512,6 +521,14 @@ export const useChatStore = create<ChatStore>((set, get) => {
       mutate(sessionId, (p) => ({ ...p, messages: toSave, hydrated: true }));
 
       await api.save({ id: sessionId, title, messages: toSave, space });
+
+// Dev-only: probes driven over CDP import this module by URL, and vite's HMR
+// suffixes can hand them a SECOND instance whose state nobody uses. The
+// window hook is the one address that always points at the real store.
+if (import.meta.env.DEV) {
+  (window as unknown as { __chatStore?: typeof useChatStore }).__chatStore =
+    useChatStore;
+}
       get().bumpSessions();
     } catch {
       /* offline / DB unavailable — keep the in-memory buffer */
@@ -830,6 +847,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
     openSettingsRequest: null,
     forkRequest: null,
     expandedSubAgent: null,
+    voiceModeOpen: false,
+    voiceSendFn: null,
     space: "home",
     queue: [],
 
@@ -885,6 +904,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
         useViewerStore.getState().closeAll();
       }
     },
+    setVoiceModeOpen: (v) => set({ voiceModeOpen: v }),
+    registerVoiceSend: (fn) => set({ voiceSendFn: fn }),
     openExpandedSubAgent: (ref) => {
       if (ref) useViewerStore.getState().closeAll();
       set({ expandedSubAgent: ref });

@@ -87,6 +87,7 @@ import {
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useChatStore, expandedSubAgentCall } from "@/stores/chatStore";
 import { subAgentView } from "@/lib/subagent";
+import { VoiceMode } from "@/components/chat/VoiceMode";
 import { cn } from "@/lib/utils";
 import { RoutinesList } from "@/components/RoutinesList";
 import type { ChatMessage } from "@/types/chat";
@@ -255,6 +256,7 @@ export default function App(): JSX.Element {
   const openChangesRequest = useChatStore((s) => s.openChangesRequest);
   // Live, not a snapshot: a sub-agent that is still running keeps writing
   // into the panel instead of freezing at the moment it was opened.
+  const voiceModeOpen = useChatStore((s) => s.voiceModeOpen);
   const expandedSubAgentCallRef = useChatStore(expandedSubAgentCall);
   const expandedSubAgent = useMemo(
     () => subAgentView(expandedSubAgentCallRef),
@@ -1600,6 +1602,14 @@ export default function App(): JSX.Element {
                   )}
                   {/* The file preview is a dock panel now (see DockArea) —
                       it opens beside the chat instead of covering it. */}
+                  {voiceModeOpen && (
+                    <VoiceMode
+                      onSend={(t) => useChatStore.getState().voiceSendFn?.(t)}
+                      onClose={() =>
+                        useChatStore.getState().setVoiceModeOpen(false)
+                      }
+                    />
+                  )}
                   {expandedSubAgent && (
                     <div className="!absolute inset-0 z-10 flex h-full flex-col glass-panel bg-card overflow-hidden">
                       <div className="relative shrink-0 border-b border-border px-4 py-3">

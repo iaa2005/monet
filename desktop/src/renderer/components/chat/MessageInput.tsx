@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import { MicButton } from "./MicButton";
-import { VoiceMode } from "./VoiceMode";
 import { ContextMeter } from "./ContextMeter";
 import { CheckpointPicker } from "./CheckpointPicker";
 import {
@@ -843,12 +842,12 @@ export function MessageInput({
     }
   };
 
-  const [voiceMode, setVoiceMode] = useState(false);
-  // Voice Mode bypasses the composer text box: the utterance goes straight
-  // through the same send path a typed message uses.
-  const sendVoiceText = (text: string): void => {
-    void send(text);
-  };
+  // Voice Mode renders at App level (this component remounts when the first
+  // message creates the session); it reaches send() through the store.
+  useEffect(() => {
+    useChatStore.getState().registerVoiceSend((text) => void send(text));
+    return () => useChatStore.getState().registerVoiceSend(null);
+  });
 
   const send = async (overrideText?: string): Promise<void> => {
     // Voice Mode hands the utterance in directly: routing it through the
@@ -1438,7 +1437,7 @@ export function MessageInput({
               <button
                 type="button"
                 title="Voice Mode — разговор голосом"
-                onClick={() => setVoiceMode(true)}
+                onClick={() => useChatStore.getState().setVoiceModeOpen(true)}
                 className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
               >
                 <AudioLines className="size-4" />
@@ -1631,12 +1630,6 @@ export function MessageInput({
           </div>
         </div>
       </div>
-      {voiceMode && (
-        <VoiceMode
-          onSend={sendVoiceText}
-          onClose={() => setVoiceMode(false)}
-        />
-      )}
     </div>
   );
 }

@@ -17,7 +17,7 @@
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useChatStore } from "@/stores/chatStore";
+import { INTERRUPT_MARK, useChatStore } from "@/stores/chatStore";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -26,11 +26,36 @@ function api(): ElectronAPI | undefined {
 
 type Phase = "listening" | "thinking" | "speaking" | "error";
 
-/** Sentences ready to speak: complete ones during streaming, the tail after. */
+/**
+ * Sentences ready to speak: complete ones during streaming, the tail after.
+ *
+ * Two things are NOT for the voice. Service marks ("⏹️ Generation
+ * interrupted.") — hearing that in English mid-conversation is jarring and
+ * useless. And fragments under ~20 characters: the flow-matching synthesiser
+ * mumbles on tiny inputs (a real "Да, умею." came out as noise), so short
+ * sentences ride along with the next one instead of going out alone.
+ */
 function completeSentences(text: string, done: boolean): string[] {
-  const parts = text.split(/(?<=[.!?…])\s+/);
+  const clean = text
+    .split(INTERRUPT_MARK).join(" ")
+    .replace(/⏹️?\s*Generation interrupted\.?/gi, " ");
+  const parts = clean.split(/(?<=[.!?…])\s+/);
   if (!done && parts.length > 0) parts.pop();
-  return parts.map((s) => s.trim()).filter((s) => s.length > 1);
+  const out: string[] = [];
+  let buf = "";
+  for (const p of parts) {
+    const t = p.trim();
+    if (!t) continue;
+    buf = buf ? `${buf} ${t}` : t;
+    if (buf.length >= 20) {
+      out.push(buf);
+      buf = "";
+    }
+  }
+  // A short tail: speak it only when the reply is finished — mid-stream it
+  // will grow into a full chunk on the next tick.
+  if (buf && done) out.push(buf);
+  return out.filter((s) => /[\p{L}\p{N}]/u.test(s));
 }
 
 export function VoiceMode({
@@ -57,6 +82,11 @@ export function VoiceMode({
   const queueRef = useRef<string[]>([]);
   const playingRef = useRef(false);
   const spokenRef = useRef(0); // sentences of the current reply already queued
+  /** Exactly one recording loop. It used to be restarted from three places —
+   * after transcribing, from the speech queue, from the reply watcher — and
+   * the parallel loops each heard the same utterance: the message went out
+   * twice and the second send stopped the first one's run. */
+  const loopRef = useRef(false);
   const watchRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPlayback = (): void => {
@@ -78,7 +108,6 @@ export function VoiceMode({
       // Nothing left: if the model has also finished, go back to listening.
       if (phaseRef.current === "speaking" && !useChatStore.getState().isStreaming) {
         setPh("listening");
-        void listen();
       }
       return;
     }
@@ -138,7 +167,6 @@ export function VoiceMode({
         // A reply with no speakable text still returns to listening.
         if (!playingRef.current && queueRef.current.length === 0) {
           setPh("listening");
-          void listen();
         }
       }
     }, 250);
@@ -146,7 +174,8 @@ export function VoiceMode({
 
   /** One utterance: record until ~1.3 s of silence, transcribe, send. */
   const listen = async (): Promise<void> => {
-    if (!alive.current) return;
+    if (!alive.current || loopRef.current) return;
+    loopRef.current = true;
     try {
       const settings = await api()?.stt.getSettings();
       const stream =
@@ -202,6 +231,7 @@ export function VoiceMode({
 
       rec.onstop = () => {
         clearInterval(meter);
+        loopRef.current = false;
         if (!alive.current) return;
         void (async () => {
           setPh("thinking");
@@ -236,6 +266,7 @@ export function VoiceMode({
         })();
       };
     } catch (err) {
+      loopRef.current = false;
       setNote(err instanceof Error ? err.message : "Микрофон недоступен");
       setPh("error");
     }
