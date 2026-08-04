@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Square, X } from "lucide-react";
+import { MessageSquare, Square, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { INTERRUPT_MARK, useChatStore } from "@/stores/chatStore";
 import type { ElectronAPI } from "@/types/electron";
@@ -82,6 +82,32 @@ export function VoiceMode({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const outAnalyserRef = useRef<AnalyserNode | null>(null);
   const [note, setNote] = useState<string>("");
+  /** The sentence sounding right now — the pill's live caption. */
+  const [subtitle, setSubtitle] = useState<string>("");
+  // Away = the voice chat is not the one on screen: the pill grows a
+  // return button and narrates what the run is doing over there.
+  const away = useChatStore(
+    (st) => !!st.voiceSessionId && st.currentSessionId !== st.voiceSessionId,
+  );
+  const runningTool = useChatStore((st) => {
+    const sid = st.voiceSessionId;
+    const msgs = sid ? st.sessions[sid]?.messages : undefined;
+    if (!msgs) return null;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const tc = msgs[i].toolCall;
+      if (tc && (tc.status === "running" || tc.status === "pending")) {
+        const inp = tc.input as Record<string, unknown>;
+        const detail =
+          (typeof inp.url === "string" && inp.url) ||
+          (typeof inp.file_path === "string" && inp.file_path) ||
+          (typeof inp.command === "string" && inp.command) ||
+          "";
+        return `${tc.name}${detail ? ` — ${String(detail).slice(0, 48)}` : ""}`;
+      }
+      if (tc) break;
+    }
+    return null;
+  });
 
   const alive = useRef(true);
   const phaseRef = useRef<Phase>("listening");
@@ -97,7 +123,7 @@ export function VoiceMode({
   /** Decoded audio waiting to play: synthesis runs AHEAD of playback. It used
    * to start only when the previous sentence finished sounding, and those
    * 1.5–2 s of synthesis were an audible hole between every two sentences. */
-  const audioQueueRef = useRef<AudioBuffer[]>([]);
+  const audioQueueRef = useRef<{ buf: AudioBuffer; text: string }[]>([]);
   const synthBusyRef = useRef(false);
   const playingRef = useRef(false);
   /** Exactly one recording loop. It used to be restarted from three places —
@@ -156,7 +182,7 @@ export function VoiceMode({
         const ctx = (audioCtxRef.current ??= new AudioContext());
         const buf = ctx.createBuffer(1, samples.length, r.sampleRate ?? 44100);
         buf.copyToChannel(samples, 0);
-        audioQueueRef.current.push(buf);
+        audioQueueRef.current.push({ buf, text });
         void playPump();
       }
     } finally {
@@ -172,8 +198,8 @@ export function VoiceMode({
       audioQueueRef.current = [];
       return;
     }
-    const buf = audioQueueRef.current.shift();
-    if (!buf) {
+    const next = audioQueueRef.current.shift();
+    if (!next) {
       // The VOICE chat's stream, not whatever chat is on screen: switching
       // chats made this read the other chat's idle state and cut the phase
       // (and the narration) short.
@@ -192,9 +218,10 @@ export function VoiceMode({
     }
     playingRef.current = true;
     setPh("speaking");
+    setSubtitle(next.text);
     const ctx = (audioCtxRef.current ??= new AudioContext());
     const src = ctx.createBufferSource();
-    src.buffer = buf;
+    src.buffer = next.buf;
     // Through an analyser, so the wave breathes with the spoken audio too.
     if (!outAnalyserRef.current) {
       outAnalyserRef.current = ctx.createAnalyser();
@@ -209,7 +236,7 @@ export function VoiceMode({
       playPump();
     };
     sourceRef.current = src;
-    vlog("play-start", { seconds: +buf.duration.toFixed(2) });
+    vlog("play-start", { seconds: +next.buf.duration.toFixed(2) });
     src.start();
   };
 
@@ -558,39 +585,69 @@ export function VoiceMode({
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[110]">
         <canvas ref={canvasRef} className="block h-32 w-full blur-xl" />
       </div>
-      {/* A small status capsule — the only clickable part. */}
-      <div className="fixed bottom-3 right-4 z-[120] flex items-center gap-2 rounded-full border border-border bg-card/90 py-1 pl-3 pr-1 shadow-lg backdrop-blur-md">
-        <span
-          className={cn(
-            "size-2 rounded-full",
-            phase === "listening" && "animate-pulse bg-emerald-500",
-            phase === "thinking" && "animate-pulse bg-amber-500",
-            phase === "speaking" && "animate-pulse bg-violet-500",
-            phase === "error" && "bg-red-500",
+      {/* The status pill — the only clickable part. Away from the voice
+          chat it grows: a way back, the tool being run, and live captions
+          of what she is saying. */}
+      <div className="fixed bottom-3 right-4 z-[120] flex max-w-md flex-col gap-1 rounded-2xl border border-border bg-card/90 px-3 py-2 shadow-lg backdrop-blur-md">
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              phase === "listening" && "animate-pulse bg-emerald-500",
+              phase === "thinking" && "animate-pulse bg-amber-500",
+              phase === "speaking" && "animate-pulse bg-violet-500",
+              phase === "error" && "bg-red-500",
+            )}
+          />
+          <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+            {label[phase]}
+          </span>
+          {away && (
+            <button
+              type="button"
+              onClick={() => {
+                const sid = useChatStore.getState().voiceSessionId;
+                if (sid) useChatStore.getState().setCurrentSessionId(sid);
+              }}
+              title="Вернуться в голосовой чат"
+              className="flex items-center gap-1 rounded-full bg-black/[0.05] px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground dark:bg-white/[0.07]"
+            >
+              <MessageSquare className="size-3" />
+              В чат
+            </button>
           )}
-        />
-        <span className="max-w-56 truncate text-xs text-foreground">{label[phase]}</span>
-        {phase === "speaking" && (
+          {phase === "speaking" && (
+            <button
+              type="button"
+              onClick={() => {
+                stopPlayback();
+                setPh("listening");
+              }}
+              title="Перебить"
+              className="rounded-full p-1 text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+            >
+              <Square className="size-3" />
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => {
-              stopPlayback();
-              setPh("listening");
-            }}
-            title="Перебить"
+            onClick={onClose}
+            title="Выйти из голосового режима"
             className="rounded-full p-1 text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
           >
-            <Square className="size-3" />
+            <X className="size-3.5" />
           </button>
+        </div>
+        {phase === "thinking" && runningTool && (
+          <div className="truncate pl-4 text-[11px] text-muted-foreground">
+            {runningTool}
+          </div>
         )}
-        <button
-          type="button"
-          onClick={onClose}
-          title="Выйти из голосового режима"
-          className="rounded-full p-1 text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
-        >
-          <X className="size-3.5" />
-        </button>
+        {phase === "speaking" && subtitle && (
+          <div className="line-clamp-2 pl-4 text-[11px] leading-snug text-muted-foreground">
+            {subtitle}
+          </div>
+        )}
       </div>
     </>
   );
