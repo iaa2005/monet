@@ -110,6 +110,10 @@ export function VoiceMode({
    * messages with fresh ids, which reset any id-keyed counter and replayed
    * the whole reply; the words themselves do not change identity. */
   const spokenTextsRef = useRef<Set<string>>(new Set());
+  /** Barge-in mutes the REST of the current reply, not just the sentence
+   * that was sounding: the queue kept refilling and she talked on. Lifted
+   * when a new reply starts. */
+  const mutedRef = useRef(false);
 
   const stopPlayback = (): void => {
     queueRef.current = [];
@@ -125,7 +129,7 @@ export function VoiceMode({
 
   /** Stage 1: synthesise ahead — one sentence in flight, results queued. */
   const synthPump = async (): Promise<void> => {
-    if (synthBusyRef.current || !alive.current) return;
+    if (synthBusyRef.current || !alive.current || mutedRef.current) return;
     const text = queueRef.current.shift();
     if (!text) return;
     synthBusyRef.current = true;
@@ -164,6 +168,10 @@ export function VoiceMode({
   /** Stage 2: play what is ready, in order, with no gap in between. */
   const playPump = (): void => {
     if (playingRef.current || !alive.current) return;
+    if (mutedRef.current) {
+      audioQueueRef.current = [];
+      return;
+    }
     const buf = audioQueueRef.current.shift();
     if (!buf) {
       if (
@@ -205,6 +213,7 @@ export function VoiceMode({
 
   /** Watch the streaming reply and feed finished sentences to the voice. */
   const watchReply = (): void => {
+    mutedRef.current = false;
     if (watchRef.current) clearInterval(watchRef.current);
     // Anchor to the reply that does not exist yet. Right after send() the
     // newest assistant message is still the PREVIOUS reply, and feeding it
@@ -241,6 +250,7 @@ export function VoiceMode({
           n += 1;
           if (spokenTextsRef.current.has(key)) continue;
           spokenTextsRef.current.add(key);
+          if (mutedRef.current) continue; // counted, never voiced
           vlog("sentence-queued", key.slice(0, 60));
           queueRef.current.push(key);
           pump();
@@ -311,10 +321,12 @@ export function VoiceMode({
         // Barge-in: half a second of loud, uninterrupted voice — not one
         // frame of the app hearing itself.
         if (phaseRef.current === "speaking") {
-          bargeTicks = rms > 0.06 ? bargeTicks + 1 : 0;
-          if (bargeTicks >= 8) {
+          bargeTicks = rms > 0.05 ? bargeTicks + 1 : 0;
+          if (bargeTicks >= 6) {
             vlog("barge-in", { rms: +rms.toFixed(3) });
             bargeTicks = 0;
+            // Mute the WHOLE remaining reply — not just this sentence.
+            mutedRef.current = true;
             stopPlayback();
             setPh("listening");
           }
@@ -376,7 +388,9 @@ export function VoiceMode({
           const clean = res.text.trim();
           // Only the unpronounceable is noise: «Да» and «Есть» are answers.
           // Keystroke junk is mostly caught earlier by the sustained-voice gate.
-          if (clean.replace(/[^\p{L}\p{N}]/gu, "").length < 1) {
+          // Two letters minimum: «Да» and «Ок» pass, a stray «а» from a
+          // breath or the chair creaking does not.
+          if (clean.replace(/[^\p{L}\p{N}]/gu, "").length < 2) {
             vlog("discarded-junk", clean);
             setPh("listening");
             void listen();
@@ -387,15 +401,11 @@ export function VoiceMode({
           const sid = st.voiceSessionId;
           const running = sid ? st.sessions[sid]?.isStreaming : st.isStreaming;
           if (running && sid) {
-            // Mid-run words are a steer for the run, not a new message: the
-            // watcher stays anchored and keeps narrating.
-            const r = await api()?.chat.inject(sid, clean);
-            vlog("injected", { ok: r?.ok });
-            if (!r?.ok) {
-              onSend(clean);
-              vlog("sent");
-              watchReply();
-            }
+            // Queue it for the chat: it goes out the moment the run ends.
+            // inject() interrupted the step mid-flight and the transcript
+            // came up wearing a red "Stopped".
+            useChatStore.getState().enqueueMessage(sid, clean);
+            vlog("queued-to-chat");
           } else {
             onSend(clean);
             vlog("sent");
@@ -429,11 +439,17 @@ export function VoiceMode({
         const w = (canvas.width = canvas.offsetWidth);
         const h = (canvas.height = canvas.offsetHeight);
         c.clearRect(0, 0, w, h);
-        const glow = Math.min(
-          1,
-          Math.max(levelRef.current * 5, outLevelRef.current * 3.5),
-        );
-        const [r, g, b] = colors[phaseRef.current];
+        const ph = phaseRef.current;
+        // Each phase owns its wave: your voice moves it only while she
+        // listens, hers only while she speaks, and thinking breathes by
+        // itself — a mic rustle must not wiggle the orange wave.
+        const glow =
+          ph === "listening"
+            ? Math.min(1, levelRef.current * 5)
+            : ph === "speaking"
+              ? Math.min(1, outLevelRef.current * 3.5)
+              : 0.18 + 0.14 * Math.sin(t * 0.003);
+        const [r, g, b] = colors[ph];
         const amp = 10 + glow * (h * 0.6);
         c.beginPath();
         c.moveTo(0, h);
