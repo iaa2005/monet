@@ -35,6 +35,7 @@
     "smoke:frontmatter": "node scripts/renderer-probe.mjs scripts/markdown-frontmatter-probe.ts",
     "smoke:subagent": "node scripts/renderer-probe.mjs scripts/subagent-live-probe.ts",
     "smoke:gigaam": "node scripts/smoke-agent.mjs scripts/stt-gigaam-probe.ts",
+    "smoke:tts": "node scripts/smoke-agent.mjs scripts/tts-supertonic-probe.ts",
     "smoke:autotitle": "node scripts/smoke-agent.mjs scripts/auto-title-probe.ts",
     "smoke:fileops": "node scripts/renderer-probe.mjs scripts/file-ops-probe.ts",
     "smoke:emptyturn": "node scripts/renderer-probe.mjs scripts/empty-turn-probe.ts",

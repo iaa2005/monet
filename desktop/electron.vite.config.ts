@@ -85,6 +85,8 @@ export default defineConfig({
           // process: the native module takes main down when loaded inside
           // one of its threads, and decoding blocks whatever runs it.
           'gigaam-child': resolve('src/main/stt/gigaam.child.ts'),
+          // The Supertonic 3 voice: same isolation, its own onnxruntime.
+          'supertonic-child': resolve('src/main/tts/supertonic.child.ts'),
         },
       },
     },

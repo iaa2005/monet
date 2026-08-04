@@ -22,6 +22,8 @@ asarUnpack:
   - node_modules/sherpa-onnx-darwin-arm64/**
   - node_modules/sherpa-onnx-linux-x64/**
   - node_modules/sherpa-onnx-linux-arm64/**
+  # The Supertonic voice runs on Microsoft's onnxruntime, same constraint.
+  - node_modules/onnxruntime-node/**
 win:
   target: nsis
   icon: build/icon.ico

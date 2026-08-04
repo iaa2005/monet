@@ -21,6 +21,7 @@ import type {
   InstallProgress,
   SttModelStatus,
 } from "../main/stt/gigaam.js";
+import type { TtsProgress, TtsStatus } from "../main/tts/engine.js";
 import type { Plan, PlanTodoStatus } from "@shared/plan";
 import type { ChatMessage } from "./chat";
 
@@ -29,6 +30,7 @@ export type { Bookmark, Visit };
 export type { SessionUiState };
 export type { SttSettings };
 export type { InstallProgress, SttModelStatus };
+export type { TtsProgress, TtsStatus };
 export type { Plan, PlanTodoStatus };
 export type {
   BrowserEngine,
@@ -910,6 +912,29 @@ export interface ElectronAPI {
       sampleRate: number;
     }) => Promise<{ ok: boolean; text?: string; error?: string; ms?: number }>;
     onModelProgress: (cb: (p: InstallProgress) => void) => () => void;
+  };
+  tts: {
+    available: () => Promise<boolean>;
+    status: () => Promise<TtsStatus>;
+    install: (firstVoice: string) => Promise<{ ok: boolean; error?: string }>;
+    cancelInstall: () => Promise<boolean>;
+    remove: () => Promise<{ ok: boolean }>;
+    installVoice: (id: string) => Promise<{ ok: boolean; error?: string }>;
+    speak: (p: {
+      text: string;
+      voice: string;
+      lang?: string;
+      steps?: number;
+      speed?: number;
+    }) => Promise<{
+      ok: boolean;
+      samplesBase64?: string;
+      sampleRate?: number;
+      ms?: number;
+      error?: string;
+    }>;
+    stripTags: (text: string) => Promise<string>;
+    onProgress: (cb: (p: TtsProgress) => void) => () => void;
   };
   goal: {
     get: (sessionId: string) => Promise<GoalRecord | null>;

@@ -24,6 +24,7 @@ import type {
   InstallProgress,
   SttModelStatus,
 } from "../main/stt/gigaam.js";
+import type { TtsProgress, TtsStatus } from "../main/tts/engine.js";
 
 const electronAPI = {
   platform: process.platform,
@@ -811,6 +812,38 @@ const electronAPI = {
         cb(p);
       ipcRenderer.on("stt:modelProgress", handler);
       return () => ipcRenderer.off("stt:modelProgress", handler);
+    },
+  },
+
+  /** On-device voice (Supertonic 3) — synthesis in main, playback here. */
+  tts: {
+    available: (): Promise<boolean> => ipcRenderer.invoke("tts:available"),
+    status: (): Promise<TtsStatus> => ipcRenderer.invoke("tts:status"),
+    install: (firstVoice: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("tts:install", firstVoice),
+    cancelInstall: (): Promise<boolean> => ipcRenderer.invoke("tts:cancelInstall"),
+    remove: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("tts:remove"),
+    installVoice: (id: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("tts:installVoice", id),
+    speak: (p: {
+      text: string;
+      voice: string;
+      lang?: string;
+      steps?: number;
+      speed?: number;
+    }): Promise<{
+      ok: boolean;
+      samplesBase64?: string;
+      sampleRate?: number;
+      ms?: number;
+      error?: string;
+    }> => ipcRenderer.invoke("tts:speak", p),
+    stripTags: (text: string): Promise<string> =>
+      ipcRenderer.invoke("tts:stripTags", text),
+    onProgress: (cb: (p: TtsProgress) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, p: TtsProgress): void => cb(p);
+      ipcRenderer.on("tts:progress", handler);
+      return () => ipcRenderer.off("tts:progress", handler);
     },
   },
 

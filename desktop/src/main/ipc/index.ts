@@ -22,6 +22,7 @@ import { registerMcpIPC } from "./mcp.js";
 import { registerGoalIPC } from "./goal.js";
 import { registerMcpRegistryIPC } from "./mcp-registry.js";
 import { registerSttIPC } from "./stt.js";
+import { registerTtsIPC } from "./tts.js";
 import { registerGitIPC } from "./git.js";
 import { registerCommandsIPC } from "./commands.js";
 import { registerArtifactsIPC } from "./artifacts.js";
@@ -59,6 +60,7 @@ export function registerAllIPC(): void {
   registerGoalIPC();
   registerMcpRegistryIPC();
   registerSttIPC();
+  registerTtsIPC();
   registerGitIPC();
   registerCommandsIPC();
   registerArtifactsIPC();
