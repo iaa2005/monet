@@ -265,22 +265,22 @@ export function VoiceMode({
   const label: Record<Phase, string> = {
     listening: "Слушаю…",
     thinking: "Думаю…",
-    speaking: "Говорю — начни говорить, чтобы перебить",
+    speaking: "Говорю — говори, чтобы перебить",
     error: "Ошибка",
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex flex-col items-center justify-center bg-background/80 backdrop-blur-md">
+    <div className="fixed bottom-24 right-6 z-[120] flex w-64 flex-col items-center rounded-2xl border border-border bg-card/95 p-4 shadow-2xl backdrop-blur-md">
       <button
         type="button"
         onClick={onClose}
         title="Выйти из голосового режима"
-        className="absolute right-6 top-6 rounded-full p-2 text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+        className="absolute right-2 top-2 rounded-full p-1 text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
       >
-        <X className="size-5" />
+        <X className="size-4" />
       </button>
 
-      {/* The orb: outer breathing ring + inner level-driven core. */}
+      {/* The orb: outer breathing glow + inner level-driven core. */}
       <button
         type="button"
         onClick={() => {
@@ -289,26 +289,26 @@ export function VoiceMode({
             setPh("listening");
           } else onClose();
         }}
-        className="relative flex size-56 items-center justify-center"
+        className="relative mt-1 flex size-24 items-center justify-center"
         title={phase === "speaking" ? "Перебить" : "Выйти"}
       >
         <div
           className={cn(
-            "absolute inset-0 rounded-full bg-gradient-to-br opacity-30 blur-2xl transition-all duration-500",
+            "absolute inset-0 rounded-full bg-gradient-to-br opacity-30 blur-xl transition-all duration-500",
             colors[phase],
             phase === "thinking" && "animate-pulse",
           )}
         />
         <div
           className={cn(
-            "absolute inset-6 rounded-full bg-gradient-to-br opacity-40 transition-all duration-300",
+            "absolute inset-2 rounded-full bg-gradient-to-br opacity-40 transition-all duration-300",
             colors[phase],
           )}
           style={{ transform: `scale(${phase === "listening" ? orbScale : 1})` }}
         />
         <div
           className={cn(
-            "relative size-28 rounded-full bg-gradient-to-br shadow-2xl transition-all duration-200",
+            "relative size-12 rounded-full bg-gradient-to-br shadow-xl transition-all duration-200",
             colors[phase],
             phase === "speaking" && "animate-[pulse_1.2s_ease-in-out_infinite]",
           )}
@@ -318,9 +318,9 @@ export function VoiceMode({
         />
       </button>
 
-      <div className="mt-8 text-sm font-medium text-foreground">{label[phase]}</div>
+      <div className="mt-3 text-xs font-medium text-foreground">{label[phase]}</div>
       {note && (
-        <div className="mt-2 max-w-md px-6 text-center text-xs text-muted-foreground">
+        <div className="mt-1 line-clamp-2 max-w-full px-1 text-center text-[11px] text-muted-foreground">
           {note}
         </div>
       )}

@@ -847,13 +847,13 @@ export function MessageInput({
   // Voice Mode bypasses the composer text box: the utterance goes straight
   // through the same send path a typed message uses.
   const sendVoiceText = (text: string): void => {
-    applyText(text);
-    // Let the input state settle before send() reads it.
-    setTimeout(() => void send(), 30);
+    void send(text);
   };
 
-  const send = async (): Promise<void> => {
-    let text = input.trim();
+  const send = async (overrideText?: string): Promise<void> => {
+    // Voice Mode hands the utterance in directly: routing it through the
+    // input state met a stale closure here and silently sent nothing.
+    let text = (overrideText ?? input).trim();
     if (!text) return;
 
     // Intercept app-level slash commands before anything reaches the model.
@@ -932,7 +932,8 @@ export function MessageInput({
     tokenised.current.clear();
 
     const staged = [...files, ...cropFiles];
-    applyText("");
+    // A spoken message must not eat a half-typed draft sitting in the box.
+    if (overrideText === undefined) applyText("");
     setFiles([]);
 
     const bridge = api();
@@ -1397,7 +1398,7 @@ export function MessageInput({
             ) : (
               <button
                 type="button"
-                onClick={send}
+                onClick={() => void send()}
                 disabled={!input.trim()}
                 title="Send"
                 className={cn(
