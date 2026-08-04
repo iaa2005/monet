@@ -357,9 +357,13 @@ export default function App(): JSX.Element {
     const bridge = api();
     if (!bridge) return;
     const leaving = restoredFor.current;
+    const guestMerges: Promise<unknown>[] = [];
     if (leaving && leaving !== currentSessionId && !leaving.startsWith("incognito")) {
       const b = useBrowserStore.getState();
       const real = b.tabs.filter((t) => t.url !== "about:blank");
+      // Awaited below: restoring the destination BEFORE a guest tab finishes
+      // moving home read an empty desk — "I come back and the browser is
+      // gone" was this race, not a lost tab.
       // Guests go home: a tab another chat's run opened while this chat was
       // on screen is saved onto ITS owner's desk, not smeared onto this one.
       const mine = real.filter((t) => !t.ownerSession || t.ownerSession === leaving);
@@ -371,18 +375,20 @@ export default function App(): JSX.Element {
         byOwner.set(t.ownerSession as string, list);
       }
       for (const [owner, urls] of byOwner) {
-        void bridge.browser.uiState.get(owner).then((saved) => {
+        guestMerges.push(
+          bridge.browser.uiState.get(owner).then((saved) => {
           const have = new Set((saved?.browserTabs ?? []).map((x: { url: string }) => x.url));
           const merged = [
             ...(saved?.browserTabs ?? []),
             ...urls.filter((u) => !have.has(u)).map((u) => ({ url: u })),
           ];
-          void bridge.browser.uiState.set(owner, {
+          return bridge.browser.uiState.set(owner, {
             ...(saved ?? {}),
             browserTabs: merged,
             activeTab: saved?.activeTab ?? 0,
           });
-        });
+          }).catch(() => {}),
+        );
       }
       void bridge.browser.uiState.set(leaving, {
         dockLayout: useDockStore.getState().layoutJson ?? undefined,
@@ -406,7 +412,9 @@ export default function App(): JSX.Element {
     if (wasZeroState) return;
 
     let cancelled = false;
-    void bridge.browser.uiState.get(currentSessionId).then((saved) => {
+    void Promise.all(guestMerges)
+      .then(() => bridge.browser.uiState.get(currentSessionId))
+      .then((saved) => {
       if (cancelled) return;
       // A saved desk is restored even when it is empty — closing everything
       // WAS the state of that chat. No record at all also means a clean desk:
@@ -416,6 +424,10 @@ export default function App(): JSX.Element {
         (saved?.browserTabs ?? []).map((t: { url: string }) => t.url),
         saved?.activeTab ?? 0,
       );
+      // A desk that has tabs shows its browser: a guest tab merged into a
+      // chat that never saved a dock layout would otherwise sit invisible.
+      if ((saved?.browserTabs ?? []).length > 0)
+        useDockStore.getState().openPanel("browser");
       b.setLayout(saved?.browserExpanded ? "expanded" : "panel");
       // The files this chat had open, pane by pane — restored before the
       // desk so the pane-sync effect recreates their panels on the new wing.
