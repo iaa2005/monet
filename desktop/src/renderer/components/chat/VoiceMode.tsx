@@ -280,6 +280,7 @@ export function VoiceMode({
       vlog("loop-start");
 
       let heard = false;
+      let voicedRun = 0;
       let silentSince = Date.now();
       // Barge-in wants PROOF, not a blip: Chromium's echo cancellation only
       // subtracts WebRTC audio, so the app's own voice from the speakers
@@ -313,11 +314,19 @@ export function VoiceMode({
         }
         if (phaseRef.current !== "listening") return;
         if (voiced) {
-          if (!heard) vlog("speech-start", { rms: +rms.toFixed(3) });
-          heard = true;
+          // Three consecutive voiced ticks (~180 ms): a keystroke is one.
+          voicedRun += 1;
+          if (voicedRun >= 3) {
+            if (!heard) vlog("speech-start", { rms: +rms.toFixed(3) });
+            heard = true;
+          }
           silentSince = Date.now();
-        } else if (heard && Date.now() - silentSince > 1300) {
+        } else {
+          voicedRun = 0;
+        }
+        if (!voiced && heard && Date.now() - silentSince > 1300) {
           heard = false;
+          voicedRun = 0;
           vlog("speech-end");
           clearInterval(meter);
           rec.stop();
@@ -355,10 +364,34 @@ export function VoiceMode({
             return;
           }
           vlog("transcribed", { ms: Date.now() - tStt, text: res.text.slice(0, 80) });
-          setNote(res.text);
-          onSend(res.text);
-          vlog("sent");
-          watchReply();
+          const clean = res.text.trim();
+          // Keyboard clatter transcribes into a syllable or two; sending it
+          // re-anchored the reply watcher and struck the running answer dumb.
+          if (clean.replace(/[^\p{L}\p{N}]/gu, "").length < 4) {
+            vlog("discarded-junk", clean);
+            setPh("listening");
+            void listen();
+            return;
+          }
+          setNote(clean);
+          const st = useChatStore.getState();
+          const sid = st.voiceSessionId;
+          const running = sid ? st.sessions[sid]?.isStreaming : st.isStreaming;
+          if (running && sid) {
+            // Mid-run words are a steer for the run, not a new message: the
+            // watcher stays anchored and keeps narrating.
+            const r = await api()?.chat.inject(sid, clean);
+            vlog("injected", { ok: r?.ok });
+            if (!r?.ok) {
+              onSend(clean);
+              vlog("sent");
+              watchReply();
+            }
+          } else {
+            onSend(clean);
+            vlog("sent");
+            watchReply();
+          }
           // Keep the mic loop alive for barge-in while the reply speaks.
           void listen();
         })();
