@@ -702,6 +702,13 @@ export interface ElectronAPI {
     ) => Promise<{ ok: boolean; error?: string }>;
     remove: (id: string) => Promise<{ ok: boolean }>;
     openFolder: (id: string) => Promise<{ ok: boolean }>;
+    resolve: (ref: string) => Promise<{
+      ok: boolean;
+      path?: string;
+      name?: string;
+      candidates?: { name: string; relPath: string; vaultName: string }[];
+    }>;
+    openInApp: (absPath: string) => Promise<{ ok: boolean }>;
   };
   memory: {
     getConfig: () => Promise<{ searchChats: boolean; generateMemory: boolean; extractEveryMinutes: number }>;

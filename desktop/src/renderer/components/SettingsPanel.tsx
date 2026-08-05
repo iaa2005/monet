@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ComponentType } from "react";
 import {
-  Gem,
   Settings2,
   Mic,
   Boxes,
@@ -22,6 +21,7 @@ import {
 } from "lucide-react";
 import { EditorSettings } from "@/components/settings/EditorSettings";
 import { ObsidianSettings } from "@/components/settings/ObsidianSettings";
+import { ObsidianIcon } from "@/components/ObsidianIcon";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { SkillsSettings } from "@/components/settings/SkillsSettings";
 import { AgentsSettings } from "@/components/settings/AgentsSettings";
@@ -108,7 +108,9 @@ type Section =
 
 const NAV: {
   group: string;
-  items: { id: Section; label: string; icon: typeof Settings2 }[];
+  // Any icon component with a className — lucide icons and the app's own
+  // (ObsidianIcon) alike; typeof Settings2 demanded lucide's forwardRef shape.
+  items: { id: Section; label: string; icon: ComponentType<{ className?: string }> }[];
 }[] = [
   {
     group: "Settings",
@@ -129,7 +131,7 @@ const NAV: {
     items: [
       { id: "skills", label: "Skills", icon: BookMarked },
       { id: "agents", label: "Agents", icon: Bot },
-      { id: "obsidian", label: "Obsidian", icon: Gem },
+      { id: "obsidian", label: "Obsidian", icon: ObsidianIcon },
       { id: "services", label: "Connectors", icon: Boxes },
       { id: "connectors", label: "MCP Servers", icon: Plug },
     ],

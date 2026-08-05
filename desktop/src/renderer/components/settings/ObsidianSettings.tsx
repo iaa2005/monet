@@ -13,12 +13,12 @@ import { useEffect, useState } from "react";
 import {
   BookOpen,
   FolderOpen,
-  Gem,
   Plus,
   RefreshCw,
   Trash2,
   TriangleAlert,
 } from "lucide-react";
+import { ObsidianIcon } from "@/components/ObsidianIcon";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, UiVault } from "@/types/electron";
@@ -120,7 +120,7 @@ export function ObsidianSettings(): JSX.Element {
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-start gap-2.5">
-                  <Gem className="mt-0.5 size-4 shrink-0 text-brand" />
+                  <ObsidianIcon className="mt-0.5 size-4 shrink-0 text-brand" />
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 text-sm font-medium">
                       {v.name}

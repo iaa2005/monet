@@ -7,7 +7,8 @@
  */
 
 import { ipcMain, shell } from "electron";
-import { vaultStats } from "../obsidian/index.js";
+import { join } from "path";
+import { allNotes, resolveNote, vaultStats } from "../obsidian/index.js";
 import {
   addVault,
   listVaults,
@@ -64,5 +65,51 @@ export function registerObsidianIPC(): void {
     const v = listVaults().find((x) => x.id === id);
     if (v) void shell.openPath(v.path);
     return { ok: !!v };
+  });
+
+  // A [[wikilink]] clicked in the chat: name → the note file. The #heading
+  // part is display-level; resolution works on the note.
+  ipcMain.handle(
+    "obsidian:resolve",
+    (
+      _e,
+      ref: string,
+    ): {
+      ok: boolean;
+      path?: string;
+      name?: string;
+      candidates?: { name: string; relPath: string; vaultName: string }[];
+    } => {
+      const bare = ref.replace(/#.*$/, "").trim();
+      const notes = allNotes();
+      const res = resolveNote(bare, notes);
+      if (res.kind === "none") return { ok: false };
+      if (res.kind === "many")
+        return {
+          ok: false,
+          candidates: res.candidates.map((c) => ({
+            name: c.name,
+            relPath: c.relPath,
+            vaultName: c.vaultName,
+          })),
+        };
+      const vault = listVaults().find((v) => v.id === res.note.vaultId);
+      if (!vault) return { ok: false };
+      return {
+        ok: true,
+        name: res.note.name,
+        path: join(vault.path, res.note.relPath),
+      };
+    },
+  );
+
+  // Ctrl+click: hand the note to the Obsidian app itself. The obsidian://
+  // scheme is registered by Obsidian on install; without it the OS shows
+  // its own "no app for this link" — honest enough, nothing to guess here.
+  ipcMain.handle("obsidian:openInApp", (_e, absPath: string) => {
+    void shell.openExternal(
+      `obsidian://open?path=${encodeURIComponent(absPath)}`,
+    );
+    return { ok: true };
   });
 }

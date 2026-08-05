@@ -530,6 +530,16 @@ const electronAPI = {
       ipcRenderer.invoke("obsidian:remove", id),
     openFolder: (id: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("obsidian:openFolder", id),
+    resolve: (
+      ref: string,
+    ): Promise<{
+      ok: boolean;
+      path?: string;
+      name?: string;
+      candidates?: { name: string; relPath: string; vaultName: string }[];
+    }> => ipcRenderer.invoke("obsidian:resolve", ref),
+    openInApp: (absPath: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("obsidian:openInApp", absPath),
   },
 
   memory: {

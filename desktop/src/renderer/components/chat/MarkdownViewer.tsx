@@ -20,6 +20,7 @@ import { viewArtifact } from "@/components/artifact-actions";
 import { isWebLink, openLink, wantsExternal } from "@/lib/open-link";
 import { splitMarkdownChunks } from "@/lib/markdown-chunks";
 import { escapeCurrencyDollars } from "@/lib/currency-dollars";
+import { linkifyWikilinks, vaultRefFromHref } from "@/lib/wikilinks";
 import { splitFrontmatter } from "@/lib/frontmatter";
 import { stripTtsTags } from "@shared/voice-tags";
 
@@ -141,7 +142,10 @@ function MarkdownViewerImpl({
     return {
       frontmatter: split.frontmatter,
       // Spoken-expression tags (<laugh>…) are for the voice, not the eyes.
-      body: escapeCurrencyDollars(stripTtsTags(split.body)),
+      // [[Wikilinks]] become clickable vault links (lib/wikilinks.ts) — the
+      // vault protocol makes the model CITE notes this way, and a citation
+      // you cannot click is a dead end.
+      body: linkifyWikilinks(escapeCurrencyDollars(stripTtsTags(split.body))),
     };
   }, [raw]);
 
@@ -186,6 +190,42 @@ function MarkdownViewerImpl({
     li: ({ node: _n, ...p }: any) => <li className="marker:text-foreground" {...p} />,
     a: ({ node: _n, children, ...p }: any) => {
       const href = p.href ?? "";
+      // A [[wikilink]] citation. Click opens the note in the app's viewer;
+      // Ctrl/Cmd+click hands it to the Obsidian app itself. An unresolvable
+      // name (vault disabled, note renamed) does nothing louder than its
+      // hover title — a dead citation must not throw dialogs.
+      const vaultRef = vaultRefFromHref(href);
+      if (vaultRef) {
+        return (
+          <button
+            type="button"
+            title={`[[${vaultRef}]] — open the note\nCtrl+click to open in Obsidian`}
+            onClick={(e) => {
+              const inApp = e.ctrlKey || e.metaKey;
+              void (async () => {
+                const api = (window as any).electronAPI;
+                const r = await api?.obsidian?.resolve(vaultRef);
+                const path: string | undefined =
+                  r?.ok && r.path
+                    ? r.path
+                    : undefined;
+                if (!path) return;
+                if (inApp) await api?.obsidian?.openInApp(path);
+                else
+                  viewArtifact({
+                    name: `${r.name ?? vaultRef}.md`,
+                    path,
+                    mediaType: "text/markdown",
+                    kind: "file",
+                  });
+              })();
+            }}
+            className="rounded-[4px] bg-brand/10 px-1 py-px text-[0.95em] font-medium text-brand hover:bg-brand/15"
+          >
+            {children}
+          </button>
+        );
+      }
       const item = href.startsWith("artifacts/") || /^file:\/\//i.test(href)
         ? artifactFromPath(href, String(children ?? ""))
         : undefined;
