@@ -167,9 +167,12 @@ export function VoiceMode({
    * twice and the second send stopped the first one's run. */
   const loopRef = useRef(false);
   const watchRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  /** Everything already spoken, by TEXT. Tool-heavy runs rebuild transcript
-   * messages with fresh ids, which reset any id-keyed counter and replayed
-   * the whole reply; the words themselves do not change identity. */
+  /** Everything already spoken, keyed by POSITION + text. Tool-heavy runs
+   * rebuild transcript messages with fresh ids, which reset any id-keyed
+   * counter and replayed the whole reply — but keyed by text alone, an
+   * honest «повтори точь-в-точь» was silently skipped as already-spoken.
+   * Ids churn, order does not: same words at a new position are a new
+   * utterance and they sound. */
   const spokenTextsRef = useRef<Set<string>>(new Set());
   /** Barge-in mutes the REST of the current reply, not just the sentence
    * that was sounding: the queue kept refilling and she talked on. Lifted
@@ -343,6 +346,12 @@ export function VoiceMode({
           muted: mutedRef.current,
         });
       }
+      // Each assistant message's ordinal among its peers: the dedupe key
+      // is position#text. Order survives the id churn of transcript
+      // rebuilds, and a verbatim repetition sits at a NEW position.
+      let aOrd = -1;
+      const ordOf = new Map<string, number>();
+      for (const mm of msgs) if (mm.role === "assistant") ordOf.set(mm.id, ++aOrd);
       let queuedTotal = 0;
       for (const m of fresh) {
         const isNewest = msgs[msgs.length - 1]?.id === m.id;
@@ -350,13 +359,14 @@ export function VoiceMode({
         const parts = speakableChunks(m.content, done);
         let n = spoken.get(m.id) ?? 0;
         while (n < parts.length) {
-          const key = parts[n].replace(/\s+/g, " ").trim();
+          const text = parts[n].replace(/\s+/g, " ").trim();
+          const key = `${ordOf.get(m.id) ?? -1}#${text}`;
           n += 1;
           if (spokenTextsRef.current.has(key)) continue;
           spokenTextsRef.current.add(key);
           if (mutedRef.current) continue; // counted, never voiced
-          vlog("chunk-queued", { len: key.length, text: key.slice(0, 60) });
-          queueRef.current.push(key);
+          vlog("chunk-queued", { len: text.length, text: text.slice(0, 60) });
+          queueRef.current.push(text);
           pump();
         }
         spoken.set(m.id, n);
