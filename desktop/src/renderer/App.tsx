@@ -49,6 +49,7 @@ import { SessionList } from "@/components/SessionList";
 import { useTaskBadge } from "@/components/BackgroundTasks";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { FilterDropdown } from "@/components/FilterDropdown";
+import { Hint } from "@/components/ui/tooltip";
 import { SkillsPanel } from "@/components/SkillsPanel";
 import { createPortal } from "react-dom";
 import { useBrowserStore } from "@/components/browser/browser-store";
@@ -124,7 +125,12 @@ function useTheme(): {
   return { theme, setTheme, toggle };
 }
 
-/** Ghost icon button used in the header. */
+/** Ghost icon button used in the header.
+ *
+ * `title` keeps its historical shape — "Label — Combo" — but renders as a
+ * proper tooltip (ui/tooltip.tsx) rather than the OS-native one: the label
+ * as text, the combo as a quiet keycap, the Claude Code way. Parsing the
+ * dash beats retyping nineteen call sites into two props. */
 function IconBtn({
   active,
   title,
@@ -138,24 +144,26 @@ function IconBtn({
   badge?: number;
   children: ReactNode;
 }): JSX.Element {
+  const [label, combo] = title.split(" — ");
   return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onClick={onClick}
-      className={cn(
-        "app-no-drag relative flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]",
-        active && "bg-black/[0.06] text-foreground dark:bg-white/[0.08]",
-      )}
-    >
-      {children}
-      {badge !== undefined && badge > 0 && (
-        <span className="absolute -right-0.5 -top-0.5 flex min-w-[14px] items-center justify-center rounded-full bg-green-text px-[3px] text-[9px] font-semibold leading-[14px] text-white">
-          {badge}
-        </span>
-      )}
-    </button>
+    <Hint label={label ?? title} combo={combo} side="bottom">
+      <button
+        type="button"
+        aria-label={label ?? title}
+        onClick={onClick}
+        className={cn(
+          "app-no-drag relative flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]",
+          active && "bg-black/[0.06] text-foreground dark:bg-white/[0.08]",
+        )}
+      >
+        {children}
+        {badge !== undefined && badge > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 flex min-w-[14px] items-center justify-center rounded-full bg-green-text px-[3px] text-[9px] font-semibold leading-[14px] text-white">
+            {badge}
+          </span>
+        )}
+      </button>
+    </Hint>
   );
 }
 

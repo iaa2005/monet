@@ -378,6 +378,9 @@ export function SessionList({
                     >
                       <Pin className="size-4 text-muted-foreground" />
                       {s.pinned ? "Unpin" : "Pin"}
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        P
+                      </span>
                     </button>
                     <button
                       type="button"
@@ -428,6 +431,9 @@ export function SessionList({
                     >
                       <Archive className="size-4 text-muted-foreground" />
                       {s.archived ? "Unarchive" : "Archive"}
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        A
+                      </span>
                     </button>
                     <button
                       type="button"

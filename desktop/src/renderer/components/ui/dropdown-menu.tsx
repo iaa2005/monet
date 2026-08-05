@@ -1,5 +1,6 @@
 import * as React from "react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
+import { Check, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -132,8 +133,77 @@ function DropdownMenuSubTrigger({
       {...props}
     >
       {children}
-      <DropdownMenuShortcut className="ml-auto">▸</DropdownMenuShortcut>
+      <ChevronRight className="ml-auto size-3.5 text-muted-foreground" />
     </DropdownMenuPrimitive.SubTrigger>
+  );
+}
+
+/** An item that IS a choice: the checkmark sits on the right, the
+ * SessionList-filter way, so option labels stay left-aligned with plain
+ * items instead of being pushed by an indicator gutter. */
+function DropdownMenuCheckItem({
+  className,
+  children,
+  checked,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>): JSX.Element {
+  return (
+    <DropdownMenuPrimitive.CheckboxItem
+      data-slot="dropdown-menu-check-item"
+      checked={checked}
+      className={cn(
+        "relative flex cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1 text-[13px] outline-none transition-colors select-none",
+        "focus:bg-accent focus:text-accent-foreground",
+        "[&_svg]:size-3.5 [&_svg]:shrink-0",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <span className="ml-auto">
+        <DropdownMenuPrimitive.ItemIndicator>
+          <Check className="size-3.5" />
+        </DropdownMenuPrimitive.ItemIndicator>
+      </span>
+    </DropdownMenuPrimitive.CheckboxItem>
+  );
+}
+
+function DropdownMenuRadioGroup(
+  props: React.ComponentProps<typeof DropdownMenuPrimitive.RadioGroup>,
+): JSX.Element {
+  return (
+    <DropdownMenuPrimitive.RadioGroup
+      data-slot="dropdown-menu-radio-group"
+      {...props}
+    />
+  );
+}
+
+/** Radio flavour of the same right-checkmark row. */
+function DropdownMenuRadioItem({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem>): JSX.Element {
+  return (
+    <DropdownMenuPrimitive.RadioItem
+      data-slot="dropdown-menu-radio-item"
+      className={cn(
+        "relative flex cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1 text-[13px] outline-none transition-colors select-none",
+        "focus:bg-accent focus:text-accent-foreground",
+        "[&_svg]:size-3.5 [&_svg]:shrink-0",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <span className="ml-auto">
+        <DropdownMenuPrimitive.ItemIndicator>
+          <Check className="size-3.5" />
+        </DropdownMenuPrimitive.ItemIndicator>
+      </span>
+    </DropdownMenuPrimitive.RadioItem>
   );
 }
 
@@ -163,6 +233,9 @@ export {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuCheckItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,

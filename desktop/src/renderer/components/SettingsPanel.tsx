@@ -3,7 +3,6 @@ import {
   Settings2,
   Mic,
   Boxes,
-  Info,
   Check,
   Copy,
   FolderOpen,
@@ -102,8 +101,7 @@ type Section =
   | "skills"
   | "agents"
   | "services"
-  | "connectors"
-  | "about";
+  | "connectors";
 
 const NAV: {
   group: string;
@@ -132,7 +130,6 @@ const NAV: {
       { id: "connectors", label: "MCP Servers", icon: Plug },
     ],
   },
-  { group: "About", items: [{ id: "about", label: "About", icon: Info }] },
 ];
 
 const SANDBOX_ENGINES: {
@@ -478,36 +475,6 @@ function GeneralSection({
   );
 }
 
-function AboutSection(): JSX.Element {
-  const v = (window as unknown as { electronAPI?: ElectronAPI }).electronAPI
-    ?.versions;
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-xl bg-brand text-white">
-          <svg viewBox="0 0 100 100" className="size-5" fill="none">
-            <g stroke="currentColor" strokeWidth="9" strokeLinecap="round">
-              <line x1="50" y1="16" x2="50" y2="84" />
-              <line x1="16" y1="50" x2="84" y2="50" />
-              <line x1="26" y1="26" x2="74" y2="74" />
-              <line x1="74" y1="26" x2="26" y2="74" />
-            </g>
-          </svg>
-        </div>
-        <div>
-          <div className="text-sm font-semibold">Code Monet</div>
-          <div className="text-xs text-muted-foreground">Version 0.1.0</div>
-        </div>
-      </div>
-      {v && (
-        <p className="text-xs text-muted-foreground">
-          Electron {v.electron} · Chromium {v.chrome} · Node {v.node}
-        </p>
-      )}
-    </div>
-  );
-}
-
 export function SettingsPanel({
   theme,
   setTheme,
@@ -594,7 +561,6 @@ export function SettingsPanel({
         {section === "skills" && <SkillsSettings />}
         {section === "agents" && <AgentsSettings />}
         {section === "connectors" && <ConnectorsSettings />}
-        {section === "about" && <AboutSection />}
       </div>
     </div>
   );
