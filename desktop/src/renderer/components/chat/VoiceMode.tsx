@@ -167,13 +167,6 @@ export function VoiceMode({
    * twice and the second send stopped the first one's run. */
   const loopRef = useRef(false);
   const watchRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  /** Everything already spoken, keyed by POSITION + text. Tool-heavy runs
-   * rebuild transcript messages with fresh ids, which reset any id-keyed
-   * counter and replayed the whole reply — but keyed by text alone, an
-   * honest «повтори точь-в-точь» was silently skipped as already-spoken.
-   * Ids churn, order does not: same words at a new position are a new
-   * utterance and they sound. */
-  const spokenTextsRef = useRef<Set<string>>(new Set());
   /** Barge-in mutes the REST of the current reply, not just the sentence
    * that was sounding: the queue kept refilling and she talked on. Lifted
    * when the user's next utterance is dispatched — inject and plan paths
@@ -307,9 +300,21 @@ export function VoiceMode({
     // Anchor to the reply that does not exist yet. Right after send() the
     // newest assistant message is still the PREVIOUS reply, and feeding it
     // to the queue replayed the last answer before the new one arrived.
+    // The count is the fallback anchor: transcript rebuilds mint fresh ids
+    // and the baseline id can simply vanish — everything before the count
+    // at send time is old regardless of what its id says today.
     const st0 = useChatStore.getState();
-    const baseline = [...st0.messages].reverse().find((m) => m.role === "assistant")?.id;
-    vlog("watch-start", { baseline: baseline ?? null });
+    const vsid0 = st0.voiceSessionId;
+    const msgs0 = (vsid0 ? st0.sessions[vsid0]?.messages : undefined) ?? st0.messages;
+    const baseline = [...msgs0].reverse().find((m) => m.role === "assistant")?.id;
+    const baseCount = msgs0.length;
+    // Spoken texts of THIS reply only. A mid-run rebuild re-presents the
+    // same words under fresh ids and they must stay silent — but the NEXT
+    // reply saying the same words is a new utterance. Kept for the voice
+    // mode's lifetime, this set ate «повтори точь-в-точь»; keyed by
+    // position it ate it again when rebuilds shifted the ordinals.
+    const spokenTexts = new Set<string>();
+    vlog("watch-start", { baseline: baseline ?? null, baseCount });
     // Per-message sentence counters: a run with tools produces SEVERAL
     // assistant chunks (text → tool → text…), and a single counter over
     // "the latest one" skipped or repeated whatever sat between tools. A
@@ -332,7 +337,7 @@ export function VoiceMode({
       const streaming = sess ? sess.isStreaming : st.isStreaming;
       const bi = baseline ? msgs.findIndex((m) => m.id === baseline) : -1;
       const fresh = msgs
-        .slice(bi + 1)
+        .slice(bi >= 0 ? bi + 1 : Math.min(baseCount, msgs.length))
         .filter((m) => m.role === "assistant" && m.content);
       // Watchdog for the silent-watch bug: once a second, say what we see.
       if (Date.now() - lastDiag > 1000) {
@@ -346,12 +351,6 @@ export function VoiceMode({
           muted: mutedRef.current,
         });
       }
-      // Each assistant message's ordinal among its peers: the dedupe key
-      // is position#text. Order survives the id churn of transcript
-      // rebuilds, and a verbatim repetition sits at a NEW position.
-      let aOrd = -1;
-      const ordOf = new Map<string, number>();
-      for (const mm of msgs) if (mm.role === "assistant") ordOf.set(mm.id, ++aOrd);
       let queuedTotal = 0;
       for (const m of fresh) {
         const isNewest = msgs[msgs.length - 1]?.id === m.id;
@@ -360,10 +359,9 @@ export function VoiceMode({
         let n = spoken.get(m.id) ?? 0;
         while (n < parts.length) {
           const text = parts[n].replace(/\s+/g, " ").trim();
-          const key = `${ordOf.get(m.id) ?? -1}#${text}`;
           n += 1;
-          if (spokenTextsRef.current.has(key)) continue;
-          spokenTextsRef.current.add(key);
+          if (spokenTexts.has(text)) continue;
+          spokenTexts.add(text);
           if (mutedRef.current) continue; // counted, never voiced
           vlog("chunk-queued", { len: text.length, text: text.slice(0, 60) });
           queueRef.current.push(text);
@@ -387,8 +385,8 @@ export function VoiceMode({
           const phrase = title
             ? `Я подготовила план «${title}». Вернись в чат — посмотри и одобри.`
             : "План готов и ждёт твоего одобрения в чате.";
-          if (!mutedRef.current && !spokenTextsRef.current.has(phrase)) {
-            spokenTextsRef.current.add(phrase);
+          if (!mutedRef.current && !spokenTexts.has(phrase)) {
+            spokenTexts.add(phrase);
             vlog("plan-announced", title || "(untitled)");
             queueRef.current.push(phrase);
             pump();
