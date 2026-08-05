@@ -69,8 +69,12 @@ import {
 import {
   budgetWarning,
   callSignature,
+  dominantRepeat,
   extensionFor,
   extensionNote,
+  loopNote,
+  MAX_LOOP_STEERS,
+  shouldSteerLoop,
   shouldWarnBudget,
   stepsLeft,
   WRAP_UP_PROMPT,
@@ -1339,6 +1343,11 @@ async function runAgentScoped(
   let extensionsUsed = 0;
   const callSignatures: string[] = [];
 
+  // Loop steering: the same repetition evidence the budget consults, but
+  // spoken while there is still time to act on it. See turn-budget.ts.
+  let loopSteersUsed = 0;
+  let lastSteerAt = 0;
+
   for (let turn = 0; turn < budget; turn++) {
     if (signal?.aborted) {
       onEvent({ type: "error", error: "Aborted" });
@@ -1534,6 +1543,10 @@ async function runAgentScoped(
         console.warn(
           `[agent] empty reply (stop_reason=${lastStopReason ?? "n/a"}) — nudging (${nudgesUsed}/${MAX_NUDGES})`,
         );
+        onEvent({
+          type: "harness",
+          text: `The model answered with nothing — nudged it to continue (${nudgesUsed}/${MAX_NUDGES})`,
+        });
         appendUserText(messages);
         persistTranscript(sessionId);
         continue;
@@ -1721,6 +1734,32 @@ async function runAgentScoped(
         last.content.push({ type: "text", text: formatInjection(injected) });
     }
 
+    // A run that keeps re-issuing one identical call is stuck, and from
+    // inside, every identical result looks like one more datum rather than a
+    // mirror. Say so ONCE, while there are still steps to act on it — capped
+    // and spaced so the correction cannot become its own loop.
+    if (
+      shouldSteerLoop({
+        signatures: callSignatures,
+        steersUsed: loopSteersUsed,
+        sinceLastSteer: callSignatures.length - lastSteerAt,
+      })
+    ) {
+      const rep = dominantRepeat(callSignatures);
+      if (rep) {
+        loopSteersUsed++;
+        lastSteerAt = callSignatures.length;
+        console.warn(
+          `[agent] loop detected — steering (${loopSteersUsed}/${MAX_LOOP_STEERS}): ${rep.toolName} ×${rep.count}`,
+        );
+        appendUserText(messages, loopNote(rep.toolName, rep.count));
+        onEvent({
+          type: "harness",
+          text: `Going in circles — ${rep.toolName} ran ${rep.count}× with identical input; asked the model to change approach`,
+        });
+      }
+    }
+
     // At the wall, but still doing new things? Then the wall was in the wrong
     // place. Bounded and evidence-based: repetition is what refuses it.
     const extra = extensionFor({
@@ -1735,6 +1774,10 @@ async function runAgentScoped(
       console.log(
         `[agent] step budget extended by ${extra} to ${budget} (still producing new work)`,
       );
+      onEvent({
+        type: "harness",
+        text: `Step budget extended by ${extra} (to ${budget}) — the run is still producing new work`,
+      });
       appendUserText(messages, extensionNote(extra, budget));
     }
 
@@ -1742,8 +1785,13 @@ async function runAgentScoped(
     // until now it did not: it spent forty turns as if they were free and
     // got cut off mid-thought. One line, once, riding back with the tool
     // results it is about to read.
-    if (shouldWarnBudget(turn, budget))
+    if (shouldWarnBudget(turn, budget)) {
+      onEvent({
+        type: "harness",
+        text: `${stepsLeft(turn, budget)} steps left — asked the model to start converging`,
+      });
       appendUserText(messages, budgetWarning(stepsLeft(turn, budget)));
+    }
 
     persistTranscript(sessionId);
   }
@@ -1755,6 +1803,10 @@ async function runAgentScoped(
   // the work over. See turn-budget.ts.
   let wrapUpText = "";
   if (!signal?.aborted) {
+    onEvent({
+      type: "harness",
+      text: "Out of steps — asked the model for a handoff summary",
+    });
     appendUserText(messages, WRAP_UP_PROMPT);
     try {
       await adapter.stream(

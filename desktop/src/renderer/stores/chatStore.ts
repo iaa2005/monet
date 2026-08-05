@@ -702,6 +702,21 @@ export const useChatStore = create<ChatStore>((set, get) => {
         ];
         return { ...prev, messages: msgs };
       }
+      case "harness": {
+        // The harness overrode or redirected the model. A system-role row —
+        // it renders as a slim line, and every path that builds API messages
+        // already filters to user/assistant, so it never reaches a model.
+        const msgs = [
+          ...prev.messages,
+          {
+            id: generateId(),
+            role: "system" as const,
+            content: event.text,
+            timestamp: Date.now(),
+          },
+        ];
+        return { ...prev, messages: msgs };
+      }
       case "tool_use": {
         const msgs = [...prev.messages];
         // Drop a trailing empty assistant bubble so it can't get stranded.

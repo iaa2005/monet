@@ -13,12 +13,17 @@
 import {
   budgetWarning,
   callSignature,
+  dominantRepeat,
   EXTENSION_TURNS,
   extensionFor,
   extensionNote,
   isProductive,
+  loopNote,
   MAX_EXTENSIONS,
+  MAX_LOOP_STEERS,
+  shouldSteerLoop,
   shouldWarnBudget,
+  STEER_SPACING,
   stepsLeft,
   WARN_AT_FRACTION,
   WRAP_UP_PROMPT,
@@ -144,6 +149,62 @@ check('too few calls to judge is not held against it', isProductive(varied(2)))
   const n = extensionNote(20, 60)
   check('the note says how much and how far', n.includes('20') && n.includes('60'), n)
   check('and that it is not free', /not be extended indefinitely/i.test(n))
+}
+
+// ─── Loop steering ──────────────────────────────────────────────────────
+//
+// The same repetition evidence, but SPOKEN — capped and spaced so the
+// correction cannot become its own loop.
+
+{
+  const rep = dominantRepeat(stuck(12))
+  check(
+    'the dominant repeat names the tool and the count',
+    rep?.toolName === 'BrowserReadPage' && rep.count === 12,
+    rep,
+  )
+  check('varied work has no dominant repeat', dominantRepeat(varied(12)) === null)
+  check(
+    'two repeats is variance, not a loop',
+    dominantRepeat([...varied(9), ...stuck(2)]) === null,
+    dominantRepeat([...varied(9), ...stuck(2)]),
+  )
+}
+
+{
+  const steer = (o: Partial<Parameters<typeof shouldSteerLoop>[0]> = {}) =>
+    shouldSteerLoop({
+      signatures: stuck(12),
+      steersUsed: 0,
+      sinceLastSteer: 99,
+      ...o,
+    })
+  check('a stuck run gets a steer', steer())
+  check('a productive run does not', !steer({ signatures: varied(12) }))
+  check(
+    'the steers themselves run out',
+    !steer({ steersUsed: MAX_LOOP_STEERS }),
+  )
+  check(
+    'a fresh correction gets room to work before the next',
+    !steer({ sinceLastSteer: STEER_SPACING - 1 }) &&
+      steer({ sinceLastSteer: STEER_SPACING }),
+  )
+  check(
+    'too few calls to judge is never steered',
+    !steer({ signatures: stuck(3) }),
+  )
+}
+
+{
+  const n = loopNote('BrowserReadPage', 9)
+  check(
+    'the note names the call and the count',
+    n.includes('BrowserReadPage') && n.includes('9'),
+    n,
+  )
+  check('and demands a change, not an apology', /change/i.test(n), n)
+  check('it is short', n.length < 340, n.length)
 }
 
 console.log(

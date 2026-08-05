@@ -109,6 +109,11 @@ export type LLMEvent =
     }
   | { type: "error"; error: string }
   | { type: "checkpoint"; sha: string }
+  // The harness overrode or redirected the model — a nudge after an empty
+  // reply, a loop correction, a budget note. One event per intervention so
+  // the transcript can say it happened; without this, the extra turn the
+  // harness spent is indistinguishable from the model acting on its own.
+  | { type: "harness"; text: string }
   // Goal mode: the state of the session's standing objective, emitted on every
   // change so the UI strip follows a run it did not start.
   | {

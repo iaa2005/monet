@@ -351,6 +351,21 @@ const MessageRow = memo(
       return <ToolCallBubble toolCall={msg.toolCall} mode={mode} />;
     }
 
+    // A harness intervention: the scaffolding redirected the model (a nudge,
+    // a loop correction, a budget note). One slim line — enough to explain a
+    // turn the model did not choose, without pretending anybody spoke.
+    if (msg.role === "system") {
+      return (
+        <div className="my-1 flex items-center gap-2 px-1">
+          <div className="h-px flex-1 bg-border" />
+          <span className="max-w-[80%] text-center text-[10px] text-muted-foreground">
+            {msg.content}
+          </span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+      );
+    }
+
     const isUser = msg.role === "user";
     // Edit/Retry rewind the conversation, so only offer them in Home (Code gets
     // filesystem-aware Rewind) and never mid-stream.

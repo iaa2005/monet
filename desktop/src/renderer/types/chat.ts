@@ -81,6 +81,9 @@ export type LLMEvent =
       final?: boolean
     }
   | { type: 'checkpoint'; sha: string }
+  /** The harness overrode or redirected the model (nudge, loop correction,
+   * budget note) — rendered as a slim system line, never sent to the API. */
+  | { type: 'harness'; text: string }
   /** The verification loop: the harness running the project's own checks
    * after a turn that edited files (see main/verify/loop.ts). */
   | {

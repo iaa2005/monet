@@ -110,6 +110,65 @@ export function isProductive(
   return new Set(recent).size / recent.length >= DISTINCT_RATIO;
 }
 
+// ─── Loop steering ──────────────────────────────────────────────────────
+//
+// isProductive() already SEES a stuck run — but until now it only refused to
+// extend the budget, and never told the model. The model kept re-issuing the
+// same call until the steps ran out, because from inside, every identical
+// result looks like one more datum rather than a mirror. little-coder's
+// quality-monitor sends the correction straight into the run, capped so a
+// nudge that does not take cannot become its own loop; both rules are kept.
+
+export const MAX_LOOP_STEERS = 2;
+/** Calls a correction gets to take effect before it may be repeated. */
+export const STEER_SPACING = 6;
+/** Repeats of one exact call before it counts as THE loop, not variance. */
+export const DOMINANT_MIN = 3;
+
+/** The single most-repeated recent call, when it repeats enough to name. */
+export function dominantRepeat(
+  signatures: string[],
+  window: number = PROGRESS_WINDOW,
+): { toolName: string; count: number } | null {
+  const recent = signatures.slice(-window);
+  const counts = new Map<string, number>();
+  for (const s of recent) counts.set(s, (counts.get(s) ?? 0) + 1);
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [s, n] of counts)
+    if (n > bestCount) {
+      best = s;
+      bestCount = n;
+    }
+  if (!best || bestCount < DOMINANT_MIN) return null;
+  return { toolName: best.slice(0, best.indexOf(":")), count: bestCount };
+}
+
+export interface LoopSteerState {
+  signatures: string[];
+  steersUsed: number;
+  /** Calls made since the last steer (or since the run began). */
+  sinceLastSteer: number;
+}
+
+export function shouldSteerLoop(state: LoopSteerState): boolean {
+  if (state.steersUsed >= MAX_LOOP_STEERS) return false;
+  if (state.sinceLastSteer < STEER_SPACING) return false;
+  if (isProductive(state.signatures)) return false;
+  return dominantRepeat(state.signatures) !== null;
+}
+
+/** What the model reads. Names the call, because "you are repeating
+ * yourself" without evidence reads as noise and gets ignored. */
+export function loopNote(toolName: string, count: number): string {
+  return [
+    `[Harness note: your recent tool calls are repeating — ${toolName} ran`,
+    `${count} times with identical input, and the result will not change on`,
+    "another try. Change something real: different input, a different tool,",
+    "or tell the user what is blocking you.]",
+  ].join(" ");
+}
+
 export interface ExtensionState {
   /** Turns the run has already spent. */
   turnsDone: number;
