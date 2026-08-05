@@ -19,6 +19,11 @@ import {
   pathArgs,
   type PolicyContext,
 } from '../src/main/agent/permission-policies.js'
+import {
+  isReservedDevicePath,
+  sensitivePathInCommand,
+  shellTokens,
+} from '../src/main/agent/shell-paths.js'
 import type { Tool, ToolUseContext } from '../src/vendor/leaked/Tool.js'
 
 let failures = 0
@@ -269,6 +274,123 @@ check(
   !askedOrdinary && r.decision.behavior === 'allow',
   r,
 )
+
+// ─── Sensitive paths inside a shell command ─────────────────────────────
+//
+// `cat .env` reads the same bytes as Read(.env). The scanner is quote-aware
+// string work; these pin the tokenizer's judgment calls, not just the happy
+// path.
+
+check('tokens split on whitespace', shellTokens('cat  a b').join(',') === 'cat,a,b')
+check(
+  'every chain segment is judged, not only the first',
+  shellTokens('ls && cat .env').includes('.env'),
+)
+check('quotes group and drop', shellTokens('cat ".env"').includes('.env'))
+check(
+  'a backslash is a path separator, not an escape',
+  shellTokens('type C:\\ws\\.env')[1] === 'C:\\ws\\.env',
+)
+check(
+  'redirects separate tokens',
+  shellTokens('echo x 2>err.log').includes('err.log'),
+)
+
+check('a bare cat .env is seen', sensitivePathInCommand('cat .env') === '.env')
+check(
+  'so is a chained one',
+  sensitivePathInCommand('ls && type C:/ws/.env') === 'C:/ws/.env',
+)
+check(
+  'PowerShell Get-Content is seen too',
+  sensitivePathInCommand('Get-Content "$HOME/.aws/credentials"') !== null,
+)
+check(
+  'a commit message MENTIONING .env is prose, not a path',
+  sensitivePathInCommand('git commit -m "update .env handling"') === null,
+)
+check('an ordinary command is untouched', sensitivePathInCommand('npm run build') === null)
+check(
+  'an env template does not trip it',
+  sensitivePathInCommand('cat .env.example') === null,
+)
+
+let bashAsked: string | undefined
+r = await decidePermission(
+  ctxFor({
+    tool: bash,
+    permissionMode: 'auto',
+    input: { command: 'cat /ws/.env' },
+    requestPermission: async (a) => {
+      bashAsked = a.detail
+      return 'deny'
+    },
+  }),
+)
+check(
+  'auto mode does NOT silently cat .env',
+  r.decision.behavior === 'deny' && r.decidedBy === 'sensitive-file-ask',
+  r,
+)
+check('and the prompt names the file', bashAsked === '/ws/.env', bashAsked)
+
+// A session-wide "always allow Bash" grant must not extend to secrets —
+// the sensitive stage sits above session-approval-history for exactly this.
+let grantedBashAsked = false
+r = await decidePermission(
+  ctxFor({
+    tool: bash,
+    grants: new Set(['s1:Bash']),
+    input: { command: 'cat /ws/id_rsa' },
+    requestPermission: async () => {
+      grantedBashAsked = true
+      return 'deny'
+    },
+  }),
+)
+check(
+  '"always allow Bash" does not license cat id_rsa',
+  grantedBashAsked && r.decision.behavior === 'deny',
+  r,
+)
+
+// ─── Windows reserved device names ──────────────────────────────────────
+
+check('nul is reserved', isReservedDevicePath('nul'))
+check('with an extension too', isReservedDevicePath('D:/ws/NUL.txt'))
+check('com ports are reserved', isReservedDevicePath('com3.log'))
+check('console.log is NOT', !isReservedDevicePath('src/console.log'))
+check('nullable.ts is NOT', !isReservedDevicePath('nullable.ts'))
+
+const writeTool = stubTool({ name: 'Write' })
+r = await decidePermission(
+  ctxFor({
+    tool: writeTool,
+    permissionMode: 'bypassPermissions',
+    input: { file_path: 'D:/ws/nul' },
+  }),
+)
+check(
+  'writing to nul is refused even in bypass mode',
+  r.decision.behavior === 'deny' && r.decidedBy === 'reserved-device-deny',
+  r,
+)
+r = await decidePermission(
+  ctxFor({
+    tool: writeTool,
+    permissionMode: 'bypassPermissions',
+    input: { file_path: 'D:/ws/normal.txt' },
+  }),
+)
+check('a normal write is untouched by the device stage', r.decision.behavior === 'allow', r)
+r = await decidePermission(
+  ctxFor({
+    tool: read,
+    permissionMode: 'bypassPermissions',
+    input: { file_path: 'D:/ws/nul' },
+  }),
+)
+check('reading a device name is not blocked', r.decision.behavior === 'allow', r)
 
 // Explicit "skip all approvals" still skips — the user turned the gate off.
 r = await decidePermission(

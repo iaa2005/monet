@@ -19,6 +19,7 @@
 
 import type { Tool, ToolUseContext } from "@vendor/Tool.js";
 import { isSensitivePath } from "./secret-filter.js";
+import { isReservedDevicePath, sensitivePathInCommand } from "./shell-paths.js";
 import { isOriginAllowed } from "@shared/origins.js";
 import type { RequestPermission, UiPermissionMode } from "./permission-types.js";
 
@@ -79,15 +80,45 @@ export function pathArgs(input: Record<string, unknown>): string[] {
 
 function toolTouchesSensitiveFile(input: Record<string, unknown>): string | null {
   for (const p of pathArgs(input)) if (isSensitivePath(p)) return p;
+  // A shell command is a string full of paths the keys above never carry —
+  // `cat .env` reads the same bytes as Read(.env) and deserves the same
+  // question. Covers Bash and PowerShell, whose input is `command`.
+  const cmd = input.command;
+  if (typeof cmd === "string" && cmd) return sensitivePathInCommand(cmd);
   return null;
 }
 
 // ─── Policies, in the order they run ────────────────────────────────────
 
 /**
+ * A write whose target is a Windows reserved device name (nul, con, aux,
+ * com1…) is a mistake, not a preference — the model wanted /dev/null, and
+ * what it gets instead is a device, or on some filesystems an undeletable
+ * file that breaks the repo when cloned on Windows. Above bypass on purpose:
+ * this is not an approval to skip, it is a call that must not run, in any
+ * mode. Read-only calls pass — reading a device is odd but harmless.
+ */
+const reservedDeviceDeny: PermissionPolicy = {
+  name: "reserved-device-deny",
+  decide: ({ tool, input }) => {
+    if (tool.isReadOnly(input)) return null;
+    const hit = pathArgs(input).find(isReservedDevicePath);
+    if (!hit) return null;
+    return {
+      behavior: "deny",
+      message:
+        `${hit} is a Windows reserved device name (nul, con, prn, aux, com1-9, lpt1-9 — ` +
+        `with any extension). Writing there targets a device, not a file. ` +
+        `Use a real filename, or /dev/null to discard output.`,
+    };
+  },
+};
+
+/**
  * "Skip all approvals" means what it says: the user turned the gate off for
- * this session, and every later stage is moot. First, so nothing below can
- * accidentally re-introduce a prompt into an explicitly unattended run.
+ * this session, and every later stage is moot. First among the approval
+ * stages, so nothing below can accidentally re-introduce a prompt into an
+ * explicitly unattended run.
  */
 const bypassModeApprove: PermissionPolicy = {
   name: "bypass-mode-approve",
@@ -332,6 +363,7 @@ const fallbackAsk: PermissionPolicy = {
  * The pipeline. Order is the policy — read it top to bottom.
  */
 export const PERMISSION_POLICIES: readonly PermissionPolicy[] = [
+  reservedDeviceDeny,
   bypassModeApprove,
   planModeGuard,
   sensitiveFileAsk,
