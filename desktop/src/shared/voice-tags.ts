@@ -55,12 +55,13 @@ export function textForSpeech(text: string): string {
     // Any run of the same tag becomes exactly two — except <scream>,
     // whose only working shape is single tags hugging an interjection.
     .replace(/(<(laugh|sigh|breath|cough|sad)>)(\s*<\2>)*/gi, "$1$1");
-  // A tag run at the VERY START of the input gets read, not performed
-  // (paragraph-initial <breath><breath> says "breath" once; the same
-  // pair after any sentence breathes — both ru and fr). Shift it past
-  // the first sentence; a one-sentence chunk carries it at the end.
-  // <scream> stays put: its interjection hug must not be rearranged.
-  const lead = t.match(/^\s*((?:<(?:laugh|sigh|breath|cough|sad)>\s*)+)/iu);
+  // breath and sigh at the VERY START of the input get read, not
+  // performed (paragraph-initial <breath><breath> says "breath" once;
+  // the same pair after any sentence breathes — both ru and fr), while
+  // laugh, cough and sad open a paragraph just fine. Shift a leading
+  // breath/sigh run past the first sentence; a one-sentence chunk
+  // carries it at the end. <scream> is never rearranged.
+  const lead = t.match(/^\s*((?:<(?:sigh|breath)>\s*)+)/iu);
   if (lead) {
     const run = lead[1].replace(/\s+/g, "");
     const rest = t.slice(lead[0].length);

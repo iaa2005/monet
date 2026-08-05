@@ -1270,8 +1270,19 @@ export function MessageInput({
           </div>
         )}
         
-        <div className="mb-2 glass-panel p-3 pb-2 rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25">
-          
+        <div
+          className="mb-2 glass-panel p-3 pb-2 rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25"
+          // Ctrl+V with a screenshot, an image or a copied media file lands
+          // it as an attachment chip; plain text keeps its normal paste.
+          onPaste={(e) => {
+            const pasted = e.clipboardData?.files;
+            if (pasted && pasted.length > 0) {
+              e.preventDefault();
+              stageFiles(pasted);
+            }
+          }}
+        >
+
           <div className="flex gap-2.5 w-full items-end">
             <TokenInput
               ref={taRef}

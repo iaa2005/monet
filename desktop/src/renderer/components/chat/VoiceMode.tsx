@@ -760,6 +760,29 @@ export function VoiceMode({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A message TYPED into the voice chat deserves a spoken reply too: the
+  // watcher used to start only from the voice path, and «сейчас вставлю
+  // тебе текст» ended the conversation — she answered in silence. Any new
+  // user message in the voice session with no watcher alive starts one.
+  const lastUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const unsub = useChatStore.subscribe((st) => {
+      const sid = st.voiceSessionId;
+      if (!sid) return;
+      const msgs = st.sessions[sid]?.messages;
+      const last = msgs?.[msgs.length - 1];
+      if (!last || last.role !== "user") return;
+      if (lastUserIdRef.current === last.id) return;
+      lastUserIdRef.current = last.id;
+      if (!watchRef.current) {
+        vlog("watch-typed-send", last.id);
+        watchReply();
+      }
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     alive.current = true;
     const data = new Uint8Array(256);

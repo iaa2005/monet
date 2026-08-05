@@ -109,6 +109,12 @@ check(
   textForSpeech('<sigh><sigh> Опять дедлайн') === 'Опять дедлайн <sigh><sigh>',
   textForSpeech('<sigh><sigh> Опять дедлайн'),
 )
+// …but a laugh opens a paragraph just fine — only breath and sigh move.
+check(
+  'a leading laugh stays where it is',
+  textForSpeech('<laugh> Представляешь? Вот так.') === '<laugh><laugh> Представляешь? Вот так.',
+  textForSpeech('<laugh> Представляешь? Вот так.'),
+)
 check(
   'the UI hides the new tags too',
   stripTtsTags('Ну что <surprise> вышло! <throatclear> Кхм.') === 'Ну что вышло! Кхм.',
