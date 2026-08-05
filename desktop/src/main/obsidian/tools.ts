@@ -19,7 +19,7 @@
  */
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
-import { renameSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, renameSync, writeFileSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
 import { z } from "zod/v4";
 import { buildTool } from "@vendor/Tool.js";
@@ -238,11 +238,14 @@ const writeSchema = lazySchema(() =>
       .describe(
         'Note name, or a vault-relative path like "projects/Idea.md" to choose a folder or settle an ambiguous name.',
       ),
-    content: z.string().describe("Markdown body. Use [[wikilinks]] to connect it to existing notes."),
+    content: z
+      .string()
+      .optional()
+      .describe("Markdown body (not used for trash). Use [[wikilinks]] to connect it to existing notes."),
     mode: z
-      .enum(["create", "append", "replace"])
+      .enum(["create", "append", "replace", "trash"])
       .describe(
-        "create = new note (fails if it exists); append = add to the end of an existing note; replace = rewrite an existing note.",
+        "create = new note (fails if it exists); append = add to the end of an existing note; replace = rewrite an existing note; trash = move a note into the vault's .trash folder (recoverable — never a hard delete).",
       ),
     vault: z
       .string()
@@ -259,6 +262,25 @@ function writeNoteFile(absPath: string, text: string): void {
   const tmp = `${absPath}.monet-tmp`;
   writeFileSync(tmp, text, "utf-8");
   renameSync(tmp, absPath);
+}
+
+/**
+ * "Delete" the Obsidian way: move the file into the vault's own .trash/,
+ * where the index never looks and Obsidian's own trash UI can restore it.
+ * A hard delete of the user's writing is not an operation this app offers.
+ * Returns the trash-relative filename it landed under.
+ */
+export function trashNoteFile(vaultPath: string, relPath: string): string {
+  const trashDir = join(vaultPath, ".trash");
+  mkdirSync(trashDir, { recursive: true });
+  const base = relPath.split("/").pop() ?? relPath;
+  // A name may already sit in the trash — timestamp instead of clobbering
+  // (rename onto an existing file silently replaces it on Windows).
+  const target = existsSync(join(trashDir, base))
+    ? base.replace(/\.md$/i, "") + `-${Date.now().toString(36)}.md`
+    : base;
+  renameSync(join(vaultPath, relPath), join(trashDir, target));
+  return target;
 }
 
 export const VaultWriteTool = buildTool({
@@ -285,7 +307,9 @@ export const VaultWriteTool = buildTool({
       "to it rather than spawning a duplicate. Connect new notes to existing",
       "ones with [[wikilinks]]; an unlinked note is invisible in a vault.",
       "Respect the vault's own conventions (folders, frontmatter, tags) as",
-      "seen in the notes you have read.",
+      "seen in the notes you have read. mode:'trash' removes a note the",
+      "Obsidian way — into the vault's .trash folder, recoverable, never a",
+      "hard delete — use it only when the user asked to remove that note.",
     ].join("\n");
   },
   async description() {
@@ -296,6 +320,9 @@ export const VaultWriteTool = buildTool({
       const enabled = enabledVaults();
       if (enabled.length === 0)
         return { data: { text: "No enabled vaults to write into.", isError: true } };
+      if (mode !== "trash" && content == null)
+        return { data: { text: `mode:'${mode}' needs content.`, isError: true } };
+      const bodyText = content ?? "";
 
       const targetVault = vault
         ? enabled.find((v) => v.name.toLowerCase() === vault.toLowerCase() || v.id === vault)
@@ -328,14 +355,14 @@ export const VaultWriteTool = buildTool({
         const rel = /[/\\]/.test(note) || /\.md$/i.test(note)
           ? note.replace(/\\/g, "/").replace(/\.md$/i, "") + ".md"
           : `${note}.md`;
-        const text = composeNote({ body: content, tags });
+        const text = composeNote({ body: bodyText, tags });
         writeNoteFile(join(targetVault.path, rel), text);
         return {
           data: { text: `Created [[${rel.replace(/\.md$/i, "").split("/").pop()}]] at ${targetVault.name}: ${rel}.` },
         };
       }
 
-      // append / replace need an existing, unambiguous note.
+      // append / replace / trash need an existing, unambiguous note.
       if (res.kind === "none")
         return {
           data: { text: `No note named "${note}" to ${mode}.`, isError: true },
@@ -347,11 +374,19 @@ export const VaultWriteTool = buildTool({
         return {
           data: { text: `Vault "${target.vaultName}" is read-only.`, isError: true },
         };
+      if (mode === "trash") {
+        const landed = trashNoteFile(owner.path, target.relPath);
+        return {
+          data: {
+            text: `Moved [[${target.name}]] to ${target.vaultName}'s .trash/${landed} — recoverable from Obsidian's trash.`,
+          },
+        };
+      }
       const abs = join(owner.path, target.relPath);
       const next =
         mode === "append"
-          ? target.raw.replace(/\s*$/, "") + "\n\n" + content.replace(/\s+$/, "") + "\n"
-          : content.replace(/\s+$/, "") + "\n";
+          ? target.raw.replace(/\s*$/, "") + "\n\n" + bodyText.replace(/\s+$/, "") + "\n"
+          : bodyText.replace(/\s+$/, "") + "\n";
       writeNoteFile(abs, next);
       return {
         data: {

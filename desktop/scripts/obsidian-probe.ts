@@ -162,6 +162,21 @@ check('the walk finds all notes and skips .trash/.obsidian', notes.length === 4,
   check('and carries the protocol', !!p && /SEARCH FIRST/.test(p) && /WRITE ONLY ON REQUEST/.test(p))
 }
 
+// ─── Trash: "delete" the Obsidian way ───────────────────────────────────
+
+{
+  const { trashNoteFile } = await import('../src/main/obsidian/tools.js')
+  writeFileSync(join(vaultDir, 'Doomed.md'), 'обречена\n')
+  const before = allNotes().length
+  const landed = trashNoteFile(vaultDir, 'Doomed.md')
+  check('a trashed note leaves the index', allNotes().length === before - 1)
+  check('…and lands inside .trash, recoverable', landed === 'Doomed.md')
+  // Same name trashed again must not clobber the first copy.
+  writeFileSync(join(vaultDir, 'Doomed.md'), 'вторая жизнь\n')
+  const second = trashNoteFile(vaultDir, 'Doomed.md')
+  check('a name collision in trash gets a suffix, never a clobber', second !== 'Doomed.md', second)
+}
+
 // ─── Registry toggles ───────────────────────────────────────────────────
 
 {

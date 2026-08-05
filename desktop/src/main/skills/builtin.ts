@@ -133,7 +133,8 @@ A REPORT first, repairs only on request. Requires an enabled vault.
 3. Report findings grouped by kind, each item a [[wikilink]], with the
    single suggested fix per item.
 4. Fix ONLY what the user picks, one VaultWrite per fix — never a bulk
-   rewrite of notes you were not asked to touch.
+   rewrite of notes you were not asked to touch. Removing a note is
+   VaultWrite mode:trash — it moves to the vault's .trash, recoverable.
 `;
 
 const BUILTIN_SKILLS: Record<string, string> = {

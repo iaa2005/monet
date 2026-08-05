@@ -5,7 +5,7 @@
 
 import type React from "react";
 import { memo, useEffect, useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -20,7 +20,18 @@ import { viewArtifact } from "@/components/artifact-actions";
 import { isWebLink, openLink, wantsExternal } from "@/lib/open-link";
 import { splitMarkdownChunks } from "@/lib/markdown-chunks";
 import { escapeCurrencyDollars } from "@/lib/currency-dollars";
-import { linkifyWikilinks, vaultRefFromHref } from "@/lib/wikilinks";
+import { linkifyWikilinks, vaultRefFromHref, VAULT_SCHEME } from "@/lib/wikilinks";
+
+/**
+ * react-markdown drops hrefs whose scheme it does not know — a sane default
+ * that was silently eating monet-vault:// links: the chip rendered as a bare
+ * <a href="">, and clicking THAT navigates to the current URL, which in an
+ * SPA is a full app reload. The vault scheme is ours, so it passes; every
+ * other URL still goes through the stock sanitiser.
+ */
+function urlTransform(url: string): string {
+  return url.startsWith(VAULT_SCHEME) ? url : defaultUrlTransform(url);
+}
 import { splitFrontmatter } from "@/lib/frontmatter";
 import { stripTtsTags } from "@shared/voice-tags";
 
@@ -121,6 +132,7 @@ const MarkdownChunk = memo(function MarkdownChunk({
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={rehype}
+      urlTransform={urlTransform}
       components={components as never}
     >
       {content}
@@ -245,8 +257,10 @@ function MarkdownViewerImpl({
               : href
           }
           onClick={(e) => {
-            if (!href) return;
+            // An empty href happens when the sanitiser dropped a scheme it
+            // does not know; navigating it means reloading the whole SPA.
             e.preventDefault();
+            if (!href) return;
             openLink(href, { external: wantsExternal(e) });
           }}
         >
@@ -335,6 +349,7 @@ function MarkdownViewerImpl({
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={rehype}
+      urlTransform={urlTransform}
           components={components}
         >
           {body}

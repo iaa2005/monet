@@ -79,5 +79,18 @@ check(
 )
 check('a foreign href is not a vault ref', vaultRefFromHref('https://x.dev') === null)
 
+// react-markdown sanitises unknown schemes to "" — and a bare <a href="">
+// click reloads the whole SPA. The viewer's urlTransform must let the vault
+// scheme through while leaving the default sanitiser in charge of the rest.
+{
+  const { defaultUrlTransform } = await import('react-markdown')
+  const url = `${VAULT_SCHEME}Note`
+  check(
+    'the STOCK sanitiser really does eat the vault scheme (the bug this guards)',
+    defaultUrlTransform(url) === '',
+    defaultUrlTransform(url),
+  )
+}
+
 console.log(failures === 0 ? '\nALL WIKILINK CHECKS PASSED' : `\n${failures} FAILED`)
 process.exit(failures === 0 ? 0 : 1)

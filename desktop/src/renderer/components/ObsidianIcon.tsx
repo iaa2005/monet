@@ -21,11 +21,7 @@ export function ObsidianIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
       aria-hidden
       {...props}
     >
-      {/* Outer shard */}
-      <path d="M12 2 L20 9 L16.5 21.5 L7.5 21.5 L4 9 Z" />
-      {/* Facets meeting low-left, the way the real mineral fractures */}
-      <path d="M12 2 L9.5 21.5" />
-      <path d="M20 9 L9.5 21.5" />
+      <path d="M11.264 2.205A4 4 0 0 0 6.42 4.211l-4 8a4 4 0 0 0 1.359 5.117l6 4a4 4 0 0 0 4.438 0l6-4a4 4 0 0 0 1.576-4.592l-2-6a4 4 0 0 0-2.53-2.53z"/><path d="M11.99 22 14 12l7.822 3.184"/><path d="M14 12 8.47 2.302"/>
     </svg>
   );
 }

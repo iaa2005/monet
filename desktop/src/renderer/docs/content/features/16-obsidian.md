@@ -19,9 +19,11 @@ Three tools appear the moment a vault is enabled — and only then:
 - **VaultRead** — one note by its **wikilink name** (not a file path), with
   its outgoing links and backlinks, so the agent navigates the vault the
   way the vault is written: by following `[[links]]`.
-- **VaultWrite** — create, append or replace; refused entirely in a
-  read-only vault; atomic on disk so a sync client never sees a
-  half-written note.
+- **VaultWrite** — create, append, replace or **trash**; refused entirely
+  in a read-only vault; atomic on disk so a sync client never sees a
+  half-written note. Trash is the only removal there is: the note moves
+  into the vault's own `.trash/` folder, recoverable from Obsidian —
+  a hard delete of your writing is not an operation the agent has.
 
 ## The protocol
 
@@ -41,6 +43,9 @@ While a vault is connected, the agent carries standing rules:
 
 Ambiguity is never resolved silently: two notes sharing one name come back
 as a choice of explicit paths.
+
+Cited notes render as clickable chips in the chat: click opens the note in
+the app's viewer, Ctrl+click opens it in the Obsidian app itself.
 
 ## The workflow skills
 
