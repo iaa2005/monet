@@ -271,10 +271,13 @@ function voiceDirectiveFor(
       "after its final period: <laugh><laugh>, <breath><breath>,",
       "<sigh><sigh>, <cough><cough>, <sad><sad>. The listener hears them",
       "performed, never sees them. Never place a tag mid-sentence — it is",
-      "ignored there. For a scream, wrap a short interjection:",
-      "<scream> Ааа <scream>. Do NOT use <surprise>, <angry>, <yawn> or",
-      "<throatclear> — the voice reads those aloud as English words. Use",
-      "tags sparingly, where a real person would actually react.",
+      "ignored there. In Russian you may also use <sad><sad> and a scream",
+      "wrapping a short interjection: <scream> Ааа <scream>. When speaking",
+      "any OTHER language, stick to laugh, breath and cough only — <sad>",
+      "and <scream> get read aloud as words there (field-tested in",
+      "French). Do NOT use <surprise>, <angry>, <yawn> or <throatclear>",
+      "anywhere — the voice reads those aloud as English words. Use tags",
+      "sparingly, where a real person would actually react.",
     ].join(String.fromCharCode(10)),
   );
 }
