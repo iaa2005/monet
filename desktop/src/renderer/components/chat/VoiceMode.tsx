@@ -496,11 +496,17 @@ export function VoiceMode({
           // subtracts WebRTC audio, so the echo reaches this mic as ordinary
           // sound — the only way in is to OUT-SHOUT it, sustained. The bar
           // adapts to the echo actually measured in this room.
-          echoEmaRef.current = echoEmaRef.current * 0.9 + rms * 0.1;
           const thr = Math.min(0.12, Math.max(0.045, echoEmaRef.current * 2));
           // First ~0.5 s of each utterance only teaches the echo level:
           // firing before the average catches up was a self-interruption.
           const warmedUp = Date.now() - soundingSince > 500;
+          // After warmup the average learns ONLY from sub-threshold sound.
+          // Fed with everything, it absorbed the interrupting voice itself
+          // and the bar climbed away from the user mid-shout (live log:
+          // thr 0.077 → 0.106 in two frames of rms 0.2+).
+          if (!warmedUp || rms <= thr) {
+            echoEmaRef.current = echoEmaRef.current * 0.9 + rms * 0.1;
+          }
           if (warmedUp && rms > thr) {
             bargeTicks += 1;
             vlog("barge-tick", { n: bargeTicks, rms: +rms.toFixed(3), thr: +thr.toFixed(3) });
