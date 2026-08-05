@@ -46,21 +46,33 @@ export function stripTtsTags(text: string): string {
  * and the reliable ones normalised to the form that actually lands. */
 export function textForSpeech(text: string): string {
   const known = new Set(TTS_TAGS.map((t) => t.toLowerCase()));
-  return (
-    text
-      .replace(/<\/?[a-z_]{2,12}>/gi, (m) => {
-        const bare = m.replace("/", "").toLowerCase();
-        return known.has(bare) ? bare : "";
-      })
-      // Field-tested: a single tag is a coin-flip, a doubled one lands.
-      // Any run of the same tag becomes exactly two — except <scream>,
-      // whose only working shape is single tags hugging an interjection.
-      .replace(
-        /(<(laugh|sigh|breath|cough|sad)>)(\s*<\2>)*/gi,
-        "$1$1",
-      )
-      .replace(/[ \t]{2,}/g, " ")
-  );
+  let t = text
+    .replace(/<\/?[a-z_]{2,12}>/gi, (m) => {
+      const bare = m.replace("/", "").toLowerCase();
+      return known.has(bare) ? bare : "";
+    })
+    // Field-tested: a single tag is a coin-flip, a doubled one lands.
+    // Any run of the same tag becomes exactly two — except <scream>,
+    // whose only working shape is single tags hugging an interjection.
+    .replace(/(<(laugh|sigh|breath|cough|sad)>)(\s*<\2>)*/gi, "$1$1");
+  // A tag run at the VERY START of the input gets read, not performed
+  // (paragraph-initial <breath><breath> says "breath" once; the same
+  // pair after any sentence breathes — both ru and fr). Shift it past
+  // the first sentence; a one-sentence chunk carries it at the end.
+  // <scream> stays put: its interjection hug must not be rearranged.
+  const lead = t.match(/^\s*((?:<(?:laugh|sigh|breath|cough|sad)>\s*)+)/iu);
+  if (lead) {
+    const run = lead[1].replace(/\s+/g, "");
+    const rest = t.slice(lead[0].length);
+    const dot = rest.search(/[.!?…]/u);
+    t =
+      dot >= 0
+        ? `${rest.slice(0, dot + 1)} ${run}${rest.slice(dot + 1)}`
+        : rest.trim()
+          ? `${rest.trim()} ${run}`
+          : run;
+  }
+  return t.replace(/[ \t]{2,}/g, " ");
 }
 
 /**

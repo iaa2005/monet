@@ -95,6 +95,20 @@ check(
   textForSpeech('<scream> Ааа <scream>') === '<scream> Ааа <scream>',
   textForSpeech('<scream> Ааа <scream>'),
 )
+// Paragraph-initial tags get READ (once), the same pair after a sentence
+// performs — so a leading run migrates past the first sentence, and a
+// one-sentence chunk carries it at the end.
+check(
+  'a leading tag run migrates past the first sentence',
+  textForSpeech('<breath> Значит, слушай. Дальше больше.') ===
+    'Значит, слушай. <breath><breath> Дальше больше.',
+  textForSpeech('<breath> Значит, слушай. Дальше больше.'),
+)
+check(
+  'a one-sentence chunk carries the leading run at its end',
+  textForSpeech('<sigh><sigh> Опять дедлайн') === 'Опять дедлайн <sigh><sigh>',
+  textForSpeech('<sigh><sigh> Опять дедлайн'),
+)
 check(
   'the UI hides the new tags too',
   stripTtsTags('Ну что <surprise> вышло! <throatclear> Кхм.') === 'Ну что вышло! Кхм.',
