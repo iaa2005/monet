@@ -9,8 +9,11 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import "katex/dist/katex.min.css";
 import { cn } from "@/lib/utils";
+import { Kbd } from "@/components/ui/kbd";
 import { CodeBlock } from "./CodeBlock";
 import { ArtifactThumb } from "@/components/ArtifactsPanel";
 import { viewArtifact } from "@/components/artifact-actions";
@@ -23,7 +26,27 @@ import { stripTtsTags } from "@shared/voice-tags";
 interface MarkdownViewerProps {
   content: string;
   className?: string;
+  /** Documentation pages may use a small set of literal HTML tags (<kbd>).
+   * Off for chat: model output stays text, whatever it contains. */
+  docsHtml?: boolean;
 }
+
+/**
+ * The docs pipeline: parse raw HTML, then sanitise it down to GitHub's
+ * schema plus <kbd> — so a doc page can draw a keycap, and nothing else
+ * changes hands. Chat messages never take this path.
+ */
+const DOCS_REHYPE = [
+  rehypeRaw,
+  [
+    rehypeSanitize,
+    {
+      ...defaultSchema,
+      tagNames: [...(defaultSchema.tagNames ?? []), "kbd"],
+    },
+  ],
+  rehypeKatex,
+] as never[];
 
 function artifactFromPath(path: string, alt: string) {
   const cleanPath = path.replace(/^file:\/\//i, "");
@@ -87,14 +110,16 @@ const PROGRESSIVE_THRESHOLD = 40_000;
 const MarkdownChunk = memo(function MarkdownChunk({
   content,
   components,
+  rehype,
 }: {
   content: string;
   components: Record<string, unknown>;
+  rehype: never[];
 }): JSX.Element {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
+      rehypePlugins={rehype}
       components={components as never}
     >
       {content}
@@ -105,6 +130,7 @@ const MarkdownChunk = memo(function MarkdownChunk({
 function MarkdownViewerImpl({
   content: raw,
   className,
+  docsHtml = false,
 }: MarkdownViewerProps): JSX.Element {
   // Extract YAML frontmatter so it can be rendered as a code block — but only
   // when it IS frontmatter and not a horizontal rule (see lib/frontmatter).
@@ -251,7 +277,10 @@ function MarkdownViewerImpl({
       if (lang || codeStr.includes("\n")) return <CodeBlock code={codeStr} language={lang ?? ""} />;
       return <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.9em]" {...rest}>{children}</code>;
     },
+    // Only reachable when docsHtml let the tag through the sanitiser.
+    kbd: ({ node: _n, ...p }: any) => <Kbd {...p} />,
   }), []);
+  const rehype = docsHtml ? DOCS_REHYPE : ([rehypeKatex] as never[]);
   return (
     <div
       className={cn(
@@ -265,14 +294,14 @@ function MarkdownViewerImpl({
       {chunks.length === 1 ? (
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
-          rehypePlugins={[rehypeKatex]}
+          rehypePlugins={rehype}
           components={components}
         >
           {body}
         </ReactMarkdown>
       ) : (
         chunks.slice(0, shown).map((chunk, i) => (
-          <MarkdownChunk key={i} content={chunk} components={components} />
+          <MarkdownChunk key={i} content={chunk} components={components} rehype={rehype} />
         ))
       )}
     </div>
@@ -286,5 +315,8 @@ function MarkdownViewerImpl({
  */
 export const MarkdownViewer = memo(
   MarkdownViewerImpl,
-  (a, b) => a.content === b.content && a.className === b.className,
+  (a, b) =>
+    a.content === b.content &&
+    a.className === b.className &&
+    a.docsHtml === b.docsHtml,
 );

@@ -164,7 +164,7 @@ export function DocsPanel({ onClose }: { onClose: () => void }): JSX.Element {
                   <p className="mt-1 text-sm text-muted-foreground">{page.description}</p>
                 )}
                 <div className="mt-6">
-                  <MarkdownViewer content={page.body} />
+                  <MarkdownViewer content={page.body} docsHtml />
                 </div>
               </article>
             ) : (

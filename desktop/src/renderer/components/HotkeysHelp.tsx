@@ -4,6 +4,7 @@
  */
 
 import { Modal } from "@/components/ui/modal";
+import { Kbd } from "@/components/ui/kbd";
 import { comboLabel, type HotkeyDef } from "@/lib/hotkeys";
 
 export function HotkeysHelp({
@@ -38,9 +39,7 @@ export function HotkeysHelp({
                   className="flex items-center justify-between border-b border-border py-1.5 text-sm last:border-b-0"
                 >
                   <span>{h.label}</span>
-                  <kbd className="rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                    {comboLabel(h.combo)}
-                  </kbd>
+                  <Kbd>{comboLabel(h.combo)}</Kbd>
                 </div>
               ))}
             </div>
