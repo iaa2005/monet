@@ -35,6 +35,7 @@ import { GoalStrip } from "./GoalStrip";
 import { VerifyStrip } from "./VerifyStrip";
 import { kindOf, refToken, usedRefs, type RefKind } from "@/lib/selection-marks";
 import { chatRef as chatMentionRef, fileRef as fileMentionRef } from "@/lib/refs";
+import { joinDictation } from "@/lib/dictation";
 import { toneForLabel } from "@shared/selection-tones";
 import { TokenInput, type TokenInputHandle } from "./TokenInput";
 import {
@@ -352,6 +353,27 @@ export function MessageInput({
       taRef.current?.setText(next);
     },
     [setInput],
+  );
+
+  /**
+   * Append a dictated fragment to whatever is in the box RIGHT NOW.
+   *
+   * Not `applyText(input + t)`: `input` belongs to the render that queued the
+   * fragment, and pseudo-streaming dictation delivers several fragments while
+   * the user is also typing — every one of them would then be written over a
+   * stale snapshot, and the box would visibly lose text. The editor's own DOM
+   * is the only thing that knows the truth (it is uncontrolled, so the user's
+   * keystrokes reach it before any state does); the draft is the fallback for
+   * the moment before it mounts. Seam rules live in lib/dictation.ts.
+   */
+  const appendDictated = useCallback(
+    (fragment: string): void => {
+      const st = useChatStore.getState();
+      const key = st.currentSessionId ?? `new:${st.space}`;
+      const current = taRef.current?.getText() ?? st.drafts[key] ?? "";
+      applyText(joinDictation(current, fragment));
+    },
+    [applyText],
   );
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -1514,11 +1536,7 @@ export function MessageInput({
                 onChange={pickMode}
                 home={isHomeSpace}
               />
-              <MicButton
-                onText={(t) =>
-                  applyText((input ? input.trimEnd() + " " : "") + t)
-                }
-              />
+              <MicButton onText={appendDictated} />
               <button
                 type="button"
                 title={

@@ -42,6 +42,7 @@
     "smoke:turnbudget": "node scripts/renderer-probe.mjs scripts/turn-budget-probe.ts",
     "smoke:diff": "node scripts/renderer-probe.mjs scripts/diff-core-probe.ts",
     "smoke:codetheme": "node scripts/renderer-probe.mjs scripts/code-theme-probe.ts",
+    "smoke:dictation": "node scripts/renderer-probe.mjs scripts/dictation-probe.ts",
     "smoke:notebook": "node scripts/renderer-probe.mjs scripts/notebook-probe.ts",
     "smoke:ctxmap": "node scripts/renderer-probe.mjs scripts/context-map-probe.ts",
     "smoke:mcpoauth": "node scripts/smoke-agent.mjs scripts/mcp-oauth-probe.ts",
