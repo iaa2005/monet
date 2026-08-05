@@ -2,6 +2,11 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./styles/globals.css";
+import { applyCodeThemes } from "./lib/code-theme";
+
+// The chosen code-highlighting palettes, before first paint — globals.css
+// carries fallbacks, but a non-default theme must not flash the default.
+applyCodeThemes();
 
 // Error boundary to catch and display crashes
 class ErrorBoundary extends React.Component<

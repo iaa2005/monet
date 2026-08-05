@@ -17,8 +17,10 @@ import {
   AlertTriangle,
   MousePointerClick,
   Loader2,
+  Palette,
   SlidersHorizontal,
 } from "lucide-react";
+import { EditorSettings } from "@/components/settings/EditorSettings";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { SkillsSettings } from "@/components/settings/SkillsSettings";
 import { AgentsSettings } from "@/components/settings/AgentsSettings";
@@ -89,6 +91,7 @@ function StorageSection(): JSX.Element {
 
 type Section =
   | "general"
+  | "editor"
   | "voice"
   | "providers"
   | "sandbox"
@@ -110,6 +113,7 @@ const NAV: {
     group: "Settings",
     items: [
       { id: "general", label: "General", icon: Settings2 },
+      { id: "editor", label: "Editor", icon: Palette },
       { id: "providers", label: "Providers", icon: Boxes },
       { id: "sandbox", label: "Sandbox", icon: FlaskConical },
       { id: "automation", label: "Automation", icon: MousePointerClick },
@@ -578,6 +582,7 @@ export function SettingsPanel({
         {section === "general" && (
           <GeneralSection theme={theme} setTheme={setTheme} />
         )}
+        {section === "editor" && <EditorSettings />}
         {section === "providers" && <ProviderSettings />}
         {section === "sandbox" && <SandboxSection />}
         {section === "automation" && <AutomationSettings />}

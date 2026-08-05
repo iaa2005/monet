@@ -422,39 +422,44 @@
 }
 
 /* ---- Syntax highlighting inside diff rows (DiffView) ----
-   Token palette tuned to match the oneLight / oneDark themes the plain
-   CodeBlock renders with, so highlighted diffs and code blocks look alike. */
+   The token palette lives in ten --code-* variables written by
+   lib/code-theme.ts (Settings → Editor). The fallbacks here ARE the
+   original palette (One Light / VS Code Dark+), so code renders sanely
+   even before the theme module has run. One set of rules serves both
+   modes: the variables change under .dark, the selectors do not. */
 .diff-hl {
     color: var(--foreground);
 }
 .diff-hl .token.comment,
 .diff-hl .token.prolog,
 .diff-hl .token.cdata {
-    color: #a0a1a7;
+    color: var(--code-comment, #a0a1a7);
     font-style: italic;
 }
 .diff-hl .token.doctype,
 .diff-hl .token.punctuation,
 .diff-hl .token.entity {
-    color: #383a42;
+    color: var(--code-punct, #383a42);
 }
 .diff-hl .token.attr-name,
-.diff-hl .token.class-name,
 .diff-hl .token.boolean,
 .diff-hl .token.constant,
 .diff-hl .token.number,
 .diff-hl .token.atrule {
-    color: #b76b01;
+    color: var(--code-const, #b76b01);
+}
+.diff-hl .token.class-name {
+    color: var(--code-class, #b76b01);
 }
 .diff-hl .token.keyword {
-    color: #a626a4;
+    color: var(--code-keyword, #a626a4);
 }
 .diff-hl .token.property,
 .diff-hl .token.tag,
 .diff-hl .token.symbol,
 .diff-hl .token.deleted,
 .diff-hl .token.important {
-    color: #e45649;
+    color: var(--code-tag, #e45649);
 }
 .diff-hl .token.selector,
 .diff-hl .token.string,
@@ -463,15 +468,17 @@
 .diff-hl .token.inserted,
 .diff-hl .token.regex,
 .diff-hl .token.attr-value {
-    color: #50a14f;
+    color: var(--code-string, #50a14f);
 }
-.diff-hl .token.variable,
 .diff-hl .token.function {
-    color: #4078f2;
+    color: var(--code-func, #4078f2);
+}
+.diff-hl .token.variable {
+    color: var(--code-var, #4078f2);
 }
 .diff-hl .token.operator,
 .diff-hl .token.url {
-    color: #0184bc;
+    color: var(--code-op, #0184bc);
 }
 .diff-hl .token.bold {
     font-weight: 600;
@@ -480,58 +487,21 @@
     font-style: italic;
 }
 
-.dark .diff-hl {
-    color: var(--foreground);
-}
-/* Dark syntax: VS Code Dark+ / Cursor, the family the UI palette came from. */
-.dark .diff-hl .token.comment,
-.dark .diff-hl .token.prolog,
-.dark .diff-hl .token.cdata {
-    color: #6a9955;
-}
-.dark .diff-hl .token.doctype,
-.dark .diff-hl .token.punctuation,
-.dark .diff-hl .token.entity {
-    color: #d4d4d4;
-}
-.dark .diff-hl .token.attr-name,
-.dark .diff-hl .token.boolean,
-.dark .diff-hl .token.constant,
-.dark .diff-hl .token.number,
-.dark .diff-hl .token.atrule {
-    color: #b5cea8;
-}
-.dark .diff-hl .token.class-name {
-    color: #4ec9b0;
-}
-.dark .diff-hl .token.keyword {
-    color: #c586c0;
-}
-.dark .diff-hl .token.property,
-.dark .diff-hl .token.tag,
-.dark .diff-hl .token.symbol,
-.dark .diff-hl .token.deleted,
-.dark .diff-hl .token.important {
-    color: #569cd6;
-}
-.dark .diff-hl .token.selector,
-.dark .diff-hl .token.string,
-.dark .diff-hl .token.char,
-.dark .diff-hl .token.builtin,
-.dark .diff-hl .token.inserted,
-.dark .diff-hl .token.regex,
-.dark .diff-hl .token.attr-value {
-    color: #ce9178;
-}
-.dark .diff-hl .token.function {
-    color: #dcdcaa;
-}
-.dark .diff-hl .token.variable {
-    color: #9cdcfe;
-}
-.dark .diff-hl .token.operator,
-.dark .diff-hl .token.url {
-    color: #d4d4d4;
+/* Dark fallbacks: VS Code Dark+, the family the UI palette came from.
+   Declared on .dark (not .dark .diff-hl) so the theme module's injected
+   <style> — same `.dark {}` specificity, later in the document — wins the
+   moment a theme is applied. */
+.dark {
+    --code-comment: #6a9955;
+    --code-punct: #d4d4d4;
+    --code-const: #b5cea8;
+    --code-class: #4ec9b0;
+    --code-keyword: #c586c0;
+    --code-tag: #569cd6;
+    --code-string: #ce9178;
+    --code-func: #dcdcaa;
+    --code-var: #9cdcfe;
+    --code-op: #d4d4d4;
 }
 
 /* Code lines. Flex rows, NOT table-rows: a table lays out globally (any

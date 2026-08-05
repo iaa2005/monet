@@ -24,6 +24,7 @@
 import { useEffect, useRef } from "react";
 import * as monaco from "monaco-editor";
 import { useIsDark } from "./chat/highlight";
+import { CODE_THEME_EVENT } from "../lib/code-theme";
 import {
   configureMonaco,
   loadProjectGraph,
@@ -75,10 +76,38 @@ function readTheme(dark: boolean): monaco.editor.IStandaloneThemeData {
   const bg = toHex(hsl("--bg-000")) ?? (dark ? "#121212" : "#ffffff");
   const fg = toHex(hsl("--text-000")) ?? (dark ? "#d4d4d4" : "#141413");
   const dim = toHex(hsl("--text-400")) ?? (dark ? "#9e9e9e" : "#6b6b6b");
+  // The code-theme variables (Settings → Editor, lib/code-theme.ts) hold
+  // plain hex — the same palette the chat's code blocks read. Mapping them
+  // onto Monaco's token names is what keeps the file viewer and a ```block
+  // in a message coloured by one theme.
+  const code = (name: string): string | undefined => {
+    const v = css.getPropertyValue(name).trim();
+    return /^#[0-9a-f]{6}$/i.test(v) ? v.slice(1) : undefined;
+  };
+  const rule = (token: string, name: string): monaco.editor.ITokenThemeRule[] => {
+    const foreground = code(name);
+    return foreground ? [{ token, foreground }] : [];
+  };
   return {
     base: dark ? "vs-dark" : "vs",
     inherit: true,
-    rules: [],
+    rules: [
+      ...rule("comment", "--code-comment"),
+      ...rule("string", "--code-string"),
+      ...rule("keyword", "--code-keyword"),
+      ...rule("number", "--code-const"),
+      ...rule("constant", "--code-const"),
+      ...rule("regexp", "--code-string"),
+      ...rule("type", "--code-class"),
+      ...rule("type.identifier", "--code-class"),
+      ...rule("function", "--code-func"),
+      ...rule("variable", "--code-var"),
+      ...rule("tag", "--code-tag"),
+      ...rule("attribute.name", "--code-const"),
+      ...rule("attribute.value", "--code-string"),
+      ...rule("operator", "--code-op"),
+      ...rule("delimiter", "--code-punct"),
+    ],
     colors: {
       "editor.background": bg,
       "editor.foreground": fg,
@@ -255,8 +284,15 @@ export function CodeEditor({
   }, [value]);
 
   useEffect(() => {
-    monaco.editor.defineTheme("monet", readTheme(dark));
-    monaco.editor.setTheme("monet");
+    const retheme = (): void => {
+      monaco.editor.defineTheme("monet", readTheme(dark));
+      monaco.editor.setTheme("monet");
+    };
+    retheme();
+    // Settings → Editor changed the palette: the CSS variables are already
+    // new, Monaco just has to read them again.
+    window.addEventListener(CODE_THEME_EVENT, retheme);
+    return () => window.removeEventListener(CODE_THEME_EVENT, retheme);
   }, [dark]);
 
   useEffect(() => {
