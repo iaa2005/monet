@@ -10,6 +10,15 @@
  */
 
 .monet-dock {
+  /* One stacking context for the whole dock. Dockview positions its sashes
+     at z-index 99 and its drag overlays at 999 — both ABOVE the app's
+     modals (z-50): with a settings dialog open and the backdrop blurred,
+     a drag on a panel divider still went through, and the resize guide
+     drew on top of the dialog. Isolation traps every internal z-index in
+     here, so any app overlay above the dock's own level covers all of it,
+     whatever numbers the library uses inside. */
+  isolation: isolate;
+
   --dv-group-view-background-color: var(--card);
   --dv-tabs-and-actions-container-background-color: transparent;
   --dv-tabs-and-actions-container-height: 32px;
