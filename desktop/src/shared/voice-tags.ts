@@ -8,27 +8,24 @@
  */
 
 /**
- * The expression tags Supertonic actually understands — the README names
- * three, the developers' answer in model discussion #6 lists the full ten.
- * The chat model is told to use exactly these; anything else a model invents
- * is stripped before synthesis rather than read aloud as angle brackets.
+ * The expression tags that SURVIVED the live Russian test (2026-08-05, all
+ * ten of discussion #6 tried in every position, doubled and tripled):
  *
- * Reliability notes from that discussion: tags land best at the start or end
- * of a sentence, repeating one 2–3 times raises the odds it is performed,
- * and the tagged training data is mostly ko/en/ja — in Russian a tag may be
- * ignored (harmless) or occasionally vocalised.
+ *   - laugh, breath, sigh, cough, sad — performed, but reliably only when
+ *     DOUBLED and at the start of a sentence or after its final period;
+ *     single tags are a coin-flip, mid-sentence is a dead zone.
+ *   - scream — works only hugging a short interjection: <scream> Ааа <scream>.
+ *   - surprise, angry, throatclear, yawn — NEVER performed in Russian, the
+ *     voice reads them out as English words. They are stripped before
+ *     synthesis; the model is told not to use them at all.
  */
 export const TTS_TAGS = [
   "<laugh>",
   "<sigh>",
   "<breath>",
-  "<surprise>",
-  "<scream>",
-  "<throatclear>",
-  "<sad>",
-  "<angry>",
   "<cough>",
-  "<yawn>",
+  "<sad>",
+  "<scream>",
 ] as const;
 
 /**
@@ -45,15 +42,25 @@ export function stripTtsTags(text: string): string {
     .replace(/[ \t]{2,}/g, " ");
 }
 
-/** What the synthesiser should see: known tags kept, unknown ones removed. */
+/** What the synthesiser should see: known tags kept, unknown ones removed,
+ * and the reliable ones normalised to the form that actually lands. */
 export function textForSpeech(text: string): string {
   const known = new Set(TTS_TAGS.map((t) => t.toLowerCase()));
-  return text
-    .replace(/<\/?[a-z_]{2,12}>/gi, (m) => {
-      const bare = m.replace("/", "").toLowerCase();
-      return known.has(bare) ? bare : "";
-    })
-    .replace(/[ \t]{2,}/g, " ");
+  return (
+    text
+      .replace(/<\/?[a-z_]{2,12}>/gi, (m) => {
+        const bare = m.replace("/", "").toLowerCase();
+        return known.has(bare) ? bare : "";
+      })
+      // Field-tested: a single tag is a coin-flip, a doubled one lands.
+      // Any run of the same tag becomes exactly two — except <scream>,
+      // whose only working shape is single tags hugging an interjection.
+      .replace(
+        /(<(laugh|sigh|breath|cough|sad)>)(\s*<\2>)*/gi,
+        "$1$1",
+      )
+      .replace(/[ \t]{2,}/g, " ")
+  );
 }
 
 /**

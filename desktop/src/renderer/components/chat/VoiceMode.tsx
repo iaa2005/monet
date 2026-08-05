@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import { ClipboardList, MessageSquare, Square, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { INTERRUPT_MARK, useChatStore } from "@/stores/chatStore";
+import { stripTtsTags } from "@shared/voice-tags";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -267,7 +268,8 @@ export function VoiceMode({
     }
     playingRef.current = true;
     setPh("speaking");
-    setSubtitle(next.text);
+    // The caption is for the eyes: tags stay in the audio only.
+    setSubtitle(stripTtsTags(next.text));
     const ctx = (audioCtxRef.current ??= new AudioContext());
     const src = ctx.createBufferSource();
     src.buffer = next.buf;

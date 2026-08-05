@@ -71,20 +71,29 @@ check(
   stripTtsTags('Готово! <laugh> Всё зелёное. <breath> Коммитим?'),
 )
 check(
-  'the voice keeps known tags and loses invented ones',
+  'the voice doubles known tags and loses invented ones',
   textForSpeech('Так. <laugh> Тихо: <whisper>секрет</whisper>. <sigh> Всё.') ===
-    'Так. <laugh> Тихо: секрет. <sigh> Всё.',
+    'Так. <laugh><laugh> Тихо: секрет. <sigh><sigh> Всё.',
   textForSpeech('Так. <laugh> Тихо: <whisper>секрет</whisper>. <sigh> Всё.'),
 )
 check(
   'markdown comparisons survive the stripper',
   stripTtsTags('a < b и x <= y, а <code> не тег речи') === 'a < b и x <= y, а <code> не тег речи',
 )
-// Discussion #6 widened the vocabulary far past the README's three.
+// The live Russian test (2026-08-05) sorted discussion #6's ten tags into
+// performed and merely-pronounced; the pronounced ones must never reach
+// the synthesiser, the performed ones land reliably only doubled — and
+// <scream> only in its interjection-hug shape, never multiplied.
 check(
-  'the voice keeps the full discussion-#6 tag set',
-  textForSpeech('Ох. <yawn> Устала. <surprise> Ого!') === 'Ох. <yawn> Устала. <surprise> Ого!',
-  textForSpeech('Ох. <yawn> Устала. <surprise> Ого!'),
+  'vocalised-only tags are dropped, runs collapse to exactly two',
+  textForSpeech('Ох. <yawn> Устала. <surprise> Ого! <cough><cough><cough> Кхе.') ===
+    'Ох. Устала. Ого! <cough><cough> Кхе.',
+  textForSpeech('Ох. <yawn> Устала. <surprise> Ого! <cough><cough><cough> Кхе.'),
+)
+check(
+  'a scream keeps its interjection hug untouched',
+  textForSpeech('<scream> Ааа <scream>') === '<scream> Ааа <scream>',
+  textForSpeech('<scream> Ааа <scream>'),
 )
 check(
   'the UI hides the new tags too',
