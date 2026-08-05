@@ -16,6 +16,7 @@ import { seedSkills } from "../agent/seed-skills.js";
 import { registerSkillStoreIPC } from "./skill-store.js";
 import { registerAgentsIPC } from "./agents.js";
 import { registerMemoryIPC } from "./memory.js";
+import { registerObsidianIPC } from "./obsidian.js";
 import { registerReflectIPC } from "./reflect.js";
 import { registerProfileIPC } from "./profile.js";
 import { registerMcpIPC } from "./mcp.js";
@@ -54,6 +55,7 @@ export function registerAllIPC(): void {
   seedSkills();
   registerAgentsIPC();
   registerMemoryIPC();
+  registerObsidianIPC();
   registerReflectIPC();
   registerProfileIPC();
   registerMcpIPC();

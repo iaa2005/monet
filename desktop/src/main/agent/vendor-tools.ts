@@ -33,6 +33,12 @@ import { AgentSwarmTool } from "./swarm-tool.js";
 import { UpdateGoalTool } from "./goal/tool.js";
 import { SearchPastChatsTool } from "./memory-tools.js";
 import { getMemoryConfig } from "../memory/store.js";
+import {
+  VaultReadTool,
+  VaultSearchTool,
+  VaultWriteTool,
+} from "../obsidian/tools.js";
+import { hasEnabledVaults } from "../obsidian/vaults.js";
 import type { SubAgentUpdate } from "./subagent.js";
 import { WebFetchTool, WebSearchTool } from "./web-tools.js";
 import { RunPythonTool } from "./sandbox-tool.js";
@@ -251,6 +257,10 @@ const ALL_TOOLS = [
   AgentSwarmTool,
   UpdateGoalTool,
   SearchPastChatsTool,
+  // The user's Obsidian vaults — advertised only while one is enabled.
+  VaultSearchTool,
+  VaultReadTool,
+  VaultWriteTool,
   WebFetchTool,
   WebSearchTool,
   RunPythonTool,
@@ -370,6 +380,12 @@ export function isSpaceToolAllowed(
   // the permission prompt, and it refuses outright inside an unattended run.
   if (name === "CreateRoutine") return true;
   if (name === "SearchPastChats") return getMemoryConfig().searchChats;
+  // Vault tools appear only when a vault is enabled — an empty VaultSearch
+  // is schema tax that invites a call destined to fail. Both spaces: the
+  // knowledge base is the USER's, not the machine's, so Home's isolation
+  // does not apply to it (same reasoning as connectors above).
+  if (name === "VaultSearch" || name === "VaultRead" || name === "VaultWrite")
+    return hasEnabledVaults();
   // MCP RESOURCES are Code-only, and the old note here said "Home has no MCP",
   // which is wrong and is exactly what makes this confusing: Home does get MCP,
   // from CONNECTOR servers only (see spaceAllowed below, and the check at the

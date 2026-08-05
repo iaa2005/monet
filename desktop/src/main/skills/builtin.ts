@@ -68,14 +68,91 @@ If generation failed, report the real error — do not silently deliver a
 different format than requested. Offer the fallback explicitly.
 `;
 
+const WIKI_QUERY_SKILL = `---
+name: wiki-query
+description: Answer a question strictly from the user's Obsidian vault, citing the notes used — never from general knowledge.
+author: Monet
+---
+
+# Answering from the vault
+
+The user wants an answer grounded in THEIR notes, not in your general
+knowledge. Requires an enabled vault (Settings → Obsidian).
+
+1. Decompose the question into 1-3 searchable ideas.
+2. VaultSearch each (try tags and \`link:\` filters, not just words).
+3. VaultRead the top 2-4 notes; follow [[wikilinks]] one hop when a note
+   points somewhere clearly more specific.
+4. Answer FROM THE NOTES. Every claim cites its note as a [[wikilink]].
+5. If the vault does not cover it, say exactly that — name what you searched
+   for — and only then offer general knowledge, clearly labelled as such.
+`;
+
+const WIKI_INGEST_SKILL = `---
+name: wiki-ingest
+description: Turn source material (a URL, pasted text, a file) into linked, tagged notes in the user's Obsidian vault.
+author: Monet
+---
+
+# Ingesting a source into the vault
+
+Turn source material into notes that JOIN the vault's graph instead of
+floating loose. Requires a writable vault (Settings → Obsidian).
+
+1. Read the source (WebFetch for a URL, the file tools for a file).
+2. VaultSearch for existing notes on the topic and for the vault's
+   conventions — folder layout, frontmatter style, tag vocabulary. Mirror
+   what you find; do not impose your own scheme.
+3. Write ONE note per concept, not one note per source dump:
+   - a clear name a future [[wikilink]] would naturally use;
+   - frontmatter tags from the vault's existing vocabulary;
+   - [[wikilinks]] to every related existing note you found in step 2;
+   - a "Source" line with the URL/origin — claims stay traceable.
+4. Where an existing note already covers a concept, VaultWrite append the
+   new facts there instead of creating a near-duplicate.
+5. Finish with a list of what was created/updated, as [[wikilinks]].
+`;
+
+const WIKI_LINT_SKILL = `---
+name: wiki-lint
+description: Health-check the user's Obsidian vault — dead links, orphan notes, missing tags/frontmatter — and report before touching anything.
+author: Monet
+---
+
+# Linting the vault
+
+A REPORT first, repairs only on request. Requires an enabled vault.
+
+1. Map the vault: VaultSearch with broad queries and tags to sample its
+   structure; VaultRead hubs (heavily-backlinked notes).
+2. Look for:
+   - dead wikilinks (a link whose target VaultRead cannot resolve);
+   - orphans (notes with no backlinks and no outgoing links);
+   - near-duplicates (two names for one concept — suggest a merge);
+   - missing or inconsistent frontmatter/tags versus the vault's own style.
+3. Report findings grouped by kind, each item a [[wikilink]], with the
+   single suggested fix per item.
+4. Fix ONLY what the user picks, one VaultWrite per fix — never a bulk
+   rewrite of notes you were not asked to touch.
+`;
+
+const BUILTIN_SKILLS: Record<string, string> = {
+  "sandbox-documents": SANDBOX_DOCUMENTS_SKILL,
+  "wiki-query": WIKI_QUERY_SKILL,
+  "wiki-ingest": WIKI_INGEST_SKILL,
+  "wiki-lint": WIKI_LINT_SKILL,
+};
+
 export function ensureBuiltinSkills(): void {
   try {
     const base = join(getDataDir(), "claude", "skills");
-    const dir = join(base, "sandbox-documents");
-    if (existsSync(dir)) return; // never clobber user edits
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "SKILL.md"), SANDBOX_DOCUMENTS_SKILL, "utf-8");
-    console.log("[skills] installed built-in skill: sandbox-documents");
+    for (const [slug, body] of Object.entries(BUILTIN_SKILLS)) {
+      const dir = join(base, slug);
+      if (existsSync(dir)) continue; // never clobber user edits
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "SKILL.md"), body, "utf-8");
+      console.log(`[skills] installed built-in skill: ${slug}`);
+    }
   } catch (err) {
     console.warn(
       "[skills] failed to install built-in skills:",

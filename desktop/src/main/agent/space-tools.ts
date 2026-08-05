@@ -44,6 +44,12 @@ export const HOME_TOOL_NAMES = new Set([
   "WebFetch",
   "WebSearch",
   "SearchPastChats",
+  // The Obsidian vault is the USER's knowledge base, not the machine Home
+  // isolates — same boundary reasoning as Remember below. VaultWrite is
+  // still a write outside any workspace, so the permission gate covers it.
+  "VaultSearch",
+  "VaultRead",
+  "VaultWrite",
   // Memory is about the USER, not the filesystem — it belongs in both spaces.
   "Remember",
   // Waiting touches nothing, so it is safe in the isolated space too.

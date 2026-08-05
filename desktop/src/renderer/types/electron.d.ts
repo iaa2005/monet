@@ -16,6 +16,7 @@ import type { BrowserSelection } from "../../main/browser/selection.js";
 import type { Bookmark, Visit } from "../../main/browser/bookmark-store.js";
 import type { ServerConfig, ServerState } from "../../main/browser/servers.js";
 import type { SessionUiState } from "../../main/session/ui-state.js";
+import type { UiVault } from "../../main/ipc/obsidian.js";
 import type { SttSettings } from "../../main/stt/settings.js";
 import type {
   InstallProgress,
@@ -28,6 +29,7 @@ import type { ChatMessage } from "./chat";
 export type { BrowserConfig, DevServer, BrowserSelection, ServerConfig, ServerState };
 export type { Bookmark, Visit };
 export type { SessionUiState };
+export type { UiVault };
 export type { SttSettings };
 export type { InstallProgress, SttModelStatus };
 export type { TtsProgress, TtsStatus };
@@ -687,6 +689,19 @@ export interface ElectronAPI {
     importFolder: (
       path: string,
     ) => Promise<{ ok: boolean; skill?: SkillInfo; error?: string }>;
+  };
+  obsidian: {
+    list: () => Promise<UiVault[]>;
+    add: (
+      path: string,
+      name?: string,
+    ) => Promise<{ ok: boolean; vault?: UiVault; error?: string }>;
+    update: (
+      id: string,
+      patch: { name?: string; enabled?: boolean; readOnly?: boolean },
+    ) => Promise<{ ok: boolean; error?: string }>;
+    remove: (id: string) => Promise<{ ok: boolean }>;
+    openFolder: (id: string) => Promise<{ ok: boolean }>;
   };
   memory: {
     getConfig: () => Promise<{ searchChats: boolean; generateMemory: boolean; extractEveryMinutes: number }>;

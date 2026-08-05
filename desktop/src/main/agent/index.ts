@@ -58,6 +58,7 @@ import { clearSessionMode } from "./session-mode.js";
 import { drainBgResults } from "./bg-agents.js";
 import { buildMemoryPrompt } from "../memory/store.js";
 import { buildLessonsPrompt } from "../memory/lessons.js";
+import { buildVaultPrompt, seedVaultPrompt } from "../obsidian/prompt.js";
 import { getWorkspacePath } from "../ipc/workspace.js";
 import { goalHistoryBlock, goalRunNotes } from "./run-notes.js";
 import {
@@ -257,6 +258,8 @@ function withUserMemory(
       // The switch a routine flips: everything else here is style and
       // discipline, but THIS is the user's private notebook.
       includeMemory ? buildMemoryPrompt() : "",
+      // The vault map + protocol — present only while a vault is enabled.
+      buildVaultPrompt(),
       // Project lessons ride only into chats working in THAT workspace —
       // Home has no workspace, and a lesson about this repo's flaky build
       // belongs in no other folder's context. The run pinned its cwd before
@@ -290,6 +293,7 @@ export async function seedTunablePrompts(): Promise<void> {
     await getFallbackSystemPrompt().catch(() => "");
     getSubAgentPrompt();
     buildMemoryPrompt();
+    seedVaultPrompt();
     (await import("../memory/store.js")).memoryPreamble();
     getProfilePrompt();
     homeDirective();

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import {
+  Gem,
   Settings2,
   Mic,
   Boxes,
@@ -20,6 +21,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { EditorSettings } from "@/components/settings/EditorSettings";
+import { ObsidianSettings } from "@/components/settings/ObsidianSettings";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { SkillsSettings } from "@/components/settings/SkillsSettings";
 import { AgentsSettings } from "@/components/settings/AgentsSettings";
@@ -101,7 +103,8 @@ type Section =
   | "skills"
   | "agents"
   | "services"
-  | "connectors";
+  | "connectors"
+  | "obsidian";
 
 const NAV: {
   group: string;
@@ -126,6 +129,7 @@ const NAV: {
     items: [
       { id: "skills", label: "Skills", icon: BookMarked },
       { id: "agents", label: "Agents", icon: Bot },
+      { id: "obsidian", label: "Obsidian", icon: Gem },
       { id: "services", label: "Connectors", icon: Boxes },
       { id: "connectors", label: "MCP Servers", icon: Plug },
     ],
@@ -556,6 +560,7 @@ export function SettingsPanel({
         {section === "voice" && <VoiceSettings />}
         {section === "memory" && <MemorySettings />}
         {section === "reflect" && <ReflectSettings />}
+        {section === "obsidian" && <ObsidianSettings />}
         {section === "services" && <ProtocolConnectors />}
         {section === "advanced" && <AdvancedSettings />}
         {section === "skills" && <SkillsSettings />}

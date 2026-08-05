@@ -510,6 +510,28 @@ const electronAPI = {
       ipcRenderer.invoke("skills:importFolder", path),
   },
 
+  obsidian: {
+    list: (): Promise<import("../main/ipc/obsidian.js").UiVault[]> =>
+      ipcRenderer.invoke("obsidian:list"),
+    add: (
+      path: string,
+      name?: string,
+    ): Promise<{
+      ok: boolean;
+      vault?: import("../main/ipc/obsidian.js").UiVault;
+      error?: string;
+    }> => ipcRenderer.invoke("obsidian:add", path, name),
+    update: (
+      id: string,
+      patch: { name?: string; enabled?: boolean; readOnly?: boolean },
+    ): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("obsidian:update", id, patch),
+    remove: (id: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("obsidian:remove", id),
+    openFolder: (id: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("obsidian:openFolder", id),
+  },
+
   memory: {
     getConfig: (): Promise<{ searchChats: boolean; generateMemory: boolean; extractEveryMinutes: number }> =>
       ipcRenderer.invoke("memory:getConfig"),
