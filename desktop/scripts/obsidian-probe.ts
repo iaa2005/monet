@@ -162,6 +162,68 @@ check('the walk finds all notes and skips .trash/.obsidian', notes.length === 4,
   check('and carries the protocol', !!p && /SEARCH FIRST/.test(p) && /WRITE ONLY ON REQUEST/.test(p))
 }
 
+// ─── Canvas and Bases join the graph ────────────────────────────────────
+
+{
+  const { parseCanvas, canvasToMarkdown } = await import('../src/shared/obsidian-canvas.js')
+  const canvas = JSON.stringify({
+    nodes: [
+      { id: '1', type: 'text', text: 'Идея: связать [[Attention]] с масштабированием' },
+      { id: '2', type: 'file', file: 'projects/Scaling Laws.md' },
+      { id: '3', type: 'file', file: 'img/plot.png' },
+      { id: '4', type: 'group', label: 'Research' },
+      { id: '5', type: 'link', url: 'https://arxiv.org/abs/1706.03762' },
+    ],
+    edges: [{ id: 'e1', fromNode: '1', toNode: '2' }],
+  })
+  const parsed = parseCanvas(canvas)!
+  check(
+    'canvas: cards, note refs, files, groups and urls all land',
+    parsed.texts.length === 1 && parsed.noteRefs.join() === 'Scaling Laws' &&
+      parsed.fileRefs.join() === 'img/plot.png' && parsed.groups.join() === 'Research' &&
+      parsed.urls.length === 1 && parsed.edgeCount === 1,
+    parsed,
+  )
+  const md = canvasToMarkdown('Board', canvas)
+  check(
+    'canvas renders as readable markdown with wikilinks',
+    md.includes('[[Scaling Laws]]') && md.includes('> Идея') && md.includes('5 node(s)'),
+    md.slice(0, 120),
+  )
+  check('a broken canvas degrades, not throws', canvasToMarkdown('X', '{oops').includes('unreadable'))
+
+  writeFileSync(join(vaultDir, 'Board.canvas'), canvas)
+  const withCanvas = allNotes()
+  const board = withCanvas.find((n) => n.name === 'Board')
+  check('the canvas is indexed under its bare name', board?.format === 'canvas', board?.format)
+  check(
+    'its cards and file nodes become vault links',
+    board?.links.includes('Attention') === true && board?.links.includes('Scaling Laws') === true,
+    board?.links,
+  )
+  check(
+    'a canvas card is searchable full-text',
+    searchNotes('масштабированием', withCanvas).some((h) => h.note.name === 'Board'),
+  )
+  check(
+    'the canvas backlinks into the graph',
+    backlinksTo('Attention', withCanvas).some((n) => n.name === 'Board'),
+  )
+
+  // Structured formats take no text edits — only read and trash.
+  const { VaultWriteTool } = await import('../src/main/obsidian/tools.js')
+  const refused = (await VaultWriteTool.call(
+    { note: 'Board', content: 'x', mode: 'append' } as never,
+    {} as never,
+  )) as { data: { text: string; isError?: boolean } }
+  check(
+    'append into a canvas is refused, not corrupted',
+    refused.data.isError === true && /edit it in Obsidian/.test(refused.data.text),
+    refused.data,
+  )
+  rmSync(join(vaultDir, 'Board.canvas'))
+}
+
 // ─── Trash: "delete" the Obsidian way ───────────────────────────────────
 
 {

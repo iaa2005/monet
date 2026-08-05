@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ui/kbd";
 import { CodeBlock } from "./CodeBlock";
 import { ArtifactThumb } from "@/components/ArtifactsPanel";
-import { viewArtifact } from "@/components/artifact-actions";
+import { viewArtifact, viewWorkspaceFile } from "@/components/artifact-actions";
 import { isWebLink, openLink, wantsExternal } from "@/lib/open-link";
 import { splitMarkdownChunks } from "@/lib/markdown-chunks";
 import { escapeCurrencyDollars } from "@/lib/currency-dollars";
@@ -224,8 +224,12 @@ function MarkdownViewerImpl({
                 if (!path) return;
                 if (inApp) await api?.obsidian?.openInApp(path);
                 else
-                  viewArtifact({
-                    name: `${r.name ?? vaultRef}.md`,
+                  // "file", not "artifact": the vault lives outside the data
+                  // folder, and the artifact reader (rightly) refuses paths
+                  // outside its root — this is what "artifact outside data
+                  // folder" on every note click was.
+                  viewWorkspaceFile({
+                    name: path.split(/[\\/]/).pop() ?? `${vaultRef}.md`,
                     path,
                     mediaType: "text/markdown",
                     kind: "file",

@@ -30,3 +30,15 @@ export function viewArtifact(a: {
 }): void {
   useChatStore.getState().openViewer({ ...a, source: "artifact" });
 }
+
+/** Open a file that lives OUTSIDE the app's data folder — a vault note, a
+ * workspace file. The "file" source routes reads through the plain files IPC;
+ * the artifact reader would (rightly) refuse anything outside its root. */
+export function viewWorkspaceFile(a: {
+  name: string;
+  path: string;
+  mediaType: string;
+  kind: string;
+}): void {
+  useChatStore.getState().openViewer({ ...a, source: "file" });
+}

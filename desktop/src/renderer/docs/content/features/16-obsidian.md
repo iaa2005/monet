@@ -45,7 +45,17 @@ Ambiguity is never resolved silently: two notes sharing one name come back
 as a choice of explicit paths.
 
 Cited notes render as clickable chips in the chat: click opens the note in
-the app's viewer, Ctrl+click opens it in the Obsidian app itself.
+the app's viewer (markdown rendered, wikilinks inside it clickable too),
+Ctrl+click opens it in the Obsidian app itself.
+
+## Canvas and Bases
+
+`.canvas` boards and `.base` tables are first-class vault citizens: they
+index under their bare name, their cards and embedded notes join search
+and backlinks, and reading a canvas returns its CONTENT — groups, cards,
+referenced notes as wikilinks — rather than raw JSON. The viewer renders
+a canvas the same way. They are structured formats made in Obsidian, so
+the agent can read and trash them but never text-edits them.
 
 ## The workflow skills
 

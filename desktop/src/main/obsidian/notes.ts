@@ -15,9 +15,16 @@
  * file walking lives in index.ts where it can be lazy and incremental.
  */
 
+/** What kind of vault file this is. Everything indexes and resolves; only
+ * markdown takes body edits (append into a JSON canvas is corruption). */
+import { parseCanvas } from "@shared/obsidian-canvas.js";
+
+export type NoteFormat = "md" | "canvas" | "base";
+
 export interface NoteMeta {
-  /** Note name — the basename without .md, how wikilinks address it. */
+  /** Note name — the basename without extension, how wikilinks address it. */
   name: string;
+  format: NoteFormat;
   /** Vault-relative path, forward slashes. */
   relPath: string;
   /** Outgoing wikilink targets (names, deduplicated, #heading stripped). */
@@ -95,8 +102,39 @@ export function parseFrontmatterList(frontmatter: string, key: string): string[]
   return out;
 }
 
+export function formatOf(relPath: string): NoteFormat {
+  if (/\.canvas$/i.test(relPath)) return "canvas";
+  if (/\.base$/i.test(relPath)) return "base";
+  return "md";
+}
+
 /** Everything the index keeps about one note. */
 export function parseNote(relPath: string, raw: string): NoteMeta {
+  const format = formatOf(relPath);
+  if (format !== "md") {
+    // Canvas: cards and referenced notes join the graph and the search.
+    // Base: a YAML table definition — searchable text, no links of its own.
+    const links: string[] = [];
+    let firstLine = "";
+    if (format === "canvas") {
+      const c = parseCanvas(raw);
+      if (c) {
+        for (const t of c.texts) for (const l of parseWikilinks(t)) links.push(l);
+        for (const r of c.noteRefs) links.push(r);
+        firstLine = `${c.nodeCount} node(s), ${c.edgeCount} connection(s)`;
+      }
+    }
+    return {
+      name: noteNameOf(relPath),
+      format,
+      relPath,
+      links: [...new Set(links)],
+      tags: [],
+      aliases: [],
+      frontmatter: "",
+      firstLine,
+    };
+  }
   const { frontmatter, body } = splitNote(raw);
   const name = noteNameOf(relPath);
   const fmTags = parseFrontmatterList(frontmatter, "tags").map((t) =>
@@ -109,6 +147,7 @@ export function parseNote(relPath: string, raw: string): NoteMeta {
       .find((l) => l && !l.startsWith("#") && !l.startsWith("---")) ?? "";
   return {
     name,
+    format,
     relPath,
     links: parseWikilinks(body),
     tags: [...new Set([...fmTags, ...parseBodyTags(body)])],
@@ -121,7 +160,7 @@ export function parseNote(relPath: string, raw: string): NoteMeta {
 /** The wikilink name of a file: basename, extension dropped. */
 export function noteNameOf(relPath: string): string {
   const base = relPath.split("/").pop() ?? relPath;
-  return base.replace(/\.md$/i, "");
+  return base.replace(/\.(md|canvas|base)$/i, "");
 }
 
 /** Case-insensitive key wikilinks resolve through. */
@@ -144,9 +183,10 @@ export function composeNote(opts: {
   return head + opts.body.replace(/\s+$/, "") + "\n";
 }
 
-/** Is this filename a note the index should see at all? */
+/** Is this filename a note the index should see at all? Markdown, plus
+ * Obsidian's two structured formats — Canvas boards and Bases tables. */
 export function isNoteFile(name: string): boolean {
-  return /\.md$/i.test(name);
+  return /\.(md|canvas|base)$/i.test(name);
 }
 
 /** Folders a vault walk never enters. */

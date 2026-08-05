@@ -32,6 +32,7 @@ import {
   type IndexedNote,
 } from "./index.js";
 import { composeNote } from "./notes.js";
+import { canvasToMarkdown } from "@shared/obsidian-canvas.js";
 import { enabledVaults, getVault } from "./vaults.js";
 
 interface Output {
@@ -196,10 +197,14 @@ export const VaultReadTool = buildTool({
       if (res.kind === "many") return { data: ambiguity(res.candidates) };
       const n = res.note;
       const back = backlinksTo(n.name, notes);
+      // A canvas reads as its CONTENT (cards, referenced notes, links) —
+      // raw JSON Canvas would waste the window on coordinates.
+      const readable =
+        n.format === "canvas" ? canvasToMarkdown(n.name, n.raw) : n.raw;
       const body =
-        n.raw.length > READ_CAP
-          ? n.raw.slice(0, READ_CAP) + "\n…[truncated]"
-          : n.raw;
+        readable.length > READ_CAP
+          ? readable.slice(0, READ_CAP) + "\n…[truncated]"
+          : readable;
       const parts = [
         `# [[${n.name}]] — ${n.vaultName}: ${n.relPath}`,
         body,
@@ -334,6 +339,13 @@ export const VaultWriteTool = buildTool({
       const res = resolveNote(note, notes);
 
       if (mode === "create") {
+        if (/\.(canvas|base)$/i.test(note))
+          return {
+            data: {
+              text: "VaultWrite creates markdown notes only — .canvas and .base are Obsidian's structured formats, made in Obsidian.",
+              isError: true,
+            },
+          };
         if (res.kind === "one")
           return {
             data: {
@@ -382,6 +394,15 @@ export const VaultWriteTool = buildTool({
           },
         };
       }
+      // Text edits are for markdown only: appending prose into a JSON canvas
+      // or a Bases YAML does not edit it, it corrupts it.
+      if (target.format !== "md")
+        return {
+          data: {
+            text: `[[${target.name}]] is a .${target.format} file — edit it in Obsidian; here it can only be read or trashed.`,
+            isError: true,
+          },
+        };
       const abs = join(owner.path, target.relPath);
       const next =
         mode === "append"

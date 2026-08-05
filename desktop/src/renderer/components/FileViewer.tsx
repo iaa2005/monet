@@ -25,6 +25,7 @@ import {
   Save,
 } from "lucide-react";
 import { MarkdownViewer } from "./chat/MarkdownViewer";
+import { canvasToMarkdown } from "@shared/obsidian-canvas";
 import { CodeEditor, type CodeSelection } from "./CodeEditor";
 import { NotebookViewer } from "./NotebookViewer";
 import { codeRef, selectionLineRange } from "@/lib/refs";
@@ -52,7 +53,7 @@ export type FileViewerItem = {
 // --- Rich preview detection ---
 
 const TEXT_EXT =
-  /\.(txt|md|csv|tsv|json|jsonc|js|mjs|ts|tsx|py|html|css|xml|svg|yaml|yml|log|tex|bib|sty)$/i;
+  /\.(txt|md|csv|tsv|json|jsonc|js|mjs|ts|tsx|py|html|css|xml|svg|yaml|yml|log|tex|bib|sty|canvas|base)$/i;
 const MAX_TEXT_PREVIEW_CHARS = 400_000;
 const MAX_XLSX_ROWS = 500;
 const MAX_XLSX_CELLS = 20_000;
@@ -649,6 +650,18 @@ export function FileViewer({
                 <div className="mx-auto max-w-3xl p-6">
                   <MarkdownViewer content={artText} />
                 </div>
+              ) : /\.canvas$/i.test(displayName) ? (
+                // An Obsidian Canvas: the board's CONTENT as readable
+                // markdown (cards, notes, links) — raw JSON Canvas is not a
+                // preview, it is a puzzle.
+                <div className="mx-auto max-w-3xl p-6">
+                  <MarkdownViewer
+                    content={canvasToMarkdown(
+                      displayName.replace(/\.canvas$/i, ""),
+                      artText,
+                    )}
+                  />
+                </div>
               ) : (
                 <CodeEditor
                   value={artText}
@@ -682,6 +695,15 @@ export function FileViewer({
         ) : isMd && !mdEdit ? (
           <div className="mx-auto max-w-3xl p-6">
             <MarkdownViewer content={content} />
+          </div>
+        ) : /\.canvas$/i.test(displayName) ? (
+          <div className="mx-auto max-w-3xl p-6">
+            <MarkdownViewer
+              content={canvasToMarkdown(
+                displayName.replace(/\.canvas$/i, ""),
+                content,
+              )}
+            />
           </div>
         ) : (
           <CodeEditor
