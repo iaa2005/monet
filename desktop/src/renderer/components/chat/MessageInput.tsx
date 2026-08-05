@@ -587,20 +587,63 @@ export function MessageInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [droppedFiles]);
 
+  /** The composer's staged files, encoded once for whichever path (inject /
+   * queue) is taking them, plus the display meta the bubbles show. */
+  const takeStagedFiles = async (): Promise<{
+    payload?: AttachmentPayload[];
+    display?: {
+      name: string;
+      mediaType: string;
+      kind: "text" | "image" | "audio" | "video" | "file";
+      dataUrl?: string;
+    }[];
+  }> => {
+    if (files.length === 0) return {};
+    const staged = [...files];
+    setFiles([]);
+    const payload = await buildAttachments(staged);
+    staged.forEach((f) => f.url && URL.revokeObjectURL(f.url));
+    const display = payload.map((a) => ({
+      name: a.name,
+      mediaType: a.mediaType,
+      kind: a.kind,
+      dataUrl:
+        a.kind === "image" && a.dataBase64
+          ? `data:${a.mediaType || "image/png"};base64,${a.dataBase64}`
+          : undefined,
+    }));
+    return { payload, display };
+  };
+
   /**
-   * Hand the composer's text to the turn already running.
+   * Hand the composer's text (and files) to the turn already running.
    *
    * Falls back to queueing when main says the session is idle — the run can
    * finish between the keypress and the IPC round trip, and losing what
-   * someone just typed is the one outcome worth avoiding.
+   * someone just typed is the one outcome worth avoiding. Either way the
+   * message appears on screen at once: as a "joining the run" chip that the
+   * real bubble replaces on delivery, or as a queued bubble.
    */
   const injectNow = async (): Promise<void> => {
+    const store = useChatStore.getState();
+    const sid = store.currentSessionId;
+    const text = input.trim();
+    if (!sid || (!text && files.length === 0)) return;
+    applyText("");
+    const { payload, display } = await takeStagedFiles();
+    const r = await api()?.chat.inject(sid, text, payload, store.space);
+    if (r?.ok) store.addPendingInjection(sid, text, display);
+    else store.enqueueMessage(sid, text, display, payload);
+  };
+
+  /** Queue the composer's text (and files) behind the running turn. */
+  const queueNow = async (): Promise<void> => {
     const sid = useChatStore.getState().currentSessionId;
     const text = input.trim();
-    if (!sid || !text) return;
+    if (!sid || (!text && files.length === 0)) return;
     applyText("");
-    const r = await api()?.chat.inject(sid, text);
-    if (!r?.ok) useChatStore.getState().enqueueMessage(sid, text);
+    const { payload, display } = await takeStagedFiles();
+    useChatStore.getState().enqueueMessage(sid, text, display, payload);
   };
 
   const removeFile = (id: string): void => {
@@ -1360,7 +1403,7 @@ export function MessageInput({
                   e.key === "s" &&
                   (e.ctrlKey || e.metaKey) &&
                   isStreaming &&
-                  input.trim()
+                  (input.trim() || files.length > 0)
                 ) {
                   e.preventDefault();
                   void injectNow();
@@ -1369,16 +1412,8 @@ export function MessageInput({
                 // Enter inserts a newline; Ctrl/Cmd+Enter sends or queues.
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
-                  if (isStreaming) {
-                    const sid = useChatStore.getState().currentSessionId;
-                    const text = input.trim();
-                    if (sid && text) {
-                      useChatStore.getState().enqueueMessage(sid, text);
-                      applyText("");
-                    }
-                  } else {
-                    send();
-                  }
+                  if (isStreaming) void queueNow();
+                  else send();
                 }
               }}
               placeholder="Type / for commands"
@@ -1407,11 +1442,11 @@ export function MessageInput({
                 <button
                   type="button"
                   onClick={() => void injectNow()}
-                  disabled={!input.trim()}
+                  disabled={!input.trim() && files.length === 0}
                   title="Send into the running turn (Ctrl+S) — the model sees it before its next step"
                   className={cn(
                     "flex size-8 items-center justify-center text-muted-foreground transition-colors",
-                    input.trim()
+                    input.trim() || files.length > 0
                       ? "hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
                       : "opacity-35",
                   )}
@@ -1420,18 +1455,12 @@ export function MessageInput({
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    const sid = useChatStore.getState().currentSessionId;
-                    const text = input.trim();
-                    if (!sid || !text) return;
-                    useChatStore.getState().enqueueMessage(sid, text);
-                    applyText("");
-                  }}
-                  disabled={!input.trim()}
+                  onClick={() => void queueNow()}
+                  disabled={!input.trim() && files.length === 0}
                   title="Queue message (send after generation)"
                   className={cn(
                     "flex size-8 items-center justify-center border-x border-border text-muted-foreground transition-colors",
-                    input.trim()
+                    input.trim() || files.length > 0
                       ? "hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
                       : "opacity-35",
                   )}

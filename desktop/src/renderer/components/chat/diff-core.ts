@@ -92,25 +92,29 @@ export function isUnifiedDiff(code: string): boolean {
   return /^(?:diff --git |@@ -\d)/m.test(code);
 }
 
-/** Parse an already-unified diff into rows, tracking both line counters. */
+/** Parse an already-unified diff into rows, tracking both line counters.
+ *
+ * The text is not always a CLEAN patch: a tool result wraps one in prose
+ * ("Edited foo.html (38.3 KB).") and markdown fences, and treating those as
+ * context rows numbered them 1, 2, 3 ahead of a hunk that starts at line 369.
+ * So nothing counts as a row until the first hunk header, and fence lines are
+ * dropped wherever they appear. */
 export function parseUnifiedDiff(code: string): DiffRow[] {
   let oldLine = 1;
   let newLine = 1;
+  let inHunk = false;
   const rows: DiffRow[] = [];
   for (const line of code.split("\n")) {
     const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
     if (hunk) {
       oldLine = Number(hunk[1]);
       newLine = Number(hunk[2]);
+      inHunk = true;
       continue;
     }
-    if (
-      line.startsWith("diff --git ") ||
-      line.startsWith("index ") ||
-      line.startsWith("--- ") ||
-      line.startsWith("+++ ")
-    )
-      continue;
+    if (!inHunk) continue; // prose, ```fences, ---/+++ headers — not the diff
+    if (line.startsWith("```")) continue; // a fence closing (or re-opening) mid-text
+    if (line.startsWith("\\ No newline")) continue;
     const kind: DiffKind = line.startsWith("-")
       ? "removed"
       : line.startsWith("+")
@@ -148,14 +152,21 @@ export function diffStats(
 
 export type DiffSegment =
   | { kind: "rows"; rows: DiffRow[] }
-  /** A run of unchanged rows collapsed behind a "N unmodified lines" divider. */
-  | { kind: "gap"; rows: DiffRow[] };
+  /** A run of unchanged rows collapsed behind a "N unmodified lines" divider.
+   * `rows` empty + `skipped` set = a hunk boundary in a unified patch: the
+   * lines exist in the file but not in the patch, so there is nothing to
+   * expand — the divider only states how many were skipped. */
+  | { kind: "gap"; rows: DiffRow[]; skipped?: number };
 
 /**
  * Collapse long runs of unchanged rows into gaps, keeping `context` unchanged
  * rows visible on each side of every change — the "N unmodified lines" folding
  * from the official diff view. Runs short enough that folding wouldn't hide
  * more than it costs are left inline.
+ *
+ * Rows parsed from a unified patch are not contiguous: line numbers JUMP at
+ * hunk boundaries, and rendering row 377 directly above row 518 read like the
+ * file lost a hundred lines. A jump becomes an explicit non-expandable gap.
  */
 export function foldRows(
   rows: DiffRow[],
@@ -172,16 +183,43 @@ export function foldRows(
 
   const segments: DiffSegment[] = [];
   let i = 0;
-  while (i < rows.length) {
-    const start = i;
-    const visible = near[i];
-    while (i < rows.length && near[i] === visible) i++;
-    const slice = rows.slice(start, i);
-    // Only worth folding a hidden run if it actually hides more than `minGap`.
-    if (!visible && slice.length > minGap)
-      segments.push({ kind: "gap", rows: slice });
-    else segments.push({ kind: "rows", rows: slice });
+  // The line numbers the next row should carry if it is contiguous.
+  let expectOld: number | undefined;
+  let expectNew: number | undefined;
+  let run: DiffRow[] = [];
+  let runVisible = near[0] ?? false;
+
+  const flushRun = (): void => {
+    if (run.length === 0) return;
+    if (!runVisible && run.length > minGap)
+      segments.push({ kind: "gap", rows: run });
+    else segments.push({ kind: "rows", rows: run });
+    run = [];
+  };
+
+  for (; i < rows.length; i++) {
+    const r = rows[i];
+    const jumped =
+      (r.oldNo != null && expectOld != null && r.oldNo !== expectOld) ||
+      (r.newNo != null && expectNew != null && r.newNo !== expectNew);
+    if (jumped) {
+      flushRun();
+      const skipped = Math.max(
+        r.oldNo != null && expectOld != null ? r.oldNo - expectOld : 0,
+        r.newNo != null && expectNew != null ? r.newNo - expectNew : 0,
+      );
+      if (skipped > 0) segments.push({ kind: "gap", rows: [], skipped });
+      runVisible = near[i];
+    }
+    if (near[i] !== runVisible) {
+      flushRun();
+      runVisible = near[i];
+    }
+    run.push(r);
+    if (r.oldNo != null) expectOld = r.oldNo + 1;
+    if (r.newNo != null) expectNew = r.newNo + 1;
   }
+  flushRun();
   return segments;
 }
 

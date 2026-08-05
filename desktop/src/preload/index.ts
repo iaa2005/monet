@@ -70,9 +70,14 @@ const electronAPI = {
       mode: string,
     ): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:setPermissionMode", sessionId, mode),
-    /** Hand text to a turn already in flight. ok:false = session is idle. */
-    inject: (sessionId: string, text: string): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke("chat:inject", sessionId, text),
+    /** Hand text (and files) to a turn already in flight. ok:false = idle. */
+    inject: (
+      sessionId: string,
+      text: string,
+      attachments?: unknown[],
+      space?: string,
+    ): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("chat:inject", sessionId, text, attachments, space),
     /** Drop the last N prompts from the model's context (files untouched). */
     undoPrompts: (
       sessionId: string,

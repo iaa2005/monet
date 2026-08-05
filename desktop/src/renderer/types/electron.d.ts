@@ -383,8 +383,19 @@ export interface ElectronAPI {
       sessionId: string,
       mode: string,
     ) => Promise<{ ok: boolean }>;
-    /** Hand text to a turn already in flight. ok:false = session is idle. */
-    inject: (sessionId: string, text: string) => Promise<{ ok: boolean }>;
+    /** Hand text (and files) to a turn already in flight. ok:false = idle. */
+    inject: (
+      sessionId: string,
+      text: string,
+      attachments?: {
+        name: string;
+        mediaType: string;
+        kind: "text" | "image" | "audio" | "video" | "file";
+        text?: string;
+        dataBase64?: string;
+      }[],
+      space?: string,
+    ) => Promise<{ ok: boolean }>;
     /** Drop the last N prompts from the model's context (files untouched). */
     undoPrompts: (
       sessionId: string,

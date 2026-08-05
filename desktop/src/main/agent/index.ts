@@ -121,6 +121,7 @@ import {
 import {
   drainInjections,
   formatInjection,
+  injectionBlocks,
   markRunning,
   markStopped,
 } from "./injection.js";
@@ -1523,9 +1524,13 @@ async function runAgentScoped(
       const lateNotes = drainInjections(sessionId);
       if (lateNotes.length > 0) {
         const text = formatInjection(lateNotes);
-        messages.push({ role: "user", content: text });
+        const media = injectionBlocks(lateNotes);
+        messages.push({
+          role: "user",
+          content: media.length ? [{ type: "text", text }, ...media] : text,
+        });
         for (const note of lateNotes)
-          onEvent({ type: "user_message", content: note });
+          onEvent({ type: "user_message", content: note.text });
         persistTranscript(sessionId);
         continue;
       }
@@ -1704,7 +1709,7 @@ async function runAgentScoped(
     // between an assistant's tool_use blocks and its next step.
     const injected = drainInjections(sessionId);
     for (const note of injected)
-      onEvent({ type: "user_message", content: note });
+      onEvent({ type: "user_message", content: note.text });
 
     messages.push({
       role: "user",
@@ -1731,7 +1736,12 @@ async function runAgentScoped(
     if (injected.length > 0) {
       const last = messages[messages.length - 1]!;
       if (Array.isArray(last.content))
-        last.content.push({ type: "text", text: formatInjection(injected) });
+        last.content.push(
+          { type: "text", text: formatInjection(injected) },
+          // A file pasted mid-run travels beside its note — images are legal
+          // in any user message, tool results or not.
+          ...injectionBlocks(injected),
+        );
     }
 
     // A run that keeps re-issuing one identical call is stuck, and from

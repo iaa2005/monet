@@ -62,6 +62,18 @@ function GapDivider({
   );
 }
 
+/** A hunk boundary in a unified patch: the skipped lines are not in the
+ * patch at all, so there is nothing to expand — just say how many. */
+function HunkDivider({ count }: { count: number }): JSX.Element {
+  return (
+    <div className="flex w-full items-center gap-1.5 bg-muted/40 px-3 py-1 text-[11px] text-muted-foreground/60">
+      <span className="pl-[18px]">
+        {count} unmodified line{count === 1 ? "" : "s"} not shown
+      </span>
+    </div>
+  );
+}
+
 export function DiffView({
   oldText,
   newText,
@@ -178,6 +190,12 @@ export function DiffView({
   let absIdx = 0;
   segments.forEach((seg, si) => {
     if (seg.kind === "gap") {
+      // A hunk boundary: the rows are absent from the patch, only their count
+      // is known. Nothing to expand.
+      if (seg.rows.length === 0) {
+        if (seg.skipped) out.push(<HunkDivider key={`hunk-${si}`} count={seg.skipped} />);
+        return;
+      }
       const open = expanded.has(si);
       out.push(
         <GapDivider
@@ -194,8 +212,10 @@ export function DiffView({
           }
         />,
       );
-      absIdx += seg.rows.length;
-      if (!open) return;
+      if (!open) {
+        absIdx += seg.rows.length;
+        return;
+      }
     }
     seg.rows.forEach((row, ri) => {
       if (budget <= 0) {

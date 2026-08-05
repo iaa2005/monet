@@ -13,10 +13,12 @@ import {
   formatInjection,
   hasInjections,
   injectMessage,
+  injectionBlocks,
   isRunning,
   markRunning,
   markStopped,
 } from '../src/main/agent/injection.js'
+import type { LLMContentBlock } from '../src/main/llm/adapter.js'
 
 let failures = 0
 function check(name: string, cond: boolean, detail?: unknown): void {
@@ -45,8 +47,8 @@ check('blank text is refused', !injectMessage('s1', '   '))
 injectMessage('s1', 'and add a test')
 const drained = drainInjections('s1')
 check('both notes come back in order', drained.length === 2, drained)
-check('the first is the first typed', drained[0] === 'use the other API', drained[0])
-check('text is trimmed', drained[1] === 'and add a test', drained[1])
+check('the first is the first typed', drained[0]?.text === 'use the other API', drained[0])
+check('text is trimmed', drained[1]?.text === 'and add a test', drained[1])
 check('draining empties the queue', !hasInjections('s1'))
 check('draining twice is safe', drainInjections('s1').length === 0)
 
@@ -55,8 +57,8 @@ check('draining twice is safe', drainInjections('s1').length === 0)
 markRunning('s2')
 injectMessage('s1', 'for one')
 injectMessage('s2', 'for two')
-check('s1 gets only its own', drainInjections('s1').join() === 'for one')
-check('s2 gets only its own', drainInjections('s2').join() === 'for two')
+check('s1 gets only its own', drainInjections('s1').map((n) => n.text).join() === 'for one')
+check('s2 gets only its own', drainInjections('s2').map((n) => n.text).join() === 'for two')
 
 // ─── The lifecycle guard ────────────────────────────────────────────────
 
@@ -78,11 +80,11 @@ markStopped('s2')
 
 // ─── Framing ────────────────────────────────────────────────────────────
 
-const framed = formatInjection(['stop using regex here'])
+const framed = formatInjection([{ text: 'stop using regex here' }])
 check('the note carries the user text', framed.includes('stop using regex here'))
 check(
   'and says it came from the user mid-turn',
-  /user sent this WHILE you were working/i.test(framed),
+  /user said this WHILE you were working/i.test(framed),
   framed.slice(0, 80),
 )
 check(
@@ -92,10 +94,29 @@ check(
 check(
   'several notes are joined, not lost',
   ((): boolean => {
-    const f = formatInjection(['first', 'second'])
+    const f = formatInjection([{ text: 'first' }, { text: 'second' }])
     return f.includes('first') && f.includes('second')
   })(),
 )
+
+// ─── Files ride along ───────────────────────────────────────────────────
+
+const img: LLMContentBlock = {
+  type: 'image',
+  source: { type: 'base64', media_type: 'image/png', data: 'AAAA' },
+}
+markRunning('s3')
+check('a note with files but no words is accepted', injectMessage('s3', '', [img]))
+injectMessage('s3', 'look at this', [img])
+check('a note with neither is not', !injectMessage('s3', '  '))
+{
+  const notes = drainInjections('s3')
+  check('blocks survive the drain', notes.length === 2 && notes[1]?.blocks?.length === 1, notes)
+  check('injectionBlocks flattens in order', injectionBlocks(notes).length === 2)
+  const f = formatInjection(notes)
+  check('the framing mentions the attached files', /attached file/i.test(f), f.slice(-80))
+}
+markStopped('s3')
 
 console.log(failures === 0 ? '\nALL INJECTION CHECKS PASSED' : `\n${failures} FAILED`)
 process.exit(failures === 0 ? 0 : 1)

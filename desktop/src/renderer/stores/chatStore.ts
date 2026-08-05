@@ -224,6 +224,10 @@ interface SessionState {
   verify: Extract<LLMEvent, { type: "verify" }> | null;
   /** Messages queued while streaming — sent automatically when the run ends. */
   queue: ChatMessage[];
+  /** Messages handed to the RUNNING turn (Ctrl+S) and not yet delivered —
+   * shown at once in a "joining the run" style, replaced by the real user
+   * bubble when main delivers them at the next step boundary. */
+  pendingInjections: ChatMessage[];
   /**
    * True once this buffer is known to hold the session's WHOLE history — it
    * was loaded from the DB, or the chat was started in this renderer.
@@ -245,6 +249,7 @@ const EMPTY: SessionState = {
   error: null,
   verify: null,
   queue: [],
+  pendingInjections: [],
   hydrated: false,
 };
 
@@ -467,12 +472,27 @@ export interface ChatStore {
   /** Auto-continue: a background sub-agent finished while the chat is idle —
    * kick off a turn that delivers its queued report to the model. */
   deliverBackgroundResults: () => Promise<void>;
-  /** Queue a message to be sent when the current run finishes. */
-  enqueueMessage: (sessionId: string, content: string) => void;
+  /** Queue a message to be sent when the current run finishes. Attachments:
+   * `display` shows on the queued bubble and the sent message; `payload` is
+   * the send-ready encoding handed to chat.send when its turn comes. */
+  enqueueMessage: (
+    sessionId: string,
+    content: string,
+    display?: ChatAttachmentMeta[],
+    payload?: SendAttachment[],
+  ) => void;
   /** Remove a message from the queue (cancel a pending queued send). */
   dequeueMessage: (sessionId: string, messageId: string) => void;
   /** Per-session queue (visible mirror of current session's queue). */
   queue: ChatMessage[];
+  /** Mirror of the current session's undelivered injections. */
+  pendingInjections: ChatMessage[];
+  /** Record a message handed to the running turn, until main delivers it. */
+  addPendingInjection: (
+    sessionId: string,
+    content: string,
+    display?: ChatAttachmentMeta[],
+  ) => void;
 }
 
 interface SessionsBridge {
@@ -573,6 +593,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
       st.space === "home"
         ? "default"
         : localStorage.getItem("permission-mode") ?? "default";
+    // Files queued with the message ride along now; the payload is spent.
+    const attachments = queuedPayloads.get(msg.id);
+    queuedPayloads.delete(msg.id);
     try {
       await bridge.chat.send({
         sessionId,
@@ -580,6 +603,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         seed,
         mode,
         space: st.space,
+        attachments,
       });
     } catch {
       /* best-effort */
@@ -595,6 +619,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
   const FLUSH_MS = 50;
   const pendingText = new Map<string, string>();
   const pendingReasoning = new Map<string, string>();
+  /** Send-ready attachment payloads for queued messages, keyed by message id.
+   * Kept out of session state: base64-heavy and meaningless after the send. */
+  const queuedPayloads = new Map<string, SendAttachment[]>();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   /** Throttle for mid-run checkpoint saves (per session). */
   const lastCheckpoint = new Map<string, number>();
@@ -636,6 +663,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           usage: next.usage,
           error: next.error,
           queue: next.queue,
+          pendingInjections: next.pendingInjections,
         };
       }
       return { sessions };
@@ -691,6 +719,13 @@ export const useChatStore = create<ChatStore>((set, get) => {
         return { ...prev, messages: msgs, isStreaming: true, error: null };
       }
       case "user_message": {
+        // If this is an injection we already show as "joining the run",
+        // the delivery replaces the pending chip — same text, real bubble,
+        // attachments carried over from the chip.
+        const pi = prev.pendingInjections.findIndex(
+          (p) => p.content === event.content,
+        );
+        const matched = pi >= 0 ? prev.pendingInjections[pi] : undefined;
         const msgs = [
           ...prev.messages,
           {
@@ -698,9 +733,17 @@ export const useChatStore = create<ChatStore>((set, get) => {
             role: "user" as const,
             content: event.content,
             timestamp: Date.now(),
+            ...(matched?.attachments ? { attachments: matched.attachments } : {}),
           },
         ];
-        return { ...prev, messages: msgs };
+        return {
+          ...prev,
+          messages: msgs,
+          pendingInjections:
+            pi >= 0
+              ? prev.pendingInjections.filter((_, i) => i !== pi)
+              : prev.pendingInjections,
+        };
       }
       case "harness": {
         // The harness overrode or redirected the model. A system-role row —
@@ -805,6 +848,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
         return { ...prev, messages: msgs };
       }
       case "message_stop": {
+        // Undelivered injections die with the run (main drops them the same
+        // way) — a chip surviving here would promise a delivery that will
+        // never come.
+        prev = { ...prev, pendingInjections: [] };
         if (event.stop_reason === "abort") {
           return {
             ...prev,
@@ -834,6 +881,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
         };
       }
       case "error": {
+        // Same as message_stop: whatever was still waiting to join the run
+        // is gone now.
+        prev = { ...prev, pendingInjections: [] };
         // A user-initiated Stop is not an error — mark the chat interrupted
         // instead of flashing a red box.
         if (event.error === "Aborted") {
@@ -878,6 +928,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     voiceSendFn: null,
     space: "home",
     queue: [],
+    pendingInjections: [],
 
     isSessionStreaming: (id) => get().sessions[id]?.isStreaming ?? false,
 
@@ -891,6 +942,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           usage: cur.usage,
           error: cur.error,
           queue: cur.queue,
+          pendingInjections: cur.pendingInjections,
         };
       });
     },
@@ -1261,13 +1313,17 @@ export const useChatStore = create<ChatStore>((set, get) => {
       }
     },
 
-    enqueueMessage: (sessionId, content) => {
+    enqueueMessage: (sessionId, content, display, payload) => {
       const msg: ChatMessage = {
         id: generateId(),
         role: "user",
         content,
         timestamp: Date.now(),
+        ...(display?.length ? { attachments: display } : {}),
       };
+      // The send-ready encoding is bulky (base64) and transient — it lives
+      // beside the store, keyed by message id, never in persisted state.
+      if (payload?.length) queuedPayloads.set(msg.id, payload);
       mutate(sessionId, (p) => ({
         ...p,
         queue: [...p.queue, msg],
@@ -1275,9 +1331,24 @@ export const useChatStore = create<ChatStore>((set, get) => {
     },
 
     dequeueMessage: (sessionId, messageId) => {
+      queuedPayloads.delete(messageId);
       mutate(sessionId, (p) => ({
         ...p,
         queue: p.queue.filter((m) => m.id !== messageId),
+      }));
+    },
+
+    addPendingInjection: (sessionId, content, display) => {
+      const msg: ChatMessage = {
+        id: generateId(),
+        role: "user",
+        content,
+        timestamp: Date.now(),
+        ...(display?.length ? { attachments: display } : {}),
+      };
+      mutate(sessionId, (p) => ({
+        ...p,
+        pendingInjections: [...p.pendingInjections, msg],
       }));
     },
 

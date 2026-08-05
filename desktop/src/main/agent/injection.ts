@@ -14,10 +14,23 @@
  * the request. So an injection is appended as a text block to THAT message,
  * after the results — the one slot in a running turn where user text is legal.
  * The same trick the background-report delivery already uses.
+ *
+ * A note may carry media blocks too (a screenshot pasted mid-run): they ride
+ * in the same user message, right after the note's text — images are legal in
+ * any user message, tool results or not.
  */
 
-/** Pending text per session, in the order it was typed. */
-const pending = new Map<string, string[]>();
+import type { LLMContentBlock } from "../llm/adapter.js";
+
+/** One thing said (or attached) mid-run. */
+export interface InjectionNote {
+  text: string;
+  /** Media blocks (images and the like) attached to this note. */
+  blocks?: LLMContentBlock[];
+}
+
+/** Pending notes per session, in the order they arrived. */
+const pending = new Map<string, InjectionNote[]>();
 
 /** Sessions with a run in flight — only those can take an injection. */
 const running = new Set<string>();
@@ -38,23 +51,29 @@ export function isRunning(sessionId: string): boolean {
 }
 
 /**
- * Offer text to a running turn.
+ * Offer a note to a running turn.
  *
  * Returns false when the session is idle, so the caller can fall back to an
  * ordinary send instead of dropping the message — the user pressed a key, and
- * something must happen.
+ * something must happen. A note with attachments but no words is fine; a note
+ * with neither is not a note.
  */
-export function injectMessage(sessionId: string, text: string): boolean {
+export function injectMessage(
+  sessionId: string,
+  text: string,
+  blocks?: LLMContentBlock[],
+): boolean {
   const trimmed = text.trim();
-  if (!trimmed || !running.has(sessionId)) return false;
+  if ((!trimmed && !blocks?.length) || !running.has(sessionId)) return false;
+  const note: InjectionNote = { text: trimmed, blocks };
   const list = pending.get(sessionId);
-  if (list) list.push(trimmed);
-  else pending.set(sessionId, [trimmed]);
+  if (list) list.push(note);
+  else pending.set(sessionId, [note]);
   return true;
 }
 
 /** Take everything pending for this session (empty array when there is none). */
-export function drainInjections(sessionId: string): string[] {
+export function drainInjections(sessionId: string): InjectionNote[] {
   const list = pending.get(sessionId);
   if (!list?.length) return [];
   pending.delete(sessionId);
@@ -73,8 +92,16 @@ export function hasInjections(sessionId: string): boolean {
  * and a correction that is mistaken for tool output is worse than no
  * correction at all.
  */
-export function formatInjection(notes: string[]): string {
-  const body = notes.join("\n\n");
+export function formatInjection(notes: InjectionNote[]): string {
+  const body = notes
+    .map((n) =>
+      n.blocks?.length
+        ? [n.text, `[${n.blocks.length} attached file(s) follow.]`]
+            .filter(Boolean)
+            .join("\n")
+        : n.text,
+    )
+    .join("\n\n");
   // Steering, not a brake: listen, but keep the goal. Only an explicit
   // "stop" or redirect abandons the current plan.
   return (
@@ -83,4 +110,9 @@ export function formatInjection(notes: string[]): string {
     `objective unless it explicitly tells you to stop or change course. ` +
     `Do not restart work that is already done.]\n\n${body}`
   );
+}
+
+/** Every media block the drained notes carried, in order. */
+export function injectionBlocks(notes: InjectionNote[]): LLMContentBlock[] {
+  return notes.flatMap((n) => n.blocks ?? []);
 }

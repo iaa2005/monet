@@ -36,6 +36,7 @@ import {
   Play,
   RotateCcw,
   Clock,
+  CornerDownLeft,
   Brain,
   X as XIcon,
   type LucideIcon,
@@ -1067,6 +1068,7 @@ export function ChatView({
   const error = useChatStore((s) => s.error);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const queue = useChatStore((s) => s.queue);
+  const pendingInjections = useChatStore((s) => s.pendingInjections);
   const dequeueMessage = useChatStore((s) => s.dequeueMessage);
   const setComposerDraft = useChatStore((s) => s.setComposerDraft);
   const isEmpty = messages.length === 0 && !error;
@@ -1439,6 +1441,37 @@ export function ChatView({
                     </MessageScrollerItem>
                   )}
 
+                  {/* Handed to the RUNNING turn — visible at once, replaced by
+                      the real bubble when main delivers it at the next step
+                      boundary. No remove button: it is already the model's. */}
+                  {pendingInjections.map((msg) => (
+                    <MessageScrollerItem
+                      key={`pi-${msg.id}`}
+                      messageId={`pi-${msg.id}`}
+                    >
+                      <Message align="end">
+                        <MessageContent>
+                          <div className="flex flex-col items-end">
+                            <div className="mb-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                              <CornerDownLeft className="size-3" />
+                              Joining the run…
+                            </div>
+                            {(msg.attachments?.length ?? 0) > 0 && (
+                              <AttachmentChips attachments={msg.attachments!} />
+                            )}
+                            {msg.content && (
+                              <Bubble variant="secondary" align="end">
+                                <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.06] glass-panel rounded-xl border border-dashed border-border opacity-70">
+                                  {msg.content}
+                                </BubbleContent>
+                              </Bubble>
+                            )}
+                          </div>
+                        </MessageContent>
+                      </Message>
+                    </MessageScrollerItem>
+                  ))}
+
                   {queue.map((msg) => (
                     <MessageScrollerItem
                       key={`q-${msg.id}`}
@@ -1463,11 +1496,16 @@ export function ChatView({
                                 <Clock className="size-3" />
                                 Queued
                               </div>
-                              <Bubble variant="secondary" align="end">
-                                <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.06] glass-panel rounded-xl border border-dashed border-border opacity-70">
-                                  {msg.content}
-                                </BubbleContent>
-                              </Bubble>
+                              {(msg.attachments?.length ?? 0) > 0 && (
+                                <AttachmentChips attachments={msg.attachments!} />
+                              )}
+                              {msg.content && (
+                                <Bubble variant="secondary" align="end">
+                                  <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.06] glass-panel rounded-xl border border-dashed border-border opacity-70">
+                                    {msg.content}
+                                  </BubbleContent>
+                                </Bubble>
+                              )}
                             </div>
                           </div>
                         </MessageContent>

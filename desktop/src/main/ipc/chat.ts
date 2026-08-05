@@ -693,14 +693,29 @@ export function registerChatIPC(): void {
     return { ok: true };
   });
 
-  // Hand text to a turn that is already running. Returns ok:false when the
-  // session is idle so the renderer sends it normally instead — the user
-  // pressed a key and something has to happen either way.
+  // Hand text (and files) to a turn that is already running. Returns ok:false
+  // when the session is idle so the renderer sends it normally instead — the
+  // user pressed a key and something has to happen either way. Attachments go
+  // through the SAME pipeline as a normal send (buildUserContent): images the
+  // model can see ride as blocks, everything else is stashed to the sandbox /
+  // workspace with a note saying where.
   ipcMain.handle(
     "chat:inject",
-    (_e, sessionId: string, text: string): { ok: boolean } => ({
-      ok: injectMessage(sessionId, text),
-    }),
+    async (
+      _e,
+      sessionId: string,
+      text: string,
+      attachments?: ChatAttachment[],
+      space?: string,
+    ): Promise<{ ok: boolean }> => {
+      if (!attachments?.length) return { ok: injectMessage(sessionId, text) };
+      const content = await buildUserContent(text, attachments, space, sessionId);
+      if (typeof content === "string")
+        return { ok: injectMessage(sessionId, content) };
+      const [head, ...media] = content;
+      const noteText = head?.type === "text" ? head.text : text;
+      return { ok: injectMessage(sessionId, noteText, media) };
+    },
   );
 
   // Drop the last N prompts from the model's context. Files are untouched —
