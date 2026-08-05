@@ -6,8 +6,8 @@
 
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { getDataDir } from "./data-dir.js";
-import { fetchRetry } from "./net-fetch.js";
+import { getDataDir } from "../data-dir.js";
+import { fetchRetry } from "../net-fetch.js";
 
 const GALLERY_REPO = "iaa2005/monet-paintings";
 const profileFile = (): string => join(getDataDir(), "profile.json");

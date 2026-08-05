@@ -34,7 +34,7 @@ export interface GoalStartInput {
 function recordBaseline(sid: string, goalId: string): void {
   void (async () => {
     try {
-      const { getSessionStore } = await import("../session-store.js");
+      const { getSessionStore } = await import("../session/store.js");
       const { getWorkspacePath } = await import("./workspace.js");
       const { currentCheckpoint } = await import("../agent/checkpoints.js");
       const workspace =

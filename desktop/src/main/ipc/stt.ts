@@ -14,7 +14,7 @@ import {
   getSttSettings,
   setSttSettings,
   type SttSettings,
-} from "../stt-settings.js";
+} from "../stt/settings.js";
 import {
   cancelInstall,
   installModel,

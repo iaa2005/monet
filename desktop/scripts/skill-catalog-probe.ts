@@ -12,7 +12,7 @@
  * moment it is clicked.
  */
 
-import { parseCatalog } from "../src/main/skill-source-catalog";
+import { parseCatalog } from "../src/main/skills/source-catalog.js";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {

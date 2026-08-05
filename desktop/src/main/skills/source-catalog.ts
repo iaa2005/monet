@@ -14,7 +14,7 @@
  * simply has nothing to suggest, and the user's own sources are unaffected.
  */
 
-import { fetchRetry } from "./net-fetch.js";
+import { fetchRetry } from "../net-fetch.js";
 
 const CATALOG_URL =
   "https://raw.githubusercontent.com/iaa2005/monet-directory/main/skill-sources.json";

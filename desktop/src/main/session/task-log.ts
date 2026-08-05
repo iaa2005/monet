@@ -18,7 +18,7 @@
  * audit trail, and the transcript keeps the record that matters.
  */
 
-import { getSessionDb } from "./session-store.js";
+import { getSessionDb } from "./store.js";
 import { taskDetail, taskTitle } from "@shared/task-title";
 
 /** Kept a few multiples above what the panel shows, so scrolling back stays

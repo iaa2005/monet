@@ -27,7 +27,7 @@ import { initVendorRuntime } from "../src/main/agent/vendor-context.js";
 import { applyWorkspaceForRun } from "../src/main/ipc/workspace.js";
 import { createAdapter } from "../src/main/llm/adapter.js";
 import { tunablePrompt } from "../src/main/prompts/index.js";
-import { getProfilePrompt } from "../src/main/profile.js";
+import { getProfilePrompt } from "../src/main/app/profile.js";
 import { buildMemoryPrompt } from "../src/main/memory/store.js";
 import type {
   LLMContentBlock,

@@ -18,7 +18,7 @@
  * normal state rather than a broken Directory.
  */
 
-import { fetchRetry } from "./net-fetch.js";
+import { fetchRetry } from "../net-fetch.js";
 
 const CONFIG_URL =
   "https://raw.githubusercontent.com/iaa2005/monet-directory/main/directory-config.json";

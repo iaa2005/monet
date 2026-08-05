@@ -4,17 +4,17 @@ import { dirname, join } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { EventEmitter } from "node:events";
 import { registerAllIPC } from "./ipc/index.js";
-import { createTray } from "./tray.js";
-import { appIconPath } from "./app-icon.js";
+import { createTray } from "./app/tray.js";
+import { appIconPath } from "./app/icon.js";
 import { applyDataDirEnv } from "./data-dir.js";
 import { recordTitle, recordVisit } from "./browser/bookmarks.js";
-import { purgeIncognitoLeftovers } from "./incognito.js";
-import { ensureBuiltinSkills } from "./builtin-skills.js";
-import { initPowerSaveBlocker } from "./power.js";
-import { initBetaGuard } from "./beta.js";
+import { purgeIncognitoLeftovers } from "./session/incognito.js";
+import { ensureBuiltinSkills } from "./skills/builtin.js";
+import { initPowerSaveBlocker } from "./app/power.js";
+import { initBetaGuard } from "./app/beta.js";
 import { applyLeanEnv } from "./agent/lean-context.js";
 import { initNightlyConsolidation } from "./memory/nightly.js";
-import { initDevApi } from "./dev-api.js";
+import { initDevApi } from "./app/dev-api.js";
 import { isAcpLaunch, runAcpMode } from "./acp/index.js";
 
 // The main bundle is ESM ("type": "module"), where __dirname is not defined.
@@ -376,7 +376,7 @@ app.whenReady().then(() => {
   // Rows from chats that no longer exist — a crash, or a version that did not
   // clean up after a delete. Startup-only: an incognito chat has no session
   // row while it runs, so sweeping mid-session would erase a live one.
-  void import("./session-purge.js")
+  void import("./session/purge.js")
     .then((m) => m.sweepOrphans())
     .catch(() => {});
 

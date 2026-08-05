@@ -1,6 +1,6 @@
 import { app, Tray, Menu, BrowserWindow } from "electron";
 import { APP_NAME } from "@shared/brand.js";
-import { appIconImage } from "./app-icon.js";
+import { appIconImage } from "./icon.js";
 
 let tray: Tray | null = null;
 let isQuitting = false;

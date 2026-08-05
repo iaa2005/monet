@@ -18,7 +18,7 @@
  * form, where the user reads the command line and supplies their own secrets.
  */
 
-import { fetchRetry } from "./net-fetch.js";
+import { fetchRetry } from "../net-fetch.js";
 
 const CATALOG_URL =
   "https://raw.githubusercontent.com/iaa2005/monet-directory/main/mcp-sources.json";

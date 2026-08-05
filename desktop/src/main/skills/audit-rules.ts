@@ -5,7 +5,7 @@
  * most change-prone thing in the feature: a new `curl | bash` variant, a new
  * exfiltration trick, and today that means an app release.
  *
- * The built-in rules in skill-audit.ts are the floor. They always run, work
+ * The built-in rules in audit.ts are the floor. They always run, work
  * offline, and are the ones the probe holds to a measured false-positive rate.
  * These are added on top. Nothing here can weaken the built-ins — the file has
  * no way to disable a rule, only to add one, so a bad catalogue makes the audit
@@ -19,8 +19,8 @@
  * thousand long lines take 90 ms.
  */
 
-import { parseAuditRules } from "./skill-audit.js";
-import { fetchRetry } from "./net-fetch.js";
+import { parseAuditRules } from "./audit.js";
+import { fetchRetry } from "../net-fetch.js";
 
 const RULES_URL =
   "https://raw.githubusercontent.com/iaa2005/monet-directory/main/skill-audit-rules.json";

@@ -18,7 +18,7 @@
 import {
   DEFAULT_CONFIG,
   mergeConfig,
-} from "../src/main/directory-config";
+} from "../src/main/directory/config.js";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {

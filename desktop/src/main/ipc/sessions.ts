@@ -9,10 +9,10 @@ import {
   getSessionStore,
   type Session,
   type SessionWithMessages,
-} from "../session-store.js";
+} from "../session/store.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
-import { purgeSessionData } from "../session-purge.js";
+import { purgeSessionData } from "../session/purge.js";
 import { getDataSubdir } from "../data-dir.js";
 import { shadowSlug } from "../agent/checkpoint-store.js";
 

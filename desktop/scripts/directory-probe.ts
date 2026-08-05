@@ -9,7 +9,7 @@ import { app, ipcMain } from "electron";
 import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { DEFAULT_SOURCES } from "../src/main/skill-source-model";
+import { DEFAULT_SOURCES } from "../src/main/skills/source-model.js";
 
 const sandbox = mkdtempSync(join(tmpdir(), "monet-dirprobe-"));
 // defaultDataDir() = dirname(getAppPath())/.monet

@@ -18,8 +18,8 @@ import type { DevServer } from "../main/browser/dev-servers.js";
 import type { BrowserSelection } from "../main/browser/selection.js";
 import type { Bookmark, Visit } from "../main/browser/bookmark-store.js";
 import type { ServerConfig, ServerState } from "../main/browser/servers.js";
-import type { SessionUiState } from "../main/ui-state.js";
-import type { SttSettings } from "../main/stt-settings.js";
+import type { SessionUiState } from "../main/session/ui-state.js";
+import type { SttSettings } from "../main/stt/settings.js";
 import type {
   InstallProgress,
   SttModelStatus,
@@ -695,7 +695,7 @@ const electronAPI = {
       /** Every text file that was read, so the viewer shows the scripts too. */
       texts?: Record<string, string>;
       url?: string;
-      /** Our own static check of those files — see src/main/skill-audit.ts. */
+      /** Our own static check of those files — see src/main/skills/audit.ts. */
       audit?: {
         findings: {
           category: string;

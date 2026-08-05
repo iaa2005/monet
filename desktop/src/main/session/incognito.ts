@@ -12,10 +12,10 @@
 import { ipcMain } from "electron";
 import { existsSync, readdirSync, rmSync, statSync } from "fs";
 import { join } from "path";
-import { getDataSubdir } from "./data-dir.js";
-import { resetConversation } from "./agent/index.js";
-import { wipePyodideSession } from "./sandbox/pyodide-engine.js";
-import { purgeSessionData } from "./session-purge.js";
+import { getDataSubdir } from "../data-dir.js";
+import { resetConversation } from "../agent/index.js";
+import { wipePyodideSession } from "../sandbox/pyodide-engine.js";
+import { purgeSessionData } from "./purge.js";
 
 function safeName(sessionId: string): string {
   return sessionId.replace(/[^a-zA-Z0-9_-]/g, "_") || "session";

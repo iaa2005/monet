@@ -28,7 +28,7 @@
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { gunzipSync } from "fflate";
-import { getDataDir } from "./data-dir.js";
+import { getDataDir } from "../data-dir.js";
 
 /** One request per repository per day, rather than per ten minutes per launch. */
 const TREE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -85,7 +85,7 @@ export function cacheTree(repo: string, paths: string[]): void {
  */
 export async function githubToken(): Promise<string | null> {
   try {
-    const store = await import("./connectors/store.js");
+    const store = await import("../connectors/store.js");
     const account = store
       .listAccounts()
       .find((a) => a.presetId === "github" && a.enabled);

@@ -9,7 +9,7 @@
 
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
-import { getDataDir } from "./data-dir.js";
+import { getDataDir } from "../data-dir.js";
 
 const SANDBOX_DOCUMENTS_SKILL = `---
 name: sandbox-documents

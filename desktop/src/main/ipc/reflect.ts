@@ -9,7 +9,7 @@ import { ipcMain } from "electron";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getDataDir } from "../data-dir.js";
-import { getSessionStore } from "../session-store.js";
+import { getSessionStore } from "../session/store.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
 import { resolveBackgroundModel } from "../provider/routing.js";

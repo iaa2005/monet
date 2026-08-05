@@ -79,7 +79,7 @@ import {
   stepsLeft,
   WRAP_UP_PROMPT,
 } from "./turn-budget.js";
-import { getProfilePrompt } from "../profile.js";
+import { getProfilePrompt } from "../app/profile.js";
 import { tunablePrompt } from "../prompts/index.js";
 import {
   isCaveman,
@@ -97,11 +97,11 @@ import {
   replaceTranscript,
   clearTranscript,
   recordContextEvent,
-} from "../transcript-store.js";
+} from "../session/transcript.js";
 import type { AskUserFn } from "../ipc/ask-user.js";
 import type { AskPlanApprovalFn } from "../ipc/plan.js";
 import { resolveModel } from "../provider/routing.js";
-import { recordFinish, recordStart, settleSession } from "../task-log.js";
+import { recordFinish, recordStart, settleSession } from "../session/task-log.js";
 
 /** Prepend finished background-agent reports to the user turn as context. */
 function mergeBackgroundResults(
@@ -476,7 +476,7 @@ export async function ensureTranscriptLoaded(sessionId: string): Promise<void> {
 async function seedFromDisplayMessages(sessionId: string): Promise<void> {
   if (conversations.has(sessionId)) return;
   try {
-    const { getSessionStore } = await import("../session-store.js");
+    const { getSessionStore } = await import("../session/store.js");
     const s = getSessionStore().get(sessionId);
     if (!s) return;
     const prior = s.messages
@@ -819,7 +819,7 @@ export async function undoCompaction(
   eventId: string,
 ): Promise<{ restored: number } | null> {
   const { getContextEvent, dropContextEventsFrom } = await import(
-    "../transcript-store.js"
+    "../session/transcript.js"
   );
   const ev = getContextEvent(sessionId, eventId);
   if (!ev || ev.type !== "compact") return null;
@@ -1018,7 +1018,7 @@ export async function computeContextBreakdown(
     // inside systemTotal, so carving them out here keeps System vs Memory honest
     // AND makes the popover show WHAT memory is made of instead of a flat 0.
     try {
-      const { loadClaudeMd } = await import("../claude-md.js");
+      const { loadClaudeMd } = await import("../workspace/claude-md.js");
       const { getWorkspacePath } = await import("../ipc/workspace.js");
       const md = space === "home" ? null : loadClaudeMd(getWorkspacePath());
       const tok = (s: string | null): number => (s ? Math.ceil(s.length / 4) : 0);

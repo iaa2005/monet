@@ -17,7 +17,7 @@ import {
 import { runAgent } from "../agent/index.js";
 import { resolveModel } from "../provider/routing.js";
 import { getProviderManager } from "../provider/manager.js";
-import { getSessionStore } from "../session-store.js";
+import { getSessionStore } from "../session/store.js";
 import {
   getRoutine,
   listRoutines,

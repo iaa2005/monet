@@ -58,15 +58,15 @@ const entry = resolve(out, "transfer-entry.ts");
 writeFileSync(
   entry,
   `export { buildBundle, applyBundle } from "../src/main/ipc/transfer.js";
-export { getSessionStore } from "../src/main/session-store.js";
-export { getUiState, setUiState } from "../src/main/ui-state.js";
+export { getSessionStore } from "../src/main/session/store.js";
+export { getUiState, setUiState } from "../src/main/session/ui-state.js";
 export { saveGoal, loadGoal } from "../src/main/agent/goal/store.js";
 export {
   recordContextEvent,
   listContextEvents,
   replaceTranscript,
   loadTranscriptWithMeta,
-} from "../src/main/transcript-store.js";
+} from "../src/main/session/transcript.js";
 export * as planStore from "../src/main/plan/store.js";
 export * as planInject from "../src/main/plan/inject.js";
 `,

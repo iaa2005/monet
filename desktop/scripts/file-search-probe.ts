@@ -14,8 +14,8 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { searchFiles, skipDir } from "../src/main/file-search";
-import { isNoise } from "../src/main/fs-watch";
+import { searchFiles, skipDir } from "../src/main/workspace/search.js";
+import { isNoise } from "../src/main/workspace/watch.js";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {

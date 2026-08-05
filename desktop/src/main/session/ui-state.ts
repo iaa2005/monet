@@ -14,7 +14,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { getDataDir } from "./data-dir.js";
+import { getDataDir } from "../data-dir.js";
 
 export interface SessionUiState {
   /**

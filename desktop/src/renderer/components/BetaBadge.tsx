@@ -2,7 +2,7 @@
  * Orange "beta" flag next to the wordmark — shown only in time-limited beta
  * builds (MONET_BETA_EXPIRES baked in at build time). The tooltip says when
  * the build stops working; the main process enforces the deadline itself
- * (src/main/beta.ts), this badge is just the honest label.
+ * (src/main/app/beta.ts), this badge is just the honest label.
  */
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;

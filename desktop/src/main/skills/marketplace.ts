@@ -17,7 +17,7 @@
  * category filter does not apply to this source.
  */
 
-import { fetchRetry } from "./net-fetch.js";
+import { fetchRetry } from "../net-fetch.js";
 
 const API = "https://claudemarketplaces.com/api/skills";
 

@@ -2,26 +2,26 @@
  * Type declarations for window.electronAPI (exposed via preload).
  */
 
-import type { LLMEvent, LLMRequest } from "../main/llm/adapter.js";
-import type { LLMProvider, LLMProviderInput } from "../main/provider/types.js";
+import type { LLMEvent, LLMRequest } from "../../main/llm/adapter.js";
+import type { LLMProvider, LLMProviderInput } from "../../main/provider/types.js";
 import type {
   CatalogModelInfo,
   CatalogProviderInfo,
-} from "../main/llm/models-dev.js";
-import type { ConnectorAccount } from "../main/connectors/types.js";
-import type { UiConnectorService } from "../main/connectors/services/types.js";
-import type { BrowserConfig } from "../main/browser/config.js";
-import type { DevServer } from "../main/browser/dev-servers.js";
-import type { BrowserSelection } from "../main/browser/selection.js";
-import type { Bookmark, Visit } from "../main/browser/bookmark-store.js";
-import type { ServerConfig, ServerState } from "../main/browser/servers.js";
-import type { SessionUiState } from "../main/ui-state.js";
-import type { SttSettings } from "../main/stt-settings.js";
+} from "../../main/llm/models-dev.js";
+import type { ConnectorAccount } from "../../main/connectors/types.js";
+import type { UiConnectorService } from "../../main/connectors/services/types.js";
+import type { BrowserConfig } from "../../main/browser/config.js";
+import type { DevServer } from "../../main/browser/dev-servers.js";
+import type { BrowserSelection } from "../../main/browser/selection.js";
+import type { Bookmark, Visit } from "../../main/browser/bookmark-store.js";
+import type { ServerConfig, ServerState } from "../../main/browser/servers.js";
+import type { SessionUiState } from "../../main/session/ui-state.js";
+import type { SttSettings } from "../../main/stt/settings.js";
 import type {
   InstallProgress,
   SttModelStatus,
-} from "../main/stt/gigaam.js";
-import type { TtsProgress, TtsStatus } from "../main/tts/engine.js";
+} from "../../main/stt/gigaam.js";
+import type { TtsProgress, TtsStatus } from "../../main/tts/engine.js";
 import type { Plan, PlanTodoStatus } from "@shared/plan";
 import type { ChatMessage } from "./chat";
 
@@ -36,27 +36,27 @@ export type {
   BrowserEngine,
   BrowserApproval,
   BrowserPersist,
-} from "../main/browser/config.js";
+} from "../../main/browser/config.js";
 import type {
   Routine,
   RoutineInput,
   RoutineRun,
-} from "../main/routines/store.js";
+} from "../../main/routines/store.js";
 
 export type { Routine, RoutineInput, RoutineRun };
 export type { UiConnectorService };
 export type { CatalogModelInfo, CatalogProviderInfo };
-export type { Goal as GoalRecord } from "../main/agent/goal/state.js";
+export type { Goal as GoalRecord } from "../../main/agent/goal/state.js";
 import type {
   PermissionRequest,
   PermissionDecision,
-} from "../main/ipc/permissions.js";
+} from "../../main/ipc/permissions.js";
 import type {
   AskUserRequest,
   AskUserAnswer,
   AskUserQuestionSpec,
   AskUserOption,
-} from "../main/ipc/ask-user.js";
+} from "../../main/ipc/ask-user.js";
 
 export type { PermissionRequest, PermissionDecision };
 export type { AskUserRequest, AskUserAnswer, AskUserQuestionSpec, AskUserOption };
@@ -230,7 +230,7 @@ export interface SkillSource {
 
 /**
  * One thing the audit saw in a skill's files, mirroring `Finding` in
- * src/main/skill-audit.ts — the audit runs in main, the verdict is read here.
+ * src/main/skills/audit.ts — the audit runs in main, the verdict is read here.
  */
 export interface AuditFinding {
   category:

@@ -18,7 +18,7 @@ import {
 } from "fs/promises";
 import { existsSync } from "fs";
 import { basename, dirname, join } from "path";
-import { searchFiles } from "../file-search.js";
+import { searchFiles } from "../workspace/search.js";
 import {
   appendIgnoreLine,
   gitignoreLineFor,

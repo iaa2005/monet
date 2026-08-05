@@ -223,9 +223,12 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
       if (saved && Object.keys(legacy).length > 0) {
         // Only fill blanks: whatever is already in the data dir wins, so a
         // second window cannot resurrect stale values over newer ones.
+        // `saved` is a typed SttSettings; the legacy keys are its own field
+        // names, so the lookup goes through the type rather than around it.
+        const current = saved as Record<keyof typeof LEGACY_KEYS, string>;
         const patch = Object.fromEntries(
           Object.entries(legacy).filter(
-            ([k]) => !(saved as Record<string, unknown>)[k],
+            ([k]) => !current[k as keyof typeof LEGACY_KEYS],
           ),
         );
         if (Object.keys(patch).length > 0)

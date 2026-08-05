@@ -6,7 +6,7 @@
  */
 
 import { ipcMain, BrowserWindow } from "electron";
-import { isUntitled, cleanTitle, TITLE_PLACEHOLDER } from "../auto-title.js";
+import { isUntitled, cleanTitle, TITLE_PLACEHOLDER } from "../session/auto-title.js";
 import {
   runAgent,
   resetConversation,
@@ -28,7 +28,7 @@ import { injectMessage } from "../agent/injection.js";
 import { stopReasonLabel } from "../agent/empty-turn.js";
 import { expandSlashCommand } from "../agent/skill-tool.js";
 import { abortAllBgAgents, abortBgAgents } from "../agent/bg-agents.js";
-import { getSessionStore } from "../session-store.js";
+import { getSessionStore } from "../session/store.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
 import { inferModalities } from "../provider/types.js";
@@ -40,7 +40,7 @@ import { clearSessionMode } from "../agent/session-mode.js";
 import { tunablePrompt } from "../prompts/index.js";
 import { getWorkspacePath } from "./workspace.js";
 import { sandboxWorkDir } from "../sandbox/podman-engine.js";
-import { setVisibleChatSession } from "../visible-session.js";
+import { setVisibleChatSession } from "../session/visible.js";
 import type { LLMContentBlock } from "../llm/adapter.js";
 
 interface ChatAttachment {
@@ -588,11 +588,11 @@ export function registerChatIPC(): void {
     );
 
     // The turn is over. Tell the user only if they could not have seen it —
-    // see turn-notify.ts for every case, and for why a routine never counts.
+    // see app/turn-notify.ts for every case, and for why a routine never counts.
     void (async () => {
       try {
         const { shouldNotifyTurnEnd, notificationBody } = await import(
-          "../turn-notify.js"
+          "../app/turn-notify.js"
         );
         const store = getSessionStore();
         const decision = shouldNotifyTurnEnd({
@@ -796,7 +796,7 @@ export function registerChatIPC(): void {
   // Context-change history (compactions, rewinds) for a session — powers the
   // "rewind through compact" affordance.
   ipcMain.handle("chat:contextEvents", async (_e, sessionId?: string) => {
-    const { listContextEvents } = await import("../transcript-store.js");
+    const { listContextEvents } = await import("../session/transcript.js");
     // Strip the heavy before/after snapshots — the UI only needs the summary.
     return listContextEvents(sessionId || "default").map((ev) => ({
       id: ev.id,

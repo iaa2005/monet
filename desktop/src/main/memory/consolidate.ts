@@ -20,7 +20,7 @@ import { extractJson } from "../llm/json-extract.js";
 import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
 import { resolveBackgroundModel } from "../provider/routing.js";
-import { getSessionStore } from "../session-store.js";
+import { getSessionStore } from "../session/store.js";
 import { pendingBulletCount, readLogsSince } from "./daily-log.js";
 import {
   deleteMemoryFile,

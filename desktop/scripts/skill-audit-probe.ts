@@ -25,7 +25,7 @@ import {
   isAuditableFile,
   parseAuditRules,
   type Severity,
-} from "../src/main/skill-audit";
+} from "../src/main/skills/audit.js";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {

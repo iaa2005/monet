@@ -18,7 +18,7 @@
 import { powerSaveBlocker } from "electron";
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { getDataDir } from "./data-dir.js";
+import { getDataDir } from "../data-dir.js";
 
 export interface PowerConfig {
   keepAwake: boolean;

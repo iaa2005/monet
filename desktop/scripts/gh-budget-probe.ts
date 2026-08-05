@@ -13,7 +13,7 @@
  */
 
 import { gzipSync } from "fflate";
-import { tarPaths, treeViaArchive } from "../src/main/github-budget";
+import { tarPaths, treeViaArchive } from "../src/main/directory/github-budget.js";
 
 /** A tar block, same constant the parser uses. */
 const BLOCK = 512;

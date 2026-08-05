@@ -9,7 +9,7 @@
  *
  * Runs under Electron because safeStorage is an Electron API and the point of
  * the move is encryption AT REST — a probe that stubbed it would be asserting
- * nothing. src/main/stt-settings.ts is bundled here (electron left external)
+ * nothing. src/main/stt/settings.ts is bundled here (electron left external)
  * and required, so these are claims about the shipped code.
  *
  *   node scripts/build-stt-probe.mjs && electron scripts/stt-settings-probe.cjs

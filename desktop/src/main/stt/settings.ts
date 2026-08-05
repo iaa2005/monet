@@ -15,8 +15,8 @@
 import { safeStorage } from "electron";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { getDataDir } from "./data-dir.js";
-import { DEFAULT_STT_MODEL } from "./stt/catalog.js";
+import { getDataDir } from "../data-dir.js";
+import { DEFAULT_STT_MODEL } from "./catalog.js";
 
 export interface SttSettings {
   /** "local" (in-renderer whisper), "ondevice" (GigaAM via sherpa-onnx in

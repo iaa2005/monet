@@ -19,7 +19,7 @@ import { activeContents, revealPanel } from "./registry.js";
 import { getExternalTransport } from "./external.js";
 import { ensureLogging, stopLogging } from "./logs.js";
 import { currentRunSession } from "../agent/run-session.js";
-import { getVisibleChatSession } from "../visible-session.js";
+import { getVisibleChatSession } from "../session/visible.js";
 import { headlessContents } from "./headless.js";
 
 export interface Rect {

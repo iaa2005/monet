@@ -243,7 +243,7 @@ export async function gatherSignals(
   };
 
   try {
-    const { getSessionDb } = await import("../session-store.js");
+    const { getSessionDb } = await import("../session/store.js");
     const db = getSessionDb();
 
     // Failed tool calls, joined to the session's workspace.

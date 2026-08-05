@@ -12,7 +12,7 @@ import {
   setAvatarFromUrl,
   setProfile,
   type Profile,
-} from "../profile.js";
+} from "../app/profile.js";
 
 function notifyRenderer(): void {
   const win = BrowserWindow.getAllWindows()[0];

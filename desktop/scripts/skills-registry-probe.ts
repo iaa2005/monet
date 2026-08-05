@@ -20,7 +20,7 @@ import {
   capPerRepo,
   normalizeName,
   pickSkillDir,
-} from "../src/main/skills-registry";
+} from "../src/main/skills/registry.js";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {

@@ -1,5 +1,5 @@
 /**
- * Naming a fresh chat: the two decisions from src/main/auto-title.ts.
+ * Naming a fresh chat: the two decisions from src/main/session/auto-title.ts.
  *
  * Both had a live failure behind them — a chat that keeps its opening line as
  * its name forever, and a reasoning model whose answer arrives after its
@@ -12,7 +12,7 @@ import {
   isUntitled,
   cleanTitle,
   TITLE_PLACEHOLDER,
-} from '../src/main/auto-title.js'
+} from '../src/main/session/auto-title.js'
 
 let failures = 0
 function check(name: string, cond: boolean, detail?: unknown): void {

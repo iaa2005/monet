@@ -35,13 +35,13 @@ import {
   getSessionStore,
   type ChatMessage,
   type SessionWithMessages,
-} from "../session-store.js";
+} from "../session/store.js";
 import { artifactSessionDir, saveArtifactBuffer } from "./artifacts.js";
 import { mediaTypeOf } from "../sandbox/index.js";
 import { listSandboxFiles, copyBufferIntoSandbox } from "../sandbox/files.js";
-import { getProfilePrompt } from "../profile.js";
+import { getProfilePrompt } from "../app/profile.js";
 import { buildMemoryPrompt } from "../memory/store.js";
-import { loadClaudeMd } from "../claude-md.js";
+import { loadClaudeMd } from "../workspace/claude-md.js";
 import { getWorkspacePath } from "./workspace.js";
 import {
   listContextEvents,
@@ -49,8 +49,8 @@ import {
   replaceContextEvents,
   replaceTranscript,
   type ContextEvent,
-} from "../transcript-store.js";
-import { getUiState, setUiState, type SessionUiState } from "../ui-state.js";
+} from "../session/transcript.js";
+import { getUiState, setUiState, type SessionUiState } from "../session/ui-state.js";
 import { importPlan, listPlans, type Plan } from "../plan/store.js";
 import { loadGoal, saveGoal } from "../agent/goal/store.js";
 import type { Goal } from "../agent/goal/state.js";

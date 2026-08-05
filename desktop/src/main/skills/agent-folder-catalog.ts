@@ -14,7 +14,7 @@
  */
 
 import { parseAgentFolders, setExtraAgentFolders } from "./agent-folders.js";
-import { fetchRetry } from "./net-fetch.js";
+import { fetchRetry } from "../net-fetch.js";
 
 const URL_ =
   "https://raw.githubusercontent.com/iaa2005/monet-directory/main/agent-folders.json";

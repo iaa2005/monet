@@ -8,7 +8,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { getSessionDb } from "../session-store.js";
+import { getSessionDb } from "../session/store.js";
 
 export type TriggerKind = "schedule" | "manual" | "webhook" | "event";
 

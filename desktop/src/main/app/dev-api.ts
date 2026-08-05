@@ -22,11 +22,11 @@ import { writeFileSync, rmSync, mkdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { app } from "electron";
-import { getDataDir } from "./data-dir.js";
-import { getSessionStore } from "./session-store.js";
-import { loadTranscriptWithMeta } from "./transcript-store.js";
-import { runAgent } from "./agent/index.js";
-import type { LLMEvent } from "./llm/adapter.js";
+import { getDataDir } from "../data-dir.js";
+import { getSessionStore } from "../session/store.js";
+import { loadTranscriptWithMeta } from "../session/transcript.js";
+import { runAgent } from "../agent/index.js";
+import type { LLMEvent } from "../llm/adapter.js";
 
 const PORT = Number(process.env.MONET_DEV_API_PORT || 8765);
 

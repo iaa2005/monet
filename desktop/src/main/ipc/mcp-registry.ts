@@ -1,7 +1,7 @@
 /**
  * MCP registry IPC — search the official Model Context Protocol registry.
  *
- * Registries come from mcp-source-catalog.ts, so more can be added without an
+ * Registries come from mcp/source-catalog.ts, so more can be added without an
  * app release; the official one is always among them. They all speak the
  * `/v0/servers` schema — public, no auth, `version=latest` collapsing the
  * one-row-per-release listing. Verified against the live API, not inferred
@@ -18,7 +18,7 @@ import {
   mcpSources,
   OFFICIAL_MCP_SOURCE,
   type McpSource,
-} from "../mcp-source-catalog.js";
+} from "../mcp/source-catalog.js";
 
 const UA = { "User-Agent": "monet-desktop" };
 

@@ -28,7 +28,7 @@ import {
   setPowerConfig,
   isKeepingAwake,
   type PowerConfig,
-} from "../power.js";
+} from "../app/power.js";
 import { reloadPrompts, promptsDirPath } from "../prompts/index.js";
 import { resetVendorTools } from "../agent/vendor-tools.js";
 import { seedTunablePrompts } from "../agent/index.js";

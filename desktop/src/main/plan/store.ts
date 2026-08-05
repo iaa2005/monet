@@ -20,7 +20,7 @@
 
 import { randomUUID } from "node:crypto";
 import { BrowserWindow } from "electron";
-import { getSessionDb } from "../session-store.js";
+import { getSessionDb } from "../session/store.js";
 import type {
   Plan,
   PlanComment,

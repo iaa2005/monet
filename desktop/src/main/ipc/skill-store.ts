@@ -18,7 +18,7 @@ import { getDataDir } from "../data-dir.js";
 import {
   fetchSuggestedSources,
   type SuggestedSource,
-} from "../skill-source-catalog.js";
+} from "../skills/source-catalog.js";
 import {
   BUILTIN_IDS,
   DEFAULT_SOURCES,
@@ -30,29 +30,29 @@ import {
   type SkillSource,
   type SourceKind,
   type StoredSource,
-} from "../skill-source-model.js";
+} from "../skills/source-model.js";
 import {
   matchMarketplace,
   marketplaceSnapshot,
   sortMarketplace,
   type MarketplaceSort,
-} from "../skills-marketplace.js";
-import { DEFAULT_CONFIG, directoryConfig } from "../directory-config.js";
+} from "../skills/marketplace.js";
+import { DEFAULT_CONFIG, directoryConfig } from "../directory/config.js";
 import {
   auditSkill,
   isAuditableFile,
   type AuditResult,
-} from "../skill-audit.js";
-import { fetchAuditRules } from "../audit-rules-catalog.js";
-import { agentOfPath } from "../agent-folders.js";
-import { loadAgentFolders } from "../agent-folder-catalog.js";
+} from "../skills/audit.js";
+import { fetchAuditRules } from "../skills/audit-rules.js";
+import { agentOfPath } from "../skills/agent-folders.js";
+import { loadAgentFolders } from "../skills/agent-folder-catalog.js";
 import {
   cacheTree,
   cachedTree,
   githubHeaders,
   MISSING,
   treeViaArchive,
-} from "../github-budget.js";
+} from "../directory/github-budget.js";
 import {
   capPerRepo,
   usefulDescription,
@@ -60,7 +60,7 @@ import {
   pickSkillDir,
   searchRegistry,
   type RegistrySkill as BaseRegistrySkill,
-} from "../skills-registry.js";
+} from "../skills/registry.js";
 
 /** A registry entry as the Directory shows it — plus whether it is already
  * installed locally, which only this side can know. */
@@ -329,7 +329,7 @@ const treeCache = new Map<string, { at: number; paths: string[] }>();
  *
  * Three ways to get it, and the reason is a limit the user hit hard: anonymous
  * api.github.com allows 60 calls an HOUR, and one listing spends one. See
- * github-budget.ts — the token, the cache that survives restart, and the archive
+ * directory/github-budget.ts — the token, the cache that survives restart, and the archive
  * that the limit does not apply to.
  */
 async function fetchTree(source: string): Promise<string[]> {
@@ -399,7 +399,7 @@ async function fetchRaw(repo: string, path: string): Promise<string | null> {
 }
 
 /** Page size and the per-repo cap come from the catalog repo — see
- * directory-config.ts. This is only the value used before the first fetch
+ * directory/config.ts. This is only the value used before the first fetch
  * lands. */
 const REGISTRY_PAGE = DEFAULT_CONFIG.registryPageSize;
 

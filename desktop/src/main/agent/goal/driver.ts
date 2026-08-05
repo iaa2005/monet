@@ -115,7 +115,7 @@ function stop(
   if (as === "blocked") {
     void (async () => {
       try {
-        const { getSessionStore } = await import("../../session-store.js");
+        const { getSessionStore } = await import("../../session/store.js");
         const { getWorkspacePath } = await import("../../ipc/workspace.js");
         const { addGoalRunNote } = await import("../run-notes.js");
         const workspace =

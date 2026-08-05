@@ -7,7 +7,7 @@
  */
 
 import { ipcMain } from "electron";
-import { clearFinished, listTasks, settleOrphans } from "../task-log.js";
+import { clearFinished, listTasks, settleOrphans } from "../session/task-log.js";
 
 export function registerTasksIPC(): void {
   // Rows left "running" belong to a process that is gone — the app was killed

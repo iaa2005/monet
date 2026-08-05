@@ -96,7 +96,7 @@ export async function ensureTab(url: string, timeoutMs = 10_000): Promise<void> 
   // not touched at all — the user asked in chat A and is reading chat B.
   {
     const { currentRunSession } = await import("../agent/run-session.js");
-    const { getVisibleChatSession } = await import("../visible-session.js");
+    const { getVisibleChatSession } = await import("../session/visible.js");
     const sid = currentRunSession();
     console.log(`[headless] ensureTab sid=${sid?.slice(0, 8) ?? "none"} visible=${getVisibleChatSession()?.slice(0, 8) ?? "none"}`);
     if (sid && sid !== getVisibleChatSession()) {
@@ -144,7 +144,7 @@ export async function revealPanel(): Promise<void> {
   // needs (or deserves) the panel brought up.
   {
     const { currentRunSession } = await import("../agent/run-session.js");
-    const { getVisibleChatSession } = await import("../visible-session.js");
+    const { getVisibleChatSession } = await import("../session/visible.js");
     const sid = currentRunSession();
     if (sid && sid !== getVisibleChatSession()) return;
   }

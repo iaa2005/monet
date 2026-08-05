@@ -21,7 +21,7 @@ import {
   KNOWN_FORMATS,
   OFFICIAL_MCP_SOURCE,
   parseMcpCatalog,
-} from "../src/main/mcp-source-catalog";
+} from "../src/main/mcp/source-catalog.js";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {

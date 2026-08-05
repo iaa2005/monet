@@ -14,8 +14,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { getSessionDb } from "./session-store.js";
-import type { LLMMessage } from "./llm/adapter.js";
+import { getSessionDb } from "./store.js";
+import type { LLMMessage } from "../llm/adapter.js";
 
 export type ContextEventType = "compact" | "rewind" | "command";
 

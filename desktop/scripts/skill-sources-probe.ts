@@ -25,7 +25,7 @@ import {
   parseStoredSource,
   toStored,
   withBuiltins,
-} from "../src/main/skill-source-model";
+} from "../src/main/skills/source-model.js";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {

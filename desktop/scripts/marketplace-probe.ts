@@ -15,12 +15,12 @@
  * rather than turned into a card that fails on click.
  */
 
-import { pickSkillDir, usefulDescription } from "../src/main/skills-registry";
+import { pickSkillDir, usefulDescription } from "../src/main/skills/registry.js";
 import {
   matchMarketplace,
   sortMarketplace,
   type MarketplaceSkill,
-} from "../src/main/skills-marketplace";
+} from "../src/main/skills/marketplace.js";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {

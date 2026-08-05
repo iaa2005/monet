@@ -13,7 +13,7 @@ import {
   shouldNotifyTurnEnd,
   notificationBody,
   type TurnEndFacts,
-} from '../src/main/turn-notify.js'
+} from '../src/main/app/turn-notify.js'
 
 let failures = 0
 function check(name: string, cond: boolean, detail?: unknown): void {

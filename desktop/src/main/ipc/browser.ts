@@ -51,7 +51,7 @@ import { getTransport } from "../browser/transport.js";
 import { setDesignMode } from "../browser/inspect.js";
 import { onInspectMessage } from "../browser/selection.js";
 import { getWorkspacePath } from "./workspace.js";
-import { getUiState, setUiState, type SessionUiState } from "../ui-state.js";
+import { getUiState, setUiState, type SessionUiState } from "../session/ui-state.js";
 import { BROWSER_PARTITION_PREFIX } from "@shared/brand.js";
 
 export function registerBrowserIPC(): void {

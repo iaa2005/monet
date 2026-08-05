@@ -32,6 +32,9 @@ await build({
   resolve: {
     alias: [
       { find: 'electron', replacement: resolve('scripts/smoke-electron-stub.ts') },
+      // data-dir.ts reads the brand's dot-folder name from @shared; without
+      // this the bundle failed to resolve it and the probe never ran.
+      { find: '@shared', replacement: resolve('src/shared') },
       { find: 'bun:bundle', replacement: resolve('src/main/shims/bun-bundle.ts') },
       ...pkgStubAliases,
       { find: '@vendor', replacement: resolve('src/vendor/leaked') },

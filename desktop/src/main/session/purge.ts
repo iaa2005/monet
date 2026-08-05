@@ -17,12 +17,12 @@
 
 import { existsSync, rmSync } from "fs";
 import { join } from "path";
-import { getDataSubdir } from "./data-dir.js";
-import { getSessionDb } from "./session-store.js";
-import { clearTranscript } from "./transcript-store.js";
+import { getDataSubdir } from "../data-dir.js";
+import { getSessionDb } from "./store.js";
+import { clearTranscript } from "./transcript.js";
 import { clearUiState } from "./ui-state.js";
-import { clearGoal, dropGoalCache } from "./agent/goal/store.js";
-import { clearSessionEngine } from "./sandbox/config.js";
+import { clearGoal, dropGoalCache } from "../agent/goal/store.js";
+import { clearSessionEngine } from "../sandbox/config.js";
 
 /** The directory-name form of a session id (same rule the writers use). */
 function safeName(sessionId: string): string {
@@ -49,7 +49,7 @@ export function purgeSessionData(sessionId: string): void {
   if (!sessionId) return;
 
   // ── The database ──────────────────────────────────────────────────
-  // Transcript + context events live in transcript-store's tables, which
+  // Transcript + context events live in the transcript store's tables, which
   // have no foreign key to sessions (they are created lazily, and adding one
   // to an existing table means rebuilding it).
   clearTranscript(sessionId);

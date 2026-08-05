@@ -1,5 +1,5 @@
 /**
- * Bundles src/main/stt-settings.ts for the Electron probe.
+ * Bundles src/main/stt/settings.ts for the Electron probe.
  *
  * Two things this step exists to arrange:
  *
@@ -45,7 +45,7 @@ export function applyDataDirEnv() {}
 );
 
 await build({
-  entryPoints: [resolve("src/main/stt-settings.ts")],
+  entryPoints: [resolve("src/main/stt/settings.ts")],
   outfile: resolve(out, "stt-settings.cjs"),
   bundle: true,
   platform: "node",

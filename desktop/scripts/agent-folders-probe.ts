@@ -22,8 +22,8 @@ import {
   rankPath,
   setExtraAgentFolders,
   ties,
-} from "../src/main/agent-folders";
-import { pickSkillDir } from "../src/main/skills-registry";
+} from "../src/main/skills/agent-folders.js";
+import { pickSkillDir } from "../src/main/skills/registry.js";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {

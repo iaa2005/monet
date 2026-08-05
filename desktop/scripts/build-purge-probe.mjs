@@ -57,16 +57,16 @@ export function copyBufferIntoSandbox() {}
 const entry = resolve(out, "purge-entry.ts");
 writeFileSync(
   entry,
-  `export { getSessionStore } from "../src/main/session-store.js";
+  `export { getSessionStore } from "../src/main/session/store.js";
 export {
   replaceTranscript,
   loadTranscriptWithMeta,
   recordContextEvent,
   listContextEvents,
-} from "../src/main/transcript-store.js";
-export { setUiState, getUiState } from "../src/main/ui-state.js";
+} from "../src/main/session/transcript.js";
+export { setUiState, getUiState } from "../src/main/session/ui-state.js";
 export { saveGoal, loadGoal } from "../src/main/agent/goal/store.js";
-export { purgeSessionData, sweepOrphans } from "../src/main/session-purge.js";
+export { purgeSessionData, sweepOrphans } from "../src/main/session/purge.js";
 export { getDataSubdir } from "../src/main/data-dir.js";
 export * as planStore from "../src/main/plan/store.js";
 `,
