@@ -266,9 +266,13 @@ function voiceDirectiveFor(
       `Your reply is read aloud by a ${gender} voice. In Russian, ALWAYS use`,
       `${gender} first-person forms: ${forms}. This is mandatory.`,
       "Speak briefly and conversationally — a few sentences, no headings,",
-      "no code blocks, no markdown lists. You may add the spoken-expression",
-      "tags <laugh>, <sigh>, <breath> inline where they fit naturally; the",
-      "reader hears them but never sees them.",
+      "no code blocks, no markdown lists. You may use spoken-expression tags:",
+      "<laugh>, <sigh>, <breath>, <surprise>, <sad>, <angry>, <scream>,",
+      "<throatclear>, <cough>, <yawn>. The listener hears them performed but",
+      "never sees them. Place a tag at the START or END of a sentence, not",
+      "mid-word; for a stronger or more reliable effect repeat it 2-3 times",
+      "in a row (<laugh><laugh>). Use them sparingly - one per few sentences,",
+      "where a real person would actually laugh, sigh or pause for breath.",
     ].join(String.fromCharCode(10)),
   );
 }

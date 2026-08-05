@@ -8,11 +8,28 @@
  */
 
 /**
- * The expression tags Supertonic actually understands, per its README. The
- * chat model is told to use exactly these; anything else a model invents is
- * stripped before synthesis rather than read aloud as angle brackets.
+ * The expression tags Supertonic actually understands — the README names
+ * three, the developers' answer in model discussion #6 lists the full ten.
+ * The chat model is told to use exactly these; anything else a model invents
+ * is stripped before synthesis rather than read aloud as angle brackets.
+ *
+ * Reliability notes from that discussion: tags land best at the start or end
+ * of a sentence, repeating one 2–3 times raises the odds it is performed,
+ * and the tagged training data is mostly ko/en/ja — in Russian a tag may be
+ * ignored (harmless) or occasionally vocalised.
  */
-export const TTS_TAGS = ["<laugh>", "<sigh>", "<breath>"] as const;
+export const TTS_TAGS = [
+  "<laugh>",
+  "<sigh>",
+  "<breath>",
+  "<surprise>",
+  "<scream>",
+  "<throatclear>",
+  "<sad>",
+  "<angry>",
+  "<cough>",
+  "<yawn>",
+] as const;
 
 /**
  * Split off expression tags for display: the UI hides them, the voice keeps
@@ -21,7 +38,10 @@ export const TTS_TAGS = ["<laugh>", "<sigh>", "<breath>"] as const;
  */
 export function stripTtsTags(text: string): string {
   return text
-    .replace(/<\/?(?:laugh|sigh|breath|pause|whisper|slow|fast|loud|quiet|chuckle|gasp|yawn|cough)>/gi, "")
+    .replace(
+      /<\/?(?:laugh|sigh|breath|surprise|scream|throatclear|sad|angry|cough|yawn|pause|whisper|slow|fast|loud|quiet|chuckle|gasp|giggle|cry|hmm)>/gi,
+      "",
+    )
     .replace(/[ \t]{2,}/g, " ");
 }
 

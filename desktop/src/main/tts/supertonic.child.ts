@@ -133,11 +133,45 @@ function lengthMask(len: number): Float32Array {
   return new Float32Array(len).fill(1);
 }
 
-async function synthesize(req: SpeakRequest): Promise<{ samples: Float32Array; sampleRate: number }> {
+/**
+ * The model's real input budget: the official example never feeds it more
+ * than 300 characters at once (120 for ko/ja) — past that the duration
+ * predictor drifts and the speech races or mumbles. Split at sentence ends
+ * first, then commas, then any whitespace; each piece goes through the full
+ * pipeline and the wavs are joined with a short breath of silence.
+ */
+function splitForModel(text: string, maxLen: number): string[] {
+  const out: string[] = [];
+  let rest = text.trim();
+  while (rest.length > maxLen) {
+    const window = rest.slice(0, maxLen);
+    const cutAt = (re: RegExp): number => {
+      let last = -1;
+      for (const m of window.matchAll(re)) last = m.index + m[0].length;
+      return last;
+    };
+    // A cut in the first fifth trades one oversized piece for a fragment
+    // that mumbles — prefer the later boundary kinds instead.
+    const min = Math.floor(maxLen / 5);
+    let cut = cutAt(/[.!?…]["»)]?\s/g);
+    if (cut < min) cut = cutAt(/[,;:]\s/g);
+    if (cut < min) cut = cutAt(/\s+/g);
+    if (cut < min) cut = maxLen;
+    out.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if (rest) out.push(rest);
+  return out.filter((p) => /[\p{L}\p{N}]/u.test(p));
+}
+
+async function synthesizeOne(
+  req: SpeakRequest,
+  piece: string,
+): Promise<{ samples: Float32Array; sampleRate: number }> {
   const m = await load(req.modelDir);
   const s = style(req.voicePath);
 
-  const text = preprocess(req.text, req.lang);
+  const text = preprocess(piece, req.lang);
   const ids = Array.from(text).map((ch) => m.indexer[String(ch.charCodeAt(0))] ?? 0);
   const n = ids.length;
   const textIds = new ort.Tensor("int64", BigInt64Array.from(ids.map(BigInt)), [1, n]);
@@ -186,6 +220,32 @@ async function synthesize(req: SpeakRequest): Promise<{ samples: Float32Array; s
   // so queued sentences don't get silence gaps between them.
   if (samples.length > wavLen && wavLen > 0) samples = samples.slice(0, wavLen);
   return { samples, sampleRate: m.sampleRate };
+}
+
+/** Long text goes through in model-sized pieces, joined by a short breath. */
+async function synthesize(req: SpeakRequest): Promise<{ samples: Float32Array; sampleRate: number }> {
+  const maxLen = req.lang === "ko" || req.lang === "ja" ? 120 : 300;
+  const pieces = splitForModel(req.text, maxLen);
+  if (pieces.length === 0) {
+    return { samples: new Float32Array(0), sampleRate: (await load(req.modelDir)).sampleRate };
+  }
+  if (pieces.length === 1) return synthesizeOne(req, pieces[0]);
+  const parts: Float32Array[] = [];
+  let sampleRate = 44100;
+  for (const p of pieces) {
+    const r = await synthesizeOne(req, p);
+    sampleRate = r.sampleRate;
+    parts.push(r.samples);
+  }
+  const gap = Math.floor(sampleRate * 0.12);
+  const total = parts.reduce((n, s) => n + s.length, 0) + gap * (parts.length - 1);
+  const joined = new Float32Array(total);
+  let at = 0;
+  for (const s of parts) {
+    joined.set(s, at);
+    at += s.length + gap;
+  }
+  return { samples: joined, sampleRate };
 }
 
 process.on("message", (req: SpeakRequest) => {

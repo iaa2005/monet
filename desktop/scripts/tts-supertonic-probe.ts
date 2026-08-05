@@ -80,6 +80,17 @@ check(
   'markdown comparisons survive the stripper',
   stripTtsTags('a < b и x <= y, а <code> не тег речи') === 'a < b и x <= y, а <code> не тег речи',
 )
+// Discussion #6 widened the vocabulary far past the README's three.
+check(
+  'the voice keeps the full discussion-#6 tag set',
+  textForSpeech('Ох. <yawn> Устала. <surprise> Ого!') === 'Ох. <yawn> Устала. <surprise> Ого!',
+  textForSpeech('Ох. <yawn> Устала. <surprise> Ого!'),
+)
+check(
+  'the UI hides the new tags too',
+  stripTtsTags('Ну что <surprise> вышло! <throatclear> Кхм.') === 'Ну что вышло! Кхм.',
+  stripTtsTags('Ну что <surprise> вышло! <throatclear> Кхм.'),
+)
 
 const md = '**Что я сделала:**\n- создала `app.py`\n- открыла [сайт](https://x.dev)\n# Итог'
 check(
@@ -143,6 +154,37 @@ if (!ttsNativeAvailable()) {
     const seconds = r.samplesBase64 ? Buffer.from(r.samplesBase64, 'base64').length / 4 / (r.sampleRate ?? 44100) : 0
     check('a plausible amount of audio came back', seconds > 1 && seconds < 10, { seconds, ms })
     console.log(`      ${seconds.toFixed(1)}s audio in ${ms}ms (cold)`)
+    // Past ~300 characters the model races — more text, barely more audio.
+    // The child must split at sentence ends and rejoin; joined speech comes
+    // out at a human rate, so duration scales with length.
+    const longText = [
+      'Сначала я проверила логи контейнера и нашла настоящую причину падения: в образе не хватало одной зависимости.',
+      'Потом я поставила её в общий кеш, пересобрала окружение и прогнала все тесты заново, уже без единой ошибки.',
+      'После этого я запустила сервер, открыла страницу в браузере и убедилась, что графики строятся и данные обновляются.',
+      'В конце я привела в порядок отчёт, сохранила его рядом с проектом и подготовила короткое резюме для тебя.',
+    ].join(' ')
+    const t1 = Date.now()
+    const rl = await speak({ text: longText, voice: 'F1', lang: 'ru', steps: 4 })
+    const lbuf = rl.samplesBase64 ? Buffer.from(rl.samplesBase64, 'base64') : Buffer.alloc(0)
+    const lsec = lbuf.length / 4 / (rl.sampleRate ?? 44100)
+    // The joins are audible in the DATA: the child separates pieces with
+    // ~120 ms of literal zero samples, and a vocoder never emits thousands
+    // of exact zeros in a row. No gaps = the text went through whole.
+    const lpcm = new Float32Array(lbuf.buffer, lbuf.byteOffset, lbuf.length / 4)
+    let gaps = 0
+    let run = 0
+    for (let i = 0; i < lpcm.length; i++) {
+      if (lpcm[i] === 0) {
+        run++
+        if (run === 2000) gaps++
+      } else run = 0
+    }
+    check(
+      'long text is split for the model: silence joins present, human rate',
+      rl.ok && gaps >= 1 && lsec > longText.length / 25 && lsec < 90,
+      { chars: longText.length, seconds: +lsec.toFixed(1), gaps, error: rl.error },
+    )
+    console.log(`      ${lsec.toFixed(1)}s audio, ${gaps} join(s), from ${longText.length} chars in ${Date.now() - t1}ms`)
     const missing = await speak({ text: 'x', voice: 'X9', lang: 'ru' })
     check('an unknown voice fails cleanly', !missing.ok && !!missing.error)
   }

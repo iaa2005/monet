@@ -38,34 +38,59 @@ function vlog(event: string, detail?: unknown): void {
 }
 
 /**
- * Sentences ready to speak: complete ones during streaming, the tail after.
+ * Chunks ready to speak: whole PARAGRAPHS (newline-bounded), not sentences.
+ *
+ * Splitting on periods chopped numbered lists — «1.» went out alone and the
+ * synthesiser mumbled it. A line is the natural breath unit: a list item, a
+ * short paragraph, a heading. Long prose without newlines still must not
+ * wait for its final period, so inside a line groups close at a sentence end
+ * once ~200 chars accumulate — the rule looks only at what came BEFORE, so
+ * a longer tail on the next streaming tick yields the same leading groups
+ * (the watcher's per-message counter depends on that stability).
  *
  * Two things are NOT for the voice. Service marks ("⏹️ Generation
  * interrupted.") — hearing that in English mid-conversation is jarring and
  * useless. And fragments under ~20 characters: the flow-matching synthesiser
  * mumbles on tiny inputs (a real "Да, умею." came out as noise), so short
- * sentences ride along with the next one instead of going out alone.
+ * chunks ride along with the next one instead of going out alone.
  */
-function completeSentences(text: string, done: boolean): string[] {
+function speakableChunks(text: string, done: boolean): string[] {
   const clean = text
     .split(INTERRUPT_MARK).join(" ")
     .replace(/⏹️?\s*Generation interrupted\.?/gi, " ");
-  const parts = clean.split(/(?<=[.!?…])\s+/);
-  if (!done && parts.length > 0) parts.pop();
+  const lines = clean.split(/\n+/);
+  const tail = lines.pop() ?? "";
+  const units: string[] = [];
+  const pushLine = (line: string, complete: boolean): void => {
+    const sentences = line.split(/(?<=[.!?…])\s+/);
+    // The last sentence of a still-streaming line is mid-word — hold it.
+    if (!complete && sentences.length > 0) sentences.pop();
+    let buf = "";
+    for (const s of sentences) {
+      const t = s.trim();
+      if (!t) continue;
+      buf = buf ? `${buf} ${t}` : t;
+      if (buf.length >= 200) {
+        units.push(buf);
+        buf = "";
+      }
+    }
+    // Under 200 chars: whole only when the line is closed; a streaming
+    // line's complete sentences wait — they will regroup identically.
+    if (buf && complete) units.push(buf);
+  };
+  for (const line of lines) pushLine(line, true);
+  pushLine(tail, done);
   const out: string[] = [];
-  let buf = "";
-  for (const p of parts) {
-    const t = p.trim();
-    if (!t) continue;
-    buf = buf ? `${buf} ${t}` : t;
-    if (buf.length >= 20) {
-      out.push(buf);
-      buf = "";
+  let carry = "";
+  for (const u of units) {
+    carry = carry ? `${carry} ${u}` : u;
+    if (carry.length >= 20) {
+      out.push(carry);
+      carry = "";
     }
   }
-  // A short tail: speak it only when the reply is finished — mid-stream it
-  // will grow into a full chunk on the next tick.
-  if (buf && done) out.push(buf);
+  if (carry && done) out.push(carry);
   return out.filter((s) => /[\p{L}\p{N}]/u.test(s));
 }
 
@@ -148,8 +173,15 @@ export function VoiceMode({
   const spokenTextsRef = useRef<Set<string>>(new Set());
   /** Barge-in mutes the REST of the current reply, not just the sentence
    * that was sounding: the queue kept refilling and she talked on. Lifted
-   * when a new reply starts. */
+   * when the user's next utterance is dispatched — inject and plan paths
+   * never reach watchReply, and the mute used to survive to the run's end. */
   const mutedRef = useRef(false);
+  /** The user is mid-utterance: playback HOLDS instead of talking over him. */
+  const userTalkingRef = useRef(false);
+  /** Speaker-echo level while she talks, learned live and kept across
+   * utterances: barge-in must out-shout the actual echo of this room and
+   * volume, not a constant tuned to one laptop. */
+  const echoEmaRef = useRef(0.02);
   /** Plans already announced by voice, by tool-call id. */
   const planSpokenRef = useRef<Set<string>>(new Set());
 
@@ -210,6 +242,12 @@ export function VoiceMode({
       audioQueueRef.current = [];
       return;
     }
+    // The user is mid-sentence: hold the queue instead of talking over him.
+    // His words land as an inject and the reply resumes right after.
+    if (userTalkingRef.current) {
+      setTimeout(() => playPump(), 200);
+      return;
+    }
     const next = audioQueueRef.current.shift();
     if (!next) {
       // The VOICE chat's stream, not whatever chat is on screen: switching
@@ -221,10 +259,13 @@ export function VoiceMode({
       if (
         phaseRef.current === "speaking" &&
         !synthBusyRef.current &&
-        queueRef.current.length === 0 &&
-        !vStreaming
+        queueRef.current.length === 0
       ) {
-        setPh("listening");
+        // A run still working between sentences is THINKING, not speaking:
+        // the violet «speaking» phase used to linger through whole tool
+        // runs, and interrupting-strength voice was demanded where plain
+        // speech should have opened the mic.
+        setPh(vStreaming ? "thinking" : "listening");
       }
       return;
     }
@@ -306,15 +347,15 @@ export function VoiceMode({
       for (const m of fresh) {
         const isNewest = msgs[msgs.length - 1]?.id === m.id;
         const done = !isNewest || !streaming;
-        const sentences = completeSentences(m.content, done);
+        const parts = speakableChunks(m.content, done);
         let n = spoken.get(m.id) ?? 0;
-        while (n < sentences.length) {
-          const key = sentences[n].replace(/\s+/g, " ").trim();
+        while (n < parts.length) {
+          const key = parts[n].replace(/\s+/g, " ").trim();
           n += 1;
           if (spokenTextsRef.current.has(key)) continue;
           spokenTextsRef.current.add(key);
           if (mutedRef.current) continue; // counted, never voiced
-          vlog("sentence-queued", key.slice(0, 60));
+          vlog("chunk-queued", { len: key.length, text: key.slice(0, 60) });
           queueRef.current.push(key);
           pump();
         }
@@ -378,22 +419,38 @@ export function VoiceMode({
       ctx.createMediaStreamSource(stream).connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
 
-      const rec = new MediaRecorder(stream);
-      recRef.current = rec;
-      const chunks: Blob[] = [];
-      rec.ondataavailable = (e) => chunks.push(e.data);
-      rec.start();
-      vlog("loop-start");
-
+      // The recorder is RESTARTED in windows while nobody talks to us. It
+      // used to run from loop start, so a whole reply's worth of speaker
+      // echo and side speech piled into one blob, transcribed only when the
+      // user finally paused — the "все мои слова слиплись в одно сообщение"
+      // bug, and the 10–16 s transcriptions.
+      let rec: MediaRecorder | null = null;
+      let chunks: Blob[] = [];
+      let discard = false;
+      let recBorn = Date.now();
       let heard = false;
       let voicedRun = 0;
       let silentSince = Date.now();
-      // Barge-in wants PROOF, not a blip: Chromium's echo cancellation only
-      // subtracts WebRTC audio, so the app's own voice from the speakers
-      // reaches this mic as ordinary sound and was stopping the playback
-      // mid-word. Direct speech into the mic is both louder and sustained;
-      // speaker echo at conversation volume is neither.
       let bargeTicks = 0;
+      let soundingSince = 0;
+      let lastDiag = 0;
+
+      const startRec = (): void => {
+        chunks = [];
+        const r = new MediaRecorder(stream);
+        rec = r;
+        recRef.current = r;
+        r.ondataavailable = (e) => chunks.push(e.data);
+        r.onstop = onStop;
+        recBorn = Date.now();
+        r.start();
+      };
+      const restartRec = (why: string): void => {
+        vlog("rec-restart", { why, ageMs: Date.now() - recBorn });
+        discard = true;
+        rec?.stop();
+      };
+
       const meter = setInterval(() => {
         if (!alive.current) return;
         analyser.getByteTimeDomainData(data);
@@ -405,133 +462,211 @@ export function VoiceMode({
         const rms = Math.sqrt(sum / data.length);
         levelRef.current = rms;
         const voiced = rms > 0.02;
-        // Barge-in: half a second of loud, uninterrupted voice — not one
-        // frame of the app hearing itself.
-        if (phaseRef.current === "speaking") {
-          bargeTicks = rms > 0.05 ? bargeTicks + 1 : 0;
-          if (bargeTicks >= 6) {
-            vlog("barge-in", { rms: +rms.toFixed(3) });
+        // What the ear is up against RIGHT NOW — audio actually sounding,
+        // not the phase label. «speaking» used to linger through whole tool
+        // runs with nothing playing, and plain speech was forced through
+        // the shout-gate.
+        const sounding = playingRef.current;
+        if (sounding && soundingSince === 0) soundingSince = Date.now();
+        if (!sounding) soundingSince = 0;
+        if (Date.now() - lastDiag > 1000) {
+          lastDiag = Date.now();
+          vlog("mic-tick", {
+            rms: +rms.toFixed(3),
+            echo: +echoEmaRef.current.toFixed(3),
+            phase: phaseRef.current,
+            sounding,
+            heard,
+            recAge: Date.now() - recBorn,
+          });
+        }
+
+        if (sounding && !heard) {
+          // Her voice is on the speakers. Chromium's echo cancellation only
+          // subtracts WebRTC audio, so the echo reaches this mic as ordinary
+          // sound — the only way in is to OUT-SHOUT it, sustained. The bar
+          // adapts to the echo actually measured in this room.
+          echoEmaRef.current = echoEmaRef.current * 0.9 + rms * 0.1;
+          const thr = Math.min(0.12, Math.max(0.045, echoEmaRef.current * 2));
+          // First ~0.5 s of each utterance only teaches the echo level:
+          // firing before the average catches up was a self-interruption.
+          const warmedUp = Date.now() - soundingSince > 500;
+          if (warmedUp && rms > thr) {
+            bargeTicks += 1;
+            vlog("barge-tick", { n: bargeTicks, rms: +rms.toFixed(3), thr: +thr.toFixed(3) });
+          } else {
             bargeTicks = 0;
-            // Mute the WHOLE remaining reply — not just this sentence.
+          }
+          if (bargeTicks >= 5) {
+            vlog("barge-in", { rms: +rms.toFixed(3), thr: +thr.toFixed(3) });
+            bargeTicks = 0;
+            // Mute the WHOLE remaining reply — not just this sentence —
+            // and treat the words that broke in as the utterance itself.
             mutedRef.current = true;
             stopPlayback();
             setPh("listening");
+            heard = true;
+            userTalkingRef.current = true;
+            silentSince = Date.now();
           }
         } else {
           bargeTicks = 0;
-        }
-        if (phaseRef.current !== "listening") return;
-        if (voiced) {
-          // Three consecutive voiced ticks (~180 ms): a keystroke is one.
-          voicedRun += 1;
-          if (voicedRun >= 3) {
-            if (!heard) vlog("speech-start", { rms: +rms.toFixed(3) });
-            heard = true;
+          // She is silent (listening, thinking, between sentences): plain
+          // sustained voice opens the gate — mid-run speech becomes an
+          // inject without having to shout over anything. Three consecutive
+          // voiced ticks (~180 ms): a keystroke is one.
+          if (voiced) {
+            voicedRun += 1;
+            if (voicedRun >= 3 && !heard) {
+              vlog("speech-start", { rms: +rms.toFixed(3), phase: phaseRef.current });
+              heard = true;
+              userTalkingRef.current = true;
+            }
+            if (heard) silentSince = Date.now();
+          } else {
+            voicedRun = 0;
           }
-          silentSince = Date.now();
-        } else {
-          voicedRun = 0;
+          if (!voiced && heard && Date.now() - silentSince > 1300) {
+            heard = false;
+            voicedRun = 0;
+            userTalkingRef.current = false;
+            vlog("speech-end");
+            clearInterval(meter);
+            rec?.stop();
+            return;
+          }
         }
-        if (!voiced && heard && Date.now() - silentSince > 1300) {
-          heard = false;
-          voicedRun = 0;
-          vlog("speech-end");
-          clearInterval(meter);
-          rec.stop();
+        // While nothing has been heard, keep the head of the recording
+        // short: 2 s windows while she talks (speaker echo), 5 s while
+        // idle (ambient hum). The blob that finally reaches STT starts at
+        // most one window before the user's first word.
+        if (!heard && Date.now() - recBorn > (sounding ? 2000 : 5000)) {
+          restartRec(sounding ? "echo-window" : "idle-window");
         }
       }, 60);
 
-      rec.onstop = () => {
+      const onStop = (): void => {
+        if (discard) {
+          discard = false;
+          if (alive.current && loopRef.current) startRec();
+          else clearInterval(meter);
+          return;
+        }
         clearInterval(meter);
         loopRef.current = false;
+        userTalkingRef.current = false;
         if (!alive.current) return;
         void (async () => {
-          setPh("thinking");
-          const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
-          if (blob.size < 2000) {
+          try {
+            await transcribeAndDispatch();
+          } catch (err) {
+            // A failed decode or a dead STT child must not kill the loop:
+            // it used to leave the mode deaf until reopened.
+            vlog("utterance-error", err instanceof Error ? err.message : String(err));
             setPh("listening");
             void listen();
-            return;
           }
-          const buf = await blob.arrayBuffer();
-          const dctx = new AudioContext({ sampleRate: 16000 });
-          const audio = await dctx.decodeAudioData(buf);
-          const pcm = new Float32Array(audio.getChannelData(0));
-          void dctx.close();
-          const tStt = Date.now();
-          const res = await api()?.stt.transcribePcm({
-            modelId: settings?.nativeModel || "gigaam-v3-rnnt-punct",
-            samples: pcm,
-            sampleRate: 16000,
-          });
-          if (!alive.current) return;
-          if (!res?.ok || !res.text) {
-            setNote(res?.error || "Не расслышала — попробуй ещё раз.");
-            setPh("listening");
-            void listen();
-            return;
-          }
-          vlog("transcribed", { ms: Date.now() - tStt, text: res.text.slice(0, 80) });
-          const clean = res.text.trim();
-          // Only the unpronounceable is noise: «Да» and «Есть» are answers.
-          // Keystroke junk is mostly caught earlier by the sustained-voice gate.
-          // Two letters minimum: «Да» and «Ок» pass, a stray «а» from a
-          // breath or the chair creaking does not.
-          if (clean.replace(/[^\p{L}\p{N}]/gu, "").length < 2) {
-            vlog("discarded-junk", clean);
-            setPh("listening");
-            void listen();
-            return;
-          }
-          setNote(clean);
-          const st = useChatStore.getState();
-          const sid = st.voiceSessionId;
-          const running = sid ? st.sessions[sid]?.isStreaming : st.isStreaming;
-          // A plan awaiting approval answers to the VOICE first: «приступай»
-          // approves it, anything else spoken goes back as the revision note
-          // — the same two buttons the card offers, without touching them.
-          {
-            const { usePlanStore } = await import("@/stores/planStore");
-            const planReq = usePlanStore.getState().request;
-            if (planReq && sid && planReq.sessionId === sid) {
-              const approve =
-                /(приступ|начина|поехал|запускай|одобря|соглас|давай\s+(делай|строй|работай)|строй|делай\s+план|go ahead|approve|build)/i.test(
-                  clean,
-                );
-              vlog("plan-decision", { approve, text: clean.slice(0, 60) });
-              api()?.plan.respond(
-                planReq.id,
-                approve ? "approve" : "keep-planning",
-                approve ? undefined : clean,
+        })();
+      };
+
+      const transcribeAndDispatch = async (): Promise<void> => {
+        setPh("thinking");
+        const blob = new Blob(chunks, { type: rec?.mimeType || "audio/webm" });
+        if (blob.size < 2000) {
+          setPh("listening");
+          void listen();
+          return;
+        }
+        const buf = await blob.arrayBuffer();
+        const dctx = new AudioContext({ sampleRate: 16000 });
+        const audio = await dctx.decodeAudioData(buf);
+        const pcm = new Float32Array(audio.getChannelData(0));
+        void dctx.close();
+        const tStt = Date.now();
+        const res = await api()?.stt.transcribePcm({
+          modelId: settings?.nativeModel || "gigaam-v3-rnnt-punct",
+          samples: pcm,
+          sampleRate: 16000,
+        });
+        if (!alive.current) return;
+        if (!res?.ok || !res.text) {
+          setNote(res?.error || "Не расслышала — попробуй ещё раз.");
+          setPh("listening");
+          void listen();
+          return;
+        }
+        vlog("transcribed", {
+          ms: Date.now() - tStt,
+          audioSec: +audio.duration.toFixed(1),
+          text: res.text.slice(0, 80),
+        });
+        const clean = res.text.trim();
+        // Only the unpronounceable is noise: «Да» and «Есть» are answers.
+        // Keystroke junk is mostly caught earlier by the sustained-voice gate.
+        // Two letters minimum: «Да» and «Ок» pass, a stray «а» from a
+        // breath or the chair creaking does not.
+        if (clean.replace(/[^\p{L}\p{N}]/gu, "").length < 2) {
+          vlog("discarded-junk", clean);
+          setPh("listening");
+          void listen();
+          return;
+        }
+        setNote(clean);
+        // The mute earned by a barge-in ends HERE: the utterance is being
+        // dispatched, and whatever she says next answers it. Inject and
+        // plan replies never passed through watchReply, so the mute used
+        // to hold to the end of the run and she answered in silence.
+        mutedRef.current = false;
+        const st = useChatStore.getState();
+        const sid = st.voiceSessionId;
+        const running = sid ? st.sessions[sid]?.isStreaming : st.isStreaming;
+        // A plan awaiting approval answers to the VOICE first: «приступай»
+        // approves it, anything else spoken goes back as the revision note
+        // — the same two buttons the card offers, without touching them.
+        {
+          const { usePlanStore } = await import("@/stores/planStore");
+          const planReq = usePlanStore.getState().request;
+          if (planReq && sid && planReq.sessionId === sid) {
+            const approve =
+              /(приступ|начина|поехал|запускай|одобря|соглас|давай\s+(делай|строй|работай)|строй|делай\s+план|go ahead|approve|build)/i.test(
+                clean,
               );
-              usePlanStore.setState({ request: null });
-              setPh("listening");
-              void listen();
-              return;
-            }
+            vlog("plan-decision", { approve, text: clean.slice(0, 60) });
+            api()?.plan.respond(
+              planReq.id,
+              approve ? "approve" : "keep-planning",
+              approve ? undefined : clean,
+            );
+            usePlanStore.setState({ request: null });
+            setPh("listening");
+            void listen();
+            return;
           }
-          if (running && sid) {
-            // Inject: it rides into the run between steps, shows up in the
-            // chat via the user_message event, and interrupts nothing. The
-            // red "Stopped" came from the OTHER path — chat:send into a busy
-            // session aborts its run.
-            const r = await api()?.chat.inject(sid, clean);
-            vlog("injected", { ok: r?.ok });
-            if (!r?.ok) {
-              // The run ended between our check and the inject — normal send.
-              onSend(clean);
-              vlog("sent");
-              watchReply();
-            }
-          } else {
+        }
+        if (running && sid) {
+          // Inject: it rides into the run between steps, shows up in the
+          // chat via the user_message event, and interrupts nothing. The
+          // red "Stopped" came from the OTHER path — chat:send into a busy
+          // session aborts its run.
+          const r = await api()?.chat.inject(sid, clean);
+          vlog("injected", { ok: r?.ok });
+          if (!r?.ok) {
+            // The run ended between our check and the inject — normal send.
             onSend(clean);
             vlog("sent");
             watchReply();
           }
-          // Keep the mic loop alive for barge-in while the reply speaks.
-          void listen();
-        })();
+        } else {
+          onSend(clean);
+          vlog("sent");
+          watchReply();
+        }
+        // Keep the mic loop alive for barge-in while the reply speaks.
+        void listen();
       };
+
+      startRec();
+      vlog("loop-start");
     } catch (err) {
       loopRef.current = false;
       setNote(err instanceof Error ? err.message : "Микрофон недоступен");
@@ -692,6 +827,9 @@ export function VoiceMode({
             <button
               type="button"
               onClick={() => {
+                // Same contract as a spoken barge-in: the REST of the reply
+                // goes quiet, not just the sentence that was sounding.
+                mutedRef.current = true;
                 stopPlayback();
                 setPh("listening");
               }}
