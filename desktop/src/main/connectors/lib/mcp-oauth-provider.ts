@@ -80,7 +80,17 @@ export class ConnectorOAuthProvider implements OAuthClientProvider {
   }
 
   get redirectUrl(): string | URL | undefined {
-    return this.redirect;
+    // Never undefined: the SDK reads a MISSING redirectUrl as "this client
+    // uses a non-interactive grant" and jumps straight to fetchToken —
+    // which throws "Either provider.prepareTokenRequest() or
+    // authorizationCode is required" WITHOUT ever trying the stored refresh
+    // token. That was every background reconnect with an expired access
+    // token. This client is interactive in shape (authorization_code +
+    // refresh_token); a background instance just refuses to OPEN the
+    // browser, and that refusal lives in redirectToAuthorization, not here.
+    // The placeholder is never registered (clientMetadata only lists a real
+    // listener) and never opened (the throw comes first).
+    return this.redirect ?? "http://127.0.0.1/oauth-callback-unbound";
   }
 
   get clientMetadata(): OAuthClientMetadata {
@@ -142,6 +152,13 @@ export class ConnectorOAuthProvider implements OAuthClientProvider {
   }
 
   saveCodeVerifier(codeVerifier: string): void {
+    // A background auth() that fell through to "start a new authorization"
+    // saves a verifier right before redirectToAuthorization throws. Letting
+    // that overwrite the store would clobber the verifier of an interactive
+    // sign-in the user has open in a browser tab at that very moment — the
+    // exchange then fails with a mismatch, permanently. A flow that can
+    // never complete an exchange has no business writing a verifier.
+    if (!this.interactive) return;
     patchSecret(this.accountId, { mcpCodeVerifier: codeVerifier });
   }
 

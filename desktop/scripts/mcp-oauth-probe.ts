@@ -75,15 +75,31 @@ const TOKENS = JSON.stringify({ access_token: 'at', refresh_token: 'rt' })
 
 {
   const bg = new ConnectorOAuthProvider(ACC, false)
+  // The SDK treats a MISSING redirectUrl as "non-interactive grant" and
+  // skips the refresh path entirely ("Either provider.prepareTokenRequest()
+  // or authorizationCode is required" — the Dropbox/alphaXiv red rows). So
+  // even an unbound provider must ANSWER, with a placeholder that is never
+  // registered and never opened.
   check(
-    'an unbound provider advertises no redirect_uri…',
-    bg.redirectUrl === undefined,
+    'an unbound provider still reports a redirectUrl (SDK refresh-path gate)',
+    bg.redirectUrl !== undefined,
+    bg.redirectUrl,
   )
   check(
-    '…and registers none, rather than a port nobody will listen on',
+    '…but registers none, rather than a port nobody will listen on',
     bg.clientMetadata.redirect_uris.length === 0,
     bg.clientMetadata.redirect_uris,
   )
+  // A background flow can never complete an exchange, so it must never
+  // write a verifier — that write is what clobbered the interactive tab's.
+  patchSecret(ACC, { mcpCodeVerifier: 'interactive-owns-this' })
+  bg.saveCodeVerifier('background-noise')
+  check(
+    'a background provider cannot clobber the interactive verifier',
+    getSecret(ACC).mcpCodeVerifier === 'interactive-owns-this',
+    getSecret(ACC).mcpCodeVerifier,
+  )
+  patchSecret(ACC, { mcpCodeVerifier: '' })
 
   const a = new ConnectorOAuthProvider(ACC, true)
   const b = new ConnectorOAuthProvider(ACC, true)

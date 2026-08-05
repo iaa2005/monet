@@ -70,7 +70,14 @@ class FileMcpOAuthProvider implements OAuthClientProvider {
   }
 
   get redirectUrl(): string | URL | undefined {
-    return this.redirect;
+    // Never undefined: the SDK reads a MISSING redirectUrl as "this client
+    // uses a non-interactive grant" and jumps straight to fetchToken — which
+    // throws "Either provider.prepareTokenRequest() or authorizationCode is
+    // required" WITHOUT ever trying the stored refresh token. That was every
+    // background reconnect with an expired access token. The placeholder is
+    // never registered (clientMetadata only lists a real listener) and never
+    // opened (redirectToAuthorization refuses when no flow is bound).
+    return this.redirect ?? "http://127.0.0.1/oauth-callback-unbound";
   }
 
   get clientMetadata(): OAuthClientMetadata {
@@ -121,6 +128,11 @@ class FileMcpOAuthProvider implements OAuthClientProvider {
   }
 
   saveCodeVerifier(codeVerifier: string): void {
+    // A background instance (no listener bound) can reach "start a new
+    // authorization" when a refresh fails; its verifier write would clobber
+    // the one an interactive sign-in is depending on. Only a flow that can
+    // complete the exchange may write.
+    if (!this.redirect) return;
     writeRecord(this.key, { serverUrl: this.serverUrl, codeVerifier });
   }
 
@@ -129,6 +141,12 @@ class FileMcpOAuthProvider implements OAuthClientProvider {
   }
 
   redirectToAuthorization(authorizationUrl: URL): void {
+    // A background reconnect whose refresh failed lands here with the
+    // placeholder redirect in the URL — opening that tab would send the user
+    // through a sign-in whose callback goes nowhere. Fail plainly instead;
+    // the UI's own Sign in button runs the flow with a real listener.
+    if (!this.redirect)
+      throw new Error("This MCP server needs you to sign in again.");
     void shell.openExternal(authorizationUrl.toString());
   }
 
