@@ -614,7 +614,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
           style={{ left: anchor.left, bottom: anchor.bottom }}
           className="fixed z-[100] flex w-80 flex-col rounded-lg border border-border bg-card p-2 shadow-lg"
         >
-          <div className="max-h-[70vh] overflow-y-auto">
+          <div className="max-h-[70vh] overflow-y-auto overflow-x-hidden">
           <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Microphone
           </div>
