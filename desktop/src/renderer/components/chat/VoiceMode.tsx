@@ -505,7 +505,10 @@ export function VoiceMode({
             bargeTicks += 1;
             vlog("barge-tick", { n: bargeTicks, rms: +rms.toFixed(3), thr: +thr.toFixed(3) });
           } else {
-            bargeTicks = 0;
+            // A leaky bucket, not a reset: consonants dip below the bar
+            // between syllables and a hard zero made every dip restart
+            // the count — real speech could never string five together.
+            bargeTicks = Math.max(0, bargeTicks - 1);
           }
           if (bargeTicks >= 5) {
             vlog("barge-in", { rms: +rms.toFixed(3), thr: +thr.toFixed(3) });
