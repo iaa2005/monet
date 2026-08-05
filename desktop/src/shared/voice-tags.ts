@@ -75,6 +75,8 @@ export function markdownForSpeech(text: string): string {
   return text
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*_]{3,}\s*$/gm, "")
+    .replace(/(^|\s)-{3,}(\s|$)/g, " ")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/\*([^*]+)\*/g, "$1")
     .replace(/__([^_]+)__/g, "$1")
