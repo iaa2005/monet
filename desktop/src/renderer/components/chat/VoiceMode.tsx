@@ -182,7 +182,15 @@ export function VoiceMode({
   /** Plans already announced by voice, by tool-call id. */
   const planSpokenRef = useRef<Set<string>>(new Set());
 
+  /** Bumped on every interruption: a synthesis already in flight belongs
+   * to the old generation and its audio is dropped on arrival. Clearing
+   * the queues alone let the interrupted sentence come BACK — the request
+   * resolved seconds later, after the mute was lifted, and she finished
+   * the sentence she was cut off from before answering. */
+  const speakGenRef = useRef(0);
+
   const stopPlayback = (): void => {
+    speakGenRef.current += 1;
     queueRef.current = [];
     audioQueueRef.current = [];
     playingRef.current = false;
@@ -200,6 +208,7 @@ export function VoiceMode({
     const text = queueRef.current.shift();
     if (!text) return;
     synthBusyRef.current = true;
+    const gen = speakGenRef.current;
     const tReq = Date.now();
     vlog("tts-request", text.slice(0, 60));
     try {
@@ -214,7 +223,9 @@ export function VoiceMode({
         steps: urgent ? 4 : 8,
       });
       if (!alive.current) return;
-      if (r?.ok && r.samplesBase64) {
+      if (gen !== speakGenRef.current) {
+        vlog("tts-stale-dropped", text.slice(0, 40));
+      } else if (r?.ok && r.samplesBase64) {
         vlog("tts-done", { ms: Date.now() - tReq, synthMs: r.ms });
         const bin = atob(r.samplesBase64);
         const bytes = new Uint8Array(bin.length);
