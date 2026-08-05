@@ -1280,15 +1280,6 @@ export default function App(): JSX.Element {
         )}
 
         <div className="app-no-drag flex items-center gap-0.5 pr-1.5">
-          {/* Files: both modes (Code = workspace, Home = sandbox tree — this is
-              how you "dig around" the sandbox; no host terminal needed here). */}
-          <IconBtn
-            title={`Files — ${comboLabel("mod+shift+e")}`}
-            active={dockOpen.includes("files")}
-            onClick={() => toggleDock("files")}
-          >
-            <Files className="size-4" />
-          </IconBtn>
           {/* Per-chat sandbox engine (VM). Global default unless pinned here —
               files carry over on switch, only the runtime changes. */}
           {appMode === "home" && !incognito && (
@@ -1328,6 +1319,15 @@ export default function App(): JSX.Element {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {/* Files: both modes (Code = workspace, Home = sandbox tree — this is
+              how you "dig around" the sandbox; no host terminal needed here). */}
+          <IconBtn
+            title={`Files — ${comboLabel("mod+shift+e")}`}
+            active={dockOpen.includes("files")}
+            onClick={() => toggleDock("files")}
+          >
+            <Files className="size-4" />
+          </IconBtn>
           {/* Artifacts: files the model produced + files the user attached. */}
           <IconBtn
             title={`Artifacts — ${comboLabel("mod+shift+a")}`}
