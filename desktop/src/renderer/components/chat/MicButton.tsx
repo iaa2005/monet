@@ -7,6 +7,16 @@
  * endpoint (OpenAI Whisper, Groq, local faster-whisper, LM Studio…) — the
  * POST happens in the main process (stt:transcribe), so no CORS.
  *
+ * Dictation is PSEUDO-STREAMING. The models here are batch models (GigaAM
+ * and Whisper take a whole clip and return a whole text — no partial
+ * hypotheses), so true live captions are off the table; what is not off the
+ * table is cutting the recording at speech pauses. A small VAD watches the
+ * input level while you talk; each ~pause ends the current segment, the
+ * recorder restarts on the same stream (the VoiceMode trick), and the
+ * finished segment goes into a SEQUENTIAL transcription queue whose results
+ * append to the composer in order. You keep dictating — and typing — while
+ * earlier fragments are still being recognised.
+ *
  * UI: the mic toggles recording; a small chevron appears on hover and opens
  * a panel with the input-device list, a live input-level bar, and the
  * transcription settings (endpoint / API key / model).
@@ -190,7 +200,6 @@ interface MicButtonProps {
 export function MicButton({ onText }: MicButtonProps): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [deviceId, setDeviceId] = useState<string>("");
   const [engine, setEngine] = useState<string>("local");
@@ -265,6 +274,28 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
   // Live values for callbacks bound once.
   const recordingRef = useRef(false);
   recordingRef.current = recording;
+
+  // ── Pseudo-streaming state ─────────────────────────────────────────────
+  // The VAD's own analyser (the meter's context opens and closes with the
+  // panel; the VAD must live exactly as long as the recording does).
+  const vadCtxRef = useRef<AudioContext | null>(null);
+  const vadRafRef = useRef(0);
+  /** The user pressed stop: the segment now ending is the last one. */
+  const finalRef = useRef(false);
+  /** Speech was heard in the CURRENT segment (a segment with none is noise). */
+  const heardRef = useRef(false);
+  const lastLoudRef = useRef(0);
+  const segBornRef = useRef(0);
+  /** Sequential transcription: each segment appends behind the previous
+   * one, so fragments land in the composer in spoken order even when a
+   * later (shorter) segment finishes recognition first. */
+  const queueTailRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingRef = useRef(0);
+  /** Characters this dictation has produced — the "was it all silence?"
+   * check moves to the END of the whole dictation, so per-segment misses
+   * stay silent instead of stacking warning pills mid-sentence. */
+  const emittedRef = useRef(0);
+  const [pending, setPending] = useState(0);
 
   // ── Meter ──────────────────────────────────────────────────────────────
   function stopMeter(): void {
@@ -350,7 +381,90 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
     }
   }
 
-  // ── Recording ──────────────────────────────────────────────────────────
+  // ── Recording (pseudo-streaming: one recorder per pause-cut segment) ───
+
+  /** The pause that ends a segment, and the least a segment may be. Cutting
+   * mid-word garbles both halves, so the cut waits for real quiet; cutting
+   * on every breath would flood the queue with half-second clips. */
+  const PAUSE_MS = 700;
+  const MIN_SEGMENT_MS = 1400;
+  const SPEECH_RMS = 0.02;
+
+  /** One recorder = one segment. On a pause cut the next recorder starts on
+   * the SAME stream, so nothing is torn down mid-dictation — the same trick
+   * VoiceMode uses for its echo windows. */
+  function startSegmentRecorder(stream: MediaStream): void {
+    const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "";
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const chunks: Blob[] = [];
+    rec.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+    rec.onstop = () => {
+      const final = finalRef.current;
+      const blob = new Blob(chunks, { type: rec.mimeType });
+      enqueueSegment(blob, final);
+      if (!final && recordingRef.current && streamRef.current) {
+        startSegmentRecorder(streamRef.current);
+      } else if (final) {
+        if (!menuOpen) releaseStream();
+        else if (streamRef.current) startMeter(streamRef.current);
+      }
+    };
+    recorderRef.current = rec;
+    heardRef.current = false;
+    segBornRef.current = Date.now();
+    lastLoudRef.current = Date.now();
+    rec.start();
+  }
+
+  /** Watch the input level; a long-enough quiet after speech cuts the
+   * segment so it can be transcribed while the user keeps talking. */
+  function startVad(stream: MediaStream): void {
+    stopVad();
+    const ctx = new AudioContext();
+    vadCtxRef.current = ctx;
+    const src = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    src.connect(analyser);
+    const data = new Float32Array(analyser.fftSize);
+    const tick = (): void => {
+      if (!recordingRef.current) return;
+      analyser.getFloatTimeDomainData(data);
+      let sum = 0;
+      for (const v of data) sum += v * v;
+      const rms = Math.sqrt(sum / data.length);
+      const now = Date.now();
+      if (rms > SPEECH_RMS) {
+        heardRef.current = true;
+        lastLoudRef.current = now;
+      }
+      if (
+        heardRef.current &&
+        now - lastLoudRef.current >= PAUSE_MS &&
+        now - segBornRef.current >= MIN_SEGMENT_MS
+      ) {
+        // Cut: the recorder's onstop enqueues this segment and starts the
+        // next one; the born/heard state resets there. The state check keeps
+        // the loop from stopping an already-stopping recorder in the frames
+        // between stop() and its async onstop.
+        const rec = recorderRef.current;
+        if (rec && rec.state === "recording") rec.stop();
+      }
+      vadRafRef.current = requestAnimationFrame(tick);
+    };
+    vadRafRef.current = requestAnimationFrame(tick);
+  }
+
+  function stopVad(): void {
+    cancelAnimationFrame(vadRafRef.current);
+    vadCtxRef.current?.close().catch(() => {});
+    vadCtxRef.current = null;
+  }
+
   async function startRecording(): Promise<void> {
     if (engine === "cloud" && !endpoint.trim()) {
       // Nothing to transcribe with — open the settings instead of failing.
@@ -364,47 +478,62 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
       const stream = streamRef.current ?? (await acquireStream(deviceId));
       streamRef.current = stream;
       startMeter(stream);
-      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "";
-      const rec = new MediaRecorder(
-        stream,
-        mime ? { mimeType: mime } : undefined,
-      );
-      const chunks: Blob[] = [];
-      rec.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-      rec.onstop = () => {
-        void transcribe(new Blob(chunks, { type: rec.mimeType }));
-        if (!menuOpen) releaseStream();
-        else if (streamRef.current) startMeter(streamRef.current);
-      };
-      recorderRef.current = rec;
-      rec.start();
+      finalRef.current = false;
+      emittedRef.current = 0;
       setRecording(true);
+      recordingRef.current = true; // the VAD loop reads it before re-render
+      startSegmentRecorder(stream);
+      startVad(stream);
     } catch {
       showError("Couldn't start recording — check microphone permissions.");
     }
   }
 
   function stopRecording(): void {
+    finalRef.current = true;
     setRecording(false);
-    recorderRef.current?.stop();
+    recordingRef.current = false;
+    stopVad();
+    // Mid-cut (recorder already stopping) the flag alone is enough: its
+    // onstop sees final=true, flushes, and does not respawn.
+    const rec = recorderRef.current;
+    if (rec && rec.state === "recording") rec.stop();
     recorderRef.current = null;
   }
 
-  async function transcribe(blob: Blob): Promise<void> {
+  /** Put a segment behind everything already recognising. The chain is the
+   * ordering guarantee; the pending counter is what the UI shows. */
+  function enqueueSegment(blob: Blob, final: boolean): void {
+    pendingRef.current += 1;
+    setPending(pendingRef.current);
+    if (pendingRef.current > 0) setStatus("Transcribing…");
+    queueTailRef.current = queueTailRef.current
+      .then(() => transcribeSegment(blob))
+      .catch(() => {})
+      .finally(() => {
+        pendingRef.current -= 1;
+        setPending(pendingRef.current);
+        if (pendingRef.current === 0) {
+          setStatus(null);
+          // The whole dictation is done and NOTHING came out — say so once,
+          // here, instead of one pill per too-quiet segment mid-sentence.
+          if (final && emittedRef.current === 0)
+            showError(
+              "No speech recognized — try again, a bit longer and closer to the mic.",
+            );
+        }
+      });
+  }
+
+  async function transcribeSegment(blob: Blob): Promise<void> {
     if (blob.size < 1000) return; // an accidental click, not speech
-    setBusy(true);
     try {
       if (engine === "local") {
         // Free on-device Whisper. First run downloads the model (progress in
         // the panel), later runs are offline.
-        setStatus("Preparing audio…");
         const pcm = await blobToPCM16k(blob);
-        // Peak level check: silence in → garbage/nothing out. Catch a wrong
-        // or muted input device before wasting an inference pass.
+        // Peak level check: silence in → garbage/nothing out. Skip quietly —
+        // a pause-cut segment with no speech is normal, not an error.
         let peak = 0;
         for (let i = 0; i < pcm.length; i += 50) {
           const v = Math.abs(pcm[i]);
@@ -412,36 +541,20 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
         }
         const dur = pcm.length / 16000;
         console.log(
-          `[stt] recorded ${dur.toFixed(1)}s, peak=${peak.toFixed(3)}, blob=${blob.size}B ${blob.type}`,
+          `[stt] segment ${dur.toFixed(1)}s, peak=${peak.toFixed(3)}, blob=${blob.size}B ${blob.type}`,
         );
-        // Accidental quick click (< 2 s) — warn, don't transcribe.
-        if (dur < 2) {
-          showError("Recording too short — hold the mic for at least 2 seconds.");
-          return;
-        }
-        if (peak < 0.01) {
-          showError(
-            "The microphone captured silence — pick another input device in the mic menu (hover the mic → arrow).",
-          );
-          return;
-        }
+        if (dur < 0.8 || peak < 0.01) return;
         const text = await transcribeLocal(pcm, localModel, language, setStatus);
         console.log(`[stt] result: ${JSON.stringify(text)}`);
-        if (text) onText(text);
-        else
-          showError(
-            "No speech recognized — try again, a bit longer and closer to the mic.",
-          );
+        if (text) {
+          emittedRef.current += text.length;
+          onText(text);
+        }
       } else if (engine === "ondevice") {
         // GigaAM in main: the audio never leaves the machine, and the model
         // writes its own punctuation.
-        setStatus("Preparing audio…");
         const pcm = await blobToPCM16k(blob);
-        if (pcm.length / 16000 < 0.5) {
-          showError("Recording too short — hold the mic and speak.");
-          return;
-        }
-        setStatus("Transcribing…");
+        if (pcm.length / 16000 < 0.5) return;
         // A copy: the buffer is transferred to main's worker, and the one the
         // AudioContext handed us is not ours to give away.
         const samples = new Float32Array(pcm);
@@ -451,12 +564,11 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
           sampleRate: 16000,
         });
         console.log(`[stt] gigaam: ${res?.ms}ms, ok=${res?.ok}`);
-        if (res?.ok && res.text) onText(res.text);
-        else if (res?.ok)
-          showError("No speech recognized — try again, closer to the mic.");
-        else showError(res?.error || "Transcription failed");
+        if (res?.ok && res.text) {
+          emittedRef.current += res.text.length;
+          onText(res.text);
+        } else if (!res?.ok) showError(res?.error || "Transcription failed");
       } else {
-        setStatus("Transcribing…");
         const audioBase64 = await blobToBase64(blob);
         const res = await api()?.stt.transcribe({
           audioBase64,
@@ -465,14 +577,14 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
           apiKey: sttKey.trim() || undefined,
           model: model.trim() || undefined,
         });
-        if (res?.ok && res.text) onText(res.text);
-        else if (res && !res.ok) showError(res.error || "Transcription failed");
+        if (res?.ok && res.text) {
+          emittedRef.current += res.text.length;
+          onText(res.text);
+        } else if (res && !res.ok)
+          showError(res.error || "Transcription failed");
       }
     } catch (err) {
       showError(err instanceof Error ? err.message : "Transcription failed");
-    } finally {
-      setBusy(false);
-      setStatus(null);
     }
   }
 
@@ -525,6 +637,8 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
   useEffect(() => {
     // Full cleanup on unmount.
     return () => {
+      finalRef.current = true; // the last segment must not respawn a recorder
+      stopVad();
       recorderRef.current?.stop();
       releaseStream();
     };
@@ -543,6 +657,10 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
     void api()?.stt.setSettings({ [field]: value });
   };
 
+  // Derived: segments still recognising. While RECORDING the red square must
+  // win over the spinner — transcription runs behind the live mic by design.
+  const busy = pending > 0;
+  const draining = busy && !recording;
   return (
     <div ref={rootRef} className="group/mic relative flex items-center">
       <button
@@ -550,24 +668,24 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
         title={
           recording
             ? "Stop dictation"
-            : busy
+            : draining
               ? "Transcribing…"
               : "Dictate (voice input)"
         }
         onClick={() => (recording ? stopRecording() : void startRecording())}
-        disabled={busy}
+        disabled={draining}
         className={cn(
           "flex size-7 items-center justify-center rounded-md transition-colors",
           recording
             ? "animate-pulse bg-destructive/15 text-destructive"
             : "text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]",
-          busy && "opacity-60",
+          draining && "opacity-60",
         )}
       >
-        {busy ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : recording ? (
+        {recording ? (
           <Square className="size-3.5 fill-current" />
+        ) : draining ? (
+          <Loader2 className="size-4 animate-spin" />
         ) : (
           <Mic className="size-4" />
         )}

@@ -88,6 +88,16 @@ While nothing has been heard yet, the recorder restarts on a short window
 (2 s while the app is speaking, 5 s when idle) so echo never accumulates
 into your next message.
 
+## Dictation is pseudo-streaming
+
+The composer's mic works the same way in miniature: the models are batch
+models (no partial hypotheses), so instead a small voice-activity detector
+cuts the recording at every ~0.7 s pause, sends the finished fragment to
+recognition, and appends the text to the input while you keep talking. The
+fragments land in spoken order (a sequential queue guarantees it), and the
+input stays fully typeable throughout — dictate a phrase, type a
+correction, keep dictating.
+
 ## Small print
 
 - Very short utterances (under ~2 KB of audio) are discarded as noise —
