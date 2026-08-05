@@ -1075,8 +1075,15 @@ export function MessageInput({
           : mode;
       // A spoken run carries the voice's gender: Russian first-person verbs
       // agree with it, and a male voice reading "я закончила" is absurd.
+      // Not only VOICE sends: a message typed into the chat where voice
+      // mode lives gets a spoken reply too, and without the directive she
+      // answered «Понял» — masculine, tagless, markdown and all.
+      const spokenReply =
+        voice ||
+        (useChatStore.getState().voiceModeOpen &&
+          useChatStore.getState().voiceSessionId === sessionId);
       let voiceGender: "female" | "male" | undefined;
-      if (voice) {
+      if (spokenReply) {
         const vs = await bridge.stt.getSettings().catch(() => null);
         voiceGender = vs?.ttsVoice?.startsWith("M") ? "male" : "female";
       }
