@@ -487,6 +487,24 @@
     font-style: italic;
 }
 
+/* The settings preview pins its subtree to one mode whatever the app wears
+   (lib/code-theme.ts injects the matching --code-* onto these classes).
+   These rules give that subtree a surface and base ink of its own — the
+   `.diff-hl` colour normally follows --foreground, which belongs to the
+   APP's mode, not the preview's. */
+.code-preview-light {
+    background: #fafafa;
+}
+.code-preview-light .diff-hl {
+    color: #383a42;
+}
+.code-preview-dark {
+    background: #1e1e1e;
+}
+.code-preview-dark .diff-hl {
+    color: #d4d4d4;
+}
+
 /* Dark fallbacks: VS Code Dark+, the family the UI palette came from.
    Declared on .dark (not .dark .diff-hl) so the theme module's injected
    <style> — same `.dark {}` specificity, later in the document — wins the

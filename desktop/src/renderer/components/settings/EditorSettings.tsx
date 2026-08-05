@@ -9,7 +9,8 @@
  * reload and no re-render.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Moon, Sun } from "lucide-react";
 import { CodeBlock } from "@/components/chat/CodeBlock";
 import { useIsDark } from "@/components/chat/highlight";
 import {
@@ -109,15 +110,24 @@ export function EditorSettings(): JSX.Element {
   const dark = useIsDark();
   const [light, setLight] = useState(() => currentThemeId("light"));
   const [darkId, setDarkId] = useState(() => currentThemeId("dark"));
+  // What the PREVIEW wears — follows the app until the user flips it, and
+  // follows a click in either grid, so what you just picked is what you see.
+  const [previewMode, setPreviewMode] = useState<"light" | "dark">(
+    dark ? "dark" : "light",
+  );
+  useEffect(() => setPreviewMode(dark ? "dark" : "light"), [dark]);
 
   const pick = (mode: "light" | "dark", id: string): void => {
     setCodeTheme(mode, id);
     if (mode === "light") setLight(id);
     else setDarkId(id);
+    setPreviewMode(mode);
   };
 
-  const liveLabel =
-    CODE_THEMES.find((t) => t.id === (dark ? darkId : light))?.label ?? "";
+  const previewLabel =
+    CODE_THEMES.find(
+      (t) => t.id === (previewMode === "dark" ? darkId : light),
+    )?.label ?? "";
 
   return (
     <div className="space-y-5">
@@ -145,10 +155,49 @@ export function EditorSettings(): JSX.Element {
       </section>
 
       <section>
-        <h4 className="mb-1.5 text-sm font-medium">
-          Preview — {liveLabel}
-        </h4>
-        <CodeBlock code={SAMPLE} language="tsx" maxHeight={420} />
+        <div className="mb-1.5 flex items-center justify-between">
+          <h4 className="text-sm font-medium">Preview — {previewLabel}</h4>
+          {/* Try either palette without touching the app's own theme. */}
+          <div className="inline-flex overflow-hidden rounded-md border border-border">
+            {(
+              [
+                ["light", Sun],
+                ["dark", Moon],
+              ] as const
+            ).map(([mode, Icon]) => (
+              <button
+                key={mode}
+                type="button"
+                title={`Preview the ${mode} theme`}
+                onClick={() => setPreviewMode(mode)}
+                className={cn(
+                  "flex size-6 items-center justify-center transition-colors",
+                  previewMode === mode
+                    ? "bg-brand/15 text-brand"
+                    : "text-muted-foreground hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
+                )}
+              >
+                <Icon className="size-3.5" />
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Full height, no inner scroll: the sample IS the panel. The wrapper
+            pins the subtree's palette and surface to previewMode, whatever
+            mode the app itself is in. */}
+        <div
+          className={cn(
+            "overflow-hidden rounded-lg border border-border",
+            previewMode === "dark" ? "code-preview-dark" : "code-preview-light",
+          )}
+        >
+          <CodeBlock
+            code={SAMPLE}
+            language="tsx"
+            bare
+            className="my-0 rounded-none border-0 bg-transparent"
+          />
+        </div>
       </section>
     </div>
   );

@@ -295,11 +295,19 @@ function varsBlock(p: CodePalette): string {
  * Write both chosen palettes into one injected <style>. `:root` carries the
  * light values, `.dark` overrides them — the same shape the app's own theme
  * variables use, so the mode toggle switches code colours for free.
+ *
+ * The `.code-preview-*` classes carry the same two palettes as element-own
+ * declarations: setting one on a wrapper pins that subtree to a mode
+ * regardless of what the app is wearing — which is what lets the settings
+ * preview show the dark palette inside a light app and back.
  */
 export function applyCodeThemes(): void {
   const light = CODE_THEMES.find((t) => t.id === currentThemeId("light"))!;
   const dark = CODE_THEMES.find((t) => t.id === currentThemeId("dark"))!;
-  const css = `:root { ${varsBlock(light)} }\n.dark { ${varsBlock(dark)} }`;
+  const css =
+    `:root { ${varsBlock(light)} }\n.dark { ${varsBlock(dark)} }\n` +
+    `.code-preview-light { ${varsBlock(light)} }\n` +
+    `.code-preview-dark { ${varsBlock(dark)} }`;
   let el = document.getElementById("code-theme") as HTMLStyleElement | null;
   if (!el) {
     el = document.createElement("style");

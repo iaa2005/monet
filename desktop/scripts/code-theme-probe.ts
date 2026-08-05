@@ -99,14 +99,21 @@ applyCodeThemes()
 const css = styleEl.textContent
 check('one :root block and one .dark block', /:root \{/.test(css) && /\.dark \{/.test(css), css.slice(0, 80))
 check(
-  'every slot lands as a --code-* variable, twice',
-  SLOTS.every((s) => (css.match(new RegExp(`--code-${s}:`, 'g')) ?? []).length === 2),
+  'every slot lands in all four blocks (:root, .dark, both previews)',
+  SLOTS.every((s) => (css.match(new RegExp(`--code-${s}:`, 'g')) ?? []).length === 4),
   css,
 )
 check(
   'the light values sit in :root, the dark in .dark',
   css.indexOf('#a0a1a7') < css.indexOf('.dark') &&
     css.indexOf('#6a9955') > css.indexOf('.dark'),
+)
+// The settings preview pins a subtree to a mode via these classes — a
+// missing block would silently make the preview show the APP's palette.
+check(
+  'the preview classes carry their own palettes',
+  /\.code-preview-light \{/.test(css) && /\.code-preview-dark \{/.test(css),
+  css.slice(-120),
 )
 
 console.log(failures === 0 ? '\nALL CODE-THEME CHECKS PASSED' : `\n${failures} FAILED`)
