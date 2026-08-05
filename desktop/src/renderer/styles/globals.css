@@ -572,14 +572,12 @@ pre.diff-hl .cl {
     overflow-wrap: anywhere;
     /* A contenteditable has no placeholder attribute. */
 }
-.composer-input:empty::before {
-    content: attr(data-placeholder);
-    color: hsl(var(--muted-foreground));
-    pointer-events: none;
-}
-/* Chrome leaves a stray <br> behind when you delete the last character, so
-   :empty stops matching and the placeholder never comes back. */
-.composer-input:has(> br:only-child)::before {
+/* Whether the box counts as empty is decided in TS (lib/composer-empty.ts)
+   and written onto the element, because CSS gets it wrong: this used to be
+   `:empty` plus `:has(> br:only-child)` for Chrome's stray <br>, and
+   `:only-child` counts ELEMENTS — so pasting two lines (text <br> text)
+   still matched, and the placeholder was drawn over the pasted text. */
+.composer-input[data-empty="true"]::before {
     content: attr(data-placeholder);
     color: hsl(var(--muted-foreground));
     pointer-events: none;

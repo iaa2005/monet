@@ -29,6 +29,7 @@ import { chipColors, toneForLabel } from "@shared/selection-tones";
 import { chipIconSvg } from "./chip-icons";
 import type { RefKind } from "@/lib/selection-marks";
 import { refToken, tokenize } from "@/lib/selection-marks";
+import { isComposerEmpty } from "@/lib/composer-empty";
 import { useIsDark } from "./highlight";
 
 export interface TokenInputHandle {
@@ -214,6 +215,18 @@ function paintCommand(box: HTMLElement): void {
   else registry.set(COMMAND_HIGHLIGHT, new Highlight(...commandRanges.values()));
 }
 
+/**
+ * Tell the placeholder whether to draw itself.
+ *
+ * CSS cannot answer this (see lib/composer-empty.ts — `:only-child` counts
+ * elements, so a pasted `text <br> text` looked empty and the placeholder
+ * landed on top of the paste). So the box carries the answer as an
+ * attribute, written wherever its content changes.
+ */
+function syncEmptyFlag(root: HTMLElement): void {
+  root.dataset.empty = isComposerEmpty(serialize(root)) ? "true" : "false";
+}
+
 /** The plain string → DOM. */
 function render(
   root: HTMLElement,
@@ -266,6 +279,7 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
       if (!box) return;
       render(box, initialText, dark, toneRef.current, kindRef.current, seen.current);
       paintCommand(box);
+      syncEmptyFlag(box);
       lastText.current = initialText;
       // Only on mount: after that the DOM is the browser's.
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -289,6 +303,7 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
       const text = serialize(box);
       lastText.current = text;
       paintCommand(box);
+      syncEmptyFlag(box);
       onChange(text);
     };
 
@@ -301,6 +316,7 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
         render(box, text, dark, toneRef.current, kindRef.current, seen.current);
         lastText.current = text;
         paintCommand(box);
+        syncEmptyFlag(box);
         placeCaretAtEnd(box);
         onChange(text);
       },
@@ -325,6 +341,9 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
         role="textbox"
         aria-multiline="true"
         data-placeholder={placeholder}
+        // Before the first render pass the box IS empty; without this the
+        // placeholder would flash off on mount for a new chat.
+        data-empty={initialText ? "false" : "true"}
         onInput={emit}
         onKeyDown={onKeyDown}
         onPaste={(e) => {
