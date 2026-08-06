@@ -295,6 +295,35 @@ check('nonsense means the whole document, not page NaN', parsePages('abc').lengt
   check('something smaller than one block still works', tiny.width >= FACTOR && tiny.height >= FACTOR, tiny)
 }
 
+// ─── Runaway generations ────────────────────────────────────────────────
+
+{
+  const { trimLoop } = await import('../src/main/ocr/loops.js')
+  const NL = String.fromCharCode(10)
+
+  const ok = ['Первая строка', 'вторая строка', 'третья'].join(NL)
+  check('ordinary text is left alone', trimLoop(ok).text === ok && !trimLoop(ok).looped)
+
+  // A table legitimately repeats a value; four in a row must survive.
+  const table = ['| a | 0.02 |', '| b | 0.02 |', '| c | 0.02 |'].join(NL)
+  check('a table with repeated values is not a loop', !trimLoop(table).looped, trimLoop(table))
+
+  // What Qwen3-VL actually did.
+  const loop = ['начало', ...new Array(20).fill('| Кубитовая | 0.02 |')].join(NL)
+  const cut = trimLoop(loop)
+  check('a runaway repetition is cut', cut.looped)
+  check('…and what came before it is kept', cut.text.startsWith('начало'), cut.text.slice(0, 40))
+  check('…leaving at most a few copies', cut.text.split(NL).length <= 5, cut.text.split(NL).length)
+
+  // SmolDocling's failure: the same line over and over, nothing else.
+  const царнир = new Array(50).fill('<text>Царнир</text>').join(NL)
+  check('a page of one repeated line collapses', trimLoop(царнир).text.split(NL).length <= 5)
+
+  // Two lines alternating is the same disease with a longer period.
+  const pair = new Array(12).fill(['раз', 'два']).flat().join(NL)
+  check('an alternating pair is caught too', trimLoop(pair).looped, trimLoop(pair).text.split(NL).length)
+}
+
 // ─── Layout: what survives, in what order ───────────────────────────────
 
 {

@@ -167,10 +167,19 @@ async function scan(req: ScanRequest): Promise<void> {
       [{ role: "user", content: [{ type: "image" }, { type: "text", text: req.prompt }] }],
       { add_generation_prompt: true },
     );
-    // Pixtral's processor — this vision tower comes from Mistral — takes the
-    // IMAGE first. Handing it the text first fails deep inside preprocessing
-    // with "undefined is not iterable", which says nothing about the cause.
-    const inputs = await processor(image, prompt);
+    // Processors disagree about argument order and say so unhelpfully:
+    // Pixtral (LightOnOCR, whose tower is Mistral's) wants the IMAGE first,
+    // Idefics-shaped ones (GLM-OCR, Qwen3-VL) want the TEXT first, and the
+    // wrong order dies deep inside preprocessing with "undefined is not
+    // iterable" — a message about neither images nor order. Trying both is
+    // cheaper than keeping a table of which model is which, and a table
+    // would be wrong the first time a new model arrives.
+    let inputs;
+    try {
+      inputs = await processor(image, prompt);
+    } catch {
+      inputs = await processor(prompt, image);
+    }
 
     let tokens = 0;
     const streamer = new TextStreamer(processor.tokenizer, {

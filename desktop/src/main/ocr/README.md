@@ -47,11 +47,29 @@ next to the entry rather than in a commit message.
 ## Removing a model
 
 Set `enabled: false` in its own file. It disappears from the app and its
-file stays, with its measurements and the reason. `paddleocr-vl.ts` is the
-worked example: good code, correct output, shelved because it reads Russian
-worse than the default and takes twice as long.
+file stays, with its measurements and the reason. Two worked examples:
 
-Deleting the file would delete the reason, and somebody would try it again.
+- `paddleocr-vl.ts` — good code, correct structure, shelved because it
+  reads Russian worse than the default and takes twice as long;
+- `qwen3-vl.ts` — a sound argument (a general model knows more Russian than
+  the specialists) that lost to a measurement: 173s a page, and it looped on
+  a table until it ran out of tokens.
+
+Deleting either file would delete the reason, and somebody would have the
+same idea again next quarter.
+
+## What is measured, per model
+
+| model | page | notes |
+| --- | --- | --- |
+| LightOnOCR-2 1B | 44s | the default; best Russian so far |
+| GLM-OCR | 28s | faster, different mistakes — the second opinion |
+| PaddleOCR-VL 1.5 | 91s | shelved: weak Cyrillic, own runtime in `paddle/` |
+| Qwen3-VL 2B | 173s | shelved: slow, loops on tables |
+
+Same page for all four (a chart, a big table, mixed Russian and English) on
+an Intel Arc iGPU. Run `npm run bench:ocr -- <file> <pages>` to redo it on
+your own documents — that is the only benchmark that means anything.
 
 ## The odd one out
 

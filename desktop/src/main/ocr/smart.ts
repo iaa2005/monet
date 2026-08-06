@@ -26,6 +26,7 @@ import { basename } from "path";
 import { ocrEngineOf, ocrModel } from "./catalog.js";
 import { getOcrConfig } from "./settings.js";
 import { isOtsl, otslToMarkdown } from "./paddle/otsl.js";
+import { trimLoop } from "./loops.js";
 import { scanPage } from "./engine.js";
 import {
   absorbInline,
@@ -293,7 +294,16 @@ export async function scanPageSmart(
     }
     // Paddle answers a table in OTSL; nobody wants those tags in a note.
     const stripped = stripEcho(r.text, prompt);
-    const clean = isOtsl(stripped) ? otslToMarkdown(stripped) : stripped;
+    const asMarkdown = isOtsl(stripped) ? otslToMarkdown(stripped) : stripped;
+    // A block that started repeating itself is cut where it began, and says
+    // so — half a paragraph beats a paragraph followed by fifty copies of
+    // its last line.
+    const trimmed = trimLoop(asMarkdown);
+    const clean = trimmed.looped
+      ? `${trimmed.text}
+
+<!-- the model started repeating itself here; the rest was dropped -->`
+      : trimmed.text;
     out.push({
       label: b.label,
       score: b.score,
