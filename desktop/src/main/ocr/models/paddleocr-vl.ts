@@ -25,6 +25,20 @@
  * One measured oddity kept here so nobody re-derives it: this model is
  * FASTER ON THE CPU than on the iGPU (91s against 104s), which is why the
  * CPU is listed first.
+ *
+ * WHY 1.5 AND NOT 1.6 — asked, and worth writing down. 1.6 exists and is
+ * the better model on paper (its release notes claim stronger multilingual
+ * recognition, which is exactly the axis this one failed on). It is not
+ * here because there is no ONNX of it: PaddlePaddle publish safetensors and
+ * GGUF, onnx-community have not converted it, and the one repo named
+ * `PaddleOCR-VL-1.6-ONNX` contains a single `.gitattributes` and nothing
+ * else. GGUF would mean llama.cpp, which this app deliberately does not
+ * carry.
+ *
+ * So the Cyrillic verdict above is 1.5's, and may not be 1.6's. The runtime
+ * in ocr/paddle is version-agnostic — it reads the graph names and the
+ * config — so when an ONNX 1.6 appears, changing `repo` here and re-running
+ * `npm run suite:ocr` is the whole job.
  */
 
 import type { OcrModelInfo } from "./types.js";
@@ -37,7 +51,7 @@ export const paddleOcrVl: OcrModelInfo = {
   repo: "onnx-community/PaddleOCR-VL-1.5-ONNX",
   label: "PaddleOCR-VL 1.5",
   note:
-    "Baidu's document model on a hand-written pipeline. Excellent table structure (answers in OTSL, converted to Markdown here), weak on Russian, about twice as slow as the default. Shelved.",
+    "Baidu's document model on a hand-written pipeline. Excellent table structure (answers in OTSL, converted to Markdown here), weak on Russian, about twice as slow as the default. Shelved. This is 1.5 — 1.6 has no ONNX build yet, only safetensors and GGUF.",
   languages: "English, Chinese, and 100+ more — but measurably weak on Russian",
   components: ["vision_encoder", "decoder", "embedding"],
   prompt: "OCR:",
