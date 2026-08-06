@@ -45,6 +45,7 @@
     "smoke:dictation": "node scripts/renderer-probe.mjs scripts/dictation-probe.ts",
     "smoke:composer": "node scripts/renderer-probe.mjs scripts/composer-empty-probe.ts",
     "smoke:obsidian": "node scripts/smoke-agent.mjs scripts/obsidian-probe.ts",
+    "smoke:ocr": "node scripts/smoke-agent.mjs scripts/ocr-probe.ts",
     "smoke:richtext": "node scripts/renderer-probe.mjs scripts/rich-text-probe.ts",
     "smoke:wikilinks": "node scripts/renderer-probe.mjs scripts/wikilinks-probe.ts",
     "smoke:notebook": "node scripts/renderer-probe.mjs scripts/notebook-probe.ts",

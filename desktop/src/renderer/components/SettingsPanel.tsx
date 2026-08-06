@@ -18,9 +18,11 @@ import {
   Loader2,
   Palette,
   SlidersHorizontal,
+  FileScan,
 } from "lucide-react";
 import { EditorSettings } from "@/components/settings/EditorSettings";
 import { ObsidianSettings } from "@/components/settings/ObsidianSettings";
+import { OcrSettings } from "@/components/settings/OcrSettings";
 import { ObsidianIcon } from "@/components/ObsidianIcon";
 import { ProviderSettings } from "@/components/providers/ProviderSettings";
 import { SkillsSettings } from "@/components/settings/SkillsSettings";
@@ -104,7 +106,8 @@ type Section =
   | "agents"
   | "services"
   | "connectors"
-  | "obsidian";
+  | "obsidian"
+  | "ocr";
 
 const NAV: {
   group: string;
@@ -132,6 +135,7 @@ const NAV: {
       { id: "skills", label: "Skills", icon: BookMarked },
       { id: "agents", label: "Agents", icon: Bot },
       { id: "obsidian", label: "Obsidian", icon: ObsidianIcon },
+      { id: "ocr", label: "OCR Scanner", icon: FileScan },
       { id: "services", label: "Connectors", icon: Boxes },
       { id: "connectors", label: "MCP Servers", icon: Plug },
     ],
@@ -563,6 +567,7 @@ export function SettingsPanel({
         {section === "memory" && <MemorySettings />}
         {section === "reflect" && <ReflectSettings />}
         {section === "obsidian" && <ObsidianSettings />}
+        {section === "ocr" && <OcrSettings />}
         {section === "services" && <ProtocolConnectors />}
         {section === "advanced" && <AdvancedSettings />}
         {section === "skills" && <SkillsSettings />}

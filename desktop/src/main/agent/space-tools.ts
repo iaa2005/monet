@@ -56,6 +56,10 @@ export const HOME_TOOL_NAMES = new Set([
   "VaultEdit",
   "VaultAttach",
   "VaultMove",
+  // Reading a document is looking at a file this chat already has — the
+  // source resolver never leaves the sandbox, the workspace or the vault,
+  // and the model that reads it runs on this machine.
+  "OCRScan",
   // Memory is about the USER, not the filesystem — it belongs in both spaces.
   "Remember",
   // Waiting touches nothing, so it is safe in the isolated space too.

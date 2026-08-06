@@ -42,6 +42,8 @@ import {
   VaultWriteTool,
 } from "../obsidian/tools.js";
 import { hasEnabledVaults } from "../obsidian/vaults.js";
+import { OCRScanTool } from "../ocr/tools.js";
+import { hasOcrModel } from "../ocr/ready.js";
 import type { SubAgentUpdate } from "./subagent.js";
 import { WebFetchTool, WebSearchTool } from "./web-tools.js";
 import { RunPythonTool } from "./sandbox-tool.js";
@@ -267,6 +269,7 @@ const ALL_TOOLS = [
   VaultEditTool,
   VaultAttachTool,
   VaultMoveTool,
+  OCRScanTool,
   WebFetchTool,
   WebSearchTool,
   RunPythonTool,
@@ -399,6 +402,10 @@ export function isSpaceToolAllowed(
     name === "VaultMove"
   )
     return hasEnabledVaults();
+  // OCR appears once a model is on disk. Offering it without one produces a
+  // tool whose every call is "install a model first" — advice the tool list
+  // has no business giving.
+  if (name === "OCRScan") return hasOcrModel();
   // MCP RESOURCES are Code-only, and the old note here said "Home has no MCP",
   // which is wrong and is exactly what makes this confusing: Home does get MCP,
   // from CONNECTOR servers only (see spaceAllowed below, and the check at the

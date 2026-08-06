@@ -510,6 +510,53 @@ const electronAPI = {
       ipcRenderer.invoke("skills:importFolder", path),
   },
 
+  ocr: {
+    // The hidden rasteriser window's two channels. They are on the shared
+    // preload because that window uses the same one as the app — it is the
+    // app's own page, just never shown.
+    onRasterise: (cb: (req: unknown) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, req: unknown): void => cb(req);
+      ipcRenderer.on("ocr:rasterise", handler);
+      return () => ipcRenderer.off("ocr:rasterise", handler);
+    },
+    rasterised: (payload: unknown): void => {
+      ipcRenderer.send("ocr:rasterised", payload);
+    },
+    models: (): Promise<import("../main/ipc/ocr.js").UiOcrModel[]> =>
+      ipcRenderer.invoke("ocr:models"),
+    config: (): Promise<import("../main/ocr/settings.js").OcrConfig> =>
+      ipcRenderer.invoke("ocr:config"),
+    setConfig: (
+      patch: Partial<import("../main/ocr/settings.js").OcrConfig>,
+    ): Promise<import("../main/ocr/settings.js").OcrConfig> =>
+      ipcRenderer.invoke("ocr:setConfig", patch),
+    install: (
+      modelId: string,
+      dtype: string,
+    ): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("ocr:install", modelId, dtype),
+    cancelInstall: (modelId: string, dtype: string): Promise<boolean> =>
+      ipcRenderer.invoke("ocr:cancelInstall", modelId, dtype),
+    remove: (modelId: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("ocr:remove", modelId),
+    pickFile: (): Promise<string | null> => ipcRenderer.invoke("ocr:pickFile"),
+    /** Read one file and hand back the Markdown — the Settings "try it" path. */
+    test: (
+      path: string,
+    ): Promise<{ ok: boolean; text?: string; error?: string; seconds?: number; device?: string }> =>
+      ipcRenderer.invoke("ocr:test", path),
+    onInstallProgress: (
+      cb: (p: import("../main/ocr/install.js").OcrInstallProgress) => void,
+    ): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        p: import("../main/ocr/install.js").OcrInstallProgress,
+      ): void => cb(p);
+      ipcRenderer.on("ocr:installProgress", handler);
+      return () => ipcRenderer.off("ocr:installProgress", handler);
+    },
+  },
+
   obsidian: {
     list: (): Promise<import("../main/ipc/obsidian.js").UiVault[]> =>
       ipcRenderer.invoke("obsidian:list"),

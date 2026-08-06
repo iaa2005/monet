@@ -87,6 +87,9 @@ export default defineConfig({
           'gigaam-child': resolve('src/main/stt/gigaam.child.ts'),
           // The Supertonic 3 voice: same isolation, its own onnxruntime.
           'supertonic-child': resolve('src/main/tts/supertonic.child.ts'),
+          // Document OCR: a 1B vision model whose generation runs for
+          // minutes. In main it would stall every IPC channel in the app.
+          'ocr-child': resolve('src/main/ocr/ocr.child.ts'),
         },
       },
     },
@@ -113,6 +116,9 @@ export default defineConfig({
           index: resolve('src/renderer/index.html'),
           // The empty host page a popped-out dock group adopts its DOM into.
           popout: resolve('src/renderer/popout.html'),
+          // A hidden window that draws PDF pages for the OCR scanner: main
+          // is Node and has no canvas, Chromium is already here.
+          rasterise: resolve('src/renderer/rasterise.html'),
         },
       },
     },

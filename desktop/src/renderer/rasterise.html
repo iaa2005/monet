@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Code Monet — page rasteriser</title>
+    <!--
+      A hidden window whose whole job is turning PDF pages into pictures.
+
+      OCR needs a bitmap per page, and main has no canvas: it is Node, not a
+      browser. The alternatives were a native canvas module (a new binary
+      dependency on three platforms, to draw a rectangle) or borrowing the
+      user's visible window (which is busy, and may be showing something the
+      user is reading). This window is neither — it is Chromium, which the app
+      already ships, with the pdf.js build the app already bundles, and it
+      exists only while a document is being read.
+    -->
+  </head>
+  <body>
+    <script type="module" src="./rasterise.ts"></script>
+  </body>
+</html>

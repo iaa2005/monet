@@ -707,6 +707,34 @@ export interface ElectronAPI {
       path: string,
     ) => Promise<{ ok: boolean; skill?: SkillInfo; error?: string }>;
   };
+  ocr: {
+    models: () => Promise<import("../../main/ipc/ocr.js").UiOcrModel[]>;
+    config: () => Promise<import("../../main/ocr/settings.js").OcrConfig>;
+    setConfig: (
+      patch: Partial<import("../../main/ocr/settings.js").OcrConfig>,
+    ) => Promise<import("../../main/ocr/settings.js").OcrConfig>;
+    install: (
+      modelId: string,
+      dtype: string,
+    ) => Promise<{ ok: boolean; error?: string }>;
+    cancelInstall: (modelId: string, dtype: string) => Promise<boolean>;
+    remove: (modelId: string) => Promise<{ ok: boolean }>;
+    pickFile: () => Promise<string | null>;
+    test: (path: string) => Promise<{
+      ok: boolean;
+      text?: string;
+      error?: string;
+      seconds?: number;
+      device?: string;
+    }>;
+    onInstallProgress: (
+      cb: (p: import("../../main/ocr/install.js").OcrInstallProgress) => void,
+    ) => () => void;
+    /** The hidden rasteriser window's channels — not for the app's own UI. */
+    onRasterise: (cb: (req: unknown) => void) => () => void;
+    rasterised: (payload: unknown) => void;
+  };
+
   obsidian: {
     list: () => Promise<UiVault[]>;
     add: (
