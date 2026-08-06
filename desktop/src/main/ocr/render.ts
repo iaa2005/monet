@@ -12,10 +12,10 @@
  */
 
 import { BrowserWindow, ipcMain } from "electron";
-import { mkdtempSync, readFileSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "fs";
 import { rm } from "fs/promises";
 import { tmpdir } from "os";
-import { join } from "path";
+import { basename, dirname, join } from "path";
 import { moduleDir } from "./module-dir.js";
 
 /** Extensions the model can look at as they are. */
@@ -225,11 +225,17 @@ export async function measureImage(imagePath: string): Promise<RenderedPage> {
 }
 
 /**
- * Cut a rendered page into the blocks a detector found.
+ * Cut a page into the blocks a detector found.
  *
- * The crops land beside the page they came from, named for their index, so a
- * failed scan leaves something a human can look at instead of a temp file
- * nobody can match to a box.
+ * The crops go in a folder of their own, `<name>-layout/`, beside the page.
+ * For a PDF that page is already in a temp folder, but for an IMAGE it is
+ * the user's own file — a screenshot in the chat's sandbox — and twenty
+ * loose PNGs landing next to it is a mess somebody has to clean up.
+ *
+ * They are kept rather than deleted: a picture block IS its crop (nothing
+ * reads it, the Markdown points at it), and when a block comes back wrong
+ * the crop is the only way to see whether the box or the model was at
+ * fault.
  */
 let cropRun = 0;
 
@@ -247,7 +253,10 @@ export async function cropBlocks(
     pad,
   });
   if (reply.error) throw new Error(reply.error);
-  const base = pagePath.replace(/\.png$/i, "");
+
+  const stem = basename(pagePath).replace(/\.[^.]+$/, "");
+  const dir = join(dirname(pagePath), `${stem}-layout`);
+  mkdirSync(dir, { recursive: true });
   // Every CALL gets its own prefix. Blocks are cut in groups (a formula is
   // padded more than a paragraph), and numbering within the group meant the
   // second group's block-000 overwrote the first group's — so a heading was
@@ -256,7 +265,7 @@ export async function cropBlocks(
   const run = ++cropRun;
   const out: { path: string; width: number; height: number }[] = [];
   for (const p of reply.pages ?? []) {
-    const path = `${base}-b${run}-${String(p.page).padStart(3, "0")}.png`;
+    const path = join(dir, `b${run}-${String(p.page).padStart(3, "0")}.png`);
     writeFileSync(path, Buffer.from(p.png));
     out.push({ path, width: p.width, height: p.height });
   }

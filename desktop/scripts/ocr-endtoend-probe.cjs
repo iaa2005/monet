@@ -17,9 +17,17 @@ app.on("window-all-closed", () => {});
 
 app.whenReady().then(async () => {
   const target = resolve(process.argv[2] ?? "");
-  const page = Number(process.argv[3] ?? 1);
+  // Pages the way the tool takes them: "3", "2-5", "1,4,9-11".
+  const pageSpec = process.argv[3] ?? "1";
+  const pages = [];
+  for (const part of pageSpec.split(",")) {
+    const range = part.trim().match(/^(\d+)\s*-\s*(\d+)$/);
+    if (range) {
+      for (let n = +range[1]; n <= +range[2]; n++) pages.push(n);
+    } else if (Number.isFinite(Number(part.trim()))) pages.push(Number(part.trim()));
+  }
   if (!existsSync(target)) {
-    console.log(`Give it a file: npm run probe:ocr -- <file.pdf> [page]`);
+    console.log(`Give it a file: npm run probe:ocr -- <file.pdf> [pages]`);
     app.exit(1);
     return;
   }
@@ -36,7 +44,7 @@ app.whenReady().then(async () => {
   let last = Date.now();
   const started = Date.now();
   const r = await scanDocument(target, {
-    pages: [page],
+    pages,
     // BBOX=1 to see what the tool's bbox:true parameter produces.
     bbox: process.env.BBOX === "1",
     onProgress: (p) => {
