@@ -188,6 +188,78 @@ check('nonsense means the whole document, not page NaN', parsePages('abc').lengt
   )
 }
 
+// ─── PaddleOCR-VL: its own file names, its own runtime ──────────────────
+
+{
+  const paddle = OCR_MODELS.find((m) => m.id === 'paddleocr-vl')!
+  check('the catalogue has the hand-written engine', !!paddle && paddle.engine === 'paddle')
+  const files = variantFiles(paddle, 'q4')
+  check(
+    'it asks for the graphs by their real names',
+    files.required.join() ===
+      'onnx/vision_encoder_q4.onnx,onnx/decoder_q4.onnx,onnx/embedding.onnx',
+    files.required,
+  )
+  check(
+    'and never for a quantised embedding table, which does not exist',
+    !files.required.concat(files.optional).some((f) => /embedding_q/.test(f)),
+    files.required.concat(files.optional),
+  )
+}
+
+// ─── OTSL, the table language Paddle answers in ─────────────────────────
+
+{
+  const { isOtsl, otslToMarkdown, parseOtsl } = await import(
+    '../src/main/ocr/paddle/otsl.js'
+  )
+  const table =
+    '<fcel>Параметр<fcel>Классический<fcel>Квантовый<nl>' +
+    '<fcel>Единица<fcel>Бит<fcel>Кубит<nl>'
+  check('OTSL is recognised', isOtsl(table))
+  check('plain markdown is not', !isOtsl('| a | b |'))
+  const rows = parseOtsl(table)
+  check('rows and cells come out whole', rows.length === 2 && rows[0].length === 3, rows)
+  const md = otslToMarkdown(table)
+  const lines = md.split('\n')
+  check('it becomes a markdown table', lines[0] === '| Параметр | Классический | Квантовый |', lines[0])
+  check('…with a header rule', lines[1] === '| --- | --- | --- |', lines[1])
+  // A model that loses its place emits a short row; markdown renders a
+  // ragged table as gibberish, so the gap is filled rather than left.
+  const ragged = otslToMarkdown('<fcel>a<fcel>b<fcel>c<nl><fcel>d<nl>')
+  const raggedLines = ragged.split('\n')
+  check('a short row is padded, not left ragged', raggedLines[2] === '| d |  |  |', raggedLines[2])
+}
+
+// ─── smart_resize, ported ───────────────────────────────────────────────
+
+{
+  const { smartResize } = await import('../src/main/ocr/paddle/preprocess.js')
+  const FACTOR = 28
+
+  // The rule that took four wrong versions to find: a picture under the
+  // pixel floor is scaled UP. A cropped text line is 33 pixels tall, and at
+  // that size the model reads letters by silhouette — "большом" comes back
+  // as "обльшом".
+  const line = smartResize(1072, 33)
+  check('a small crop is ENLARGED, not squeezed', line.height > 33 && line.width > 1072, line)
+  check('…to at least the pixel floor', line.width * line.height >= FACTOR * FACTOR * 130, line)
+  check('every side is a whole block', line.width % FACTOR === 0 && line.height % FACTOR === 0, line)
+
+  // A full page is over the ceiling and comes down.
+  const page = smartResize(2480, 3508)
+  check('a big page is reduced', page.width < 2480 && page.height < 3508, page)
+  check('…to under the ceiling', page.width * page.height <= FACTOR * FACTOR * 1280, page)
+  check('and stays on the grid', page.width % FACTOR === 0 && page.height % FACTOR === 0, page)
+
+  // Aspect ratio survives roughly — it is rounded to the grid, not squashed.
+  const wide = smartResize(2000, 500)
+  check('a wide picture stays wide', wide.width > wide.height * 3, wide)
+
+  const tiny = smartResize(10, 4)
+  check('something smaller than one block still works', tiny.width >= FACTOR && tiny.height >= FACTOR, tiny)
+}
+
 // ─── Layout: what survives, in what order ───────────────────────────────
 
 {

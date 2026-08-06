@@ -14,7 +14,7 @@ import { fork, type ChildProcess } from "child_process";
 import { existsSync } from "fs";
 import { join } from "path";
 import { moduleDir } from "./module-dir.js";
-import { ocrModel, type OcrModelInfo } from "./catalog.js";
+import { ocrEngineOf, ocrModel, type OcrModelInfo } from "./catalog.js";
 import { isInstalled, modelDir } from "./install.js";
 import { getOcrConfig, ocrModelsDir } from "./settings.js";
 
@@ -163,6 +163,7 @@ export async function scanPage(
         dtype: cfg.dtype,
         components: model.components,
         device: cfg.device,
+        engine: ocrEngineOf(model),
       });
       if (loadedReply.type !== "loaded")
         return {

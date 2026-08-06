@@ -19,6 +19,7 @@
  * memory.
  */
 
+import { join } from "path";
 import {
   AutoModelForImageTextToText,
   AutoProcessor,
@@ -36,6 +37,8 @@ interface LoadRequest {
   dtype: string;
   components: string[];
   device: "auto" | "webgpu" | "cpu";
+  /** "paddle" routes to the hand-written pipeline in ocr/paddle. */
+  engine?: string;
 }
 
 interface ScanRequest {
@@ -58,6 +61,9 @@ type Loaded = { processor: any; model: any; device: string };
 
 let loaded: Loaded | null = null;
 let loadedKey = "";
+/** Set when the loaded model is driven by our own pipeline. */
+let paddleDir = "";
+let paddleDevice: "webgpu" | "cpu" = "cpu";
 let stopper: InterruptableStoppingCriteria | null = null;
 
 function send(msg: unknown): void {
@@ -88,7 +94,22 @@ async function loadOn(
 }
 
 async function load(req: LoadRequest): Promise<void> {
-  const key = `${req.repo}:${req.dtype}:${req.device}`;
+  const key = `${req.engine ?? ""}:${req.repo}:${req.dtype}:${req.device}`;
+
+  // PaddleOCR-VL has no library support; ocr/paddle assembles it. Loading
+  // is lazy there too, so this only records what to call.
+  if (req.engine === "paddle") {
+    paddleDir = join(req.modelsDir, ...req.repo.split("/"));
+    // "auto" means the GPU here too. The paddle path loads lazily, so a
+    // backend that cannot run it surfaces on the first scan rather than
+    // now — and scanWithPaddle falls back to the CPU when that happens.
+    paddleDevice = req.device === "cpu" ? "cpu" : "webgpu";
+    loaded = null;
+    loadedKey = key;
+    send({ id: req.id, type: "loaded", device: paddleDevice });
+    return;
+  }
+  paddleDir = "";
   if (loaded && loadedKey === key) {
     send({ id: req.id, type: "loaded", device: loaded.device });
     return;
@@ -114,6 +135,27 @@ async function load(req: LoadRequest): Promise<void> {
 }
 
 async function scan(req: ScanRequest): Promise<void> {
+  if (paddleDir) {
+    try {
+      const { scanWithPaddle } = await import("./paddle/engine.js");
+      const r = await scanWithPaddle(
+        paddleDir,
+        paddleDevice,
+        req.imagePath,
+        req.prompt,
+        req.maxTokens,
+        (text, tokens) => send({ id: req.id, type: "delta", text, tokens }),
+      );
+      send({ id: req.id, type: "done", text: r.text, tokens: r.tokens });
+    } catch (err) {
+      send({
+        id: req.id,
+        type: "error",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return;
+  }
   if (!loaded) {
     send({ id: req.id, type: "error", error: "No model loaded" });
     return;

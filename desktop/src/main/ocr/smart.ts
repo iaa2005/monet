@@ -23,6 +23,9 @@
  */
 
 import { basename } from "path";
+import { ocrEngineOf, ocrModel } from "./catalog.js";
+import { getOcrConfig } from "./settings.js";
+import { isOtsl, otslToMarkdown } from "./paddle/otsl.js";
 import { scanPage } from "./engine.js";
 import {
   absorbInline,
@@ -40,10 +43,23 @@ const PICTURES = new Set(["image", "chart", "seal"]);
 /** Blocks nobody wants in the text of a document. */
 const FURNITURE = new Set(["number", "header", "footer"]);
 
-/** What to ask the model, per kind of block. */
-function promptFor(label: string): string {
-  if (label === "formula" || label === "formula_number")
-    return "Convert this formula to LaTeX.";
+/**
+ * What to ask the model, per kind of block AND per engine.
+ *
+ * PaddleOCR-VL was trained on a fixed set of task prefixes and answers
+ * badly to anything else — asked to "convert this table to markdown" it
+ * transcribes the cells as prose, while "Table Recognition:" gets a
+ * structured table back. LightOnOCR takes an instruction in English.
+ */
+function promptFor(label: string, engine: string): string {
+  const formula = label === "formula" || label === "formula_number";
+  if (engine === "paddle") {
+    if (formula) return "Formula Recognition:";
+    if (label === "table") return "Table Recognition:";
+    if (label === "chart") return "Chart Recognition:";
+    return "OCR:";
+  }
+  if (formula) return "Convert this formula to LaTeX.";
   if (label === "table") return "Convert this table to markdown.";
   return "Convert this page to markdown.";
 }
@@ -153,6 +169,9 @@ export async function scanPageSmart(
   opts: SmartOptions = {},
 ): Promise<SmartPageResult> {
   const started = Date.now();
+  const engine = ocrEngineOf(
+    ocrModel(getOcrConfig().modelId) ?? { engine: "transformers" } as never,
+  );
   if (!page.layoutRgb)
     return {
       page: page.page,
@@ -251,7 +270,7 @@ export async function scanPageSmart(
     }
 
     if (!crop) continue;
-    const prompt = promptFor(b.label);
+    const prompt = promptFor(b.label, engine);
     const r = await scanPage(
       crop.path,
       (text) =>
@@ -272,7 +291,9 @@ export async function scanPageSmart(
       parts.push(`<!-- ${b.label} at ${b.box.join(",")}: ${r.error} -->`);
       continue;
     }
-    const clean = stripEcho(r.text, prompt);
+    // Paddle answers a table in OTSL; nobody wants those tags in a note.
+    const stripped = stripEcho(r.text, prompt);
+    const clean = isOtsl(stripped) ? otslToMarkdown(stripped) : stripped;
     out.push({
       label: b.label,
       score: b.score,

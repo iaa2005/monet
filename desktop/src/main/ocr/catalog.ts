@@ -47,8 +47,19 @@ export interface OcrVariant {
   note: string;
 }
 
+/**
+ * Which runtime reads the model.
+ *
+ * "transformers" is the library doing the work. "paddle" is our own
+ * assembly of the three graphs (see ocr/paddle/) for a model the library
+ * does not support — worth the code because it is the strongest of these on
+ * tables.
+ */
+export type OcrEngine = "transformers" | "paddle";
+
 export interface OcrModelInfo {
   id: string;
+  engine?: OcrEngine;
   /** HuggingFace repo the weights come from. */
   repo: string;
   label: string;
@@ -96,7 +107,35 @@ export const OCR_MODELS: OcrModelInfo[] = [
       },
     ],
   },
+  {
+    id: "paddleocr-vl",
+    engine: "paddle",
+    repo: "onnx-community/PaddleOCR-VL-1.5-ONNX",
+    label: "PaddleOCR-VL 1.5",
+    note:
+      "Baidu's document model: 0.9B, an ERNIE-4.5 decoder on a NaViT tower that reads a page at its own aspect ratio rather than squashed to a square. Excellent table structure — it answers in OTSL, which the app turns into Markdown. Measured here it is WEAKER ON RUSSIAN than LightOnOCR (\"Кваантовый\", \"Минималная единца\") and about twice as slow, so it is the second opinion rather than the default. Runs on a hand-written pipeline (ocr/paddle) because no library supports it.",
+    languages: "English, Chinese, and 100+ more — trained multilingual",
+    // Its graphs are named differently and are not interchangeable with the
+    // transformers.js layout; the paddle engine knows which is which.
+    components: ["vision_encoder", "decoder", "embedding"],
+    prompt: "OCR:",
+    variants: [
+      {
+        dtype: "q4",
+        bytes: 858 * 1024 * 1024,
+        // The CPU is not a fallback for this one — it is the faster of the
+        // two here: 91s a page against 104s on the iGPU, because its graphs
+        // spend more time in operators WebGPU has no fast path for.
+        devices: ["cpu", "webgpu"],
+        note: "Vision tower and decoder quantised; the embedding table is not, because a lookup gains nothing from it. Measured here: 91s a page on the CPU, slower on the GPU.",
+      },
+    ],
+  },
 ];
+
+export function ocrEngineOf(model: OcrModelInfo): OcrEngine {
+  return model.engine ?? "transformers";
+}
 
 export function ocrModel(id: string): OcrModelInfo | undefined {
   return OCR_MODELS.find((m) => m.id === id);
@@ -120,6 +159,20 @@ export function variantFiles(
   model: OcrModelInfo,
   dtype: OcrDtype,
 ): { required: string[]; optional: string[] } {
+  // PaddleOCR-VL does not follow the transformers.js naming: its graphs are
+  // `decoder`/`embedding`/`vision_encoder`, and the embedding table has no
+  // quantised build at all — asking for `embedding_q4.onnx` would fail the
+  // install on a file that does not exist and never will.
+  if (ocrEngineOf(model) === "paddle")
+    return {
+      required: [
+        `onnx/vision_encoder_${dtype}.onnx`,
+        `onnx/decoder_${dtype}.onnx`,
+        "onnx/embedding.onnx",
+      ],
+      optional: ["onnx/embedding.onnx.data"],
+    };
+
   const required: string[] = [];
   const optional: string[] = [];
   for (const c of model.components) {
