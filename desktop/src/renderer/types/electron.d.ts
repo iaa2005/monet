@@ -727,6 +727,9 @@ export interface ElectronAPI {
     }>;
     openInApp: (absPath: string) => Promise<{ ok: boolean }>;
     exists: (refs: string[]) => Promise<Record<string, boolean>>;
+    resolveAttachment: (
+      name: string,
+    ) => Promise<{ ok: boolean; path?: string; kind?: string }>;
     graph: () => Promise<VaultGraph>;
   };
   memory: {

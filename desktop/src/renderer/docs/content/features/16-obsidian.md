@@ -25,6 +25,26 @@ Three tools appear the moment a vault is enabled — and only then:
   into the vault's own `.trash/` folder, recoverable from Obsidian —
   a hard delete of your writing is not an operation the agent has.
 
+## Files, not just prose
+
+**VaultAttach** puts an image, a video, a PDF — anything — into the vault
+and hands back the embed that references it. It works from **either
+space**: name a file from this chat's sandbox in Home, a workspace path in
+Code, or an artifact path from a tool result anywhere (a screenshot, a
+generated chart, a file you attached to a message).
+
+The copy lands in **your vault's own attachment folder** — read from its
+`.obsidian/app.json`, including the per-note form (`./assets`), so files go
+where that vault already puts attachments. A name that already exists gets
+a suffix rather than clobbering anything, and the copy is atomic, so a sync
+client never sees half a picture. Pass a note and the embed is appended
+there in one step.
+
+Images, video and audio come back as `![[name]]` embeds; other kinds as
+`[[name]]` links. **The app renders those embeds**: open a note in the
+viewer and the picture is a picture, the video plays, the PDF is a button
+that opens it.
+
 ## The protocol
 
 While a vault is connected, the agent carries standing rules:

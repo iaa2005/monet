@@ -22,7 +22,7 @@ import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs
 import { existsSync, renameSync, writeFileSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
 import { z } from "zod/v4";
-import { buildTool } from "@vendor/Tool.js";
+import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import {
   allNotes,
@@ -33,6 +33,9 @@ import {
 } from "./index.js";
 import { composeNote } from "./notes.js";
 import { canvasToMarkdown } from "@shared/obsidian-canvas.js";
+import { copyIntoVault, embedMarkdown } from "./attachments.js";
+import { resolveSource, sourceHint } from "./source.js";
+import { statSync } from "fs";
 import { enabledVaults, getVault } from "./vaults.js";
 
 interface Output {
@@ -418,6 +421,187 @@ export const VaultWriteTool = buildTool({
       return {
         data: {
           text: `Write failed: ${err instanceof Error ? err.message : String(err)}`,
+          isError: true,
+        },
+      };
+    }
+  },
+  mapToolResultToToolResultBlockParam: asResult,
+  renderToolUseMessage() {
+    return null;
+  },
+});
+
+// ─── VaultAttach ────────────────────────────────────────────────────────
+
+/** A cap that is about sanity, not capability: a vault is often a cloud
+ * folder, and a multi-gigabyte copy into one is a decision the user should
+ * make deliberately rather than discover during a sync. */
+const MAX_ATTACHMENT_BYTES = 512 * 1024 * 1024;
+
+const attachSchema = lazySchema(() =>
+  z.strictObject({
+    source: z
+      .string()
+      .describe(
+        "The file to put in the vault: a name in this chat's sandbox (Home), a path in the workspace (Code), an absolute path, or an artifact path from a tool result. Images, video, audio, PDFs — anything.",
+      ),
+    note: z
+      .string()
+      .optional()
+      .describe(
+        "Optional: a note to append the embed to, by wikilink name. Without it the file is copied and the embed is returned for you to place.",
+      ),
+    caption: z
+      .string()
+      .optional()
+      .describe("Optional line written above the embed in that note."),
+    name: z
+      .string()
+      .optional()
+      .describe("Rename the copy (keep the extension)."),
+    vault: z
+      .string()
+      .optional()
+      .describe("Vault name. Required when several vaults are enabled and no note is given."),
+  }),
+);
+type AttachSchema = ReturnType<typeof attachSchema>;
+
+export const VaultAttachTool = buildTool({
+  name: "VaultAttach",
+  searchHint: "put a file (image, video, document) into the user's Obsidian vault",
+  maxResultSizeChars: 4_000,
+  get inputSchema(): AttachSchema {
+    return attachSchema();
+  },
+  userFacingName() {
+    return "VaultAttach";
+  },
+  isReadOnly() {
+    return false;
+  },
+  isConcurrencySafe() {
+    return false;
+  },
+  async prompt() {
+    return [
+      "Copy a file into the user's Obsidian vault and get the embed that",
+      "references it. Works in BOTH spaces: in Home name a file from this",
+      "chat's sandbox, in Code a workspace path; an absolute path or an",
+      "artifact path from a tool result works anywhere.",
+      "",
+      "The file lands in the vault's OWN attachment folder (read from its",
+      "`.obsidian/app.json`, so it goes where that vault already puts",
+      "attachments), never overwriting an existing name. Images, video and",
+      "audio come back as `![[name]]` embeds — Obsidian renders those",
+      "inline, and so does this app; other kinds come back as `[[name]]`",
+      "links.",
+      "",
+      "Pass `note` to append the embed to a note in one step. Same rule as",
+      "VaultWrite: do this when the user asked to save the file, not as a",
+      "side effect of having produced one.",
+    ].join("\n");
+  },
+  async description() {
+    return "Copy a file into the user's Obsidian vault and embed it.";
+  },
+  async call(
+    { source, note, caption, name, vault }: z.infer<AttachSchema>,
+    context: ToolUseContext,
+  ) {
+    try {
+      const enabled = enabledVaults();
+      if (enabled.length === 0)
+        return { data: { text: "No enabled vaults to attach into.", isError: true } };
+
+      const sessionId =
+        (context as { sessionId?: string }).sessionId || undefined;
+      const found = resolveSource(source, sessionId);
+      if (!found)
+        return {
+          data: {
+            text: `No file matches "${source}". ${sourceHint(sessionId)}`,
+            isError: true,
+          },
+        };
+      const size = statSync(found.path).size;
+      if (size > MAX_ATTACHMENT_BYTES)
+        return {
+          data: {
+            text: `That file is ${(size / 1048576).toFixed(0)} MB — too large to copy into a vault automatically (limit ${MAX_ATTACHMENT_BYTES / 1048576} MB). The user can move it in themselves.`,
+            isError: true,
+          },
+        };
+
+      // Which vault, and — when a note was named — which note, since the
+      // per-note attachment folder is resolved against it.
+      const notes = allNotes(vault);
+      let target: IndexedNote | undefined;
+      if (note) {
+        const res = resolveNote(note, notes);
+        if (res.kind === "none")
+          return {
+            data: { text: `No note named "${note}" to attach to.`, isError: true },
+          };
+        if (res.kind === "many") return { data: ambiguity(res.candidates) };
+        if (res.note.format !== "md")
+          return {
+            data: {
+              text: `[[${res.note.name}]] is a .${res.note.format} file — embed the attachment from Obsidian instead.`,
+              isError: true,
+            },
+          };
+        target = res.note;
+      }
+
+      const owner = target
+        ? getVault(target.vaultId)
+        : vault
+          ? enabled.find(
+              (v) => v.name.toLowerCase() === vault.toLowerCase() || v.id === vault,
+            )
+          : enabled.length === 1
+            ? enabled[0]
+            : undefined;
+      if (!owner)
+        return {
+          data: {
+            text: `Several vaults are enabled — say which one: ${enabled.map((v) => v.name).join(", ")}.`,
+            isError: true,
+          },
+        };
+      if (owner.readOnly)
+        return { data: { text: `Vault "${owner.name}" is read-only.`, isError: true } };
+
+      const copied = copyIntoVault(owner, found.path, {
+        name,
+        noteRelPath: target?.relPath,
+      });
+      const embed = embedMarkdown(copied.name, copied.kind);
+
+      if (!target)
+        return {
+          data: {
+            text: `Copied ${found.origin === "sandbox" ? "from the sandbox" : found.origin === "workspace" ? "from the workspace" : found.origin === "artifact" ? "from this chat's artifacts" : "from disk"} into ${owner.name}: ${copied.relPath}.\nEmbed it with: ${embed}`,
+          },
+        };
+
+      const block = [caption?.trim(), embed].filter(Boolean).join("\n");
+      writeFileSync(
+        join(owner.path, target.relPath),
+        target.raw.replace(/\s*$/, "") + "\n\n" + block + "\n",
+        "utf-8",
+      );
+      return {
+        data: {
+          text: `Copied into ${owner.name}: ${copied.relPath}, and embedded in [[${target.name}]] as ${embed}.`,
+        },
+      };
+    } catch (err) {
+      return {
+        data: {
+          text: `Attach failed: ${err instanceof Error ? err.message : String(err)}`,
           isError: true,
         },
       };

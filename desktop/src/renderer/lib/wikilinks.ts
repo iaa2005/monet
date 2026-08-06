@@ -14,6 +14,9 @@
  */
 
 export const VAULT_SCHEME = "monet-vault://";
+/** `![[file]]` — an attachment, drawn rather than linked. Its own scheme so
+ * the renderer can tell an embed from a citation by the href alone. */
+export const VAULT_EMBED_SCHEME = "monet-embed://";
 
 const WIKI_RE = /\[\[([^\]|\n]+?)(?:\|([^\]\n]+?))?\]\]/g;
 
@@ -21,8 +24,14 @@ function transformSegment(text: string): string {
   return text.replace(
     WIKI_RE,
     (whole, target: string, alias: string | undefined, offset: number) => {
-      // An embed is an attachment reference, not a citation.
-      if (offset > 0 && text[offset - 1] === "!") return whole;
+      // An embed is an attachment: the file itself, drawn in place.
+      if (offset > 0 && text[offset - 1] === "!") {
+        const file = target.trim();
+        if (!file) return whole;
+        // The "!" stays in the text before this match, so the link replaces
+        // only the [[…]] part — the renderer strips the leading "!".
+        return `[${file}](${VAULT_EMBED_SCHEME}${encodeURIComponent(file)})`;
+      }
       const ref = target.trim();
       if (!ref) return whole;
       const shown = (alias ?? ref.replace(/#.*$/, "")).trim();
@@ -64,6 +73,18 @@ export function vaultRefFromHref(href: string): string | null {
   if (!href.startsWith(VAULT_SCHEME)) return null;
   try {
     return decodeURIComponent(href.slice(VAULT_SCHEME.length));
+  } catch {
+    return null;
+  }
+}
+
+/** The attachment name a monet-embed:// src carries, or null. Because the
+ * "!" survives the transform, markdown parses these as IMAGES — so this is
+ * read from an <img src>, and the renderer swaps in the real media. */
+export function vaultEmbedFromHref(href: string): string | null {
+  if (!href.startsWith(VAULT_EMBED_SCHEME)) return null;
+  try {
+    return decodeURIComponent(href.slice(VAULT_EMBED_SCHEME.length));
   } catch {
     return null;
   }

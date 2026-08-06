@@ -9,7 +9,13 @@
  *   npm run smoke:wikilinks
  */
 
-import { linkifyWikilinks, vaultRefFromHref, VAULT_SCHEME } from '../src/renderer/lib/wikilinks.js'
+import {
+  linkifyWikilinks,
+  vaultEmbedFromHref,
+  vaultRefFromHref,
+  VAULT_EMBED_SCHEME,
+  VAULT_SCHEME,
+} from '../src/renderer/lib/wikilinks.js'
 import { promoteDisplayMath } from '../src/renderer/lib/display-math.js'
 import { midEllipsis } from '../src/renderer/lib/utils.js'
 
@@ -47,11 +53,28 @@ eq(
   linkifyWikilinks('[[Мои проекты 2026]]'),
   `[Мои проекты 2026](${VAULT_SCHEME}${encodeURIComponent('Мои проекты 2026')})`,
 )
-check(
-  'an embed is not a citation',
-  linkifyWikilinks('картинка ![[img.png]] тут').includes('![[img.png]]'),
-  linkifyWikilinks('картинка ![[img.png]] тут'),
-)
+{
+  // An embed is not a citation — it is the FILE. The "!" survives in front
+  // of the rewritten link, so markdown parses the result as an image and
+  // the renderer swaps in the real picture (VaultEmbed).
+  const out = linkifyWikilinks('картинка ![[img.png]] тут')
+  eq(
+    'an embed becomes an image reference, not a note link',
+    out,
+    `картинка ![img.png](${VAULT_EMBED_SCHEME}img.png) тут`,
+  )
+  check('and never through the note scheme', !out.includes(VAULT_SCHEME), out)
+  check(
+    'the attachment name decodes back',
+    vaultEmbedFromHref(
+      `${VAULT_EMBED_SCHEME}${encodeURIComponent('моё фото.png')}`,
+    ) === 'моё фото.png',
+  )
+  check(
+    'a note link is not an embed',
+    vaultEmbedFromHref(`${VAULT_SCHEME}Note`) === null,
+  )
+}
 check(
   'two links on one line both transform',
   (linkifyWikilinks('[[A]] и [[B]]').match(/monet-vault:\/\//g) ?? []).length === 2,

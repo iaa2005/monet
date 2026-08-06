@@ -11,7 +11,15 @@
  *   npm run smoke:obsidian
  */
 
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, utimesSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+  utimesSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setDataDir } from '../src/main/data-dir.js'
@@ -242,6 +250,91 @@ check('the walk finds all notes and skips .trash/.obsidian', notes.length === 4,
     refused.data,
   )
   rmSync(join(vaultDir, 'Board.canvas'))
+}
+
+// ─── Attachments: pictures, video, anything not prose ───────────────────
+
+{
+  const {
+    attachmentFolder,
+    attachmentKind,
+    copyIntoVault,
+    embedMarkdown,
+    freeName,
+    safeAttachmentName,
+  } = await import('../src/main/obsidian/attachments.js')
+
+  check(
+    'kinds decide how a file is referenced',
+    attachmentKind('a.PNG') === 'image' &&
+      attachmentKind('clip.mp4') === 'video' &&
+      attachmentKind('take.mp3') === 'audio' &&
+      attachmentKind('paper.pdf') === 'file',
+  )
+  check(
+    'media embeds, other kinds link',
+    embedMarkdown('a.png', 'image') === '![[a.png]]' &&
+      embedMarkdown('p.pdf', 'file') === '[[p.pdf]]',
+  )
+  check(
+    'a name is made safe without losing its extension',
+    safeAttachmentName('C:/tmp/my photo:v2.png') === 'my_photo_v2.png',
+    safeAttachmentName('C:/tmp/my photo:v2.png'),
+  )
+
+  const vault = listVaults()[0]
+  // No .obsidian/app.json yet → the vault root, Obsidian's own default.
+  check('with no vault config, attachments land at the root', attachmentFolder(vault) === '')
+  mkdirSync(join(vaultDir, '.obsidian'), { recursive: true })
+  writeFileSync(
+    join(vaultDir, '.obsidian', 'app.json'),
+    JSON.stringify({ attachmentFolderPath: 'assets' }),
+  )
+  check("a vault's own folder setting is honoured", attachmentFolder(vault) === 'assets')
+  writeFileSync(
+    join(vaultDir, '.obsidian', 'app.json'),
+    JSON.stringify({ attachmentFolderPath: './files' }),
+  )
+  check(
+    'the per-note form lands BESIDE the note',
+    attachmentFolder(vault, 'projects/Scaling Laws.md') === 'projects/files',
+    attachmentFolder(vault, 'projects/Scaling Laws.md'),
+  )
+  writeFileSync(
+    join(vaultDir, '.obsidian', 'app.json'),
+    JSON.stringify({ attachmentFolderPath: 'assets' }),
+  )
+
+  // The copy itself.
+  const srcDir = mkdtempSync(join(tmpdir(), 'obsidian-probe-src-'))
+  const png = join(srcDir, 'plot.png')
+  writeFileSync(png, Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]))
+  const first = copyIntoVault(vault, png)
+  check('the file lands in the vault, in its folder', first.relPath === 'assets/plot.png', first)
+  check('and is reported as an image', first.kind === 'image' && first.bytes === 7, first)
+  const second = copyIntoVault(vault, png)
+  check(
+    'a second copy never clobbers the first',
+    second.relPath === 'assets/plot-1.png' && existsSync(join(vaultDir, 'assets', 'plot.png')),
+    second,
+  )
+  check(
+    'freeName is what decides that',
+    freeName(join(vaultDir, 'assets'), 'plot.png') === 'plot-2.png',
+  )
+  check(
+    'no temp file is left behind',
+    !readdirSync(join(vaultDir, 'assets')).some((f) => f.includes('monet-tmp')),
+    readdirSync(join(vaultDir, 'assets')),
+  )
+  // Attachments are not notes: the index must not adopt them.
+  check(
+    'the index ignores attachments',
+    !allNotes().some((n) => n.name === 'plot'),
+    allNotes().map((n) => n.name),
+  )
+  rmSync(srcDir, { recursive: true, force: true })
+  rmSync(join(vaultDir, 'assets'), { recursive: true, force: true })
 }
 
 // ─── Trash: "delete" the Obsidian way ───────────────────────────────────

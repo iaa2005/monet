@@ -20,7 +20,14 @@ import { viewArtifact, viewWorkspaceFile } from "@/components/artifact-actions";
 import { isWebLink, openLink, wantsExternal } from "@/lib/open-link";
 import { splitMarkdownChunks } from "@/lib/markdown-chunks";
 import { escapeCurrencyDollars } from "@/lib/currency-dollars";
-import { linkifyWikilinks, vaultRefFromHref, VAULT_SCHEME } from "@/lib/wikilinks";
+import {
+  linkifyWikilinks,
+  vaultEmbedFromHref,
+  vaultRefFromHref,
+  VAULT_EMBED_SCHEME,
+  VAULT_SCHEME,
+} from "@/lib/wikilinks";
+import { VaultEmbed } from "./VaultEmbed";
 import { promoteDisplayMath } from "@/lib/display-math";
 import { vaultRefStatus } from "@/lib/vault-link-status";
 
@@ -32,7 +39,9 @@ import { vaultRefStatus } from "@/lib/vault-link-status";
  * other URL still goes through the stock sanitiser.
  */
 function urlTransform(url: string): string {
-  return url.startsWith(VAULT_SCHEME) ? url : defaultUrlTransform(url);
+  return url.startsWith(VAULT_SCHEME) || url.startsWith(VAULT_EMBED_SCHEME)
+    ? url
+    : defaultUrlTransform(url);
 }
 import { splitFrontmatter } from "@/lib/frontmatter";
 import { stripTtsTags } from "@shared/voice-tags";
@@ -352,6 +361,9 @@ function MarkdownViewerImpl({
     img: ({ node: _n, ...p }: any) => {
       const src = p.src ?? "";
       const alt = p.alt ?? "";
+      // ![[picture.png]] — a vault attachment, drawn as the file itself.
+      const embed = vaultEmbedFromHref(src);
+      if (embed) return <VaultEmbed name={embed} />;
       if (/^(https?:|data:)/i.test(src)) return <img {...p} className="my-2 max-h-[28rem] max-w-full rounded-lg border border-border" />;
       const item = src.startsWith("artifacts/") || /^file:\/\//i.test(src)
         ? artifactFromPath(src, alt)

@@ -7,6 +7,7 @@
  */
 
 import { ipcMain, shell } from "electron";
+import { readdirSync, statSync } from "fs";
 import { join } from "path";
 import {
   allNotes,
@@ -14,6 +15,8 @@ import {
   resolveNote,
   vaultStats,
 } from "../obsidian/index.js";
+import { attachmentKind } from "../obsidian/attachments.js";
+import { SKIP_DIRS } from "../obsidian/notes.js";
 import {
   addVault,
   listVaults,
@@ -44,6 +47,50 @@ function toUi(v: VaultConfig): UiVault {
     present = false;
   }
   return { ...v, present, isObsidian, stats };
+}
+
+/**
+ * Find a file by BASENAME (or by vault-relative path) inside a vault.
+ *
+ * Depth-limited and skipping the folders the index skips: an embed names a
+ * file, not a path, and the answer must not cost a full-disk walk on a
+ * vault that happens to contain a node_modules.
+ */
+function findFile(root: string, wanted: string, depth: number): string | null {
+  if (depth > 8) return null;
+  // A path form ("attachments/pic.png") is answered directly.
+  if (depth === 0 && wanted.includes("/")) {
+    const direct = join(root, wanted);
+    try {
+      if (statSync(direct).isFile()) return direct;
+    } catch {
+      /* not a path — fall through to the walk */
+    }
+  }
+  let entries: string[];
+  try {
+    entries = readdirSync(root);
+  } catch {
+    return null;
+  }
+  const dirs: string[] = [];
+  for (const e of entries) {
+    if (e.startsWith(".") || SKIP_DIRS.has(e)) continue;
+    const full = join(root, e);
+    let st;
+    try {
+      st = statSync(full);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) dirs.push(full);
+    else if (e.toLowerCase() === wanted.split("/").pop()) return full;
+  }
+  for (const d of dirs) {
+    const hit = findFile(d, wanted, depth + 1);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 export function registerObsidianIPC(): void {
@@ -141,6 +188,28 @@ export function registerObsidianIPC(): void {
       edges,
     };
   });
+
+  // An ![[embed]] pointing at a picture, a video or any other file. Notes
+  // resolve through the index; attachments are not indexed (they are not
+  // notes), so this walks the vault for the basename — the same way
+  // Obsidian resolves an embed. Cached per call by the OS page cache; the
+  // renderer caches the verdict (lib/vault-link-status.ts pattern).
+  ipcMain.handle(
+    "obsidian:resolveAttachment",
+    (
+      _e,
+      name: string,
+    ): { ok: boolean; path?: string; kind?: string } => {
+      const wanted = String(name).replace(/^\[\[|\]\]$/g, "").trim();
+      if (!wanted || /[\\/]\.\./.test(wanted)) return { ok: false };
+      const target = wanted.toLowerCase();
+      for (const v of listVaults().filter((x) => x.enabled)) {
+        const hit = findFile(v.path, target, 0);
+        if (hit) return { ok: true, path: hit, kind: attachmentKind(hit) };
+      }
+      return { ok: false };
+    },
+  );
 
   // Ctrl+click: hand the note to the Obsidian app itself. The obsidian://
   // scheme is registered by Obsidian on install; without it the OS shows
