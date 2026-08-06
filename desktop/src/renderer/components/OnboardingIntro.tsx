@@ -94,7 +94,7 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
         {step === "welcome" && (
           <div className="animate-in fade-in duration-500">
             <div className="text-center">
-              <h1 className="font-[Copernicus] text-6xl font-semibold tracking-tight text-foreground">
+              <h1 className="font-display text-6xl font-semibold tracking-tight text-foreground">
                 Code Monet
               </h1>
               <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-muted-foreground">
@@ -143,7 +143,7 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
 
         {step === "profile" && (
           <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-            <h2 className="font-[Copernicus] text-3xl font-semibold tracking-tight text-foreground">
+            <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground">
               Nice to meet you
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -203,7 +203,7 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
 
         {step === "avatar" && (
           <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-            <h2 className="font-[Copernicus] text-3xl font-semibold tracking-tight text-foreground">
+            <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground">
               Pick an avatar
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">

@@ -1250,7 +1250,7 @@ export default function App(): JSX.Element {
               type="button"
               onClick={toggleBg}
               onContextMenu={(e) => { e.preventDefault(); setRotateMenuOpen((o) => !o); }}
-              className="font-[Copernicus] text-[15px] font-semibold tracking-tight text-foreground cursor-pointer hover:opacity-80 transition-opacity"
+              className="font-display text-[15px] font-semibold tracking-tight text-foreground cursor-pointer hover:opacity-80 transition-opacity"
             >
               Code Monet
             </button>

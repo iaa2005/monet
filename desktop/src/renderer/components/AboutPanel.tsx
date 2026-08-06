@@ -50,7 +50,7 @@ export function AboutPanel(): JSX.Element {
 
   const Info = () => (
     <div>
-      <h1 className="font-[Copernicus] text-5xl font-semibold tracking-tight text-foreground">
+      <h1 className="font-display text-5xl font-semibold tracking-tight text-foreground">
         Code Monet
       </h1>
       <div className="mt-3">
@@ -95,7 +95,7 @@ export function AboutPanel(): JSX.Element {
       <div className="flex h-full flex-col">
         <div className="flex flex-1 items-end gap-6 p-6">
           <div className="flex min-h-0 flex-1 flex-col justify-between self-stretch">
-            <h1 className="font-[Copernicus] text-5xl font-semibold tracking-tight text-foreground">
+            <h1 className="font-display text-5xl font-semibold tracking-tight text-foreground">
               Code Monet
             </h1>
             <p className="mt-2 max-w-sm text-sm leading-relaxed text-foreground">
