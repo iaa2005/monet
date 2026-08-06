@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import {
   BookOpen,
   FolderOpen,
+  Paperclip,
   Plus,
   RefreshCw,
   Trash2,
@@ -58,7 +59,7 @@ export function ObsidianSettings(): JSX.Element {
 
   const patch = async (
     id: string,
-    p: { enabled?: boolean; readOnly?: boolean },
+    p: { enabled?: boolean; readOnly?: boolean; attachmentFolder?: string },
   ): Promise<void> => {
     await api()?.obsidian.update(id, p);
     await load();
@@ -210,6 +211,32 @@ export function ObsidianSettings(): JSX.Element {
                   Read-only
                 </label>
               </div>
+              <label className="mt-2 flex items-center gap-2 text-[13px]">
+                <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="shrink-0 text-muted-foreground">
+                  Attachments →
+                </span>
+                <input
+                  type="text"
+                  spellCheck={false}
+                  placeholder={
+                    v.attachmentFolder ? "" : "vault root (Obsidian's setting)"
+                  }
+                  defaultValue={v.attachmentFolder ?? ""}
+                  key={`${v.id}:${v.attachmentFolder ?? ""}`}
+                  // Commit on blur/Enter, not per keystroke: every update
+                  // rebuilds the vendor toolset.
+                  onBlur={(e) => {
+                    const next = e.target.value.trim();
+                    if (next !== (v.attachmentFolder ?? ""))
+                      void patch(v.id, { attachmentFolder: next });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                  className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none focus:border-brand"
+                />
+              </label>
             </div>
           ))}
         </div>

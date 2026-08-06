@@ -102,7 +102,13 @@ export function registerObsidianIPC(): void {
   });
   ipcMain.handle(
     "obsidian:update",
-    (_e, id: string, patch: Partial<Pick<VaultConfig, "name" | "enabled" | "readOnly">>) => {
+    (
+      _e,
+      id: string,
+      patch: Partial<
+        Pick<VaultConfig, "name" | "enabled" | "readOnly" | "attachmentFolder">
+      >,
+    ) => {
       const r = updateVault(id, patch);
       resetVendorTools();
       return r;

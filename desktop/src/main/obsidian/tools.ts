@@ -19,7 +19,7 @@
  */
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
-import { existsSync, renameSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readdirSync, renameSync, writeFileSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
@@ -27,14 +27,16 @@ import { lazySchema } from "@vendor/utils/lazySchema.js";
 import {
   allNotes,
   backlinksTo,
+  invalidatePath,
   resolveNote,
   searchNotes,
   type IndexedNote,
 } from "./index.js";
-import { composeNote } from "./notes.js";
+import { composeNote, SKIP_DIRS } from "./notes.js";
 import { canvasToMarkdown } from "@shared/obsidian-canvas.js";
 import { copyIntoVault, embedMarkdown } from "./attachments.js";
 import { resolveSource, sourceHint } from "./source.js";
+import { applyEdit, referencesName, rewriteLinks } from "./links.js";
 import { statSync } from "fs";
 import { enabledVaults, getVault } from "./vaults.js";
 
@@ -270,6 +272,8 @@ function writeNoteFile(absPath: string, text: string): void {
   const tmp = `${absPath}.monet-tmp`;
   writeFileSync(tmp, text, "utf-8");
   renameSync(tmp, absPath);
+  // The index caches by mtime, and two writes in one tick can share one.
+  invalidatePath(absPath);
 }
 
 /**
@@ -288,6 +292,7 @@ export function trashNoteFile(vaultPath: string, relPath: string): string {
     ? base.replace(/\.md$/i, "") + `-${Date.now().toString(36)}.md`
     : base;
   renameSync(join(vaultPath, relPath), join(trashDir, target));
+  invalidatePath(join(vaultPath, relPath));
   return target;
 }
 
@@ -455,7 +460,13 @@ const attachSchema = lazySchema(() =>
     caption: z
       .string()
       .optional()
-      .describe("Optional line written above the embed in that note."),
+      .describe("Optional line written above the embed when it is appended."),
+    replace: z
+      .string()
+      .optional()
+      .describe(
+        "Exact text in that note to REPLACE with the embed — a markdown image, a URL, a placeholder. This is how a picture lands where it belongs instead of at the end of the note. Must appear exactly once.",
+      ),
     name: z
       .string()
       .optional()
@@ -498,16 +509,20 @@ export const VaultAttachTool = buildTool({
       "inline, and so does this app; other kinds come back as `[[name]]`",
       "links.",
       "",
-      "Pass `note` to append the embed to a note in one step. Same rule as",
-      "VaultWrite: do this when the user asked to save the file, not as a",
-      "side effect of having produced one.",
+      "Pass `note` to place the embed in one step. With `replace` — the exact",
+      "text to swap for it, typically the markdown image or URL already in",
+      "the note — the picture lands WHERE IT BELONGS; without it the embed is",
+      "appended at the end. Prefer `replace` when the note already refers to",
+      "the image: attaching twenty pictures and then moving twenty embeds by",
+      "hand is the long way round. Same rule as VaultWrite: do this when the",
+      "user asked to save the file, not as a side effect of having produced one.",
     ].join("\n");
   },
   async description() {
     return "Copy a file into the user's Obsidian vault and embed it.";
   },
   async call(
-    { source, note, caption, name, vault }: z.infer<AttachSchema>,
+    { source, note, caption, name, vault, replace }: z.infer<AttachSchema>,
     context: ToolUseContext,
   ) {
     try {
@@ -588,10 +603,31 @@ export const VaultAttachTool = buildTool({
         };
 
       const block = [caption?.trim(), embed].filter(Boolean).join("\n");
-      writeFileSync(
+
+      // With `replace`, the embed takes the place of what the note already
+      // says about this picture — a markdown image, a URL, a placeholder.
+      // Appending is the fallback, not the intent: a picture belongs where
+      // the text talks about it.
+      if (replace) {
+        const edited = applyEdit(target.raw, replace, block, false);
+        if (!edited.ok)
+          return {
+            data: {
+              text: `${copied.relPath} is in the vault, but the note was not touched: ${edited.error} Embed it yourself with ${embed}.`,
+              isError: true,
+            },
+          };
+        writeNoteFile(join(owner.path, target.relPath), edited.text);
+        return {
+          data: {
+            text: `Copied into ${owner.name}: ${copied.relPath}, and put ${embed} in [[${target.name}]] where the old reference was.`,
+          },
+        };
+      }
+
+      writeNoteFile(
         join(owner.path, target.relPath),
         target.raw.replace(/\s*$/, "") + "\n\n" + block + "\n",
-        "utf-8",
       );
       return {
         data: {
@@ -602,6 +638,286 @@ export const VaultAttachTool = buildTool({
       return {
         data: {
           text: `Attach failed: ${err instanceof Error ? err.message : String(err)}`,
+          isError: true,
+        },
+      };
+    }
+  },
+  mapToolResultToToolResultBlockParam: asResult,
+  renderToolUseMessage() {
+    return null;
+  },
+});
+
+/** Find a note or attachment inside the vault by name or vault-relative
+ * path. Notes come from the index; attachments are not indexed, so a
+ * depth-limited walk answers for them — the same rule the embed resolver
+ * uses (ipc/obsidian.ts). Returns a vault-relative path. */
+function findInVault(root: string, wanted: string): string | null {
+  const target = wanted.split("\\").join("/").trim();
+  const direct = join(root, target);
+  try {
+    if (statSync(direct).isFile()) return target;
+  } catch {
+    /* not a path — fall through to the walk */
+  }
+  const base = (target.split("/").pop() ?? target).toLowerCase();
+  const walk = (dir: string, rel: string, depth: number): string | null => {
+    if (depth > 8) return null;
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return null;
+    }
+    const dirs: string[] = [];
+    for (const e of entries) {
+      if (e.startsWith(".") || SKIP_DIRS.has(e)) continue;
+      const abs = join(dir, e);
+      let st;
+      try {
+        st = statSync(abs);
+      } catch {
+        continue;
+      }
+      const childRel = rel ? `${rel}/${e}` : e;
+      if (st.isDirectory()) dirs.push(childRel);
+      else if (
+        e.toLowerCase() === base ||
+        e.replace(/[.][^.]+$/, "").toLowerCase() === base
+      )
+        return childRel;
+    }
+    for (const d of dirs) {
+      const hit = walk(join(root, d), d, depth + 1);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  return walk(root, "", 0);
+}
+
+function isDirIn(root: string, rel: string): boolean {
+  try {
+    const clean = rel.replace(/[/]+$/, "").replace(/[\\]+$/, "");
+    return statSync(join(root, clean)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+// ─── VaultEdit ──────────────────────────────────────────────────────────
+
+const editSchema = lazySchema(() =>
+  z.strictObject({
+    note: z.string().describe("Note to edit, by wikilink name or vault-relative path."),
+    old_string: z
+      .string()
+      .describe("The exact text to replace, whitespace and line breaks included."),
+    new_string: z.string().describe("What to put there instead."),
+    replace_all: z
+      .boolean()
+      .optional()
+      .describe("Replace every occurrence instead of requiring a unique one."),
+    vault: z.string().optional().describe("Limit to one vault, by name."),
+  }),
+);
+type EditSchema = ReturnType<typeof editSchema>;
+
+export const VaultEditTool = buildTool({
+  name: "VaultEdit",
+  searchHint: "edit part of a note in the user's Obsidian vault",
+  maxResultSizeChars: 4_000,
+  get inputSchema(): EditSchema {
+    return editSchema();
+  },
+  userFacingName() {
+    return "VaultEdit";
+  },
+  isReadOnly() {
+    return false;
+  },
+  isConcurrencySafe() {
+    return false;
+  },
+  async prompt() {
+    return [
+      "Change PART of a note — the surgical counterpart of VaultWrite, which",
+      "can only append or rewrite the whole thing. Read the note first;",
+      "old_string must match exactly and must be unique unless you pass",
+      "replace_all. Use this to fix a line, swap an image reference or",
+      "rename a heading without resending the entire note.",
+    ].join("\n");
+  },
+  async description() {
+    return "Replace exact text inside a vault note.";
+  },
+  async call({ note, old_string, new_string, replace_all, vault }: z.infer<EditSchema>) {
+    try {
+      const notes = allNotes(vault);
+      const res = resolveNote(note, notes);
+      if (res.kind === "none")
+        return { data: { text: `No note named "${note}".`, isError: true } };
+      if (res.kind === "many") return { data: ambiguity(res.candidates) };
+      const target = res.note;
+      if (target.format !== "md")
+        return {
+          data: {
+            text: `[[${target.name}]] is a .${target.format} file — edit it in Obsidian.`,
+            isError: true,
+          },
+        };
+      const owner = getVault(target.vaultId);
+      if (!owner || owner.readOnly)
+        return {
+          data: { text: `Vault "${target.vaultName}" is read-only.`, isError: true },
+        };
+      const edited = applyEdit(target.raw, old_string, new_string, replace_all ?? false);
+      if (!edited.ok) return { data: { text: edited.error, isError: true } };
+      writeNoteFile(join(owner.path, target.relPath), edited.text);
+      return {
+        data: {
+          text: `Edited [[${target.name}]] — ${edited.count} replacement(s).`,
+        },
+      };
+    } catch (err) {
+      return {
+        data: {
+          text: `Edit failed: ${err instanceof Error ? err.message : String(err)}`,
+          isError: true,
+        },
+      };
+    }
+  },
+  mapToolResultToToolResultBlockParam: asResult,
+  renderToolUseMessage() {
+    return null;
+  },
+});
+
+// ─── VaultMove ──────────────────────────────────────────────────────────
+
+const moveSchema = lazySchema(() =>
+  z.strictObject({
+    from: z
+      .string()
+      .describe(
+        "What to move: a note by name, or a file by name or vault-relative path (e.g. 00-cover.jpg).",
+      ),
+    to: z
+      .string()
+      .describe(
+        'Where it goes, vault-relative: a folder ("attachments/") to move it, or a full path ("attachments/cover.jpg") to move and rename.',
+      ),
+    vault: z.string().optional().describe("Vault name, when several are enabled."),
+  }),
+);
+type MoveSchema = ReturnType<typeof moveSchema>;
+
+export const VaultMoveTool = buildTool({
+  name: "VaultMove",
+  searchHint: "move or rename a note or file inside the user's Obsidian vault",
+  maxResultSizeChars: 6_000,
+  get inputSchema(): MoveSchema {
+    return moveSchema();
+  },
+  userFacingName() {
+    return "VaultMove";
+  },
+  isReadOnly() {
+    return false;
+  },
+  isConcurrencySafe() {
+    return false;
+  },
+  async prompt() {
+    return [
+      "Move or rename something INSIDE the vault — a note, a picture, any",
+      "attachment — and rewrite every [[link]] and ![[embed]] that pointed",
+      "at it, the way Obsidian does on rename. This is how loose files in",
+      "the vault root get tidied into an attachments folder without",
+      "breaking the notes that show them.",
+      "Give a folder to move, a full path to move and rename.",
+    ].join("\n");
+  },
+  async description() {
+    return "Move or rename a note or file in the vault, updating links.";
+  },
+  async call({ from, to, vault }: z.infer<MoveSchema>) {
+    try {
+      const enabled = enabledVaults();
+      if (enabled.length === 0)
+        return { data: { text: "No enabled vaults.", isError: true } };
+      const owner = vault
+        ? enabled.find((v) => v.name.toLowerCase() === vault.toLowerCase() || v.id === vault)
+        : enabled.length === 1
+          ? enabled[0]
+          : undefined;
+      if (!owner)
+        return {
+          data: {
+            text: `Several vaults are enabled — say which one: ${enabled.map((v) => v.name).join(", ")}.`,
+            isError: true,
+          },
+        };
+      if (owner.readOnly)
+        return { data: { text: `Vault "${owner.name}" is read-only.`, isError: true } };
+
+      const rel = findInVault(owner.path, from);
+      if (!rel)
+        return {
+          data: { text: `Nothing named "${from}" in ${owner.name}.`, isError: true },
+        };
+
+      // A trailing separator, or a folder that already exists, means "into
+      // this folder"; anything else is the full destination path.
+      const wantsFolder =
+        to.endsWith("/") || to.endsWith("\\") || isDirIn(owner.path, to);
+      const base = rel.split("/").pop()!;
+      const destRel = (wantsFolder
+        ? `${to.replace(/[/]+$/, "").replace(/[\\]+$/, "")}/${base}`
+        : to
+      )
+        .split("\\")
+        .join("/")
+        .replace(/^[/]+/, "");
+      if (destRel === rel)
+        return { data: { text: `${rel} is already there.` } };
+      const destAbs = join(owner.path, destRel);
+      if (existsSync(destAbs))
+        return {
+          data: { text: `${destRel} already exists in ${owner.name}.`, isError: true },
+        };
+
+      mkdirSync(dirname(destAbs), { recursive: true });
+      renameSync(join(owner.path, rel), destAbs);
+      invalidatePath(join(owner.path, rel));
+
+      // Rewrite references. A bare-name move (same basename, new folder)
+      // changes nothing a wikilink says — Obsidian resolves by name — so
+      // only a RENAME touches the notes.
+      let touched = 0;
+      let links = 0;
+      const fromBase = base;
+      const toBase = destRel.split("/").pop()!;
+      if (fromBase.toLowerCase() !== toBase.toLowerCase()) {
+        for (const n of allNotes(owner.id)) {
+          if (n.format !== "md" || !referencesName(n.raw, fromBase)) continue;
+          const r = rewriteLinks(n.raw, { from: rel, to: destRel });
+          if (r.count === 0) continue;
+          writeNoteFile(join(owner.path, n.relPath), r.text);
+          touched++;
+          links += r.count;
+        }
+      }
+      const note = links
+        ? ` Updated ${links} reference(s) in ${touched} note(s).`
+        : " No references needed changing (Obsidian resolves by name).";
+      return { data: { text: `Moved ${rel} → ${destRel} in ${owner.name}.${note}` } };
+    } catch (err) {
+      return {
+        data: {
+          text: `Move failed: ${err instanceof Error ? err.message : String(err)}`,
           isError: true,
         },
       };

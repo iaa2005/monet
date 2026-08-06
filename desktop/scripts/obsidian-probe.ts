@@ -15,6 +15,7 @@ import {
   existsSync,
   mkdtempSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   rmSync,
   writeFileSync,
@@ -277,9 +278,22 @@ check('the walk finds all notes and skips .trash/.obsidian', notes.length === 4,
       embedMarkdown('p.pdf', 'file') === '[[p.pdf]]',
   )
   check(
-    'a name is made safe without losing its extension',
-    safeAttachmentName('C:/tmp/my photo:v2.png') === 'my_photo_v2.png',
+    'only what a filesystem forbids is replaced',
+    safeAttachmentName('C:/tmp/my photo:v2.png') === 'my photo_v2.png',
     safeAttachmentName('C:/tmp/my photo:v2.png'),
+  )
+  // The bug this pins down: hyphens were being eaten, so a picture the model
+  // had just named 00-cover.jpg landed as 00_cover.jpg and every embed it
+  // wrote pointed at nothing.
+  check(
+    'a hyphenated name survives verbatim',
+    safeAttachmentName('kimi-article-img/00-cover.jpg') === '00-cover.jpg',
+    safeAttachmentName('kimi-article-img/00-cover.jpg'),
+  )
+  check(
+    'a windows path is reduced to its basename',
+    safeAttachmentName('C:\\work\\img\\shot-1.png') === 'shot-1.png',
+    safeAttachmentName('C:\\work\\img\\shot-1.png'),
   )
 
   const vault = listVaults()[0]
@@ -350,6 +364,167 @@ check('the walk finds all notes and skips .trash/.obsidian', notes.length === 4,
   writeFileSync(join(vaultDir, 'Doomed.md'), 'вторая жизнь\n')
   const second = trashNoteFile(vaultDir, 'Doomed.md')
   check('a name collision in trash gets a suffix, never a clobber', second !== 'Doomed.md', second)
+}
+
+// ─── Link rewriting and surgical edits (pure) ───────────────────────────
+
+{
+  const { rewriteLinks, referencesName, applyEdit } = await import(
+    '../src/main/obsidian/links.js'
+  )
+
+  const src = [
+    'обложка ![[00-cover.jpg]] и ссылка [[00-cover.jpg|подпись]]',
+    'путь ![[assets/00-cover.jpg]] и markdown ![alt](00-cover.jpg)',
+    'чужой файл ![[other.jpg]] и внешний ![web](https://x.dev/00-cover.jpg)',
+  ].join('\n')
+  const r = rewriteLinks(src, { from: '00-cover.jpg', to: 'assets/cover.jpg' })
+  check('every reference to the old name is rewritten', r.count === 4, r.count)
+  check('a bare name stays bare', r.text.includes('![[cover.jpg]]'), r.text)
+  check('…and an aliased link keeps its alias', r.text.includes('[[cover.jpg|подпись]]'))
+  check('a path reference becomes the new path', r.text.includes('![[assets/cover.jpg]]'))
+  check('a markdown link is rewritten too', r.text.includes('![alt](cover.jpg)'))
+  check('another file is left alone', r.text.includes('![[other.jpg]]'))
+  check('an http url is not a vault path', r.text.includes('https://x.dev/00-cover.jpg'))
+
+  check('the pre-filter sees a reference by basename', referencesName(src, 'assets/00-cover.jpg'))
+  check('…and says no when there is none', !referencesName(src, 'nothing.png'))
+
+  const note = 'до\nПОМЕТКА\nпосле\nПОМЕТКА\n'
+  const uniq = applyEdit('раз\nдва\nтри\n', 'два', 'ДВА')
+  check('a unique edit lands', uniq.ok && uniq.text === 'раз\nДВА\nтри\n', uniq)
+  const dup = applyEdit(note, 'ПОМЕТКА', 'X')
+  check('an ambiguous edit refuses rather than guessing', !dup.ok, dup)
+  const all = applyEdit(note, 'ПОМЕТКА', 'X', true)
+  check('…unless replace_all was asked for', all.ok && all.count === 2, all)
+  check('a missing old_string is an error', !applyEdit('текст', 'нет', 'да').ok)
+  check('an empty old_string is an error', !applyEdit('текст', '', 'да').ok)
+  check('a no-op edit is an error', !applyEdit('текст', 'текст', 'текст').ok)
+}
+
+// ─── Where attachments land ─────────────────────────────────────────────
+
+{
+  const { attachmentFolder } = await import('../src/main/obsidian/attachments.js')
+  const base = { id: 'x', name: 'V', path: vaultDir, enabled: true, readOnly: false }
+  mkdirSync(join(vaultDir, '.obsidian'), { recursive: true })
+  writeFileSync(
+    join(vaultDir, '.obsidian', 'app.json'),
+    JSON.stringify({ attachmentFolderPath: 'obsidian-attachments' }),
+  )
+  check(
+    "without an override the vault's own setting is used",
+    attachmentFolder(base) === 'obsidian-attachments',
+    attachmentFolder(base),
+  )
+  check(
+    'the app setting wins over the vault config',
+    attachmentFolder({ ...base, attachmentFolder: 'media/pictures' }) === 'media/pictures',
+    attachmentFolder({ ...base, attachmentFolder: 'media/pictures' }),
+  )
+  check(
+    'an override of "/" means the root, explicitly',
+    attachmentFolder({ ...base, attachmentFolder: '/' }) === '',
+  )
+  check(
+    'a per-note override lands beside the note',
+    attachmentFolder({ ...base, attachmentFolder: './assets' }, 'Проекты/Заметка.md') ===
+      'Проекты/assets',
+    attachmentFolder({ ...base, attachmentFolder: './assets' }, 'Проекты/Заметка.md'),
+  )
+  rmSync(join(vaultDir, '.obsidian'), { recursive: true, force: true })
+}
+
+// ─── Moving a file, links and all ───────────────────────────────────────
+
+{
+  const { VaultMoveTool, VaultEditTool } = await import('../src/main/obsidian/tools.js')
+  const call = async (tool: unknown, input: unknown): Promise<string> => {
+    const r = await (tool as { call: (i: unknown) => Promise<{ data: { text: string } }> }).call(
+      input,
+    )
+    return r.data.text
+  }
+  writeFileSync(join(vaultDir, 'pic-one.png'), 'not really a png')
+  writeFileSync(
+    join(vaultDir, 'Статья.md'),
+    'Вступление.\n\n![[pic-one.png]]\n\nКонец.\n',
+  )
+
+  const moved = await call(VaultMoveTool, { from: 'pic-one.png', to: 'assets/' })
+  check('a file moves into a folder', existsSync(join(vaultDir, 'assets', 'pic-one.png')), moved)
+  check('…and the old copy is gone', !existsSync(join(vaultDir, 'pic-one.png')))
+  check(
+    'a same-name move leaves the links alone (Obsidian resolves by name)',
+    moved.includes('No references needed changing'),
+    moved,
+  )
+
+  const renamed = await call(VaultMoveTool, {
+    from: 'assets/pic-one.png',
+    to: 'assets/обложка.png',
+  })
+  const article = readFileSync(join(vaultDir, 'Статья.md'), 'utf-8')
+  check('a rename rewrites the embed', article.includes('![[обложка.png]]'), article)
+  check('…and says how many references it touched', renamed.includes('1 reference'), renamed)
+  check('moving something that is not there is an error, not a crash',
+    (await call(VaultMoveTool, { from: 'нет-такого.png', to: 'x/' })).includes('Nothing named'))
+
+  const edited = await call(VaultEditTool, {
+    note: 'Статья',
+    old_string: 'Вступление.',
+    new_string: 'Начало.',
+  })
+  check(
+    'VaultEdit changes one place and leaves the rest',
+    readFileSync(join(vaultDir, 'Статья.md'), 'utf-8') ===
+      'Начало.\n\n![[обложка.png]]\n\nКонец.\n',
+    { said: edited, file: readFileSync(join(vaultDir, 'Статья.md'), 'utf-8') },
+  )
+  check(
+    '…on top of the rewrite the rename just made, not a stale copy',
+    readFileSync(join(vaultDir, 'Статья.md'), 'utf-8').includes('![[обложка.png]]'),
+  )
+
+  // The same thing, made deterministic. The index trusts mtime, so two
+  // writes inside one filesystem tick are indistinguishable to it — here
+  // that tick is forced with utimes. Without invalidatePath the second read
+  // returns the FIRST version, and a rename-then-edit silently undoes the
+  // rename. On a fast disk this only shows up as an occasional flake.
+  {
+    const { invalidatePath } = await import('../src/main/obsidian/index.js')
+    const abs = join(vaultDir, 'Тик.md')
+    writeFileSync(abs, 'первая\n')
+    const stamp = new Date(Date.now() - 1000)
+    utimesSync(abs, stamp, stamp)
+    check(
+      'the index reads a new note',
+      allNotes().find((n) => n.name === 'Тик')?.raw === 'первая\n',
+    )
+    writeFileSync(abs, 'вторая\n')
+    utimesSync(abs, stamp, stamp)
+    check(
+      'with an unchanged mtime the cached copy is what you get',
+      allNotes().find((n) => n.name === 'Тик')?.raw === 'первая\n',
+    )
+    invalidatePath(abs)
+    check(
+      '…until the write invalidates it — which is what every vault write does',
+      allNotes().find((n) => n.name === 'Тик')?.raw === 'вторая\n',
+      allNotes().find((n) => n.name === 'Тик')?.raw,
+    )
+    rmSync(abs, { force: true })
+  }
+
+  const missed = await call(VaultEditTool, {
+    note: 'Статья',
+    old_string: 'такого текста нет',
+    new_string: 'x',
+  })
+  check('…and refuses when the text is not there', missed.includes('not found'), missed)
+
+  rmSync(join(vaultDir, 'assets'), { recursive: true, force: true })
+  rmSync(join(vaultDir, 'Статья.md'), { force: true })
 }
 
 // ─── Registry toggles ───────────────────────────────────────────────────

@@ -35,6 +35,8 @@ import { SearchPastChatsTool } from "./memory-tools.js";
 import { getMemoryConfig } from "../memory/store.js";
 import {
   VaultAttachTool,
+  VaultEditTool,
+  VaultMoveTool,
   VaultReadTool,
   VaultSearchTool,
   VaultWriteTool,
@@ -262,7 +264,9 @@ const ALL_TOOLS = [
   VaultSearchTool,
   VaultReadTool,
   VaultWriteTool,
+  VaultEditTool,
   VaultAttachTool,
+  VaultMoveTool,
   WebFetchTool,
   WebSearchTool,
   RunPythonTool,
@@ -390,7 +394,9 @@ export function isSpaceToolAllowed(
     name === "VaultSearch" ||
     name === "VaultRead" ||
     name === "VaultWrite" ||
-    name === "VaultAttach"
+    name === "VaultEdit" ||
+    name === "VaultAttach" ||
+    name === "VaultMove"
   )
     return hasEnabledVaults();
   // MCP RESOURCES are Code-only, and the old note here said "Home has no MCP",

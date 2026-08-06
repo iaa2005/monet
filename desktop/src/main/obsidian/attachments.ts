@@ -55,8 +55,11 @@ export function attachmentFolder(
   vault: VaultConfig,
   noteRelPath?: string,
 ): string {
-  let setting = "";
+  // The app's own setting wins: a user who told us where attachments go
+  // means it for the files WE add, whatever the vault's config says.
+  let setting = (vault.attachmentFolder ?? "").trim();
   try {
+    if (setting) throw new Error("override");
     const raw = readFileSync(join(vault.path, ".obsidian", "app.json"), "utf-8");
     const cfg = JSON.parse(raw) as { attachmentFolderPath?: unknown };
     if (typeof cfg.attachmentFolderPath === "string")
@@ -75,10 +78,35 @@ export function attachmentFolder(
   return setting.replace(/^\/+|\/+$/g, "");
 }
 
-/** A filename that is safe on every filesystem the app runs on. */
+/**
+ * A filename that is safe on every filesystem the app runs on — and that a
+ * person still recognises.
+ *
+ * Only what Windows actually forbids is replaced. An earlier version also
+ * ate hyphens and spaces, which renamed `00-cover.jpg` to `00_cover.jpg`
+ * behind the model's back: it then had to guess the new names to write the
+ * embeds, and guessed wrong. A name the caller chose survives.
+ */
+/** The characters Windows refuses in a filename. Listed as CODE POINTS
+ * rather than as a regex class on purpose: a class holding a literal space
+ * and hyphen is what silently ate the hyphen in `00-cover.jpg` (the model
+ * then wrote embeds for names that did not exist), and the same construct
+ * twice picked up a stray control byte in this very file. A set of numbers
+ * cannot be misread by an editor, a formatter or a diff. */
+const ILLEGAL_CODES = new Set([0x3c, 0x3e, 0x3a, 0x22, 0x7c, 0x3f, 0x2a]);
+
 export function safeAttachmentName(name: string): string {
-  const base = name.split(/[\\/]/).pop() ?? name;
-  return base.replace(/[<>:"|?*\s\x00-\x1f-]/g, "_").replace(/^\.+/, "") || "file";
+  // Basename without a regex: a path separator inside a character class
+  // is one more thing that can lose a backslash in transit.
+  const cut = Math.max(name.lastIndexOf("/"), name.lastIndexOf("\\"));
+  const base = cut >= 0 ? name.slice(cut + 1) : name;
+  let out = "";
+  for (const ch of base) {
+    const code = ch.codePointAt(0) ?? 0;
+    out += ILLEGAL_CODES.has(code) || code < 0x20 ? "_" : ch;
+  }
+  // A leading dot hides the file on POSIX and confuses Obsidian's picker.
+  return out.replace(/^[.]+/, "").trim() || "file";
 }
 
 /** The name a copy should take when `name` is already in `dir`. */

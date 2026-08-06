@@ -715,7 +715,12 @@ export interface ElectronAPI {
     ) => Promise<{ ok: boolean; vault?: UiVault; error?: string }>;
     update: (
       id: string,
-      patch: { name?: string; enabled?: boolean; readOnly?: boolean },
+      patch: {
+        name?: string;
+        enabled?: boolean;
+        readOnly?: boolean;
+        attachmentFolder?: string;
+      },
     ) => Promise<{ ok: boolean; error?: string }>;
     remove: (id: string) => Promise<{ ok: boolean }>;
     openFolder: (id: string) => Promise<{ ok: boolean }>;

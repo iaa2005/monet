@@ -46,9 +46,34 @@ export interface IndexedNote extends NoteMeta {
 interface VaultIndex {
   byPath: Map<string, IndexedNote>;
   scannedAt: number;
+  /** The vault folder this index belongs to — invalidation works on paths. */
+  root: string;
 }
 
 const indexes = new Map<string, VaultIndex>();
+
+/**
+ * Forget one file's cached copy, by absolute path.
+ *
+ * The index trusts mtime, and two writes inside a single filesystem tick can
+ * share one: rewrite a note's links, then edit that same note, and the edit
+ * would be applied to the version from before the rewrite and written back —
+ * silently undoing it. Every write in tools.ts goes through here first.
+ */
+export function invalidatePath(absPath: string): void {
+  const norm = slashes(absPath).toLowerCase();
+  for (const idx of indexes.values()) {
+    const root = slashes(idx.root).toLowerCase().replace(/\/+$/, "");
+    if (!norm.startsWith(`${root}/`)) continue;
+    const rel = norm.slice(root.length + 1);
+    for (const key of idx.byPath.keys())
+      if (key.toLowerCase() === rel) idx.byPath.delete(key);
+  }
+}
+
+function slashes(p: string): string {
+  return p.replace(/\\/g, "/");
+}
 
 function walk(root: string, dir: string, out: { rel: string; mtimeMs: number }[]): void {
   let entries: string[];
@@ -78,7 +103,11 @@ function walk(root: string, dir: string, out: { rel: string; mtimeMs: number }[]
 
 /** Bring one vault's index up to date with the disk. */
 function refreshVault(vault: VaultConfig): VaultIndex {
-  const prev = indexes.get(vault.id) ?? { byPath: new Map(), scannedAt: 0 };
+  const prev = indexes.get(vault.id) ?? {
+    byPath: new Map(),
+    scannedAt: 0,
+    root: vault.path,
+  };
   const found: { rel: string; mtimeMs: number }[] = [];
   walk(vault.path, vault.path, found);
   const next = new Map<string, IndexedNote>();
@@ -103,7 +132,7 @@ function refreshVault(vault: VaultConfig): VaultIndex {
       /* unreadable file — absent from the index, visible in none of the tools */
     }
   }
-  const fresh = { byPath: next, scannedAt: Date.now() };
+  const fresh = { byPath: next, scannedAt: Date.now(), root: vault.path };
   indexes.set(vault.id, fresh);
   return fresh;
 }
@@ -276,7 +305,9 @@ export function buildGraph(notes: IndexedNote[]): {
       const from = idOf(n);
       const to = idOf(targets[0]);
       if (from === to) continue;
-      const key = `${from} ${to}`;
+      // A separator that cannot occur in a note id, written as an escape:
+      // a literal NUL in the source makes this file "binary" to grep.
+      const key = `${from}\u0000${to}`;
       if (seen.has(key)) continue;
       seen.add(key);
       edges.push({ from, to });

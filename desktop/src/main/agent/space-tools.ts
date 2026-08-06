@@ -53,7 +53,9 @@ export const HOME_TOOL_NAMES = new Set([
   // Putting a picture in the vault is the same boundary as writing a note:
   // the SOURCE is resolved inside this chat's own sandbox, the workspace or
   // its artifacts — never a path the model invented.
+  "VaultEdit",
   "VaultAttach",
+  "VaultMove",
   // Memory is about the USER, not the filesystem — it belongs in both spaces.
   "Remember",
   // Waiting touches nothing, so it is safe in the isolated space too.

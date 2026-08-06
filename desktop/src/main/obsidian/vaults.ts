@@ -27,6 +27,13 @@ export interface VaultConfig {
   path: string;
   enabled: boolean;
   readOnly: boolean;
+  /**
+   * Where THIS app puts attachments, overriding what the vault's own
+   * `.obsidian/app.json` says. Empty means "ask the vault" — which for a
+   * vault that has never been configured means the root, and a root full
+   * of loose pictures is exactly what people ask to fix.
+   */
+  attachmentFolder?: string;
 }
 
 interface RegistryFile {
@@ -104,7 +111,9 @@ export function addVault(path: string, name?: string): {
 
 export function updateVault(
   id: string,
-  patch: Partial<Pick<VaultConfig, "name" | "enabled" | "readOnly">>,
+  patch: Partial<
+    Pick<VaultConfig, "name" | "enabled" | "readOnly" | "attachmentFolder">
+  >,
 ): { ok: boolean; error?: string } {
   const vaults = listVaults();
   const i = vaults.findIndex((v) => v.id === id);

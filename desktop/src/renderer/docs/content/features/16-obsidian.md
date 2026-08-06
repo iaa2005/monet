@@ -12,7 +12,7 @@ detected and labelled.
 
 ## What the agent can do with a vault
 
-Three tools appear the moment a vault is enabled — and only then:
+These tools appear the moment a vault is enabled — and only then:
 
 - **VaultSearch** — names, aliases, tags and full text, with `tag:x` and
   `link:Note Name` filters (the latter finds notes that link *to* a note).
@@ -24,6 +24,16 @@ Three tools appear the moment a vault is enabled — and only then:
   half-written note. Trash is the only removal there is: the note moves
   into the vault's own `.trash/` folder, recoverable from Obsidian —
   a hard delete of your writing is not an operation the agent has.
+- **VaultEdit** — change *part* of a note: exact old text in, new text out.
+  The surgical counterpart of VaultWrite, which can only append or rewrite
+  the whole file. The old text must match exactly and must be unique unless
+  `replace_all` is passed, so a one-line fix can never quietly hit five
+  places.
+- **VaultMove** — move or rename a file, notes and attachments alike, and
+  **rewrite the `[[links]]` that point at it**. This is how loose pictures
+  get tidied out of the vault root without any embed going dead. A move
+  that keeps the name touches no note at all — Obsidian resolves links by
+  name, not by path — and a rename reports how many references it updated.
 
 ## Files, not just prose
 
@@ -33,12 +43,23 @@ space**: name a file from this chat's sandbox in Home, a workspace path in
 Code, or an artifact path from a tool result anywhere (a screenshot, a
 generated chart, a file you attached to a message).
 
-The copy lands in **your vault's own attachment folder** — read from its
-`.obsidian/app.json`, including the per-note form (`./assets`), so files go
-where that vault already puts attachments. A name that already exists gets
-a suffix rather than clobbering anything, and the copy is atomic, so a sync
-client never sees half a picture. Pass a note and the embed is appended
-there in one step.
+The copy lands in **your vault's own attachment folder**. Where that is,
+in order: the **Attachments** field on the vault's card in Settings if you
+filled it in, otherwise the vault's own `.obsidian/app.json` — including
+the per-note form (`./assets`, beside the note). Set the field on a vault
+whose pictures currently land in the root and every new attachment goes to
+the folder you named instead; the ones already there move with VaultMove.
+
+A name that already exists gets a suffix rather than clobbering anything,
+and the copy is atomic, so a sync client never sees half a picture. Only
+the characters a filesystem actually forbids are replaced — a hyphen or a
+space in `00-cover.jpg` survives, so the embed the tool reports back is the
+name that is really on disk.
+
+Pass a note and the embed lands there in one step. Pass **`replace`** as
+well — the exact text it should take the place of, a markdown image, a URL,
+a placeholder line — and the picture goes *where the text talks about it*
+instead of at the end of the note.
 
 Images, video and audio come back as `![[name]]` embeds; other kinds as
 `[[name]]` links. **The app renders those embeds**: open a note in the
