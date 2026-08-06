@@ -1,144 +1,55 @@
 /**
- * The OCR models the app can install.
+ * The catalogue — arithmetic over the model registry, and nothing else.
  *
- * The problem this solves: a text-only model (DeepSeek, Kimi, most of what
- * people actually run) cannot see. Hand it a scanned page, a PDF full of
- * formulas or a screenshot and it is blind — it will write Python that shells
- * out to some library it hopes exists, and the answer is a guess about a
- * picture nobody looked at. An OCR model IS the eyes, and it belongs to the
- * app rather than to the chat model.
+ * The models themselves live one per file in `models/`, where each carries
+ * what was measured about it and why it is on or off. This file answers the
+ * questions the rest of the app asks about them: which files a variant
+ * needs, how big it is, what to call the size.
  *
- * Everything here runs IN the app: `onnxruntime-node` with the WebGPU/CPU
- * backends it already ships, driven by `@huggingface/transformers`, which the
- * app already depends on for other on-device work. No Ollama, no Python, no
- * server to start — installing a model is downloading its weights.
+ * Why a scanner at all: a text-only model (DeepSeek, Kimi, most of what
+ * people run) cannot see. Hand it a scanned page, a PDF full of formulas or
+ * a screenshot and it is blind — it will write Python that shells out to
+ * some library it hopes exists, and the answer is a guess about a picture
+ * nobody looked at. An OCR model IS the eyes, and it belongs to the app
+ * rather than to the chat model.
  *
- * Measured on the development machine (Core Ultra 7 155H, Arc iGPU, no CUDA),
- * one A4 page of a formula-heavy paper at 150 DPI, LightOnOCR-2 q4, end to
- * end — rasterising, generating, decoding:
- *   - WebGPU (the iGPU): 2.8 minutes a page (5.5 tok/s generating)
- *   - CPU:               ~6 minutes a page (2.0 tok/s)
- * A machine with a discrete GPU is many times faster; those numbers are the
- * floor, not the expectation. They are also why the tool's prompt tells the
- * model to put long documents on a background agent.
+ * Everything runs IN the app: `onnxruntime-node` with the WebGPU/CPU
+ * backends it already ships, driven by `@huggingface/transformers` — or,
+ * for one shelved model, by our own pipeline in `paddle/`. No Ollama, no
+ * Python, no server: installing a model is downloading its weights.
  *
- * Weight formats are NOT interchangeable, and getting this wrong does not
- * fail loudly — it produces fluent nonsense. `q4f16` renders a page as a wall
- * of "!" on both CPU and WebGPU here, because the f16 compute path it needs
- * is not honoured; `q4` is correct on both. So each variant carries what it
- * was actually observed to do, and the default is the one that works.
- *
- * Pure data plus arithmetic over it — no filesystem, no network — so the
+ * Pure data plus arithmetic here: no filesystem, no network, so the
  * catalogue is checkable without downloading a gigabyte.
  */
 
-/** Weight format. The names are transformers.js dtypes. */
-export type OcrDtype = "q4" | "fp16" | "fp32";
+import { findModel, ocrModels } from "./models/index.js";
+import type {
+  OcrEngine,
+  OcrModelInfo,
+  OcrDtype,
+  OcrVariant,
+} from "./models/types.js";
 
-/** Where the compute happens. "auto" prefers the GPU and falls back. */
-export type OcrDevice = "auto" | "webgpu" | "cpu";
+export type {
+  OcrDevice,
+  OcrDtype,
+  OcrEngine,
+  OcrModelInfo,
+  OcrVariant,
+} from "./models/types.js";
+export { ALL_MODELS, ocrModels } from "./models/index.js";
 
-export interface OcrVariant {
-  dtype: OcrDtype;
-  /** Total size of the weight files, for the UI to state before downloading. */
-  bytes: number;
-  /** Devices this variant is known to produce CORRECT output on. */
-  devices: Exclude<OcrDevice, "auto">[];
-  note: string;
-}
-
-/**
- * Which runtime reads the model.
- *
- * "transformers" is the library doing the work. "paddle" is our own
- * assembly of the three graphs (see ocr/paddle/) for a model the library
- * does not support — worth the code because it is the strongest of these on
- * tables.
- */
-export type OcrEngine = "transformers" | "paddle";
-
-export interface OcrModelInfo {
-  id: string;
-  engine?: OcrEngine;
-  /** HuggingFace repo the weights come from. */
-  repo: string;
-  label: string;
-  note: string;
-  languages: string;
-  /**
-   * The ONNX components transformers.js loads for this architecture. Each is
-   * one `onnx/<component>_<dtype>.onnx` file, sometimes with a sidecar
-   * `.onnx_data` for the weights that do not fit the protobuf limit.
-   */
-  components: string[];
-  /** What to ask it. OCR models are single-purpose; this is not a chat. */
-  prompt: string;
-  variants: OcrVariant[];
-}
-
-export const OCR_MODELS: OcrModelInfo[] = [
-  {
-    id: "lightonocr-2-1b",
-    repo: "onnx-community/LightOnOCR-2-1B-ONNX",
-    label: "LightOnOCR-2 1B",
-    note:
-      "End-to-end document OCR: a page in, Markdown out, with formulas as LaTeX and tables as tables. A Mistral vision encoder on a Qwen3 decoder, 1B parameters, Apache 2.0.",
-    languages: "English, French, German, Spanish, Italian, Dutch, Portuguese, Swedish, Danish, Chinese, Japanese",
-    components: ["embed_tokens", "vision_encoder", "decoder_model_merged"],
-    prompt: "Convert this page to markdown.",
-    variants: [
-      {
-        dtype: "q4",
-        bytes: 725 * 1024 * 1024,
-        devices: ["webgpu", "cpu"],
-        note: "The default. Correct on both the GPU and the CPU; the only variant measured good on this hardware.",
-      },
-      {
-        dtype: "fp16",
-        bytes: 2_100 * 1024 * 1024,
-        devices: ["webgpu"],
-        note: "Full half precision — three times the download, for a GPU that has the memory for it.",
-      },
-      {
-        dtype: "fp32",
-        bytes: 4_100 * 1024 * 1024,
-        devices: ["cpu"],
-        note: "Reference precision. Slow and large; here only because a CPU with no better option can still run it.",
-      },
-    ],
-  },
-  {
-    id: "paddleocr-vl",
-    engine: "paddle",
-    repo: "onnx-community/PaddleOCR-VL-1.5-ONNX",
-    label: "PaddleOCR-VL 1.5",
-    note:
-      "Baidu's document model: 0.9B, an ERNIE-4.5 decoder on a NaViT tower that reads a page at its own aspect ratio rather than squashed to a square. Excellent table structure — it answers in OTSL, which the app turns into Markdown. Measured here it is WEAKER ON RUSSIAN than LightOnOCR (\"Кваантовый\", \"Минималная единца\") and about twice as slow, so it is the second opinion rather than the default. Runs on a hand-written pipeline (ocr/paddle) because no library supports it.",
-    languages: "English, Chinese, and 100+ more — trained multilingual",
-    // Its graphs are named differently and are not interchangeable with the
-    // transformers.js layout; the paddle engine knows which is which.
-    components: ["vision_encoder", "decoder", "embedding"],
-    prompt: "OCR:",
-    variants: [
-      {
-        dtype: "q4",
-        bytes: 858 * 1024 * 1024,
-        // The CPU is not a fallback for this one — it is the faster of the
-        // two here: 91s a page against 104s on the iGPU, because its graphs
-        // spend more time in operators WebGPU has no fast path for.
-        devices: ["cpu", "webgpu"],
-        note: "Vision tower and decoder quantised; the embedding table is not, because a lookup gains nothing from it. Measured here: 91s a page on the CPU, slower on the GPU.",
-      },
-    ],
-  },
-];
+/** The models on offer, in the order the UI shows them. */
+export const OCR_MODELS: OcrModelInfo[] = ocrModels();
 
 export function ocrEngineOf(model: OcrModelInfo): OcrEngine {
-  return model.engine ?? "transformers";
+  return model.engine;
 }
 
+/** A model by id. A SHELVED model resolves too: a config that names one
+ * should produce "that model is disabled", not "unknown model". */
 export function ocrModel(id: string): OcrModelInfo | undefined {
-  return OCR_MODELS.find((m) => m.id === id);
+  return findModel(id);
 }
 
 export function ocrVariant(
@@ -163,7 +74,7 @@ export function variantFiles(
   // `decoder`/`embedding`/`vision_encoder`, and the embedding table has no
   // quantised build at all — asking for `embedding_q4.onnx` would fail the
   // install on a file that does not exist and never will.
-  if (ocrEngineOf(model) === "paddle")
+  if (model.engine === "paddle")
     return {
       required: [
         `onnx/vision_encoder_${dtype}.onnx`,
@@ -187,7 +98,10 @@ export function variantFiles(
  *
  * transformers.js reads these by name; a missing one fails at load with a
  * 404-shaped error rather than anything about OCR, so they are listed
- * explicitly instead of being fetched on demand from the network.
+ * explicitly instead of being fetched on demand from the network. Models
+ * disagree about which of them exist — a tokenizer may keep its vocabulary
+ * inline or in `vocab.json` — so the installer treats every one as optional
+ * and only complains about missing WEIGHTS.
  */
 export const CONFIG_FILES = [
   "config.json",
@@ -197,6 +111,10 @@ export const CONFIG_FILES = [
   "tokenizer.json",
   "tokenizer_config.json",
   "chat_template.jinja",
+  "vocab.json",
+  "merges.txt",
+  "added_tokens.json",
+  "special_tokens_map.json",
 ];
 
 /** Human-readable size, for the UI and for tool output. */

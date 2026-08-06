@@ -23,8 +23,15 @@ import { setDataDir } from '../src/main/data-dir.js'
 const tempData = mkdtempSync(join(tmpdir(), 'ocr-probe-'))
 setDataDir(tempData)
 
-const { OCR_MODELS, ocrModel, ocrVariant, variantFiles, formatBytes, CONFIG_FILES } =
-  await import('../src/main/ocr/catalog.js')
+const {
+  OCR_MODELS,
+  ALL_MODELS,
+  ocrModel,
+  ocrVariant,
+  variantFiles,
+  formatBytes,
+  CONFIG_FILES,
+} = await import('../src/main/ocr/catalog.js')
 const { planInstall, isInstalledSync, modelDir } = await import(
   '../src/main/ocr/install.js'
 )
@@ -191,7 +198,7 @@ check('nonsense means the whole document, not page NaN', parsePages('abc').lengt
 // ─── PaddleOCR-VL: its own file names, its own runtime ──────────────────
 
 {
-  const paddle = OCR_MODELS.find((m) => m.id === 'paddleocr-vl')!
+  const paddle = ALL_MODELS.find((m) => m.id === 'paddleocr-vl')!
   check('the catalogue has the hand-written engine', !!paddle && paddle.engine === 'paddle')
   const files = variantFiles(paddle, 'q4')
   check(
@@ -204,6 +211,34 @@ check('nonsense means the whole document, not page NaN', parsePages('abc').lengt
     'and never for a quantised embedding table, which does not exist',
     !files.required.concat(files.optional).some((f) => /embedding_q/.test(f)),
     files.required.concat(files.optional),
+  )
+}
+
+// ─── Shelving a model ───────────────────────────────────────────────────
+
+{
+  // A shelved entry keeps everything that was learned about the model and
+  // simply stops being offered. Deleting the file would delete the reason.
+  const shelved = ALL_MODELS.filter((m) => !m.enabled)
+  check('at least one model is shelved rather than deleted', shelved.length > 0, shelved.map((m) => m.id))
+  check(
+    'a shelved model is not offered',
+    !OCR_MODELS.some((m) => !m.enabled) && OCR_MODELS.length < ALL_MODELS.length,
+    { offered: OCR_MODELS.map((m) => m.id), all: ALL_MODELS.map((m) => m.id) },
+  )
+  check(
+    '…but still resolves by id, so a config naming it gets a real answer',
+    !!ocrModel(shelved[0].id),
+  )
+  check('every offered model is enabled', OCR_MODELS.every((m) => m.enabled))
+  check(
+    'and every entry says which runtime it needs',
+    ALL_MODELS.every((m) => m.engine === 'transformers' || m.engine === 'paddle'),
+  )
+  check('ids are unique', new Set(ALL_MODELS.map((m) => m.id)).size === ALL_MODELS.length)
+  check(
+    'every model names its weight files',
+    ALL_MODELS.every((m) => m.variants.length > 0 && m.components.length > 0),
   )
 }
 

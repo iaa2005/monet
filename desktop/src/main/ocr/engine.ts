@@ -117,6 +117,14 @@ export async function ocrReadiness(): Promise<{
   const cfg = getOcrConfig();
   const model = ocrModel(cfg.modelId);
   if (!model) return { ready: false, reason: `Unknown model ${cfg.modelId}` };
+  // A model can be shelved between one run and the next; saying so beats
+  // loading weights for something the app no longer offers.
+  if (!model.enabled)
+    return {
+      ready: false,
+      model,
+      reason: `${model.label} is disabled — pick another in Settings → OCR Scanner.`,
+    };
   if (!(await isInstalled(model, cfg.dtype)))
     return {
       ready: false,
