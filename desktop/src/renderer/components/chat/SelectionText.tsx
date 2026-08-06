@@ -10,8 +10,12 @@
  * Nothing is removed from the message itself. This only decides what is drawn.
  */
 
-import { Fragment } from "react";
+import { Fragment, useMemo } from "react";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 import { chipColors, toneForLabel } from "@shared/selection-tones";
+import { parseRichText } from "@/lib/rich-text";
+import { CodeBlock } from "./CodeBlock";
 import {
   REF_TOKEN,
   splitSelections,
@@ -80,6 +84,67 @@ function Chip({
   );
 }
 
+/**
+ * The pieces of a typed message that are notation, drawn as notation:
+ * fenced blocks, inline code, and maths. Everything else stays the literal
+ * text the user typed — this is a message, not a document (see
+ * lib/rich-text.ts for why the line is drawn there).
+ */
+function RichText({ text }: { text: string }): JSX.Element {
+  const segments = useMemo(() => parseRichText(text), [text]);
+  return (
+    <>
+      {segments.map((s, i) => {
+        if (s.kind === "text") return <Fragment key={i}>{s.value}</Fragment>;
+        if (s.kind === "code")
+          return (
+            <code
+              key={i}
+              className="rounded-md bg-black/[0.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[0.10]"
+            >
+              {s.value}
+            </code>
+          );
+        if (s.kind === "fence")
+          return (
+            // Not whitespace-pre-wrap's problem any more: the block owns its
+            // own scrolling and highlighting, like a block in a reply.
+            <div key={i} className="whitespace-normal">
+              <CodeBlock code={s.value} language={s.lang} maxHeight={320} />
+            </div>
+          );
+        // KaTeX renders to a string; a throw here is a malformed formula,
+        // and the honest fallback is the source the user typed.
+        let html: string | null = null;
+        try {
+          html = katex.renderToString(s.value, {
+            displayMode: s.display,
+            throwOnError: false,
+            output: "html",
+          });
+        } catch {
+          html = null;
+        }
+        if (!html)
+          return (
+            <Fragment key={i}>
+              {s.display ? `$$${s.value}$$` : `$${s.value}$`}
+            </Fragment>
+          );
+        return s.display ? (
+          <div
+            key={i}
+            className="my-2 overflow-x-auto text-center"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        ) : (
+          <span key={i} dangerouslySetInnerHTML={{ __html: html }} />
+        );
+      })}
+    </>
+  );
+}
+
 /** The bits of a block worth showing on hover — not all forty lines of it. */
 function tooltipFor(ref: SelectionRef): string {
   // Non-browser kinds carry their point in an attribute — show that.
@@ -109,7 +174,9 @@ export function SelectionText({
 }): JSX.Element {
   const dark = useIsDark();
   const { text, refs } = splitSelections(content);
-  if (refs.length === 0 && !REF_TOKEN.test(text)) return <>{content}</>;
+  // The common case: no element references, so the whole message is text —
+  // and the only question left is whether it holds notation.
+  if (refs.length === 0 && !REF_TOKEN.test(text)) return <RichText text={content} />;
 
   // Refs are consumed in the order their tokens appear, so a pill shows the
   // element it actually stands for when a message carries several.
@@ -127,7 +194,9 @@ export function SelectionText({
   REF_TOKEN.lastIndex = 0;
   for (const m of text.matchAll(REF_TOKEN)) {
     const at = m.index ?? 0;
-    if (at > last) parts.push(text.slice(last, at));
+    // The stretches BETWEEN chips are ordinary message text, notation and
+    // all — a formula next to a ⟨reference⟩ is still a formula.
+    if (at > last) parts.push(<RichText text={text.slice(last, at)} />);
     const label = m[1] ?? "";
     const hit = byLabel(label);
     parts.push(
@@ -141,7 +210,7 @@ export function SelectionText({
     );
     last = at + m[0].length;
   }
-  if (last < text.length) parts.push(text.slice(last));
+  if (last < text.length) parts.push(<RichText text={text.slice(last)} />);
 
   return (
     <>
