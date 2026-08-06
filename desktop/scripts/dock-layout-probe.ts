@@ -72,25 +72,32 @@ const desk = () => ({
 
 // ── 1. A healthy desk passes through intact ───────────────────────────
 {
-  const out = sanitizeDockLayout(desk(), KNOWN)!;
+  const out = sanitizeDockLayout(desk(), KNOWN, "http://localhost:9/popout.html")!;
   check("a healthy desk survives", out !== null);
   check("all five panels kept", Object.keys(out.panels as object).length === 5);
   const root = (out.grid as { root: { data: unknown[] } }).root;
   check("both grid groups kept", root.data.length === 2, root.data.length);
-  const fgs = out.floatingGroups as { data: { views: string[] } }[];
+
+  // The limbo state is gone: no layout may bring one back.
+  check("floating groups never survive", !("floatingGroups" in out));
   check(
-    "the floating group survives, and the popout's panel joins it as floating",
-    Array.isArray(fgs) && fgs.length === 2,
-    fgs?.length,
+    "…but their panels are not lost — they come back to be docked",
+    (out.dockAfterRestore as string[])?.includes("tasks"),
+    out.dockAfterRestore,
+  );
+
+  // A window stays a window.
+  const pgs = out.popoutGroups as { data: { views: string[] }; url?: string }[];
+  check("the popout window reopens", Array.isArray(pgs) && pgs.length === 1, pgs?.length);
+  check(
+    "with its panel",
+    pgs?.[0]?.data.views.includes("changes"),
+    JSON.stringify(pgs?.map((p) => p.data.views)),
   );
   check(
-    "the popout window itself never reopens",
-    !("popoutGroups" in out),
-  );
-  check(
-    "its panel is the one that came back",
-    fgs?.some((f) => f.data.views.includes("changes")),
-    JSON.stringify(fgs?.map((f) => f.data.views)),
+    "and THIS session's URL, not the one that was stored",
+    pgs?.[0]?.url === "http://localhost:9/popout.html",
+    pgs?.[0]?.url,
   );
   check("activeGroup still valid, kept", out.activeGroup === "g1");
 
@@ -101,11 +108,16 @@ const desk = () => ({
     data: { views: ["files"], id: "gp2" },
   } as never);
   const dedup = sanitizeDockLayout(dup, KNOWN)!;
-  const dupFgs = dedup.floatingGroups as { data: { views: string[] } }[];
+  const dupPgs = (dedup.popoutGroups ?? []) as { data: { views: string[] } }[];
   check(
-    "a panel already in the grid is not duplicated from a popout",
-    dupFgs.every((f) => !f.data.views.includes("files")),
-    JSON.stringify(dupFgs.map((f) => f.data.views)),
+    "a panel already in the grid is not duplicated into a window",
+    dupPgs.every((f) => !f.data.views.includes("files")),
+    JSON.stringify(dupPgs.map((f) => f.data.views)),
+  );
+  check(
+    "a stray already placed elsewhere is not re-docked",
+    !((dedup.dockAfterRestore as string[]) ?? []).includes("files"),
+    dedup.dockAfterRestore,
   );
 }
 
@@ -160,7 +172,7 @@ const desk = () => ({
   check("empty object → null", sanitizeDockLayout({}, KNOWN) === null);
 }
 
-// ── 6. A desk living entirely in floating groups is still a desk ──────
+// ── 6. A desk with nothing in the grid is still a desk ───────────────
 {
   const d = desk();
   d.grid.root = { type: "branch", data: [], size: 400 } as never;
@@ -169,7 +181,16 @@ const desk = () => ({
   } as never;
   delete (d as { activeGroup?: string }).activeGroup;
   const out = sanitizeDockLayout(d, KNOWN);
-  check("floating-only desk survives", out !== null && Array.isArray(out.floatingGroups));
+  // Everything it had lived in a floating group and a popout window: the desk
+  // survives, and its panels come back as something real — a window to
+  // reopen, or a stray to dock — never as a card stuck inside the frame.
+  check(
+    "a desk whose grid is empty still survives",
+    out !== null &&
+      (((out.dockAfterRestore as string[]) ?? []).includes("tasks") ||
+        Array.isArray(out.popoutGroups)),
+    out && { dock: out.dockAfterRestore, popouts: out.popoutGroups },
+  );
 }
 
 // ── 7. deskPanelIds answers "is anything open" for both desk kinds ────

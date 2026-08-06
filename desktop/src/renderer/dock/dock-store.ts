@@ -14,6 +14,13 @@
 
 import { create } from "zustand";
 import type { AddPanelPositionOptions, DockviewApi } from "dockview-react";
+
+/** The app's popout host page, resolved against THIS session's origin. A URL
+ * stored by an earlier run carries that run's port (dev) and would open a
+ * dead page — see sanitizeDockLayout's popoutUrl parameter. */
+export function popoutPageUrl(): string {
+  return new URL("popout.html", location.href).toString();
+}
 import {
   sanitizeDockLayout,
   type DockDesk,
@@ -355,18 +362,30 @@ function applyToApi(api: DockviewApi, desk: DockDesk | null): void {
         if (id !== "main" && !api.getPanel(id)) addPanel(api, id);
       return;
     }
-    const clean = sanitizeDockLayout(desk.layout, RESTORABLE_PANEL_IDS);
+    const clean = sanitizeDockLayout(
+      desk.layout,
+      RESTORABLE_PANEL_IDS,
+      popoutPageUrl(),
+    );
     if (!clean) {
       api.clear();
       ensureMain(api);
       return;
     }
+    // Panels lifted out of a legacy floating group — docked below, once the
+    // grid exists to dock them into.
+    const strays = Array.isArray(clean.dockAfterRestore)
+      ? (clean.dockAfterRestore as string[])
+      : [];
+    delete clean.dockAfterRestore;
     try {
       api.fromJSON(clean as never);
       // The renderer is part of the panel's stored state, but a layout
       // written by an older build may predate it — the browser must never
       // come back as a display:none panel.
       api.getPanel("browser")?.api.setRenderer("always");
+      for (const id of strays)
+        if (!api.getPanel(id)) addPanel(api, id as DockPanelId);
     } catch {
       // A desk that will not load is a desk the user no longer has.
       try {

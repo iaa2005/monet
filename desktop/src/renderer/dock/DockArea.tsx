@@ -62,7 +62,7 @@ import { fallbackIcon, resolveIcon } from "@/components/icon-resolver";
 import { closeViewerPane, openViewerPane } from "@/dock/dock-store";
 import { cn, midEllipsis } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
-import { isApplyingDesk, useDockStore } from "./dock-store";
+import { isApplyingDesk, popoutPageUrl, useDockStore } from "./dock-store";
 
 const Terminal = lazy(() =>
   import("@/components/Terminal").then((m) => ({ default: m.Terminal })),
@@ -550,6 +550,32 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
           if (/^viewer(:\d+)?$/.test(panel.id) && !isApplyingDesk())
             useViewerStore.getState().close(panel.id);
         });
+        // A window the user detached comes back as a window when they return
+        // to this chat — dockview reopens it from the serialized layout, and
+        // that path has no onDidOpen hook, so the theme is applied here.
+        // Manual detach dresses its window in the header action instead;
+        // dressPopout is idempotent, so a double dress costs nothing.
+        const dressIfPopout = (g: {
+          api: {
+            location: { type: string; getWindow?: () => Window };
+            onDidLocationChange: (
+              cb: (e: { location: { type: string; getWindow?: () => Window } }) => void,
+            ) => unknown;
+          };
+        }): void => {
+          const wear = (loc: { type: string; getWindow?: () => Window }): void => {
+            if (loc.type !== "popout" || !loc.getWindow) return;
+            try {
+              dressPopout(loc.getWindow());
+            } catch {
+              /* the window may already be closing — nothing to dress */
+            }
+          };
+          wear(g.api.location);
+          g.api.onDidLocationChange((e) => wear(e.location));
+        };
+        api.groups.forEach((g) => dressIfPopout(g as never));
+        api.onDidAddGroup((g) => dressIfPopout(g as never));
       },
     [],
   );
@@ -582,7 +608,11 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
         defaultTabComponent={DockTab}
         rightHeaderActionsComponent={GroupActions}
         watermarkComponent={Watermark}
-        floatingGroupBounds="boundedWithinViewport"
+        // No floating groups. A panel is either docked in the grid or a real
+        // OS window — the in-frame "floating" state was a third thing that
+        // looked detached, could not leave the frame, and is what a chat
+        // switch used to demote real windows into.
+        disableFloatingGroups
         disableDnd={false}
       />
     </div>
