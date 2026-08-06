@@ -334,6 +334,17 @@ function ReasoningBlock({
   );
 }
 
+/**
+ * Past this many characters a user message is a PASTED DOCUMENT, not a
+ * sentence — it clamps to a readable height with a "Show more".
+ *
+ * Chosen against the case that prompted it: a field report of tag results,
+ * ~1.5 KB, which pushed the whole conversation off screen every time you
+ * scrolled past it. A long paragraph (a few hundred characters) stays whole;
+ * anything that would occupy most of the viewport does not.
+ */
+const LONG_USER_MESSAGE = 900;
+
 const MessageRow = memo(
   function MessageRow({
     msg,
@@ -346,6 +357,7 @@ const MessageRow = memo(
     const home = useChatStore((s) => s.space === "home");
     const resendFrom = useChatStore((s) => s.resendFrom);
     const [editing, setEditing] = useState(false);
+    const [expanded, setExpanded] = useState(false);
     const [draft, setDraft] = useState(() => splitSelections(msg.content).text);
 
     if (msg.role === "tool" && msg.toolCall) {
@@ -371,6 +383,10 @@ const MessageRow = memo(
     // Edit/Retry rewind the conversation, so only offer them in Home (Code gets
     // filesystem-aware Rewind) and never mid-stream.
     const canAct = isUser && home && !isStreaming;
+    // A pasted document collapses; a paragraph does not. The threshold is in
+    // CHARACTERS, not rendered height, so the decision is stable before
+    // layout and identical on every re-render.
+    const longMessage = isUser && msg.content.length > LONG_USER_MESSAGE;
 
     const saveEdit = (): void => {
       const t = draft.trim();
@@ -443,7 +459,30 @@ const MessageRow = memo(
               )}
               <Bubble variant="secondary" align="end">
                 <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.08] glass-panel">
-                  <SelectionText content={msg.content} crops={cropAttachments} />
+                  {/* A pasted wall of text is context, not something to
+                      re-read on every scroll past it: past a threshold the
+                      bubble clamps to a readable height, fades out and offers
+                      the rest. Nothing is lost — the model still gets all of
+                      it, and one click brings it back on screen. */}
+                  <div
+                    className={cn(
+                      "relative",
+                      longMessage &&
+                        !expanded &&
+                        "max-h-[19rem] overflow-hidden [mask-image:linear-gradient(to_bottom,black_74%,transparent)]",
+                    )}
+                  >
+                    <SelectionText content={msg.content} crops={cropAttachments} />
+                  </div>
+                  {longMessage && (
+                    <button
+                      type="button"
+                      onClick={() => setExpanded((v) => !v)}
+                      className="mt-1 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {expanded ? "Show less" : "Show more"}
+                    </button>
+                  )}
                 </BubbleContent>
               </Bubble>
               {canAct && (
