@@ -59,45 +59,57 @@ Three things fall out of knowing what a block is, beyond the speed:
   hole; read as part of its paragraph, the mathematics is written in place.
 - **Photographs are not described.** The crop is kept and referenced, not
   hallucinated over.
-- **Upside-down pages are noticed.** The reading model transcribes rotated
-  text perfectly well, so a page fed in the wrong way up used to come back
-  *backwards* — last paragraph first. The layout detector is run both ways
-  and the more confident answer wins.
+- **Sideways and upside-down pages are noticed.** The reading model
+  transcribes rotated text perfectly well, so a page fed in the wrong way up
+  used to come back *backwards* — last paragraph first, and nothing looking
+  broken. The layout detector is run at all four right angles and the most
+  confident one wins; a page that is merely crooked (a photograph, a sheet
+  fed at an angle) is straightened from the angle of its own text lines.
 
 ## Choosing a model
 
-The settings page shows the two numbers that decide it: size and seconds a
-page. Everything else is here.
+The settings page shows the two numbers that decide it — size and seconds a
+page. This is the rest, measured on thirteen awkward pages: two-column
+articles, a rotated scan, code, tables, formulas with Cyrillic subscripts,
+a page of bibliography, mixed Russian and English.
 
-| Model | Page | Size | Notes |
-| --- | --- | --- | --- |
-| **LightOnOCR-2 1B** | ~44s | 725 MB | The default. Best of these on Russian, including formulas with Cyrillic subscripts. |
-| **GLM-OCR** | ~28s | 703 MB | Faster, and makes *different* mistakes — worth trying on a page the default garbles. |
+🟢 good · 🟡 usable · 🟠 poor
 
-Two shelved, kept in the code with their measurements so nobody re-runs the
-experiment:
+| | LightOnOCR-2 1B | GLM-OCR | PaddleOCR-VL *(shelved)* | Qwen3-VL 2B *(shelved)* |
+| --- | --- | --- | --- | --- |
+| **Speed** | 🟡 75s a page | 🟢 50s | 🟠 91s | 🟠 173s |
+| **Load on the machine** | 🟢 725 MB | 🟢 703 MB | 🟡 858 MB | 🟠 1.45 GB |
+| **Cyrillic** | 🟢 clean, rare slips | 🟠 «Ввчиленая», «глобных резания», «OBШИЕ» in Latin letters | 🟠 «Кваантовый», «Кубин» | 🟠 narrates instead of reading |
+| **Formulas** | 🟢 correct LaTeX | 🟢 correct, untidy spacing | 🟢 correct | 🟠 |
+| **Cyrillic inside formulas** | 🟠 `\text{BCTP}` for «встр» | 🟠 same | 🟠 same | 🟠 |
+| **Tables** | 🟢 correct, none invented | 🟡 reads them, but wraps 5 of 13 headings in tables that are not tables | 🟢 best of the four (OTSL) | 🟠 loops until out of tokens |
+| **Code blocks** | 🟢 fenced | 🟠 missed the fence | — | — |
 
-| Model | Page | Why not |
-| --- | --- | --- |
-| PaddleOCR-VL 1.5 | ~91s | Excellent table structure, weak on Cyrillic ("Кваантовый", "Минималная единца"), twice as slow. Needed a hand-written runtime, which is kept as a reference. |
-| Qwen3-VL 2B | ~173s | A general model, trained on more Russian — and it narrates instead of transcribing, then loops on tables until it runs out of tokens. |
+Three of the nine things worth measuring turn out not to depend on the
+model at all — they are the pipeline, and every model gets them:
 
-All measured on the same page (a chart, a big table, mixed Russian and
-English) on an Intel Arc integrated GPU. **Your machine is not that
-machine** — run the bench on your own documents if it matters.
+| | |
+| --- | --- |
+| **Document structure** | 🟢 Columns, full-width figures and captions are the layout model's job. A two-column page is read down the left column, then the right, with full-width blocks separating the bands. |
+| **Page orientation** | 🟢 90/180/270 detected and corrected before anything reads the page; a scan 1–15° off is straightened from the angle of its own text lines. |
+| **Extracting pictures** | 🟢 Figures are cut out into `<name>-layout/` and referenced from the Markdown — never described by a model that would invent a caption. |
+
+All timings on an Intel Arc integrated GPU. **Your machine is not that
+machine**: run `npm run suite:ocr -- <folder>` on your own documents, which
+is the only benchmark that means anything.
 
 ## What it gets wrong
 
 Honest list, from measuring rather than from the model cards:
 
-- **Cyrillic inside `\text{}`.** The default writes `\text{BCTP}` for
-  «встр» and `A.N.` for «А.Н.» — Latin letters that look like the Cyrillic
-  ones. Formulas themselves are right; the labels inside them are not.
+- **Cyrillic inside `\text{}`.** Every model here writes `\text{BCTP}` for
+  «встр» and `A.N.` for «А.Н.» — Latin letters shaped like the Cyrillic
+  ones. The mathematics is right; the labels inside it are not, and this is
+  the one failure all four share.
 - **Occasional word-level slips** on dense pages: «Границные» for
   «Граничные».
-- **90° rotations.** Upside down is handled; sideways is not — that needs
-  the page re-rendered rather than flipped, and the failure is obvious
-  enough to spot.
+- **Rotation beyond a right angle plus a few degrees.** A page at 30° is
+  neither a right angle nor a skew, and nothing here will straighten it.
 - **Handwriting.** None of these are trained for it.
 
 ## Settings that matter
