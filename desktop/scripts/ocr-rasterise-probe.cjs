@@ -18,6 +18,7 @@ const { app } = require("electron");
 const { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("fs");
 const { tmpdir } = require("os");
 const { join, resolve } = require("path");
+const { pathToFileURL } = require("url");
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -64,12 +65,14 @@ process.on("unhandledRejection", (err) => {
 });
 
 app.whenReady().then(async () => {
-  const bundle = resolve("out/probe/ocr-render.cjs");
+  const bundle = resolve("out/probe/ocr-render.mjs");
   if (!existsSync(bundle)) {
     check("the probe bundle exists", false, "run npm run smoke:raster (it builds first)");
     app.exit(1);
     return;
   }
+  // Imported as ESM, the way the app loads it: a `require` here would give
+  // the module a `__dirname` that main does not have.
   const {
     registerRasteriserIPC,
     renderPdf,
@@ -77,7 +80,7 @@ app.whenReady().then(async () => {
     closeRasteriser,
     isPdfPath,
     isImagePath,
-  } = require(bundle);
+  } = await import(pathToFileURL(bundle).href);
 
   check("a PDF is recognised as one", isPdfPath("x.PDF") && !isPdfPath("x.png"));
   check("pictures are recognised too", isImagePath("shot.JPG") && !isImagePath("a.txt"));

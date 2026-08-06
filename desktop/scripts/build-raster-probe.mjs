@@ -5,6 +5,11 @@
  * deadlocks inside Electron's main process, so bundling happens in plain
  * Node; and the probe must not touch the user's data dir.
  *
+ * ESM, not CommonJS, and that is the whole point. The app's main bundle is
+ * ESM, where `__dirname` does not exist — a CommonJS probe bundle has one
+ * and therefore passes code that throws ReferenceError in the real app.
+ * That exact bug shipped once. The probe imports these dynamically.
+ *
  * One extra thing this arranges: the rasteriser finds its HTML and its
  * preload relative to `__dirname` (`../renderer/rasterise.html`), which in
  * the built app means out/main. So the bundle is written to out/probe/,
@@ -21,10 +26,10 @@ mkdirSync(out, { recursive: true });
 
 await build({
   entryPoints: [resolve("src/main/ocr/render.ts")],
-  outfile: resolve(out, "ocr-render.cjs"),
+  outfile: resolve(out, "ocr-render.mjs"),
   bundle: true,
   platform: "node",
-  format: "cjs",
+  format: "esm",
   external: ["electron"],
   logLevel: "warning",
 });
@@ -44,10 +49,10 @@ await build({
 
 await build({
   entryPoints: [resolve("scripts/ocr-scan-entry.ts")],
-  outfile: resolve(out, "ocr-scan.cjs"),
+  outfile: resolve(out, "ocr-scan.mjs"),
   bundle: true,
   platform: "node",
-  format: "cjs",
+  format: "esm",
   external: ["electron"],
   logLevel: "warning",
 });

@@ -16,6 +16,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "fs";
 import { rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { moduleDir } from "./module-dir.js";
 
 /** Extensions the model can look at as they are. */
 const IMAGE_EXT = new Set([
@@ -67,7 +68,7 @@ export function closeRasteriser(): void {
 function rendererEntry(): { url?: string; file?: string } {
   const dev = process.env["ELECTRON_RENDERER_URL"];
   if (dev) return { url: `${dev}/rasterise.html` };
-  return { file: join(__dirname, "../renderer/rasterise.html") };
+  return { file: join(moduleDir, "../renderer/rasterise.html") };
 }
 
 function openRasteriser(): Promise<BrowserWindow> {
@@ -78,7 +79,7 @@ function openRasteriser(): Promise<BrowserWindow> {
       width: 400,
       height: 300,
       webPreferences: {
-        preload: join(__dirname, "../preload/index.mjs"),
+        preload: join(moduleDir, "../preload/index.mjs"),
         sandbox: false,
         // Nothing here is user content and nothing is displayed; this window
         // renders the app's own bundled script and talks only to main.

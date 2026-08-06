@@ -23,14 +23,14 @@ app.whenReady().then(async () => {
     app.exit(1);
     return;
   }
-  const bundle = resolve("out/probe/ocr-scan.cjs");
+  const bundle = resolve("out/probe/ocr-scan.mjs");
   if (!existsSync(bundle)) {
     console.log("Build the probe bundle first (npm run probe:ocr does it).");
     app.exit(1);
     return;
   }
   const { registerRasteriserIPC, scanDocument, closeRasteriser, disposeOcrEngine } =
-    require(bundle);
+    await import(require("url").pathToFileURL(bundle).href);
   registerRasteriserIPC();
 
   let last = Date.now();
