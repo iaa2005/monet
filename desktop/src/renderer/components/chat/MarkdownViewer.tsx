@@ -89,7 +89,7 @@ function VaultLinkChip({
     return (
       <span
         title={`[[${refName}]] — no note with this name (yet)`}
-        className="rounded-[4px] bg-black/[0.05] px-1 py-px text-[0.95em] text-muted-foreground dark:bg-white/[0.07]"
+        className="rounded-[4px] bg-black/[0.05] px-1 py-1 text-[0.95em] font-medium text-muted-foreground dark:bg-white/[0.07]"
       >
         {children}
       </span>
