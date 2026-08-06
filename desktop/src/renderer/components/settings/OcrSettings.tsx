@@ -109,125 +109,126 @@ export function OcrSettings(): React.JSX.Element {
 
       {models.map((m) => (
         <div key={m.id} className="rounded-lg border border-border bg-card p-3">
-          <div className="flex items-start gap-2.5">
-            <FileScan className="mt-0.5 size-4 shrink-0 text-brand" />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                {m.label}
-                {cfg?.modelId === m.id && installedSomething && (
-                  <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-normal text-brand">
-                    in use
-                  </span>
-                )}
-              </div>
-              <p className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
-                {m.note}
-              </p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Languages: {m.languages}
-              </p>
-
-              <div className="mt-2 space-y-1.5">
-                {m.variants.map((v) => {
-                  const busy =
-                    progress?.modelId === m.id && progress?.dtype === v.dtype;
-                  return (
-                    <div
-                      key={v.dtype}
-                      className={cn(
-                        "rounded-md border border-border px-2.5 py-2",
-                        cfg?.dtype === v.dtype &&
-                          cfg?.modelId === m.id &&
-                          v.installed &&
-                          "border-brand/40 bg-brand/[0.04]",
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-[12px]">{v.dtype}</span>
-                        <span className="text-[11px] text-muted-foreground">
-                          {v.size} · runs on {v.devices.map((d) => DEVICE_LABEL[d] ?? d).join(" and ")}
-                        </span>
-                        <div className="ml-auto flex items-center gap-1">
-                          {v.installed && !busy && (
-                            <>
-                              {!(cfg?.modelId === m.id && cfg?.dtype === v.dtype) && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    void patch({ modelId: m.id, dtype: v.dtype })
-                                  }
-                                  className="rounded-md border border-border px-2 py-1 text-[11px] font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-                                >
-                                  Use this
-                                </button>
-                              )}
-                              <span className="text-[11px] text-muted-foreground">
-                                installed
-                              </span>
-                            </>
-                          )}
-                          {!v.installed && !busy && (
-                            <button
-                              type="button"
-                              onClick={() => void api()?.install(m.id, v.dtype)}
-                              className="flex items-center gap-1 rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background transition-opacity hover:opacity-90"
-                            >
-                              <Download className="size-3" />
-                              Download {v.size}
-                            </button>
-                          )}
-                          {busy && (
-                            <button
-                              type="button"
-                              onClick={() => void api()?.cancelInstall(m.id, v.dtype)}
-                              className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] transition-colors hover:bg-destructive/10 hover:text-destructive"
-                            >
-                              <X className="size-3" />
-                              Stop
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                        {v.note}
-                      </p>
-                      {busy && progress && (
-                        <div className="mt-1.5">
-                          <div className="h-1 overflow-hidden rounded-full bg-black/[0.07] dark:bg-white/[0.1]">
-                            <div
-                              className="h-full bg-brand transition-[width]"
-                              style={{ width: `${progress.percent}%` }}
-                            />
-                          </div>
-                          <p className="mt-1 truncate text-[11px] text-muted-foreground">
-                            {progress.percent}% ·{" "}
-                            {Math.round(progress.loaded / 1024 / 1024)} of{" "}
-                            {Math.round(progress.total / 1024 / 1024)} MB
-                            {progress.file ? ` · ${progress.file}` : ""}
-                          </p>
-                        </div>
-                      )}
-                      {!busy && !v.installed && v.onDisk > 0 && (
-                        <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
-                          {Math.round(v.onDisk / 1024 / 1024)} MB already
-                          downloaded — starting again resumes from there.
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          {/* One header row — icon, name, state, delete — and everything
+              else full width beneath it, the way "How it runs" is laid out.
+              The first cut nested the body inside a middle column and the
+              variants ended up in a gutter. */}
+          <div className="flex items-center gap-2">
+            <FileScan className="size-4 shrink-0 text-brand" />
+            <span className="text-sm font-medium">{m.label}</span>
+            {cfg?.modelId === m.id && installedSomething && (
+              <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-normal text-brand">
+                in use
+              </span>
+            )}
             {m.variants.some((v) => v.installed || v.onDisk > 0) && (
               <button
                 type="button"
                 title="Delete this model's files"
                 onClick={() => void api()?.remove(m.id).then(() => load())}
-                className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
               >
                 <Trash2 className="size-3.5" />
               </button>
             )}
+          </div>
+
+          <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
+            {m.note}
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Languages: {m.languages}
+          </p>
+
+          <div className="mt-2 space-y-1.5">
+            {m.variants.map((v) => {
+              const busy =
+                progress?.modelId === m.id && progress?.dtype === v.dtype;
+              return (
+                <div
+                  key={v.dtype}
+                  className={cn(
+                    "rounded-md border border-border px-2.5 py-2",
+                    cfg?.dtype === v.dtype &&
+                      cfg?.modelId === m.id &&
+                      v.installed &&
+                      "border-brand/40 bg-brand/[0.04]",
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[12px]">{v.dtype}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {v.size} · runs on {v.devices.map((d) => DEVICE_LABEL[d] ?? d).join(" and ")}
+                    </span>
+                    <div className="ml-auto flex items-center gap-1">
+                      {v.installed && !busy && (
+                        <>
+                          {!(cfg?.modelId === m.id && cfg?.dtype === v.dtype) && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void patch({ modelId: m.id, dtype: v.dtype })
+                              }
+                              className="rounded-md border border-border px-2 py-1 text-[11px] font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+                            >
+                              Use this
+                            </button>
+                          )}
+                          <span className="text-[11px] text-muted-foreground">
+                            installed
+                          </span>
+                        </>
+                      )}
+                      {!v.installed && !busy && (
+                        <button
+                          type="button"
+                          onClick={() => void api()?.install(m.id, v.dtype)}
+                          className="flex items-center gap-1 rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background transition-opacity hover:opacity-90"
+                        >
+                          <Download className="size-3" />
+                          Download {v.size}
+                        </button>
+                      )}
+                      {busy && (
+                        <button
+                          type="button"
+                          onClick={() => void api()?.cancelInstall(m.id, v.dtype)}
+                          className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] transition-colors hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <X className="size-3" />
+                          Stop
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                    {v.note}
+                  </p>
+                  {busy && progress && (
+                    <div className="mt-1.5">
+                      <div className="h-1 overflow-hidden rounded-full bg-black/[0.07] dark:bg-white/[0.1]">
+                        <div
+                          className="h-full bg-brand transition-[width]"
+                          style={{ width: `${progress.percent}%` }}
+                        />
+                      </div>
+                      <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                        {progress.percent}% ·{" "}
+                        {Math.round(progress.loaded / 1024 / 1024)} of{" "}
+                        {Math.round(progress.total / 1024 / 1024)} MB
+                        {progress.file ? ` · ${progress.file}` : ""}
+                      </p>
+                    </div>
+                  )}
+                  {!busy && !v.installed && v.onDisk > 0 && (
+                    <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                      {Math.round(v.onDisk / 1024 / 1024)} MB already
+                      downloaded — starting again resumes from there.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       ))}
