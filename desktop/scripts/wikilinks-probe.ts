@@ -10,6 +10,7 @@
  */
 
 import { linkifyWikilinks, vaultRefFromHref, VAULT_SCHEME } from '../src/renderer/lib/wikilinks.js'
+import { promoteDisplayMath } from '../src/renderer/lib/display-math.js'
 
 let failures = 0
 function check(name: string, cond: boolean, detail?: unknown): void {
@@ -91,6 +92,42 @@ check('a foreign href is not a vault ref', vaultRefFromHref('https://x.dev') ===
     defaultUrlTransform(url),
   )
 }
+
+// ─── Display math promotion (same preprocessing pipeline) ───────────────
+//
+// remark-math reads single-line $$…$$ as INLINE math, so the centring the
+// user expects never happens. A line that is nothing but one formula is
+// promoted to the fenced form; everything else must stay untouched.
+
+eq(
+  'a lone $$formula$$ line becomes a display block',
+  promoteDisplayMath('До\n$$E=mc^2$$\nПосле'),
+  'До\n$$\nE=mc^2\n$$\nПосле',
+)
+eq(
+  'inline math inside a sentence stays inline',
+  promoteDisplayMath('энергия $$E=mc^2$$ по Эйнштейну'),
+  'энергия $$E=mc^2$$ по Эйнштейну',
+)
+eq(
+  'already-fenced math is not double-fenced',
+  promoteDisplayMath('$$\nE=mc^2\n$$'),
+  '$$\nE=mc^2\n$$',
+)
+check(
+  'code fences are untouched',
+  promoteDisplayMath('```\n$$x$$\n```').includes('```\n$$x$$\n```'),
+)
+eq(
+  'two dollar-groups on one line are prose, not a formula',
+  promoteDisplayMath('$$5$$ и ещё $$10$$'),
+  '$$5$$ и ещё $$10$$',
+)
+check(
+  'indentation survives the promotion',
+  promoteDisplayMath('  $$x+1$$').startsWith('  $$\n  x+1\n  $$'),
+  promoteDisplayMath('  $$x+1$$'),
+)
 
 console.log(failures === 0 ? '\nALL WIKILINK CHECKS PASSED' : `\n${failures} FAILED`)
 process.exit(failures === 0 ? 0 : 1)

@@ -224,6 +224,78 @@ export function searchNotes(
   return hits.slice(0, limit);
 }
 
+// ─── The graph ──────────────────────────────────────────────────────────
+
+export interface GraphNode {
+  /** Stable id: vaultId + relPath. */
+  id: string;
+  name: string;
+  vaultName: string;
+  relPath: string;
+  format: string;
+  tags: string[];
+  /** Degree — how connected this note is (drawn as size). */
+  links: number;
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+}
+
+/**
+ * The vault(s) as nodes and edges, for the graph panel.
+ *
+ * Edges come from wikilinks resolved through the same name/alias table the
+ * tools use — a link that resolves nowhere is a dead link and simply draws
+ * nothing (wiki-lint is the place that names them). Ambiguous names pick
+ * nothing rather than guessing, matching resolveNote's contract.
+ */
+export function buildGraph(notes: IndexedNote[]): {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+} {
+  const byKey = new Map<string, IndexedNote[]>();
+  const idOf = (n: IndexedNote): string => `${n.vaultId}:${n.relPath}`;
+  for (const n of notes) {
+    const push = (k: string): void => {
+      const arr = byKey.get(k);
+      if (arr) arr.push(n);
+      else byKey.set(k, [n]);
+    };
+    push(nameKey(n.name));
+    for (const a of n.aliases) push(nameKey(a));
+  }
+  const edges: GraphEdge[] = [];
+  const degree = new Map<string, number>();
+  const seen = new Set<string>();
+  for (const n of notes) {
+    for (const l of n.links) {
+      const targets = byKey.get(nameKey(l));
+      if (!targets || targets.length !== 1) continue; // dead or ambiguous
+      const from = idOf(n);
+      const to = idOf(targets[0]);
+      if (from === to) continue;
+      const key = `${from} ${to}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push({ from, to });
+      degree.set(from, (degree.get(from) ?? 0) + 1);
+      degree.set(to, (degree.get(to) ?? 0) + 1);
+    }
+  }
+  const nodes = notes.map((n) => ({
+    id: idOf(n),
+    name: n.name,
+    vaultName: n.vaultName,
+    relPath: n.relPath,
+    format: n.format,
+    tags: n.tags.slice(0, 6),
+    links: degree.get(idOf(n)) ?? 0,
+  }));
+  return { nodes, edges };
+}
+
 /** Vault statistics for the settings UI and the directive. */
 export function vaultStats(vault: VaultConfig): { notes: number; links: number; tags: number } {
   const idx = refreshVault(vault);

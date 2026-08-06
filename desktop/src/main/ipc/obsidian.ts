@@ -8,7 +8,12 @@
 
 import { ipcMain, shell } from "electron";
 import { join } from "path";
-import { allNotes, resolveNote, vaultStats } from "../obsidian/index.js";
+import {
+  allNotes,
+  buildGraph,
+  resolveNote,
+  vaultStats,
+} from "../obsidian/index.js";
 import {
   addVault,
   listVaults,
@@ -102,6 +107,21 @@ export function registerObsidianIPC(): void {
       };
     },
   );
+
+  // The whole vault as nodes and edges, for the graph panel. Nodes carry
+  // absolute paths so a click can open the note without a second round trip.
+  ipcMain.handle("obsidian:graph", () => {
+    const notes = allNotes();
+    const { nodes, edges } = buildGraph(notes);
+    const roots = new Map(listVaults().map((v) => [v.id, v.path]));
+    return {
+      nodes: nodes.map((n) => ({
+        ...n,
+        path: join(roots.get(n.id.split(":")[0]) ?? "", n.relPath),
+      })),
+      edges,
+    };
+  });
 
   // Ctrl+click: hand the note to the Obsidian app itself. The obsidian://
   // scheme is registered by Obsidian on install; without it the OS shows

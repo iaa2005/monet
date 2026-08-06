@@ -30,7 +30,7 @@ const {
 } = await import('../src/main/obsidian/notes.js')
 const { addVault, updateVault, removeVault, listVaults, enabledVaults, hasEnabledVaults } =
   await import('../src/main/obsidian/vaults.js')
-const { allNotes, resolveNote, searchNotes, backlinksTo, vaultStats } =
+const { allNotes, buildGraph, resolveNote, searchNotes, backlinksTo, vaultStats } =
   await import('../src/main/obsidian/index.js')
 const { buildVaultPrompt } = await import('../src/main/obsidian/prompt.js')
 
@@ -160,6 +160,26 @@ check('the walk finds all notes and skips .trash/.obsidian', notes.length === 4,
   const p = buildVaultPrompt()
   check('the directive names the vault and its size', !!p && p.includes('"TestVault"') && p.includes('4 notes'), p?.slice(0, 120))
   check('and carries the protocol', !!p && /SEARCH FIRST/.test(p) && /WRITE ONLY ON REQUEST/.test(p))
+}
+
+// ─── The graph ──────────────────────────────────────────────────────────
+
+{
+  const g = buildGraph(allNotes())
+  check('every note is a node', g.nodes.length === 4, g.nodes.length)
+  // Attention ⇄ Scaling Laws (both directions are real links) plus the
+  // edited root Self-Attention → Attention. Attention → Self-Attention is
+  // AMBIGUOUS (two notes share the name) and draws nothing rather than
+  // guessing.
+  check(
+    'edges resolve through names; ambiguous targets draw nothing',
+    g.edges.length === 3,
+    g.edges,
+  )
+  const hub = g.nodes.find((n) => n.name === 'Attention')
+  check('degree lands on the hub', hub?.links === 3, hub?.links)
+  const dupes = g.nodes.filter((n) => n.name === 'Self-Attention')
+  check('same-named notes stay separate nodes', dupes.length === 2)
 }
 
 // ─── Canvas and Bases join the graph ────────────────────────────────────

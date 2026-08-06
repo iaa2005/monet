@@ -21,6 +21,7 @@ import { isWebLink, openLink, wantsExternal } from "@/lib/open-link";
 import { splitMarkdownChunks } from "@/lib/markdown-chunks";
 import { escapeCurrencyDollars } from "@/lib/currency-dollars";
 import { linkifyWikilinks, vaultRefFromHref, VAULT_SCHEME } from "@/lib/wikilinks";
+import { promoteDisplayMath } from "@/lib/display-math";
 
 /**
  * react-markdown drops hrefs whose scheme it does not know — a sane default
@@ -157,7 +158,11 @@ function MarkdownViewerImpl({
       // [[Wikilinks]] become clickable vault links (lib/wikilinks.ts) — the
       // vault protocol makes the model CITE notes this way, and a citation
       // you cannot click is a dead end.
-      body: linkifyWikilinks(escapeCurrencyDollars(stripTtsTags(split.body))),
+      // A lone $$formula$$ line becomes real display math (centred) — see
+      // lib/display-math.ts; remark-math reads the single-line form as inline.
+      body: promoteDisplayMath(
+        linkifyWikilinks(escapeCurrencyDollars(stripTtsTags(split.body))),
+      ),
     };
   }, [raw]);
 

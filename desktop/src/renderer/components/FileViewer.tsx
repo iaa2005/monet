@@ -32,7 +32,8 @@ import { codeRef, selectionLineRange } from "@/lib/refs";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import { useViewerStore } from "@/stores/viewerStore";
-import { MessageSquarePlus } from "lucide-react";
+import { useDockStore } from "@/dock/dock-store";
+import { MessageSquarePlus, Waypoints } from "lucide-react";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -499,6 +500,31 @@ export function FileViewer({
       void api()?.artifacts.download(filePath, displayName);
     else void api()?.files.saveAs(filePath, displayName);
   };
+
+  // Is this file one of the vault's notes? Decides whether the graph button
+  // appears. Registered vault roots change rarely — one fetch per viewer.
+  const [inVault, setInVault] = useState(false);
+  useEffect(() => {
+    if (!filePath) {
+      setInVault(false);
+      return;
+    }
+    let alive = true;
+    void api()
+      ?.obsidian.list()
+      .then((vaults) => {
+        if (!alive || !vaults) return;
+        const norm = (p: string): string => p.replace(/\\/g, "/").toLowerCase();
+        const f = norm(filePath);
+        setInVault(
+          vaults.some((v) => v.enabled && f.startsWith(norm(v.path) + "/")),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [filePath]);
   const openExternal = (): void => {
     if (!filePath) return;
     if (source === "artifact") void api()?.artifacts.open(filePath);
@@ -530,6 +556,14 @@ export function FileViewer({
         </IconBtn>
         {filePath && (
           <>
+            {inVault && (
+              <IconBtn
+                title="Vault graph — this note's whole neighbourhood"
+                onClick={() => useDockStore.getState().openPanel("vault")}
+              >
+                <Waypoints className="size-3.5" />
+              </IconBtn>
+            )}
             <IconBtn title="Download" onClick={download}>
               <Download className="size-3.5" />
             </IconBtn>

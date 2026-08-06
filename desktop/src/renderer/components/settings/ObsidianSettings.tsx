@@ -17,8 +17,10 @@ import {
   RefreshCw,
   Trash2,
   TriangleAlert,
+  Waypoints,
 } from "lucide-react";
 import { ObsidianIcon } from "@/components/ObsidianIcon";
+import { useDockStore } from "@/dock/dock-store";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, UiVault } from "@/types/electron";
@@ -94,6 +96,21 @@ export function ObsidianSettings(): JSX.Element {
         >
           <RefreshCw className="size-4" />
         </button>
+        {vaults.some((v) => v.enabled) && (
+          <button
+            type="button"
+            onClick={() => {
+              useDockStore.getState().openPanel("vault");
+              // The panel opens BEHIND the settings dialog — close it, or
+              // the click appears to do nothing.
+              window.dispatchEvent(new Event("monet-close-settings"));
+            }}
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+          >
+            <Waypoints className="size-4" />
+            Open graph
+          </button>
+        )}
       </div>
 
       {error && (

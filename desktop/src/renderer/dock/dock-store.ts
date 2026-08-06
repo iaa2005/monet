@@ -31,6 +31,7 @@ export const DOCK_TITLES: Record<DockPanelId, string> = {
   plan: "Plan",
   tasks: "Tasks",
   terminal: "Terminal",
+  vault: "Vault graph",
 };
 
 export const DOCK_PANEL_IDS = Object.keys(DOCK_TITLES) as DockPanelId[];
@@ -43,7 +44,7 @@ export const DOCK_PANEL_IDS = Object.keys(DOCK_TITLES) as DockPanelId[];
  * stays open, closed stays closed: a desk restore neither brings it back nor
  * takes it away.
  */
-export const GLOBAL_PANEL_IDS: DockPanelId[] = ["routines"];
+export const GLOBAL_PANEL_IDS: DockPanelId[] = ["routines", "vault"];
 
 /**
  * Panels a SAVED desk may bring back.

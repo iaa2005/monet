@@ -50,6 +50,7 @@ import { SandboxFilesPanel } from "@/components/SandboxFilesPanel";
 import { BackgroundTasksPanel } from "@/components/BackgroundTasks";
 import { RoutinesSettings } from "@/components/settings/RoutinesSettings";
 import { PlanPanel } from "@/components/PlanPanel";
+import { VaultGraphPanel } from "@/components/VaultGraphPanel";
 import { FileTree } from "@/components/FileTree";
 import { FileViewer } from "@/components/FileViewer";
 import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
@@ -210,6 +211,9 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
    * routine's history while the conversation that triggered it is right
    * there is the whole point.
    */
+  vault: function VaultGraphDockPanel() {
+    return <VaultGraphPanel />;
+  },
   routines: function RoutinesDockPanel() {
     return scrollWrap(
       <div className="px-4 py-4">

@@ -24,7 +24,8 @@ export type DockPanelId =
   | "browser"
   | "plan"
   | "tasks"
-  | "terminal";
+  | "terminal"
+  | "vault";
 
 /** The wing's idea of a desk: a real dockview layout, or just "open these". */
 export type DockDesk =

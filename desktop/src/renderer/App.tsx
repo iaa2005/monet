@@ -222,6 +222,13 @@ export default function App(): JSX.Element {
   const [settingsSection, setSettingsSection] = useState<
     "general" | "sandbox" | "providers" | "automation" | "memory" | "connectors"
   >("general");
+  // A settings page opened a dock panel (e.g. Obsidian → Open graph): the
+  // panel lands BEHIND the dialog, so the page asks the dialog to close.
+  useEffect(() => {
+    const close = (): void => setSettingsOpen(false);
+    window.addEventListener("monet-close-settings", close);
+    return () => window.removeEventListener("monet-close-settings", close);
+  }, []);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [hotkeysOpen, setHotkeysOpen] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);

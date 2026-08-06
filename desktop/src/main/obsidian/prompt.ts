@@ -29,6 +29,12 @@ const RULES_DEFAULT = [
   "  never as a side effect. Prefer appending to an existing note over",
   "  creating a near-duplicate, and always connect new notes with",
   "  [[wikilinks]] so they join the graph instead of floating loose.",
+  "- OFFER, DON'T TRANSCRIBE: when the conversation produces something",
+  "  clearly worth keeping — a decision, a worked-out idea, a result the",
+  "  user will want later — you may offer ONCE to save it to the vault,",
+  "  naming the note you would create or extend. Write only after an",
+  "  explicit yes; silence or 'no' ends the offer, and conversations are",
+  "  never transcribed wholesale.",
 ].join("\n");
 
 /** Materialise the tunable prompt file even when no vault is enabled yet —

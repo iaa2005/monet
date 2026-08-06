@@ -30,6 +30,23 @@ export type { BrowserConfig, DevServer, BrowserSelection, ServerConfig, ServerSt
 export type { Bookmark, Visit };
 export type { SessionUiState };
 export type { UiVault };
+
+/** The vault(s) as a graph, for the dock panel. */
+export interface VaultGraphNode {
+  id: string;
+  name: string;
+  vaultName: string;
+  relPath: string;
+  /** Absolute path — a click opens the note without a second round trip. */
+  path: string;
+  format: string;
+  tags: string[];
+  links: number;
+}
+export interface VaultGraph {
+  nodes: VaultGraphNode[];
+  edges: { from: string; to: string }[];
+}
 export type { SttSettings };
 export type { InstallProgress, SttModelStatus };
 export type { TtsProgress, TtsStatus };
@@ -709,6 +726,7 @@ export interface ElectronAPI {
       candidates?: { name: string; relPath: string; vaultName: string }[];
     }>;
     openInApp: (absPath: string) => Promise<{ ok: boolean }>;
+    graph: () => Promise<VaultGraph>;
   };
   memory: {
     getConfig: () => Promise<{ searchChats: boolean; generateMemory: boolean; extractEveryMinutes: number }>;
