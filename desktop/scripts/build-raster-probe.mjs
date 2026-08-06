@@ -47,6 +47,18 @@ await build({
   logLevel: "warning",
 });
 
+// The bench: candidates the app does not have installed, on devices the
+// settings do not offer.
+await build({
+  entryPoints: [resolve("scripts/ocr-bench-entry.ts")],
+  outfile: resolve(out, "ocr-bench.mjs"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  external: ["electron", "@huggingface/transformers"],
+  logLevel: "warning",
+});
+
 await build({
   entryPoints: [resolve("scripts/ocr-scan-entry.ts")],
   outfile: resolve(out, "ocr-scan.mjs"),
