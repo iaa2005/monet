@@ -78,7 +78,7 @@ function openRasteriser(): Promise<BrowserWindow> {
       width: 400,
       height: 300,
       webPreferences: {
-        preload: join(__dirname, "../preload/index.js"),
+        preload: join(__dirname, "../preload/index.mjs"),
         sandbox: false,
         // Nothing here is user content and nothing is displayed; this window
         // renders the app's own bundled script and talks only to main.

@@ -14,11 +14,13 @@
  * server to start — installing a model is downloading its weights.
  *
  * Measured on the development machine (Core Ultra 7 155H, Arc iGPU, no CUDA),
- * one A4 page of a formula-heavy paper at 150 DPI, LightOnOCR-2 q4:
- *   - WebGPU (the iGPU): 5.5 tok/s → ~2 minutes a page
- *   - CPU:               2.0 tok/s → ~5 minutes a page
+ * one A4 page of a formula-heavy paper at 150 DPI, LightOnOCR-2 q4, end to
+ * end — rasterising, generating, decoding:
+ *   - WebGPU (the iGPU): 2.8 minutes a page (5.5 tok/s generating)
+ *   - CPU:               ~6 minutes a page (2.0 tok/s)
  * A machine with a discrete GPU is many times faster; those numbers are the
- * floor, not the expectation.
+ * floor, not the expectation. They are also why the tool's prompt tells the
+ * model to put long documents on a background agent.
  *
  * Weight formats are NOT interchangeable, and getting this wrong does not
  * fail loudly — it produces fluent nonsense. `q4f16` renders a page as a wall

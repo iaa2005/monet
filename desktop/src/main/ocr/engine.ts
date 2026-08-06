@@ -12,7 +12,7 @@
 
 import { fork, type ChildProcess } from "child_process";
 import { existsSync } from "fs";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { ocrModel, type OcrModelInfo } from "./catalog.js";
 import { isInstalled, modelDir } from "./install.js";
 import { getOcrConfig, ocrModelsDir } from "./settings.js";
@@ -45,7 +45,9 @@ function failAllPending(message: string): void {
 
 function getChild(): ChildProcess {
   if (child && child.connected) return child;
-  const script = fileURLToPath(new URL("./ocr-child.js", import.meta.url));
+  // Beside this module, whatever built it: out/main in the app, out/probe
+  // under the end-to-end probe. `__dirname` is the one form both give.
+  const script = join(__dirname, "ocr-child.js");
   child = fork(script, [], {
     // In a packaged app `process.execPath` IS the app: this makes it behave
     // as a plain Node process rather than launching a second window.
