@@ -295,6 +295,48 @@ check('nonsense means the whole document, not page NaN', parsePages('abc').lengt
   check('something smaller than one block still works', tiny.width >= FACTOR && tiny.height >= FACTOR, tiny)
 }
 
+// ─── Which way up ───────────────────────────────────────────────────────
+
+{
+  const { layoutConfidence, prefersRotated, rotate180, rotateBox180 } =
+    await import('../src/main/ocr/orientation.js')
+
+  // A page fed in upside down reads BACKWARDS, not badly: the reading model
+  // transcribes rotated text fine, so the failure is the last paragraph
+  // arriving first — which looks like a bug in the app, not the scan.
+  const upright = [
+    { label: 'text', score: 0.98, box: [0, 0, 10, 10] as [number, number, number, number] },
+    { label: 'text', score: 0.93, box: [0, 20, 10, 30] as [number, number, number, number] },
+  ]
+  const weak = [
+    { label: 'text', score: 0.55, box: [0, 0, 10, 10] as [number, number, number, number] },
+  ]
+  check('confidence adds up the blocks', Math.abs(layoutConfidence(upright) - 1.91) < 1e-9)
+  check('a clearly better rotation wins', prefersRotated(layoutConfidence(weak), layoutConfidence(upright)))
+  check(
+    '…and a close call does not flip the page',
+    !prefersRotated(1.9, 2.0),
+  )
+  check('nor does an equal one', !prefersRotated(1.0, 1.0))
+
+  // Rotating twice is identity — the mapping has to be exact, or the crops
+  // come from the wrong part of the page.
+  const box: [number, number, number, number] = [10, 20, 30, 60]
+  const there = rotateBox180(box, 100, 200)
+  const back = rotateBox180(there, 100, 200)
+  check('a box maps back to itself', back.join() === box.join(), { there, back })
+  check('…and lands where the page turned it', there.join() === '70,140,90,180', there)
+
+  // Same for pixels: 2×1 image, two colours.
+  const rgb = new Uint8Array([1, 2, 3, 4, 5, 6])
+  const turned = rotate180(rgb, 2, 1)
+  check('pixels come back reversed', Array.from(turned).join() === '4,5,6,1,2,3', Array.from(turned))
+  check(
+    '…and turning twice is the original',
+    Array.from(rotate180(turned, 2, 1)).join() === '1,2,3,4,5,6',
+  )
+}
+
 // ─── Runaway generations ────────────────────────────────────────────────
 
 {

@@ -37,6 +37,12 @@ import {
   type LayoutBlock,
 } from "./layout.js";
 import { cropBlocks, type RenderedPage } from "./render.js";
+import {
+  layoutConfidence,
+  prefersRotated,
+  rotate180,
+  rotateBox180,
+} from "./orientation.js";
 
 /** Blocks that are pictures: kept, never read. */
 const PICTURES = new Set(["image", "chart", "seal"]);
@@ -186,16 +192,38 @@ export async function scanPageSmart(
 
   const t0 = Date.now();
   let found: LayoutBlock[];
+  let upsideDown = false;
   try {
+    const device = opts.layoutDevice ?? "cpu";
+    const size = { width: page.width, height: page.height };
     found = await detectBlocks(
+      { data: new Uint8Array(0), ...size, resized: page.layoutRgb },
+      device,
+    );
+
+    // A page fed in upside down reads BACKWARDS rather than badly: the
+    // model transcribes rotated text fine, but the blocks come out
+    // bottom-to-top and the last paragraph lands first. The detector
+    // itself is the test — it is measurably less sure about an
+    // upside-down page.
+    const LAYOUT_SIDE = 800;
+    const flipped = await detectBlocks(
       {
         data: new Uint8Array(0),
-        width: page.width,
-        height: page.height,
-        resized: page.layoutRgb,
+        ...size,
+        resized: rotate180(page.layoutRgb, LAYOUT_SIDE, LAYOUT_SIDE),
       },
-      opts.layoutDevice ?? "cpu",
+      device,
     );
+    if (prefersRotated(layoutConfidence(found), layoutConfidence(flipped))) {
+      upsideDown = true;
+      // Crops still come from the unrotated page image, so the boxes are
+      // mapped back rather than the picture being re-rendered.
+      found = flipped.map((b) => ({
+        ...b,
+        box: rotateBox180(b.box, page.width, page.height),
+      }));
+    }
   } catch (err) {
     return {
       page: page.page,
@@ -209,12 +237,24 @@ export async function scanPageSmart(
   }
   const layoutSeconds = (Date.now() - t0) / 1000;
 
-  const ordered = readingOrder(
-    absorbInline(dropDuplicates(dropNested(found))),
-    page.width,
-  ).filter(
-    (b) => !FURNITURE.has(b.label),
-  );
+  const cleaned = absorbInline(dropDuplicates(dropNested(found)));
+  // Reading order runs on the page as the DETECTOR saw it; for an
+  // upside-down page the boxes are flipped into that frame, sorted, and
+  // flipped back — which is reading order for the page as printed.
+  const ordered = (
+    upsideDown
+      ? readingOrder(
+          cleaned.map((b) => ({
+            ...b,
+            box: rotateBox180(b.box, page.width, page.height),
+          })),
+          page.width,
+        ).map((b) => ({
+          ...b,
+          box: rotateBox180(b.box, page.width, page.height),
+        }))
+      : readingOrder(cleaned, page.width)
+  ).filter((b) => !FURNITURE.has(b.label));
   if (ordered.length === 0)
     return {
       page: page.page,

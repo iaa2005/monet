@@ -48,6 +48,7 @@
     "smoke:ocr": "node scripts/smoke-agent.mjs scripts/ocr-probe.ts",
     "smoke:raster": "node scripts/build-raster-probe.mjs && electron scripts/ocr-rasterise-probe.cjs",
     "probe:ocr": "node scripts/build-raster-probe.mjs && electron scripts/ocr-endtoend-probe.cjs",
+    "suite:ocr": "node scripts/build-raster-probe.mjs && electron scripts/ocr-suite.cjs",
     "bench:ocr": "node scripts/build-raster-probe.mjs && electron scripts/ocr-bench.cjs",
     "smoke:richtext": "node scripts/renderer-probe.mjs scripts/rich-text-probe.ts",
     "smoke:wikilinks": "node scripts/renderer-probe.mjs scripts/wikilinks-probe.ts",

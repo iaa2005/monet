@@ -35,6 +35,8 @@ export const glmOcr: OcrModelInfo = {
   languages: "English, Chinese, multilingual",
   components: ["embed_tokens", "vision_encoder", "decoder_model_merged"],
   prompt: "Convert this page to markdown.",
+  secondsPerPage: 28,
+  short: "Faster, makes different mistakes.",
   variants: [
     {
       dtype: "q4",

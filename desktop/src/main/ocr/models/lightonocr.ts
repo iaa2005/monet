@@ -32,6 +32,8 @@ export const lightOnOcr: OcrModelInfo = {
     "English, French, German, Spanish, Italian, Dutch, Portuguese, Swedish, Danish, Chinese, Japanese — and Russian in practice",
   components: ["embed_tokens", "vision_encoder", "decoder_model_merged"],
   prompt: "Convert this page to markdown.",
+  secondsPerPage: 44,
+  short: "Best on Russian. The default.",
   variants: [
     {
       dtype: "q4",

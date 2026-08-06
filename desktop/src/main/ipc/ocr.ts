@@ -44,9 +44,13 @@ export interface UiOcrVariant {
 export interface UiOcrModel {
   id: string;
   label: string;
+  /** One line for the settings page — the long note stays in the model file. */
+  short: string;
   note: string;
   languages: string;
   repo: string;
+  /** Measured seconds for a typical page, when it has been measured. */
+  secondsPerPage?: number;
   variants: UiOcrVariant[];
 }
 
@@ -67,6 +71,8 @@ async function toUi(m: OcrModelInfo): Promise<UiOcrModel> {
   return {
     id: m.id,
     label: m.label,
+    short: m.short,
+    secondsPerPage: m.secondsPerPage,
     note: m.note,
     languages: m.languages,
     repo: m.repo,

@@ -29,6 +29,8 @@ export const qwen3Vl: OcrModelInfo = {
   languages: "119 languages, Russian well represented",
   components: ["embed_tokens", "vision_encoder", "decoder_model_merged"],
   prompt: "Read this page and write it out as markdown.",
+  secondsPerPage: 173,
+  short: "General-purpose. Slow, loops on tables.",
   variants: [
     {
       dtype: "q4",

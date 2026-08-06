@@ -41,6 +41,8 @@ export const paddleOcrVl: OcrModelInfo = {
   languages: "English, Chinese, and 100+ more — but measurably weak on Russian",
   components: ["vision_encoder", "decoder", "embedding"],
   prompt: "OCR:",
+  secondsPerPage: 91,
+  short: "Great tables, weak Russian.",
   variants: [
     {
       dtype: "q4",

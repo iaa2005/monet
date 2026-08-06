@@ -60,5 +60,16 @@ export interface OcrModelInfo {
   components: string[];
   /** What to ask it for a whole page. Per-block prompts live in smart.ts. */
   prompt: string;
+  /**
+   * Seconds a typical page takes, MEASURED — not from a paper.
+   *
+   * The settings page shows this instead of prose: "725 MB · ~44s a page"
+   * tells somebody choosing a model more than three sentences about
+   * architectures, and it is the number they will feel.
+   */
+  secondsPerPage?: number;
+  /** One short line for the settings page. Everything else lives in this
+   * file's comment, where it belongs — the UI is not documentation. */
+  short: string;
   variants: OcrVariant[];
 }

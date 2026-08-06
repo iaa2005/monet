@@ -1,0 +1,348 @@
+[
+  {
+    "model": "lightonocr-2-1b",
+    "page": "Снимок экрана 2026-05-02 231449.png",
+    "seconds": 46.7,
+    "chars": 2951,
+    "blocks": {
+      "text": 7,
+      "formula": 6,
+      "formula_number": 3
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "lightonocr-2-1b",
+    "page": "Снимок экрана 2026-05-03 132421.png",
+    "seconds": 257.2,
+    "chars": 2089,
+    "blocks": {
+      "table": 1
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "lightonocr-2-1b",
+    "page": "Снимок экрана 2026-05-19 123904.png",
+    "seconds": 22.4,
+    "chars": 1026,
+    "blocks": {
+      "text": 10,
+      "formula": 5
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "lightonocr-2-1b",
+    "page": "Снимок экрана 2026-05-25 171553.png",
+    "seconds": 249.7,
+    "chars": 5115,
+    "blocks": {
+      "image": 1,
+      "paragraph_title": 2,
+      "text": 14,
+      "table": 2,
+      "formula": 3,
+      "formula_number": 1,
+      "figure_title": 1
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "lightonocr-2-1b",
+    "page": "Снимок экрана 2026-06-10 181005.png",
+    "seconds": 8.6,
+    "chars": 502,
+    "blocks": {
+      "paragraph_title": 5,
+      "image": 2,
+      "text": 8
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "lightonocr-2-1b",
+    "page": "Снимок экрана 2026-08-06 173117.png",
+    "seconds": 41.7,
+    "chars": 3082,
+    "blocks": {
+      "text": 9,
+      "paragraph_title": 4,
+      "formula": 3
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "lightonocr-2-1b",
+    "page": "Снимок экрана 2026-08-06 212404.png",
+    "seconds": 37.4,
+    "chars": 2040,
+    "blocks": {
+      "text": 6,
+      "formula": 2,
+      "paragraph_title": 2,
+      "figure_title": 2,
+      "chart": 1,
+      "table": 1
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "lightonocr-2-1b",
+    "page": "Снимок экрана 2026-08-06 234826.png",
+    "seconds": 30.9,
+    "chars": 4021,
+    "blocks": {
+      "figure_title": 1,
+      "table": 1,
+      "text": 4
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "lightonocr-2-1b",
+    "page": "Снимок экрана 2026-08-06 234842.png",
+    "seconds": 31.1,
+    "chars": 2329,
+    "blocks": {
+      "paragraph_title": 2,
+      "text": 12,
+      "image": 2,
+      "formula": 6
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "lightonocr-2-1b",
+    "page": "Снимок экрана 2026-08-06 234937.png",
+    "seconds": 153.1,
+    "chars": 3124,
+    "blocks": {
+      "reference": 1,
+      "class19": 4
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "lightonocr-2-1b",
+    "page": "Снимок экрана 2026-08-06 235009.png",
+    "seconds": 69.5,
+    "chars": 6730,
+    "blocks": {
+      "text": 9,
+      "paragraph_title": 2,
+      "algorithm": 2
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "lightonocr-2-1b",
+    "page": "Снимок экрана 2026-08-06 235100.png",
+    "seconds": 23.5,
+    "chars": 3305,
+    "blocks": {
+      "image": 2,
+      "class18": 1,
+      "text": 7,
+      "paragraph_title": 1,
+      "figure_title": 1
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "lightonocr-2-1b",
+    "page": "Снимок экрана 2026-08-06 235222.png",
+    "seconds": 5.1,
+    "chars": 725,
+    "blocks": {
+      "text": 2
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "glm-ocr",
+    "page": "Снимок экрана 2026-05-02 231449.png",
+    "seconds": 37.6,
+    "chars": 3027,
+    "blocks": {
+      "text": 7,
+      "formula": 6,
+      "formula_number": 3
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "glm-ocr",
+    "page": "Снимок экрана 2026-05-03 132421.png",
+    "seconds": 180.7,
+    "chars": 1762,
+    "blocks": {
+      "table": 1
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "glm-ocr",
+    "page": "Снимок экрана 2026-05-19 123904.png",
+    "seconds": 17.8,
+    "chars": 1142,
+    "blocks": {
+      "text": 10,
+      "formula": 5
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "glm-ocr",
+    "page": "Снимок экрана 2026-05-25 171553.png",
+    "seconds": 132,
+    "chars": 6106,
+    "blocks": {
+      "image": 1,
+      "paragraph_title": 2,
+      "text": 14,
+      "table": 2,
+      "formula": 3,
+      "formula_number": 1,
+      "figure_title": 1
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "glm-ocr",
+    "page": "Снимок экрана 2026-06-10 181005.png",
+    "seconds": 7.2,
+    "chars": 563,
+    "blocks": {
+      "paragraph_title": 5,
+      "image": 2,
+      "text": 8
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "glm-ocr",
+    "page": "Снимок экрана 2026-08-06 173117.png",
+    "seconds": 35,
+    "chars": 3281,
+    "blocks": {
+      "text": 9,
+      "paragraph_title": 4,
+      "formula": 3
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "glm-ocr",
+    "page": "Снимок экрана 2026-08-06 212404.png",
+    "seconds": 21.3,
+    "chars": 1898,
+    "blocks": {
+      "text": 6,
+      "formula": 2,
+      "paragraph_title": 2,
+      "figure_title": 2,
+      "chart": 1,
+      "table": 1
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "glm-ocr",
+    "page": "Снимок экрана 2026-08-06 234826.png",
+    "seconds": 27.7,
+    "chars": 3892,
+    "blocks": {
+      "figure_title": 1,
+      "table": 1,
+      "text": 4
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "glm-ocr",
+    "page": "Снимок экрана 2026-08-06 234842.png",
+    "seconds": 27.1,
+    "chars": 2721,
+    "blocks": {
+      "paragraph_title": 2,
+      "text": 12,
+      "image": 2,
+      "formula": 6
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "glm-ocr",
+    "page": "Снимок экрана 2026-08-06 234937.png",
+    "seconds": 86.6,
+    "chars": 2908,
+    "blocks": {
+      "reference": 1,
+      "class19": 4
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "glm-ocr",
+    "page": "Снимок экрана 2026-08-06 235009.png",
+    "seconds": 43,
+    "chars": 6107,
+    "blocks": {
+      "text": 9,
+      "paragraph_title": 2,
+      "algorithm": 2
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "glm-ocr",
+    "page": "Снимок экрана 2026-08-06 235100.png",
+    "seconds": 25.4,
+    "chars": 3733,
+    "blocks": {
+      "image": 2,
+      "class18": 1,
+      "text": 7,
+      "paragraph_title": 1,
+      "figure_title": 1
+    },
+    "device": "webgpu",
+    "error": null
+  },
+  {
+    "model": "glm-ocr",
+    "page": "Снимок экрана 2026-08-06 235222.png",
+    "seconds": 4.9,
+    "chars": 725,
+    "blocks": {
+      "text": 2
+    },
+    "device": "webgpu",
+    "error": null
+  }
+]
