@@ -176,3 +176,13 @@
 .monet-glass .monet-dock .xterm-screen {
   background-color: transparent !important;
 }
+
+.dv-tabs-overflow-container .dv-inactive-tab, 
+.dv-tabs-overflow-container .dv-active-tab {
+    height: 24px;
+}
+
+.dv-tabs-overflow-container .dv-inactive-tab button, 
+.dv-tabs-overflow-container .dv-active-tab button {
+    margin-left: auto
+}
