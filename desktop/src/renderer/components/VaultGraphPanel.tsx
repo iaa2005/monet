@@ -36,7 +36,12 @@ const HUES = [18, 210, 140, 280, 45, 330];
 
 const SIM_FRAMES = 240;
 
-export function VaultGraphPanel(): JSX.Element {
+export function VaultGraphPanel({
+  onTitle,
+}: {
+  /** Rename the dock tab once we know whose vault this is. */
+  onTitle?: (title: string) => void;
+}): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [graph, setGraph] = useState<VaultGraph | null>(null);
   const [empty, setEmpty] = useState(false);
@@ -57,7 +62,13 @@ export function VaultGraphPanel(): JSX.Element {
     if (!g) return;
     setEmpty(g.nodes.length === 0);
     setGraph(g);
-  }, []);
+    // The tab wears the vault's name — "+N" when several are enabled.
+    const names: string[] = [];
+    for (const n of g.nodes)
+      if (!names.includes(n.vaultName)) names.push(n.vaultName);
+    if (names.length > 0)
+      onTitle?.(names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`);
+  }, [onTitle]);
   useEffect(() => {
     void load();
   }, [load]);

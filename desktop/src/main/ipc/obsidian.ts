@@ -108,6 +108,25 @@ export function registerObsidianIPC(): void {
     },
   );
 
+  // Do these wikilink targets exist? One batched call for a whole message —
+  // the chat asks per RENDERED CHIP, and a streaming answer renders often,
+  // so the renderer-side cache and batching (lib/vault-link-status.ts) are
+  // part of this contract: this handler must stay cheap, not clever.
+  ipcMain.handle(
+    "obsidian:exists",
+    (_e, refs: string[]): Record<string, boolean> => {
+      const out: Record<string, boolean> = {};
+      const list = Array.isArray(refs) ? refs.slice(0, 500) : [];
+      if (list.length === 0) return out;
+      const notes = allNotes();
+      for (const ref of list) {
+        const bare = String(ref).replace(/#.*$/, "").trim();
+        out[ref] = resolveNote(bare, notes).kind !== "none";
+      }
+      return out;
+    },
+  );
+
   // The whole vault as nodes and edges, for the graph panel. Nodes carry
   // absolute paths so a click can open the note without a second round trip.
   ipcMain.handle("obsidian:graph", () => {

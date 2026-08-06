@@ -51,6 +51,7 @@ import { BackgroundTasksPanel } from "@/components/BackgroundTasks";
 import { RoutinesSettings } from "@/components/settings/RoutinesSettings";
 import { PlanPanel } from "@/components/PlanPanel";
 import { VaultGraphPanel } from "@/components/VaultGraphPanel";
+import { ObsidianIcon } from "@/components/ObsidianIcon";
 import { FileTree } from "@/components/FileTree";
 import { FileViewer } from "@/components/FileViewer";
 import { ViewerErrorBoundary } from "@/components/ViewerErrorBoundary";
@@ -59,7 +60,7 @@ import { useBrowserStore } from "@/components/browser/browser-store";
 import { useViewerStore } from "@/stores/viewerStore";
 import { fallbackIcon, resolveIcon } from "@/components/icon-resolver";
 import { closeViewerPane, openViewerPane } from "@/dock/dock-store";
-import { cn } from "@/lib/utils";
+import { cn, midEllipsis } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import { isApplyingDesk, useDockStore } from "./dock-store";
 
@@ -424,23 +425,30 @@ function DockTab(props: IDockviewPanelHeaderProps): JSX.Element {
         if (doc?.preview) useViewerStore.getState().pin(doc.id);
       }}
     >
-      {doc && (
-        <img
-          src={resolveIcon(doc.file.name, false, false, dark)}
-          className="size-3.5 shrink-0"
-          alt=""
-          onError={(e) => {
-            const img = e.currentTarget;
-            const fb = fallbackIcon(false, false, dark);
-            if (!img.src.endsWith(fb)) img.src = fb;
-          }}
-        />
+      {props.api.id === "vault" ? (
+        // The stone, and the vault's name — set by the panel once it knows.
+        <ObsidianIcon className="size-3.5 shrink-0 text-brand" />
+      ) : (
+        doc && (
+          <img
+            src={resolveIcon(doc.file.name, false, false, dark)}
+            className="size-3.5 shrink-0"
+            alt=""
+            onError={(e) => {
+              const img = e.currentTarget;
+              const fb = fallbackIcon(false, false, dark);
+              if (!img.src.endsWith(fb)) img.src = fb;
+            }}
+          />
+        )
       )}
       <span
         className={doc?.preview ? "truncate italic pr-0.5" : "truncate pr-0.5"}
         title={title}
       >
-        {title}
+        {/* Ellipsis in the MIDDLE: for files and notes the tail is what
+            tells two similar tabs apart, and CSS truncate would eat it. */}
+        {midEllipsis(title ?? "", 26)}
       </span>
       {doc?.dirty && (
         <span

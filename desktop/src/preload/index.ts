@@ -540,6 +540,8 @@ const electronAPI = {
     }> => ipcRenderer.invoke("obsidian:resolve", ref),
     openInApp: (absPath: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("obsidian:openInApp", absPath),
+    exists: (refs: string[]): Promise<Record<string, boolean>> =>
+      ipcRenderer.invoke("obsidian:exists", refs),
     graph: (): Promise<{
       nodes: {
         id: string;

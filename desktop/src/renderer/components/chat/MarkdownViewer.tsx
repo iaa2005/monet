@@ -22,6 +22,7 @@ import { splitMarkdownChunks } from "@/lib/markdown-chunks";
 import { escapeCurrencyDollars } from "@/lib/currency-dollars";
 import { linkifyWikilinks, vaultRefFromHref, VAULT_SCHEME } from "@/lib/wikilinks";
 import { promoteDisplayMath } from "@/lib/display-math";
+import { vaultRefStatus } from "@/lib/vault-link-status";
 
 /**
  * react-markdown drops hrefs whose scheme it does not know — a sane default
@@ -60,6 +61,67 @@ const DOCS_REHYPE = [
   ],
   rehypeKatex,
 ] as never[];
+
+/**
+ * One [[wikilink]] chip. Live links are brand-tinted and open the note; a
+ * link whose target does not exist (yet — or any more) is grey and inert,
+ * the way Obsidian dims unresolved links. The verdict comes from the
+ * batched, cached status service (lib/vault-link-status.ts) so a streaming
+ * message full of chips costs one IPC call, not one per chip per render.
+ */
+function VaultLinkChip({
+  refName,
+  children,
+}: {
+  refName: string;
+  children: React.ReactNode;
+}): JSX.Element {
+  const [missing, setMissing] = useState(false);
+  useEffect(() => {
+    const { cached, cancel } = vaultRefStatus(refName, (s) =>
+      setMissing(s === "missing"),
+    );
+    if (cached) setMissing(cached === "missing");
+    return cancel;
+  }, [refName]);
+
+  if (missing) {
+    return (
+      <span
+        title={`[[${refName}]] — no note with this name (yet)`}
+        className="rounded-[4px] bg-black/[0.05] px-1 py-px text-[0.95em] text-muted-foreground dark:bg-white/[0.07]"
+      >
+        {children}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      title={`[[${refName}]] — open the note\nCtrl+click to open in Obsidian`}
+      onClick={(e) => {
+        const inApp = e.ctrlKey || e.metaKey;
+        void (async () => {
+          const api = (window as any).electronAPI;
+          const r = await api?.obsidian?.resolve(refName);
+          const path: string | undefined = r?.ok && r.path ? r.path : undefined;
+          if (!path) return;
+          if (inApp) await api?.obsidian?.openInApp(path);
+          else
+            viewWorkspaceFile({
+              name: path.split(/[\\/]/).pop() ?? `${refName}.md`,
+              path,
+              mediaType: "text/markdown",
+              kind: "file",
+            });
+        })();
+      }}
+      className="rounded-[4px] bg-brand/10 px-1 py-px text-[0.95em] font-medium text-brand hover:bg-brand/15"
+    >
+      {children}
+    </button>
+  );
+}
 
 function artifactFromPath(path: string, alt: string) {
   const cleanPath = path.replace(/^file:\/\//i, "");
@@ -213,39 +275,7 @@ function MarkdownViewerImpl({
       // hover title — a dead citation must not throw dialogs.
       const vaultRef = vaultRefFromHref(href);
       if (vaultRef) {
-        return (
-          <button
-            type="button"
-            title={`[[${vaultRef}]] — open the note\nCtrl+click to open in Obsidian`}
-            onClick={(e) => {
-              const inApp = e.ctrlKey || e.metaKey;
-              void (async () => {
-                const api = (window as any).electronAPI;
-                const r = await api?.obsidian?.resolve(vaultRef);
-                const path: string | undefined =
-                  r?.ok && r.path
-                    ? r.path
-                    : undefined;
-                if (!path) return;
-                if (inApp) await api?.obsidian?.openInApp(path);
-                else
-                  // "file", not "artifact": the vault lives outside the data
-                  // folder, and the artifact reader (rightly) refuses paths
-                  // outside its root — this is what "artifact outside data
-                  // folder" on every note click was.
-                  viewWorkspaceFile({
-                    name: path.split(/[\\/]/).pop() ?? `${vaultRef}.md`,
-                    path,
-                    mediaType: "text/markdown",
-                    kind: "file",
-                  });
-              })();
-            }}
-            className="rounded-[4px] bg-brand/10 px-1 py-px text-[0.95em] font-medium text-brand hover:bg-brand/15"
-          >
-            {children}
-          </button>
-        );
+        return <VaultLinkChip refName={vaultRef}>{children}</VaultLinkChip>;
       }
       const item = href.startsWith("artifacts/") || /^file:\/\//i.test(href)
         ? artifactFromPath(href, String(children ?? ""))

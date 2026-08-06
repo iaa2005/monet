@@ -11,6 +11,7 @@
 
 import { linkifyWikilinks, vaultRefFromHref, VAULT_SCHEME } from '../src/renderer/lib/wikilinks.js'
 import { promoteDisplayMath } from '../src/renderer/lib/display-math.js'
+import { midEllipsis } from '../src/renderer/lib/utils.js'
 
 let failures = 0
 function check(name: string, cond: boolean, detail?: unknown): void {
@@ -128,6 +129,19 @@ check(
   promoteDisplayMath('  $$x+1$$').startsWith('  $$\n  x+1\n  $$'),
   promoteDisplayMath('  $$x+1$$'),
 )
+
+// ─── Middle ellipsis (dock tabs) ────────────────────────────────────────
+//
+// For file names the TAIL is the informative part; CSS truncate eats it.
+
+check('short names pass through', midEllipsis('Note.md', 24) === 'Note.md')
+{
+  const long = 'Very long note about transformers.md'
+  const cut = midEllipsis(long, 24)
+  check('long names keep head AND tail', cut.length === 24 && cut.includes('…'), cut)
+  check('…and the extension survives', cut.endsWith('.md'), cut)
+  check('the original is recognisable from the head', cut.startsWith('Very long'), cut)
+}
 
 console.log(failures === 0 ? '\nALL WIKILINK CHECKS PASSED' : `\n${failures} FAILED`)
 process.exit(failures === 0 ? 0 : 1)
