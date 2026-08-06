@@ -36,16 +36,19 @@ import {
   readingOrder,
   type LayoutBlock,
 } from "./layout.js";
-import { cropBlocks, type RenderedPage } from "./render.js";
+import { cropBlocks, rotatePage, type RenderedPage } from "./render.js";
 import {
+  bestAngle,
   layoutConfidence,
-  prefersRotated,
-  rotate180,
-  rotateBox180,
+  rotateSquare,
+  type PageAngle,
 } from "./orientation.js";
+import { detectLines, skewOf, worthDeskewing } from "./lines/detect.js";
+import { existsSync } from "fs";
+import { detModelPath } from "./lines/detect.js";
 
 /** Blocks that are pictures: kept, never read. */
-const PICTURES = new Set(["image", "chart", "seal"]);
+const PICTURES = new Set(["image", "chart"]);
 
 /** Blocks nobody wants in the text of a document. */
 const FURNITURE = new Set(["number", "header", "footer"]);
@@ -68,6 +71,15 @@ function promptFor(label: string, engine: string): string {
   }
   if (formula) return "Convert this formula to LaTeX.";
   if (label === "table") return "Convert this table to markdown.";
+  // The detector distinguishes twenty kinds of block and it is worth using
+  // more than five of them: telling the model it is looking at pseudocode
+  // rather than a paragraph is the difference between indentation kept and
+  // indentation flattened into prose.
+  if (label === "algorithm")
+    return "Transcribe this algorithm exactly, keeping its line breaks and indentation.";
+  if (label === "reference" || label === "reference_content")
+    return "Transcribe this bibliography, one reference per line.";
+  if (label === "seal") return "Read the text on this stamp.";
   return "Convert this page to markdown.";
 }
 
@@ -75,9 +87,12 @@ function promptFor(label: string, engine: string): string {
  * runaway generation from eating the page's whole time budget. */
 function tokensFor(label: string): number {
   if (label === "formula" || label === "formula_number") return 256;
-  if (label === "table") return 1024;
+  if (label === "table" || label === "algorithm") return 1024;
+  // A bibliography block is a whole page of names on a references page.
+  if (label === "reference" || label === "reference_content") return 1024;
   if (label === "paragraph_title" || label === "doc_title" || label === "figure_title")
     return 128;
+  if (label === "seal" || label === "number") return 64;
   return 768;
 }
 
@@ -118,14 +133,30 @@ function stripEcho(text: string, prompt: string): string {
     .trim();
 }
 
-/** Markdown shape for a block's text, by what the block is. */
+/**
+ * Markdown shape for a block's text, by what the block is.
+ *
+ * The detector knows twenty kinds of block; using them is free accuracy.
+ * An algorithm fenced as code keeps its indentation, a title becomes a
+ * heading rather than a sentence in bold, and an abstract stays visibly an
+ * abstract instead of merging into the first paragraph of the paper.
+ */
 function render(label: string, text: string): string {
   const t = text.trim();
   if (!t) return "";
   if (label === "doc_title") return `# ${t.replace(/^#+\s*/, "")}`;
   if (label === "paragraph_title") return `## ${t.replace(/^#+\s*/, "")}`;
   if (label === "figure_title") return `*${t}*`;
-  if (label === "footnote") return `> ${t}`;
+  // Marginalia and footnotes are asides, not part of the sentence they
+  // happen to sit beside.
+  if (label === "footnote" || label === "aside_text") return `> ${t}`;
+  if (label === "abstract") return `> **Abstract.** ${t.replace(/^abstract[.:]?\s*/i, "")}`;
+  // Pseudocode survives only if the fence does; the model is asked to keep
+  // the line breaks and this is what preserves them.
+  if (label === "algorithm") return t.includes("```") ? t : `\`\`\`
+${t}
+\`\`\``;
+  if (label === "seal") return `*[stamp: ${t}]*`;
   return t;
 }
 
@@ -165,6 +196,33 @@ export interface SmartOptions {
 }
 
 /**
+ * How far off level a page is, or zero when it does not matter.
+ *
+ * Returns zero when the line detector is not installed: it is a 4.6 MB
+ * extra, and a page that is slightly crooked still reads fine — this is an
+ * improvement, not a prerequisite.
+ */
+async function pageSkewOf(page: RenderedPage, device: string): Promise<number> {
+  if (!page.detRgb || !page.detWidth || !page.detHeight) return 0;
+  if (!existsSync(detModelPath())) return 0;
+  try {
+    const lines = await detectLines(
+      page.detRgb,
+      page.detWidth,
+      page.detHeight,
+      page.width,
+      page.height,
+      device,
+    );
+    const skew = skewOf(lines);
+    return worthDeskewing(skew) ? skew : 0;
+  } catch {
+    // A missing or broken detector must cost the page nothing.
+    return 0;
+  }
+}
+
+/**
  * One page, block by block.
  *
  * Every block that fails is reported in place rather than failing the page:
@@ -191,38 +249,77 @@ export async function scanPageSmart(
     };
 
   const t0 = Date.now();
+  const layoutDevice = opts.layoutDevice ?? "cpu";
+  let sheet = page;
   let found: LayoutBlock[];
-  let upsideDown = false;
   try {
-    const device = opts.layoutDevice ?? "cpu";
-    const size = { width: page.width, height: page.height };
-    found = await detectBlocks(
-      { data: new Uint8Array(0), ...size, resized: page.layoutRgb },
-      device,
-    );
-
-    // A page fed in upside down reads BACKWARDS rather than badly: the
-    // model transcribes rotated text fine, but the blocks come out
-    // bottom-to-top and the last paragraph lands first. The detector
-    // itself is the test — it is measurably less sure about an
-    // upside-down page.
+    // Which way up? A page fed in sideways or upside down does not fail —
+    // it comes back WRONG in a way that looks like the app's fault: the
+    // reading model transcribes rotated text perfectly well, while the
+    // layout detector ignores rotation, so the blocks arrive in the wrong
+    // order. The detector is its own test: it is measurably less sure
+    // about a page that is not upright. Four detections cost about a
+    // second; a page read backwards costs the user the document.
     const LAYOUT_SIDE = 800;
-    const flipped = await detectBlocks(
-      {
-        data: new Uint8Array(0),
-        ...size,
-        resized: rotate180(page.layoutRgb, LAYOUT_SIDE, LAYOUT_SIDE),
-      },
-      device,
-    );
-    if (prefersRotated(layoutConfidence(found), layoutConfidence(flipped))) {
-      upsideDown = true;
-      // Crops still come from the unrotated page image, so the boxes are
-      // mapped back rather than the picture being re-rendered.
-      found = flipped.map((b) => ({
-        ...b,
-        box: rotateBox180(b.box, page.width, page.height),
-      }));
+    const angles: PageAngle[] = [0, 90, 180, 270];
+    const tried: { angle: PageAngle; confidence: number; blocks: LayoutBlock[] }[] = [];
+    for (const angle of angles) {
+      const blocks = await detectBlocks(
+        {
+          data: new Uint8Array(0),
+          width: page.width,
+          height: page.height,
+          resized: rotateSquare(page.layoutRgb, LAYOUT_SIDE, angle),
+        },
+        layoutDevice,
+      );
+      tried.push({ angle, confidence: layoutConfidence(blocks), blocks });
+    }
+    const angle = bestAngle(tried);
+
+    // Right angles settled, the page may still be a degree or three off —
+    // a photograph of a page, a sheet fed slightly crooked. The line
+    // detector measures that from the text itself, and a straightened page
+    // gives the layout model clean rectangles instead of boxes that each
+    // contain a slice of their neighbours.
+    let straightened: RenderedPage | null = null;
+    if (angle === 0) {
+      const skew = await pageSkewOf(page, layoutDevice);
+      if (skew !== 0) {
+        straightened = await rotatePage(page.path, -skew);
+        sheet = straightened;
+      }
+    }
+
+    if (angle === 0 && !straightened) {
+      found = tried[0].blocks;
+    } else if (angle === 0 && straightened) {
+      found = straightened.layoutRgb
+        ? await detectBlocks(
+            {
+              data: new Uint8Array(0),
+              width: straightened.width,
+              height: straightened.height,
+              resized: straightened.layoutRgb,
+            },
+            layoutDevice,
+          )
+        : tried[0].blocks;
+    } else {
+      // Turn the page ONCE and start again on it, rather than carrying an
+      // angle through the crops, the boxes and the reading order.
+      sheet = await rotatePage(page.path, angle);
+      found = sheet.layoutRgb
+        ? await detectBlocks(
+            {
+              data: new Uint8Array(0),
+              width: sheet.width,
+              height: sheet.height,
+              resized: sheet.layoutRgb,
+            },
+            layoutDevice,
+          )
+        : tried.find((t) => t.angle === angle)!.blocks;
     }
   } catch (err) {
     return {
@@ -237,23 +334,9 @@ export async function scanPageSmart(
   }
   const layoutSeconds = (Date.now() - t0) / 1000;
 
-  const cleaned = absorbInline(dropDuplicates(dropNested(found)));
-  // Reading order runs on the page as the DETECTOR saw it; for an
-  // upside-down page the boxes are flipped into that frame, sorted, and
-  // flipped back — which is reading order for the page as printed.
-  const ordered = (
-    upsideDown
-      ? readingOrder(
-          cleaned.map((b) => ({
-            ...b,
-            box: rotateBox180(b.box, page.width, page.height),
-          })),
-          page.width,
-        ).map((b) => ({
-          ...b,
-          box: rotateBox180(b.box, page.width, page.height),
-        }))
-      : readingOrder(cleaned, page.width)
+  const ordered = readingOrder(
+    absorbInline(dropDuplicates(dropNested(found))),
+    sheet.width,
   ).filter((b) => !FURNITURE.has(b.label));
   if (ordered.length === 0)
     return {
@@ -276,7 +359,7 @@ export async function scanPageSmart(
   });
   for (const [pad, indices] of byPad) {
     const cut = await cropBlocks(
-      page.path,
+      sheet.path,
       indices.map((i) => ordered[i].box),
       pad,
     );

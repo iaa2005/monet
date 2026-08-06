@@ -295,10 +295,27 @@ check('nonsense means the whole document, not page NaN', parsePages('abc').lengt
   check('something smaller than one block still works', tiny.width >= FACTOR && tiny.height >= FACTOR, tiny)
 }
 
+// ─── The label list is the model's, not ours ────────────────────────────
+
+{
+  const { LAYOUT_LABELS } = await import('../src/main/ocr/layout.js')
+  // The model publishes twenty classes. The first version of this list had
+  // eighteen, and the two it missed came back as "class18" — read as body
+  // text, never absorbed, never dropped. Marginalia spliced into a
+  // sentence is exactly the failure that produces.
+  check('every class the model can emit has a name', LAYOUT_LABELS.length === 20, LAYOUT_LABELS.length)
+  check('…including the ones added after the fact',
+    LAYOUT_LABELS.includes('aside_text') && LAYOUT_LABELS.includes('reference_content'))
+  check(
+    'and the order is the one the model was exported with',
+    LAYOUT_LABELS[0] === 'paragraph_title' && LAYOUT_LABELS[7] === 'formula',
+  )
+}
+
 // ─── Which way up ───────────────────────────────────────────────────────
 
 {
-  const { layoutConfidence, prefersRotated, rotate180, rotateBox180 } =
+  const { layoutConfidence, prefersRotated, rotate180, rotateBox180, rotateSquare, bestAngle } =
     await import('../src/main/ocr/orientation.js')
 
   // A page fed in upside down reads BACKWARDS, not badly: the reading model
@@ -335,6 +352,144 @@ check('nonsense means the whole document, not page NaN', parsePages('abc').lengt
     '…and turning twice is the original',
     Array.from(rotate180(turned, 2, 1)).join() === '1,2,3,4,5,6',
   )
+
+  // A sideways page needs all four angles, not just the flip. The
+  // detector's input is square, so testing them costs a pixel loop.
+  const square = new Uint8Array([
+    1, 1, 1,  2, 2, 2,
+    3, 3, 3,  4, 4, 4,
+  ])
+  const cw = rotateSquare(square, 2, 90)
+  // Clockwise: top-left goes to top-right.
+  check('90° puts the corner where it belongs', cw[3] === 1 && cw[0] === 3, Array.from(cw))
+  check(
+    'four 90° turns are the identity',
+    Array.from(
+      rotateSquare(rotateSquare(rotateSquare(cw, 2, 90), 2, 90), 2, 90),
+    ).join() === Array.from(square).join(),
+  )
+  check(
+    '270° undoes 90°',
+    Array.from(rotateSquare(cw, 2, 270)).join() === Array.from(square).join(),
+  )
+  check('0° is a no-op', rotateSquare(square, 2, 0) === square)
+
+  // Choosing the angle: upright wins unless another is clearly better,
+  // because turning a page that did not need it is the worse failure.
+  check(
+    'a clearly sideways page is turned',
+    bestAngle([
+      { angle: 0, confidence: 1.0 },
+      { angle: 90, confidence: 5.0 },
+      { angle: 180, confidence: 1.1 },
+      { angle: 270, confidence: 0.9 },
+    ]) === 90,
+  )
+  check(
+    'an upright page is left alone',
+    bestAngle([
+      { angle: 0, confidence: 5.0 },
+      { angle: 90, confidence: 1.0 },
+      { angle: 180, confidence: 4.9 },
+      { angle: 270, confidence: 1.0 },
+    ]) === 0,
+  )
+  check(
+    'a marginal difference is not enough to turn a page',
+    bestAngle([
+      { angle: 0, confidence: 4.0 },
+      { angle: 180, confidence: 4.4 },
+    ]) === 0,
+  )
+}
+
+// ─── Geometry the detector needs and OpenCV usually provides ───────────
+
+{
+  const { connectedComponents, convexHull, minAreaRect, unclip, pageSkew, boundingBox, normaliseAngle } =
+    await import('../src/main/ocr/lines/geometry.js')
+
+  // Two separate islands, touching only at a corner: four-connected, so
+  // they must stay two. Diagonal joining merges adjacent lines of text.
+  const w = 5, h = 5
+  const mask = new Uint8Array(w * h)
+  const on = (x: number, y: number) => { mask[y * w + x] = 1 }
+  // The two islands TOUCH AT A CORNER: (1,1) and (2,2). Eight-connected
+  // fill merges them, which in a document means two lines of text becoming
+  // one crooked region.
+  on(0, 0); on(1, 0); on(1, 1)
+  on(2, 2); on(3, 2); on(3, 3)
+  const parts = connectedComponents(mask, w, h, 1)
+  check('two islands stay two', parts.length === 2, parts.map((p) => p.length))
+  check('and every pixel is accounted for', parts[0].length + parts[1].length === 6)
+  check('specks below the floor are dropped', connectedComponents(mask, w, h, 4).length === 0)
+
+  // A hull of a filled square is its corners.
+  const square: [number, number][] = []
+  for (let y = 0; y <= 4; y++) for (let x = 0; x <= 4; x++) square.push([x, y])
+  check('a filled square hulls to four corners', convexHull(square).length === 4, convexHull(square).length)
+
+  // An upright rectangle has angle 0 and its own corners.
+  const rect = minAreaRect([[0, 0], [10, 0], [10, 4], [0, 4]])
+  check('an upright box is not rotated', Math.abs(rect.angle) < 1e-6, rect.angle)
+  check('…and keeps its area', Math.abs(boundingBox(rect.quad)[2] - 10) < 1.01, boundingBox(rect.quad))
+
+  // A line of text at 30° must come back at 30°, not as the upright box
+  // around it — that box is most of the surrounding paragraph.
+  const slanted: [number, number][] = []
+  for (let t = 0; t <= 100; t++) {
+    const x = t * Math.cos(Math.PI / 6)
+    const y = t * Math.sin(Math.PI / 6)
+    slanted.push([x, y], [x - 2 * Math.sin(Math.PI / 6), y + 2 * Math.cos(Math.PI / 6)])
+  }
+  const tilted = minAreaRect(slanted)
+  check('a slanted line reports its slant', Math.abs(Math.abs(tilted.angle) - 30) < 2, tilted.angle)
+
+  check('angles are folded into a half turn', normaliseAngle(Math.PI) === 0 && Math.abs(normaliseAngle(Math.PI * 0.75) - -45) < 1e-9)
+
+  // Unclip grows the shape: the detector predicts a SHRUNK region, so
+  // without this every crop clips its own letters.
+  const tight = minAreaRect([[10, 10], [30, 10], [30, 20], [10, 20]]).quad
+  const grown = unclip(tight, 1.5)
+  const before = boundingBox(tight)
+  const after = boundingBox(grown)
+  check('unclip grows the quad', after[0] < before[0] && after[2] > before[2], { before, after })
+
+  // Page skew is the MEDIAN, so one caption at an angle cannot tilt a page.
+  const lines = [
+    { quad: [[0, 0], [100, 0], [100, 10], [0, 10]], angle: 0.4 },
+    { quad: [[0, 0], [100, 0], [100, 10], [0, 10]], angle: 0.6 },
+    { quad: [[0, 0], [100, 0], [100, 10], [0, 10]], angle: 0.5 },
+    { quad: [[0, 0], [100, 0], [100, 10], [0, 10]], angle: 42 },
+  ] as never
+  check('one crooked caption does not tilt the page', Math.abs(pageSkew(lines) - 0.55) < 0.2, pageSkew(lines))
+}
+
+// ─── Straightening a crooked scan ───────────────────────────────────────
+
+{
+  const { detInputSize, worthDeskewing } = await import(
+    '../src/main/ocr/lines/detect.js'
+  )
+
+  // The detector's own resize rule: long side 960, both sides a multiple
+  // of 32. A side that is not a multiple of 32 is a shape error deep in
+  // the graph, not a slightly different result.
+  const a4 = detInputSize(2480, 3508)
+  check('the long side is capped', Math.max(a4.width, a4.height) <= 960, a4)
+  check('both sides land on the grid', a4.width % 32 === 0 && a4.height % 32 === 0, a4)
+  check('the aspect is roughly kept', Math.abs(a4.width / a4.height - 2480 / 3508) < 0.05, a4)
+  const small = detInputSize(100, 40)
+  check('a small picture is not blown up', small.width <= 128, small)
+  check('…and never smaller than one tile', small.width >= 32 && small.height >= 32, small)
+
+  // Straightening is worth it in a band: below a degree it costs a
+  // resample and buys nothing, above fifteen the median is measuring
+  // something other than body text and a right angle was the answer.
+  check('a level page is left alone', !worthDeskewing(0.4))
+  check('a three-degree tilt is straightened', worthDeskewing(3) && worthDeskewing(-3))
+  check('a wildly wrong angle is not a skew', !worthDeskewing(47))
+  check('and the sign does not matter', worthDeskewing(-12) === worthDeskewing(12))
 }
 
 // ─── Runaway generations ────────────────────────────────────────────────

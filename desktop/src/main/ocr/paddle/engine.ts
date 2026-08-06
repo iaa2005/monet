@@ -17,37 +17,12 @@
  * opinion the bench can measure rather than a replacement.
  */
 
-import { createRequire } from "module";
 import { readFileSync } from "fs";
+import { ort as ortModule } from "../ort.js";
 import { join } from "path";
 import { AutoTokenizer, RawImage } from "@huggingface/transformers";
 import { smartResize, patchify, MERGE_SIZE, type PatchedImage } from "./preprocess.js";
-import { generate, type Ort, type PaddleConfig, type PaddleSessions } from "./generate.js";
-
-/**
- * The onnxruntime @huggingface/transformers is using — not the one at the
- * top of node_modules.
- *
- * There are two copies in the tree (the app depends on 1.27, the library
- * pins 1.24), and loading both native addons into one process fails with
- * "The requested API version [27] is not available". The tokenizer comes
- * from the library, so the sessions must come from the library's runtime.
- */
-const require = createRequire(import.meta.url);
-
-function ortModule(): Ort {
-  try {
-    // Resolve from the library's own entry point: `package.json` is not in
-    // its `exports`, so asking for that path throws before it can help.
-    const fromLibrary = createRequire(
-      require.resolve("@huggingface/transformers"),
-    );
-    return fromLibrary("onnxruntime-node") as Ort;
-  } catch {
-    // A flat install (npm hoisted them to one version) resolves here.
-    return require("onnxruntime-node") as Ort;
-  }
-}
+import { generate, type PaddleConfig, type PaddleSessions } from "./generate.js";
 
 export const PADDLE_REPO = "onnx-community/PaddleOCR-VL-1.5-ONNX";
 

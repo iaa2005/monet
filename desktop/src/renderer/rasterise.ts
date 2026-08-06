@@ -37,6 +37,17 @@ interface RasterPage {
    * library main does not have.
    */
   layoutRgb?: ArrayBuffer;
+  /**
+   * The page for the LINE detector: aspect preserved, long side 960,
+   * both sides a multiple of 32.
+   *
+   * A separate buffer from `layoutRgb` because that one is squashed to a
+   * square, and a squashed page has the wrong angles — the whole point of
+   * the line detector is measuring how crooked the page is.
+   */
+  detRgb?: ArrayBuffer;
+  detWidth?: number;
+  detHeight?: number;
 }
 
 /** The layout model's input side — see main/ocr/layout.ts. */
@@ -77,6 +88,30 @@ async function toPng(canvas: HTMLCanvasElement): Promise<ArrayBuffer> {
   );
   if (!blob) throw new Error("canvas produced no image");
   return blob.arrayBuffer();
+}
+
+/** The page for the line detector, aspect intact. */
+function toDetRgb(
+  source: HTMLCanvasElement,
+): { data: ArrayBuffer; width: number; height: number } {
+  const scale = Math.min(1, 960 / Math.max(source.width, source.height));
+  const round32 = (n: number): number => Math.max(32, Math.round(n / 32) * 32);
+  const width = round32(source.width * scale);
+  const height = round32(source.height * scale);
+  const small = document.createElement("canvas");
+  small.width = width;
+  small.height = height;
+  const ctx = small.getContext("2d");
+  if (!ctx) throw new Error("no 2d context");
+  ctx.drawImage(source, 0, 0, width, height);
+  const { data } = ctx.getImageData(0, 0, width, height);
+  const rgb = new Uint8Array(width * height * 3);
+  for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
+    rgb[j] = data[i];
+    rgb[j + 1] = data[i + 1];
+    rgb[j + 2] = data[i + 2];
+  }
+  return { data: rgb.buffer, width, height };
 }
 
 /** The page at the detector's input size, as RGB triples. */
@@ -135,6 +170,45 @@ async function cropPage(req: CropRequest): Promise<RasterPage[]> {
 }
 
 /**
+ * The same page, turned.
+ *
+ * 180° could be done by reversing pixels in main, but 90° swaps the sides
+ * and every downstream step — the crops, the boxes, the reading order —
+ * wants a page that is genuinely that shape. Chromium turns it here, once,
+ * and everything after works on an upright page.
+ */
+async function rotateImage(bytes: ArrayBuffer, degrees: number): Promise<RasterPage> {
+  const bitmap = await createImageBitmap(new Blob([bytes]));
+  // Any angle, not only right angles: a scan three degrees off is the
+  // common case, and its corners need room or they are cut off.
+  const radians = (degrees * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(radians));
+  const sin = Math.abs(Math.sin(radians));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(bitmap.width * cos + bitmap.height * sin);
+  canvas.height = Math.ceil(bitmap.width * sin + bitmap.height * cos);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(radians);
+  ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+  bitmap.close();
+  const det = toDetRgb(canvas);
+  return {
+    page: 1,
+    png: await toPng(canvas),
+    width: canvas.width,
+    height: canvas.height,
+    layoutRgb: toLayoutRgb(canvas),
+    detRgb: det.data,
+    detWidth: det.width,
+    detHeight: det.height,
+  };
+}
+
+/**
  * A picture IS a page.
  *
  * Screenshots and photographs are the common case, and reading one whole
@@ -156,12 +230,16 @@ async function measureImage(bytes: ArrayBuffer): Promise<RasterPage> {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(bitmap, 0, 0);
   bitmap.close();
+  const det = toDetRgb(canvas);
   return {
     page: 1,
     png: new ArrayBuffer(0),
     width: canvas.width,
     height: canvas.height,
     layoutRgb: toLayoutRgb(canvas),
+    detRgb: det.data,
+    detWidth: det.width,
+    detHeight: det.height,
   };
 }
 
@@ -188,12 +266,16 @@ async function rasterise(req: RasterRequest): Promise<RasterPage[]> {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+      const det = toDetRgb(canvas);
       out.push({
         page: n,
         png: await toPng(canvas),
         width: canvas.width,
         height: canvas.height,
         layoutRgb: toLayoutRgb(canvas),
+        detRgb: det.data,
+        detWidth: det.width,
+        detHeight: det.height,
       });
       page.cleanup();
     }
@@ -218,7 +300,9 @@ const api = window.electronAPI as unknown as {
   ocr?: {
     onRasterise: (
       cb: (
-        req: RasterRequest & { kind: "count" | "render" | "crop" | "image" },
+        req: RasterRequest & {
+          kind: "count" | "render" | "crop" | "image" | "rotate";
+        },
       ) => void,
     ) => void;
     rasterised: (payload: unknown) => void;
@@ -229,6 +313,14 @@ api.ocr?.onRasterise(async (req) => {
   try {
     if (req.kind === "count") {
       api.ocr?.rasterised({ id: req.id, pageCount: await count(req.bytes) });
+      return;
+    }
+    if (req.kind === "rotate") {
+      const turned = await rotateImage(
+        req.bytes,
+        (req as unknown as { degrees: number }).degrees,
+      );
+      api.ocr?.rasterised({ id: req.id, pages: [turned] });
       return;
     }
     if (req.kind === "image") {

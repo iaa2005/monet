@@ -46,6 +46,9 @@ interface RasterReply {
     width: number;
     height: number;
     layoutRgb?: ArrayBuffer;
+    detRgb?: ArrayBuffer;
+    detWidth?: number;
+    detHeight?: number;
   }[];
   pageCount?: number;
   error?: string;
@@ -161,6 +164,10 @@ export interface RenderedPage {
   height: number;
   /** The page at the layout detector's input size, RGB. */
   layoutRgb?: Uint8Array;
+  /** The page for the LINE detector: aspect preserved, so angles survive. */
+  detRgb?: Uint8Array;
+  detWidth?: number;
+  detHeight?: number;
 }
 
 /**
@@ -194,6 +201,9 @@ export async function renderPdf(
       width: p.width,
       height: p.height,
       layoutRgb: p.layoutRgb ? new Uint8Array(p.layoutRgb) : undefined,
+      detRgb: p.detRgb ? new Uint8Array(p.detRgb) : undefined,
+      detWidth: p.detWidth,
+      detHeight: p.detHeight,
     });
   }
   return { dir, pages };
@@ -221,6 +231,44 @@ export async function measureImage(imagePath: string): Promise<RenderedPage> {
     width: p.width,
     height: p.height,
     layoutRgb: p.layoutRgb ? new Uint8Array(p.layoutRgb) : undefined,
+    detRgb: p.detRgb ? new Uint8Array(p.detRgb) : undefined,
+    detWidth: p.detWidth,
+    detHeight: p.detHeight,
+  };
+}
+
+/**
+ * The same page, turned by a right angle, written beside the original.
+ *
+ * Used when the layout detector says the page is sideways: rather than
+ * carrying an angle through every later step, the page is rotated once and
+ * everything downstream sees an upright document.
+ */
+export async function rotatePage(
+  pagePath: string,
+  degrees: number,
+): Promise<RenderedPage> {
+  const bytes = readFileSync(pagePath);
+  const reply = await askRasteriser({
+    kind: "rotate",
+    bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
+    degrees,
+  });
+  if (reply.error) throw new Error(reply.error);
+  const p = reply.pages?.[0];
+  if (!p) throw new Error("the rasteriser returned nothing for that rotation");
+  const stem = basename(pagePath).replace(/\.[^.]+$/, "");
+  const path = join(dirname(pagePath), `${stem}-rot${Math.round(degrees)}.png`);
+  writeFileSync(path, Buffer.from(p.png));
+  return {
+    page: 1,
+    path,
+    width: p.width,
+    height: p.height,
+    layoutRgb: p.layoutRgb ? new Uint8Array(p.layoutRgb) : undefined,
+    detRgb: p.detRgb ? new Uint8Array(p.detRgb) : undefined,
+    detWidth: p.detWidth,
+    detHeight: p.detHeight,
   };
 }
 

@@ -72,7 +72,8 @@
        link value is darker than the mark so it clears AA on white
        (4.84:1, measured by scripts/palette-probe.cjs); the mark only ever
        sits on large glyphs and fills. */
-    --brand: 18 92% 52%;
+    /*--brand: 18 92% 52%;*/
+    --brand: 211 92% 52%;
     --link: 18 88% 42%;
 
     --background: hsl(var(--bg-100));

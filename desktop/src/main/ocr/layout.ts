@@ -20,11 +20,9 @@
  * a third of a second on the CPU, which is noise next to the reading.
  */
 
-import { createRequire } from "module";
 import { join } from "path";
 import { ocrModelsDir } from "./settings.js";
-
-const require = createRequire(import.meta.url);
+import { ort } from "./ort.js";
 
 /** The classes the model was trained on, in its own order. */
 export const LAYOUT_LABELS = [
@@ -46,6 +44,13 @@ export const LAYOUT_LABELS = [
   "seal",
   "chart",
   "formula_number",
+  // The last two were missing when this list was first typed out, and the
+  // symptom was a block labelled "class18" that fell through every rule —
+  // read as body text, never absorbed into a paragraph, never dropped as
+  // furniture. Marginalia in particular is exactly what you do NOT want
+  // spliced into the running text.
+  "aside_text",
+  "reference_content",
 ] as const;
 
 export type LayoutLabel = (typeof LAYOUT_LABELS)[number] | string;
@@ -90,8 +95,7 @@ let sessionDevice = "";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getSession(device: string): Promise<any> {
   if (session && sessionDevice === device) return session;
-  const ort = require("onnxruntime-node");
-  session = await ort.InferenceSession.create(layoutModelPath(), {
+  session = await ort().InferenceSession.create(layoutModelPath(), {
     executionProviders: [device === "webgpu" ? "webgpu" : "cpu"],
   });
   sessionDevice = device;
@@ -123,7 +127,7 @@ export async function detectBlocks(
   page: PageImage,
   device = "cpu",
 ): Promise<LayoutBlock[]> {
-  const ort = require("onnxruntime-node");
+  const runtime = ort();
   const s = await getSession(device);
 
   // CHW float32, scaled to 0..1. The exported graph's NormalizeImage says
@@ -143,16 +147,16 @@ export async function detectBlocks(
   const feeds: Record<string, unknown> = {};
   for (const name of s.inputNames as string[]) {
     if (name === "image" || name === "x")
-      feeds[name] = new ort.Tensor("float32", data, [1, 3, INPUT_SIZE, INPUT_SIZE]);
+      feeds[name] = new runtime.Tensor("float32", data, [1, 3, INPUT_SIZE, INPUT_SIZE]);
     else if (name === "scale_factor")
       // How the graph scales its boxes back onto the original page.
-      feeds[name] = new ort.Tensor(
+      feeds[name] = new runtime.Tensor(
         "float32",
         new Float32Array([INPUT_SIZE / page.height, INPUT_SIZE / page.width]),
         [1, 2],
       );
     else if (name === "im_shape")
-      feeds[name] = new ort.Tensor(
+      feeds[name] = new runtime.Tensor(
         "float32",
         new Float32Array([INPUT_SIZE, INPUT_SIZE]),
         [1, 2],
