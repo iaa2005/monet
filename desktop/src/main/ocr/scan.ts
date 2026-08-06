@@ -20,6 +20,7 @@ import { scanPageSmart } from "./smart.js";
 import {
   disposePages,
   isImagePath,
+  measureImage,
   isPdfPath,
   pdfPageCount,
   renderPdf,
@@ -101,8 +102,39 @@ export async function scanDocument(
     return { ...empty, error: `No such file: ${path}` };
   }
 
-  // A picture is already a page.
+  // A picture is already a page — including for the block-by-block path,
+  // which is the whole point: a screenshot is the commonest thing anyone
+  // hands a scanner, and reading one whole costs the same minutes a PDF
+  // page does.
   if (isImagePath(path)) {
+    const smart = opts.mode !== "full" && hasLayoutModel();
+    if (smart) {
+      const page = await measureImage(path);
+      const r = await scanPageSmart(page, {
+        bbox: opts.bbox,
+        onProgress: (b) =>
+          opts.onProgress?.({
+            page: 1,
+            pageCount: 1,
+            text: `${b.label} ${b.block}/${b.blockCount}: ${b.text}`,
+            tokens: b.block,
+          }),
+      });
+      if (!r.error || r.markdown)
+        return {
+          markdown: r.markdown,
+          pages: [{ page: 1, markdown: r.markdown, tokens: r.blocks.length }],
+          mode: "smart",
+          blocks: r.blocks.map((b) => ({ page: 1, label: b.label, box: b.box })),
+          pageCount: 1,
+          skipped: 0,
+          seconds: (Date.now() - started) / 1000,
+          device: r.device,
+          error: r.error,
+        };
+      // A page the detector made nothing of still deserves reading; fall
+      // through to the whole-page pass rather than returning an empty note.
+    }
     const r = await scanPage(path, (text, tokens) =>
       opts.onProgress?.({ page: 1, pageCount: 1, text, tokens }),
     );
@@ -110,6 +142,7 @@ export async function scanDocument(
     return {
       markdown: r.text,
       pages: [{ page: 1, markdown: r.text, tokens: r.tokens }],
+      mode: "full",
       pageCount: 1,
       skipped: 0,
       seconds: (Date.now() - started) / 1000,

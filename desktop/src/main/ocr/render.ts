@@ -200,12 +200,39 @@ export async function renderPdf(
 }
 
 /**
+ * A picture, described the way a rendered page is.
+ *
+ * The block-by-block path needs a page's size and the detector's input; for
+ * a PDF those come from drawing it, for an image from measuring it. Same
+ * shape out, so everything downstream stops caring which it was.
+ */
+export async function measureImage(imagePath: string): Promise<RenderedPage> {
+  const bytes = readFileSync(imagePath);
+  const reply = await askRasteriser({
+    kind: "image",
+    bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
+  });
+  if (reply.error) throw new Error(reply.error);
+  const p = reply.pages?.[0];
+  if (!p) throw new Error("the rasteriser returned nothing for that image");
+  return {
+    page: 1,
+    path: imagePath,
+    width: p.width,
+    height: p.height,
+    layoutRgb: p.layoutRgb ? new Uint8Array(p.layoutRgb) : undefined,
+  };
+}
+
+/**
  * Cut a rendered page into the blocks a detector found.
  *
  * The crops land beside the page they came from, named for their index, so a
  * failed scan leaves something a human can look at instead of a temp file
  * nobody can match to a box.
  */
+let cropRun = 0;
+
 export async function cropBlocks(
   pagePath: string,
   boxes: [number, number, number, number][],
@@ -221,9 +248,15 @@ export async function cropBlocks(
   });
   if (reply.error) throw new Error(reply.error);
   const base = pagePath.replace(/\.png$/i, "");
+  // Every CALL gets its own prefix. Blocks are cut in groups (a formula is
+  // padded more than a paragraph), and numbering within the group meant the
+  // second group's block-000 overwrote the first group's — so a heading was
+  // read from a formula's picture and printed as a heading. The mismatch was
+  // invisible until the boxes were printed next to the text.
+  const run = ++cropRun;
   const out: { path: string; width: number; height: number }[] = [];
   for (const p of reply.pages ?? []) {
-    const path = `${base}-block-${String(p.page).padStart(3, "0")}.png`;
+    const path = `${base}-b${run}-${String(p.page).padStart(3, "0")}.png`;
     writeFileSync(path, Buffer.from(p.png));
     out.push({ path, width: p.width, height: p.height });
   }

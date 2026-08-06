@@ -720,6 +720,13 @@ export interface ElectronAPI {
     cancelInstall: (modelId: string, dtype: string) => Promise<boolean>;
     remove: (modelId: string) => Promise<{ ok: boolean }>;
     pickFile: () => Promise<string | null>;
+    layoutStatus: () => Promise<{
+      repo: string;
+      installed: boolean;
+      bytes: number;
+      size: string;
+    }>;
+    installLayout: () => Promise<{ ok: boolean; error?: string }>;
     test: (path: string) => Promise<{
       ok: boolean;
       text?: string;
@@ -1089,6 +1096,13 @@ export interface ElectronAPI {
       set: (sessionId: string, state: SessionUiState) => Promise<void>;
     };
     pickFile: () => Promise<string | null>;
+    layoutStatus: () => Promise<{
+      repo: string;
+      installed: boolean;
+      bytes: number;
+      size: string;
+    }>;
+    installLayout: () => Promise<{ ok: boolean; error?: string }>;
     saveScreenshot: () => Promise<{ ok: boolean; error?: string }>;
     onReveal: (cb: () => void) => () => void;
     servers: {

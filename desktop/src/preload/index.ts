@@ -540,6 +540,14 @@ const electronAPI = {
     remove: (modelId: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("ocr:remove", modelId),
     pickFile: (): Promise<string | null> => ipcRenderer.invoke("ocr:pickFile"),
+    layoutStatus: (): Promise<{
+      repo: string;
+      installed: boolean;
+      bytes: number;
+      size: string;
+    }> => ipcRenderer.invoke("ocr:layoutStatus"),
+    installLayout: (): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("ocr:installLayout"),
     /** Read one file and hand back the Markdown — the Settings "try it" path. */
     test: (
       path: string,

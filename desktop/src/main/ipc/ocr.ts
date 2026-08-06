@@ -14,9 +14,12 @@ import {
   type OcrDtype,
   type OcrModelInfo,
 } from "../ocr/catalog.js";
+import { LAYOUT_FILE, LAYOUT_REPO } from "../ocr/layout.js";
 import {
   bytesOnDisk,
   cancelOcrInstall,
+  hasLayoutFile,
+  installLayoutModel,
   installOcrModel,
   isInstalled,
   isInstalling,
@@ -85,6 +88,24 @@ export function registerOcrIPC(): void {
   });
 
   ipcMain.handle("ocr:config", (): OcrConfig => getOcrConfig());
+
+  // The block finder is its own install: 124 MB that turns four minutes a
+  // page into twenty seconds, and the difference between "reads documents"
+  // and "reads documents usefully".
+  ipcMain.handle("ocr:layoutStatus", () => ({
+    repo: LAYOUT_REPO,
+    installed: hasLayoutFile(LAYOUT_REPO, LAYOUT_FILE),
+    bytes: 124 * 1024 * 1024,
+    size: formatBytes(124 * 1024 * 1024),
+  }));
+
+  ipcMain.handle("ocr:installLayout", async () => {
+    const r = await installLayoutModel(LAYOUT_REPO, LAYOUT_FILE, (p) =>
+      broadcast("ocr:installProgress", p),
+    );
+    if (r.ok) resetVendorTools();
+    return r;
+  });
 
   ipcMain.handle("ocr:setConfig", (_e, patch: Partial<OcrConfig>): OcrConfig => {
     const before = getOcrConfig();

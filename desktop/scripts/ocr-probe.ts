@@ -188,6 +188,107 @@ check('nonsense means the whole document, not page NaN', parsePages('abc').lengt
   )
 }
 
+// ─── Layout: what survives, in what order ───────────────────────────────
+
+{
+  const { dropNested, dropDuplicates, absorbInline, readingOrder } = await import(
+    '../src/main/ocr/layout.js'
+  )
+  const box = (x1: number, y1: number, x2: number, y2: number) =>
+    [x1, y1, x2, y2] as [number, number, number, number]
+  const blk = (label: string, b: [number, number, number, number], score = 0.9) => ({
+    label,
+    score,
+    box: b,
+  })
+
+  // A table full of formulas comes back as the table AND every formula in
+  // it. Reading both prints the contents twice and pays twice.
+  const table = blk('table', box(100, 100, 600, 600))
+  const inTable = blk('formula', box(200, 200, 300, 240))
+  const outside = blk('formula', box(100, 700, 500, 760))
+  const kept = dropNested([table, inTable, outside])
+  check('a formula inside a table is the table', !kept.includes(inTable), kept.map((b) => b.label))
+  check('…and one outside it survives', kept.includes(outside))
+  check('…and the table itself stays', kept.includes(table))
+
+  // A caption is detected as figure_title AND text on the same pixels.
+  const caption = blk('figure_title', box(100, 800, 900, 830), 0.94)
+  const sameAsText = blk('text', box(101, 801, 899, 829), 0.57)
+  const other = blk('text', box(100, 900, 900, 960))
+  const deduped = dropDuplicates([sameAsText, caption, other])
+  check('the same region is not read twice', deduped.length === 2, deduped.map((b) => b.label))
+  check(
+    '…and the more specific label is the one kept',
+    deduped.some((b) => b.label === 'figure_title') &&
+      !deduped.some((b) => b.box[1] === 801),
+    deduped.map((b) => b.label),
+  )
+
+  // The bug this pins: an inline formula sits ENTIRELY inside its
+  // paragraph, so "how much of the smaller box is covered" is 1.0 for a
+  // pair that is not the same region at all. Deduplicating on that number
+  // deleted the paragraphs — a dense page came back as eighteen formulas
+  // and three sentences.
+  const bigPara = blk('text', box(100, 100, 1100, 400), 0.98)
+  const insideFormula = blk('formula', box(300, 250, 400, 290), 0.6)
+  const survived = dropDuplicates([bigPara, insideFormula])
+  check(
+    'a formula inside a paragraph does not delete the paragraph',
+    survived.includes(bigPara),
+    survived.map((b) => b.label),
+  )
+
+  // Inline mathematics belongs to its paragraph: cut out on its own it is a
+  // clipped slice of a text line, and the sentence loses its formula.
+  const para = blk('text', box(100, 1000, 1100, 1120))
+  const inline = blk('formula', box(400, 1040, 700, 1070))
+  const display = blk('formula', box(400, 1200, 700, 1260))
+  const absorbed = absorbInline([para, inline, display])
+  check('an inline formula is left to its paragraph', !absorbed.includes(inline))
+  check('…while a display formula stays its own block', absorbed.includes(display))
+  check('…and the paragraph is untouched', absorbed.includes(para))
+
+  // Reading order: one column is top-to-bottom, two columns are not.
+  const single = [
+    blk('text', box(100, 300, 1100, 400)),
+    blk('text', box(100, 100, 1100, 200)),
+  ]
+  check(
+    'one column reads top to bottom',
+    readingOrder(single, 1200)[0].box[1] === 100,
+  )
+
+  const twoCol = [
+    blk('text', box(60, 400, 560, 500)),   // left, lower
+    blk('text', box(60, 100, 560, 200)),   // left, upper
+    blk('text', box(640, 100, 1140, 200)), // right, upper
+    blk('text', box(640, 400, 1140, 500)), // right, lower
+  ]
+  const order = readingOrder(twoCol, 1200).map((b) => `${b.box[0]}:${b.box[1]}`)
+  check(
+    'two columns read down the left, then down the right',
+    order.join(' ') === '60:100 60:400 640:100 640:400',
+    order,
+  )
+
+  // A full-width figure cuts the page into bands: everything above it is
+  // read before it, everything below after.
+  const banded = [
+    blk('text', box(60, 100, 560, 200)),
+    blk('text', box(640, 100, 1140, 200)),
+    blk('image', box(60, 300, 1140, 600)),
+    blk('text', box(60, 700, 560, 800)),
+    blk('text', box(640, 700, 1140, 800)),
+  ]
+  const withBands = readingOrder(banded, 1200).map((b) => b.label + b.box[1])
+  check(
+    'a full-width figure separates the bands around it',
+    withBands.join(' ') === 'text100 text100 image300 text700 text700',
+    withBands,
+  )
+}
+
 rmSync(tempData, { recursive: true, force: true })
 console.log(failures === 0 ? '\nALL OCR CHECKS PASSED' : `\n${failures} FAILED`)
 process.exit(failures === 0 ? 0 : 1)

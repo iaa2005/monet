@@ -189,18 +189,36 @@ export async function detectBlocks(
   return blocks;
 }
 
-/** How much of the smaller box is covered by the larger one, 0..1. */
-function overlapRatio(
-  a: LayoutBlock["box"],
-  b: LayoutBlock["box"],
-): number {
+function intersection(a: LayoutBlock["box"], b: LayoutBlock["box"]): number {
   const w = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
   const h = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
-  if (w <= 0 || h <= 0) return 0;
-  const inter = w * h;
-  const areaA = (a[2] - a[0]) * (a[3] - a[1]);
-  const areaB = (b[2] - b[0]) * (b[3] - b[1]);
-  return inter / Math.min(areaA, areaB);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+function areaOf(b: LayoutBlock["box"]): number {
+  return (b[2] - b[0]) * (b[3] - b[1]);
+}
+
+/** How much of the SMALLER box the larger one covers, 0..1 — the question
+ * "is this thing inside that thing". */
+function containedRatio(a: LayoutBlock["box"], b: LayoutBlock["box"]): number {
+  const inter = intersection(a, b);
+  return inter === 0 ? 0 : inter / Math.min(areaOf(a), areaOf(b));
+}
+
+/**
+ * How much the two boxes are the SAME box, 0..1 (intersection over union).
+ *
+ * The distinction matters and getting it wrong cost a page: an inline
+ * formula sits entirely inside its paragraph, so "how much of the smaller
+ * one is covered" is 1.0 for a pair that is not remotely the same region.
+ * Deduplicating on that number deleted the paragraphs — a page of dense
+ * text came back as eighteen formulas and three sentences.
+ */
+function sameRegion(a: LayoutBlock["box"], b: LayoutBlock["box"]): number {
+  const inter = intersection(a, b);
+  if (inter === 0) return 0;
+  return inter / (areaOf(a) + areaOf(b) - inter);
 }
 
 /**
@@ -231,10 +249,33 @@ export function dropDuplicates(blocks: LayoutBlock[]): LayoutBlock[] {
   for (const b of [...blocks].sort(
     (x, y) => (LABEL_RANK[y.label] ?? 2) - (LABEL_RANK[x.label] ?? 2) || y.score - x.score,
   )) {
-    if (keep.some((k) => overlapRatio(k.box, b.box) > 0.7)) continue;
+    if (keep.some((k) => sameRegion(k.box, b.box) > 0.7)) continue;
     keep.push(b);
   }
   return keep;
+}
+
+/**
+ * A formula inside a paragraph belongs to the paragraph.
+ *
+ * The detector marks inline mathematics — `ΔV = ΔV₁ · 1,05` in the middle of
+ * a sentence — as its own `formula` block. Cutting it out is wrong twice
+ * over: the crop is a slice of a text line and gets clipped mid-expression
+ * (the first run produced `w(x, t) = \varphi(x) \, c`), and the sentence it
+ * came from is left with a hole where the mathematics was.
+ *
+ * So a formula that sits inside a text block is dropped, and the text block
+ * is read whole — the model writes the mathematics in place, which is what
+ * inline mathematics is. A display formula stands on its own line, overlaps
+ * no paragraph, and survives this untouched.
+ */
+export function absorbInline(blocks: LayoutBlock[]): LayoutBlock[] {
+  const TEXTUAL = new Set(["text", "content", "abstract", "footnote", "reference"]);
+  const hosts = blocks.filter((b) => TEXTUAL.has(b.label));
+  return blocks.filter((b) => {
+    if (b.label !== "formula" && b.label !== "formula_number") return true;
+    return !hosts.some((h) => containedRatio(h.box, b.box) > 0.6);
+  });
 }
 
 /** Does one box sit inside another (allowing a few pixels of slop)? */

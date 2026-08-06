@@ -25,6 +25,7 @@
 import { basename } from "path";
 import { scanPage } from "./engine.js";
 import {
+  absorbInline,
   detectBlocks,
   dropDuplicates,
   dropNested,
@@ -80,9 +81,18 @@ function padFor(label: string): number {
  * being failed.
  */
 function stripEcho(text: string, prompt: string): string {
-  const lines = text.split("\n");
-  while (lines.length && lines[0].trim() === prompt.trim()) lines.shift();
-  return lines.join("\n").trim();
+  // Compared with whitespace collapsed and case folded: the echo comes back
+  // with a doubled gap or a non-breaking space often enough that an exact
+  // match misses it — and then the instruction is printed as if it were
+  // content, which is what the first two runs did. It can land anywhere in
+  // the answer, not only at the top.
+  const flat = (s: string): string => s.replace(/\s+/g, " ").trim().toLowerCase();
+  const want = flat(prompt);
+  return text
+    .split("\n")
+    .filter((line) => flat(line) !== want)
+    .join("\n")
+    .trim();
 }
 
 /** Markdown shape for a block's text, by what the block is. */
@@ -179,7 +189,10 @@ export async function scanPageSmart(
   }
   const layoutSeconds = (Date.now() - t0) / 1000;
 
-  const ordered = readingOrder(dropDuplicates(dropNested(found)), page.width).filter(
+  const ordered = readingOrder(
+    absorbInline(dropDuplicates(dropNested(found))),
+    page.width,
+  ).filter(
     (b) => !FURNITURE.has(b.label),
   );
   if (ordered.length === 0)

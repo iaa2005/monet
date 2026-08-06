@@ -134,6 +134,37 @@ async function cropPage(req: CropRequest): Promise<RasterPage[]> {
   return out;
 }
 
+/**
+ * A picture IS a page.
+ *
+ * Screenshots and photographs are the common case, and reading one whole
+ * costs the same minutes a PDF page does. This measures the image and
+ * produces the detector's input, so the block-by-block path applies to it
+ * exactly as it does to a rendered page — the file itself is already on
+ * disk, so no PNG comes back.
+ */
+async function measureImage(bytes: ArrayBuffer): Promise<RasterPage> {
+  const bitmap = await createImageBitmap(new Blob([bytes]));
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context");
+  // A transparent PNG (a screenshot with rounded corners, an exported
+  // diagram) reads as black paper without this.
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  return {
+    page: 1,
+    png: new ArrayBuffer(0),
+    width: canvas.width,
+    height: canvas.height,
+    layoutRgb: toLayoutRgb(canvas),
+  };
+}
+
 async function rasterise(req: RasterRequest): Promise<RasterPage[]> {
   const mod = await loadPdfjs();
   const task = mod.getDocument({ data: new Uint8Array(req.bytes) });
@@ -186,7 +217,9 @@ async function count(bytes: ArrayBuffer): Promise<number> {
 const api = window.electronAPI as unknown as {
   ocr?: {
     onRasterise: (
-      cb: (req: RasterRequest & { kind: "count" | "render" | "crop" }) => void,
+      cb: (
+        req: RasterRequest & { kind: "count" | "render" | "crop" | "image" },
+      ) => void,
     ) => void;
     rasterised: (payload: unknown) => void;
   };
@@ -196,6 +229,10 @@ api.ocr?.onRasterise(async (req) => {
   try {
     if (req.kind === "count") {
       api.ocr?.rasterised({ id: req.id, pageCount: await count(req.bytes) });
+      return;
+    }
+    if (req.kind === "image") {
+      api.ocr?.rasterised({ id: req.id, pages: [await measureImage(req.bytes)] });
       return;
     }
     if (req.kind === "crop") {

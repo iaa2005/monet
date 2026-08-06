@@ -15,6 +15,7 @@ import {
   Cpu,
   Download,
   FileScan,
+  LayoutTemplate,
   Loader2,
   Sparkles,
   Trash2,
@@ -43,6 +44,11 @@ export function OcrSettings(): React.JSX.Element {
   const [models, setModels] = useState<UiOcrModel[]>([]);
   const [cfg, setCfg] = useState<OcrConfig | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
+  const [layout, setLayout] = useState<{
+    installed: boolean;
+    bytes: number;
+    size: string;
+  } | null>(null);
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<{
     text?: string;
@@ -51,11 +57,17 @@ export function OcrSettings(): React.JSX.Element {
     device?: string;
   } | null>(null);
 
+  const loadLayout = async (): Promise<void> => {
+    const a = api();
+    if (a) setLayout(await a.layoutStatus());
+  };
+
   const load = async (): Promise<void> => {
     const a = api();
     if (!a) return;
     setModels(await a.models());
     setCfg(await a.config());
+    await loadLayout();
   };
 
   useEffect(() => {
@@ -232,6 +244,51 @@ export function OcrSettings(): React.JSX.Element {
           </div>
         </div>
       ))}
+
+      {layout && (
+        <div className="rounded-lg border border-border bg-card p-3">
+          <div className="flex items-center gap-2">
+            <LayoutTemplate className="size-4 shrink-0 text-brand" />
+            <span className="text-sm font-medium">Block finder</span>
+            {layout.installed ? (
+              <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] text-brand">
+                installed
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void api()?.installLayout().then(() => loadLayout())}
+                className="ml-auto flex items-center gap-1 rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background transition-opacity hover:opacity-90"
+              >
+                <Download className="size-3" />
+                Download {layout.size}
+              </button>
+            )}
+          </div>
+          <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
+            Finds the pieces of a page — paragraphs, formulas, tables, figures
+            — before anything reads them, so each is read on its own. On a page
+            of coursework here that turned four minutes into twenty seconds,
+            and it is what lets a formula be asked for LaTeX, a table for a
+            table, and a photograph be skipped instead of described. Without
+            it, pages are read whole and slowly.
+          </p>
+          {progress?.modelId === "layout" && (
+            <div className="mt-1.5">
+              <div className="h-1 overflow-hidden rounded-full bg-black/[0.07] dark:bg-white/[0.1]">
+                <div
+                  className="h-full bg-brand transition-[width]"
+                  style={{ width: `${progress.percent}%` }}
+                />
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {progress.percent}% · {Math.round(progress.loaded / 1024 / 1024)} of{" "}
+                {Math.round(progress.total / 1024 / 1024)} MB
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {cfg && (
         <div className="rounded-lg border border-border bg-card p-3">

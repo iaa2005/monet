@@ -136,6 +136,18 @@ const scanSchema = lazySchema(() =>
       .describe(
         'Which pages of a PDF, 1-based: "3", "2-5", "1,4,9-11". Omit for the whole document (capped by the page limit in settings).',
       ),
+    bbox: z
+      .boolean()
+      .optional()
+      .describe(
+        "Also report WHERE each block is: every piece of text comes back tagged with its kind (text, formula, table, image, title) and its pixel box on the page. Use it when the question is about the layout — what is where on a screenshot, which figure a caption belongs to, where on the page a clause sits.",
+      ),
+    whole_page: z
+      .boolean()
+      .optional()
+      .describe(
+        "Read each page in one pass instead of block by block. Much slower and usually worse; only for a page whose layout defeats the block finder.",
+      ),
   }),
 );
 type ScanSchema = ReturnType<typeof scanSchema>;
@@ -181,6 +193,11 @@ export const OCRScanTool = buildTool({
       "report arrives when the pages are read. Scan inline only when you need",
       "the text to answer the question you are answering right now.",
       "",
+      "Pass bbox: true to get the page's LAYOUT as well as its text: each",
+      "block tagged with what it is — text, formula, table, image, title —",
+      "and where it sits in pixels. That is how you answer questions about a",
+      "screenshot or a scanned form without being able to see it.",
+      "",
       "It is READ-ONLY: it never writes the result anywhere. To keep it, pass",
       "the Markdown to VaultWrite, or write the file yourself.",
     ].join("\n");
@@ -188,7 +205,7 @@ export const OCRScanTool = buildTool({
   async description({ source }: z.infer<ScanSchema>) {
     return `Read ${basename(source)} into Markdown`;
   },
-  async call({ source, pages }: z.infer<ScanSchema>) {
+  async call({ source, pages, bbox, whole_page }: z.infer<ScanSchema>) {
     try {
       const state = await ocrReadiness();
       if (!state.ready)
@@ -234,14 +251,19 @@ export const OCRScanTool = buildTool({
           },
         };
 
-      const result = await scanDocument(path, { pages: parsePages(pages) });
+      const result = await scanDocument(path, {
+        pages: parsePages(pages),
+        bbox,
+        mode: whole_page ? "full" : undefined,
+      });
       if (result.error && !result.markdown)
         return { data: { text: `OCR failed: ${result.error}`, isError: true } };
 
       const head = [
         `Read ${basename(path)}${origin ? ` (from ${origin})` : ""}: ` +
           `${result.pages.length} page(s) of ${result.pageCount}` +
-          ` in ${Math.round(result.seconds)}s on the ${result.device || "cpu"}.`,
+          ` in ${Math.round(result.seconds)}s on the ${result.device || "cpu"}` +
+          `${result.mode === "full" ? " (whole-page pass)" : ""}.`,
         result.skipped > 0
           ? `${result.skipped} more page(s) were not read — the per-scan limit is ${getOcrConfig().maxPages}. Ask for a page range to go further.`
           : "",

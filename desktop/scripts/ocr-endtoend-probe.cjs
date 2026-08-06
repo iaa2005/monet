@@ -37,6 +37,8 @@ app.whenReady().then(async () => {
   const started = Date.now();
   const r = await scanDocument(target, {
     pages: [page],
+    // BBOX=1 to see what the tool's bbox:true parameter produces.
+    bbox: process.env.BBOX === "1",
     onProgress: (p) => {
       // One line per second, so a five-minute page shows life without
       // scrolling the terminal off the screen.
@@ -67,6 +69,12 @@ app.whenReady().then(async () => {
         Object.entries(byLabel)
           .map(([k, v]) => `${k}×${v}`)
           .join(", "),
+    );
+    // In reading order, with the y they were found at: an order that looks
+    // wrong in the Markdown is either the detector or this sort, and the
+    // two are told apart by looking.
+    console.log(
+      "    order:  " + r.blocks.map((b) => `${b.label}@${b.box[1]}`).join(" → "),
     );
   }
 
