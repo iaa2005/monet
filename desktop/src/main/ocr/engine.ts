@@ -144,6 +144,9 @@ export interface ScanPageResult {
 export async function scanPage(
   imagePath: string,
   onToken?: (text: string, tokens: number) => void,
+  /** Per-call overrides. Reading one formula is a different question from
+   * reading a page, and the answer should be as short as the question. */
+  opts: { prompt?: string; maxTokens?: number } = {},
 ): Promise<ScanPageResult> {
   const run = async (): Promise<ScanPageResult> => {
     const state = await ocrReadiness();
@@ -175,8 +178,8 @@ export async function scanPage(
       {
         type: "scan",
         imagePath,
-        prompt: model.prompt,
-        maxTokens: cfg.maxTokensPerPage,
+        prompt: opts.prompt ?? model.prompt,
+        maxTokens: opts.maxTokens ?? cfg.maxTokensPerPage,
       },
       onToken,
     );

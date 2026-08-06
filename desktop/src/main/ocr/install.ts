@@ -322,6 +322,82 @@ export async function installOcrModel(
   }
 }
 
+/**
+ * The layout detector, which is one file and no variants.
+ *
+ * It is a separate install from a reading model because it is a different
+ * kind of thing: 124 MB that never changes, needed by the fast path and
+ * useless on its own. Same downloader, same resume, same checksum.
+ */
+export async function installLayoutModel(
+  repo: string,
+  file: string,
+  onProgress: ProgressFn,
+): Promise<{ ok: boolean; error?: string }> {
+  const key = `layout:${repo}`;
+  if (installing.has(key)) return { ok: false, error: "Already downloading" };
+  const controller = new AbortController();
+  installing.set(key, controller);
+  const target = join(ocrModelsDir(), ...repo.split("/"), file);
+  let loaded = 0;
+  try {
+    const res = await fetch(
+      `https://huggingface.co/api/models/${repo}?blobs=true`,
+      { signal: controller.signal },
+    );
+    if (!res.ok) throw new Error(`Model index: HTTP ${res.status}`);
+    const json = (await res.json()) as {
+      siblings?: { rfilename: string; size?: number; lfs?: { sha256?: string } }[];
+    };
+    const entry = (json.siblings ?? []).find((s) => s.rfilename === file);
+    if (!entry) throw new Error(`${repo} publishes no ${file}`);
+    const expect: RepoFile = {
+      path: file,
+      size: entry.size ?? 0,
+      sha256: entry.lfs?.sha256,
+    };
+    const total = expect.size;
+    if (statSyncSize(target) === total && total > 0) {
+      onProgress({ modelId: "layout", dtype: "q4", loaded: total, total, percent: 100, done: true });
+      return { ok: true };
+    }
+    await downloadFile(
+      `https://huggingface.co/${repo}/resolve/main/${file}`,
+      target,
+      expect,
+      controller.signal,
+      (delta) => {
+        loaded += delta;
+        onProgress({
+          modelId: "layout",
+          dtype: "q4",
+          loaded,
+          total,
+          percent: total ? Math.min(99, Math.floor((loaded / total) * 100)) : 0,
+          file,
+        });
+      },
+    );
+    onProgress({ modelId: "layout", dtype: "q4", loaded: total, total, percent: 100, done: true });
+    return { ok: true };
+  } catch (err) {
+    const error = controller.signal.aborted
+      ? "Download cancelled"
+      : err instanceof Error
+        ? err.message
+        : String(err);
+    onProgress({ modelId: "layout", dtype: "q4", loaded, total: 0, percent: 0, done: true, error });
+    return { ok: false, error };
+  } finally {
+    installing.delete(key);
+  }
+}
+
+/** Is the layout detector on disk? */
+export function hasLayoutFile(repo: string, file: string): boolean {
+  return statSyncSize(join(ocrModelsDir(), ...repo.split("/"), file)) > 0;
+}
+
 export function cancelOcrInstall(modelId: string, dtype: OcrDtype): boolean {
   const c = installing.get(`${modelId}:${dtype}`);
   if (!c) return false;

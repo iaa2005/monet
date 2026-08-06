@@ -14,6 +14,9 @@
 import { statSync } from "fs";
 import { basename } from "path";
 import { scanPage } from "./engine.js";
+import { hasLayoutFile } from "./install.js";
+import { LAYOUT_FILE, LAYOUT_REPO } from "./layout.js";
+import { scanPageSmart } from "./smart.js";
 import {
   disposePages,
   isImagePath,
@@ -34,6 +37,14 @@ export interface ScanProgress {
 export interface ScanResult {
   markdown: string;
   pages: { page: number; markdown: string; tokens: number }[];
+  /** Which path actually ran — the caller reports honest timings. */
+  mode?: "smart" | "full";
+  /** Present in smart mode: what was found and where. */
+  blocks?: {
+    page: number;
+    label: string;
+    box: [number, number, number, number];
+  }[];
   pageCount: number;
   /** Pages the caller asked for beyond the cap, left unread. */
   skipped: number;
@@ -53,10 +64,23 @@ export function canScan(path: string): boolean {
  * from settings and is enforced here rather than in the tool, so every
  * caller — the agent, the Settings test button — obeys the same limit.
  */
+/** Can the fast path run at all? */
+export function hasLayoutModel(): boolean {
+  return hasLayoutFile(LAYOUT_REPO, LAYOUT_FILE);
+}
+
 export async function scanDocument(
   path: string,
   opts: {
     pages?: number[];
+    /**
+     * "smart" finds the blocks and reads each one — minutes become tens of
+     * seconds, and pictures are skipped rather than hallucinated over.
+     * "full" hands the whole page to the model, which is what to do when the
+     * layout detector is not installed or a page defeats it.
+     */
+    mode?: "smart" | "full";
+    bbox?: boolean;
     onProgress?: (p: ScanProgress) => void;
   } = {},
 ): Promise<ScanResult> {
@@ -111,10 +135,48 @@ export async function scanDocument(
     maxPages: cfg.maxPages,
   });
 
+  // Smart unless told otherwise, and only when the detector is installed:
+  // silently reading pages the slow way for ten minutes because a 124 MB
+  // file is missing is the kind of "graceful" degradation nobody wants.
+  const mode: "smart" | "full" =
+    opts.mode === "full" ? "full" : hasLayoutModel() ? "smart" : "full";
+
   try {
     const out: ScanResult["pages"] = [];
+    const blocks: NonNullable<ScanResult["blocks"]> = [];
     let device = "";
+
     for (const p of pages) {
+      if (mode === "smart") {
+        const r = await scanPageSmart(p, {
+          bbox: opts.bbox,
+          onProgress: (b) =>
+            opts.onProgress?.({
+              page: b.page,
+              pageCount: pages.length,
+              text: `${b.label} ${b.block}/${b.blockCount}: ${b.text}`,
+              tokens: b.block,
+            }),
+        });
+        if (r.device) device = r.device;
+        for (const b of r.blocks)
+          blocks.push({ page: p.page, label: b.label, box: b.box });
+        if (r.error && !r.markdown)
+          return {
+            markdown: out.map((x) => x.markdown).join("\n\n"),
+            pages: out,
+            mode,
+            blocks,
+            pageCount: total,
+            skipped,
+            seconds: (Date.now() - started) / 1000,
+            device,
+            error: `page ${p.page}: ${r.error}`,
+          };
+        out.push({ page: p.page, markdown: r.markdown, tokens: r.blocks.length });
+        continue;
+      }
+
       const r = await scanPage(p.path, (text, tokens) =>
         opts.onProgress?.({ page: p.page, pageCount: pages.length, text, tokens }),
       );
@@ -122,6 +184,7 @@ export async function scanDocument(
         return {
           markdown: out.map((x) => x.markdown).join("\n\n"),
           pages: out,
+          mode,
           pageCount: total,
           skipped,
           seconds: (Date.now() - started) / 1000,
@@ -131,9 +194,12 @@ export async function scanDocument(
       device = r.device;
       out.push({ page: p.page, markdown: r.text, tokens: r.tokens });
     }
+
     return {
       markdown: out.map((x) => x.markdown).join("\n\n"),
       pages: out,
+      mode,
+      blocks: mode === "smart" ? blocks : undefined,
       pageCount: total,
       skipped,
       seconds: (Date.now() - started) / 1000,

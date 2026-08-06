@@ -51,10 +51,24 @@ app.whenReady().then(async () => {
   process.stdout.write("\n");
 
   if (r.error) console.log(`ERROR: ${r.error}`);
-  console.log(
-    `--- ${r.pages.length} page(s) in ${r.seconds.toFixed(1)}s on the ${r.device || "?"}`,
-  );
   console.log(r.markdown.slice(0, 4000));
+  // The summary goes LAST: a long page scrolls the interesting number off
+  // the top of the terminal, and the number is the point.
+  console.log(
+    `
+--- ${r.pages.length} page(s) in ${r.seconds.toFixed(1)}s on the ${r.device || "?"}` +
+      ` [mode: ${r.mode ?? "?"}]`,
+  );
+  if (r.blocks && r.blocks.length) {
+    const byLabel = {};
+    for (const b of r.blocks) byLabel[b.label] = (byLabel[b.label] ?? 0) + 1;
+    console.log(
+      "    blocks: " +
+        Object.entries(byLabel)
+          .map(([k, v]) => `${k}×${v}`)
+          .join(", "),
+    );
+  }
 
   closeRasteriser();
   disposeOcrEngine();

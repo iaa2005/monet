@@ -30,6 +30,27 @@ interface RasterPage {
   png: ArrayBuffer;
   width: number;
   height: number;
+  /**
+   * The same page squashed to the layout detector's fixed input, as RGB
+   * bytes. Done here because this window already has the pixels and a
+   * resampler; doing it in main would mean decoding the PNG again with a
+   * library main does not have.
+   */
+  layoutRgb?: ArrayBuffer;
+}
+
+/** The layout model's input side — see main/ocr/layout.ts. */
+const LAYOUT_SIZE = 800;
+
+interface CropRequest {
+  id: number;
+  kind: "crop";
+  /** PNG of the page to cut up. */
+  bytes: ArrayBuffer;
+  /** [x1, y1, x2, y2] in that PNG's own pixels. */
+  boxes: [number, number, number, number][];
+  /** Grown by this many pixels on every side — see the note in cropPage. */
+  pad: number;
 }
 
 let pdfjs: Promise<PdfModule> | null = null;
@@ -56,6 +77,61 @@ async function toPng(canvas: HTMLCanvasElement): Promise<ArrayBuffer> {
   );
   if (!blob) throw new Error("canvas produced no image");
   return blob.arrayBuffer();
+}
+
+/** The page at the detector's input size, as RGB triples. */
+function toLayoutRgb(source: HTMLCanvasElement): ArrayBuffer {
+  const small = document.createElement("canvas");
+  small.width = LAYOUT_SIZE;
+  small.height = LAYOUT_SIZE;
+  const ctx = small.getContext("2d");
+  if (!ctx) throw new Error("no 2d context");
+  // The model was exported with keep_ratio:false — it expects the page
+  // squashed to a square, not letterboxed, and its boxes come back mapped
+  // to the original aspect. Preserving the ratio here would silently skew
+  // every coordinate.
+  ctx.drawImage(source, 0, 0, LAYOUT_SIZE, LAYOUT_SIZE);
+  const { data } = ctx.getImageData(0, 0, LAYOUT_SIZE, LAYOUT_SIZE);
+  const rgb = new Uint8Array(LAYOUT_SIZE * LAYOUT_SIZE * 3);
+  for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
+    rgb[j] = data[i];
+    rgb[j + 1] = data[i + 1];
+    rgb[j + 2] = data[i + 2];
+  }
+  return rgb.buffer;
+}
+
+/**
+ * Cut the page into the blocks the detector found.
+ *
+ * Each crop is grown slightly: a box drawn tight around a formula clips the
+ * descender of an integral sign or the bar of a fraction, and the model then
+ * reads a symbol that is not there. A few pixels of paper cost nothing.
+ */
+async function cropPage(req: CropRequest): Promise<RasterPage[]> {
+  const blob = new Blob([req.bytes], { type: "image/png" });
+  const bitmap = await createImageBitmap(blob);
+  const out: RasterPage[] = [];
+  for (let i = 0; i < req.boxes.length; i++) {
+    const [x1, y1, x2, y2] = req.boxes[i];
+    const left = Math.max(0, x1 - req.pad);
+    const top = Math.max(0, y1 - req.pad);
+    const right = Math.min(bitmap.width, x2 + req.pad);
+    const bottom = Math.min(bitmap.height, y2 + req.pad);
+    const w = Math.max(1, right - left);
+    const h = Math.max(1, bottom - top);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d context");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(bitmap, left, top, w, h, 0, 0, w, h);
+    out.push({ page: i, png: await toPng(canvas), width: w, height: h });
+  }
+  bitmap.close();
+  return out;
 }
 
 async function rasterise(req: RasterRequest): Promise<RasterPage[]> {
@@ -86,6 +162,7 @@ async function rasterise(req: RasterRequest): Promise<RasterPage[]> {
         png: await toPng(canvas),
         width: canvas.width,
         height: canvas.height,
+        layoutRgb: toLayoutRgb(canvas),
       });
       page.cleanup();
     }
@@ -109,7 +186,7 @@ async function count(bytes: ArrayBuffer): Promise<number> {
 const api = window.electronAPI as unknown as {
   ocr?: {
     onRasterise: (
-      cb: (req: RasterRequest & { kind: "count" | "render" }) => void,
+      cb: (req: RasterRequest & { kind: "count" | "render" | "crop" }) => void,
     ) => void;
     rasterised: (payload: unknown) => void;
   };
@@ -119,6 +196,11 @@ api.ocr?.onRasterise(async (req) => {
   try {
     if (req.kind === "count") {
       api.ocr?.rasterised({ id: req.id, pageCount: await count(req.bytes) });
+      return;
+    }
+    if (req.kind === "crop") {
+      const crops = await cropPage(req as unknown as CropRequest);
+      api.ocr?.rasterised({ id: req.id, pages: crops });
       return;
     }
     const pages = await rasterise(req);

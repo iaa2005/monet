@@ -40,7 +40,13 @@ export function isPdfPath(path: string): boolean {
 
 interface RasterReply {
   id: number;
-  pages?: { page: number; png: ArrayBuffer; width: number; height: number }[];
+  pages?: {
+    page: number;
+    png: ArrayBuffer;
+    width: number;
+    height: number;
+    layoutRgb?: ArrayBuffer;
+  }[];
   pageCount?: number;
   error?: string;
 }
@@ -153,6 +159,8 @@ export interface RenderedPage {
   path: string;
   width: number;
   height: number;
+  /** The page at the layout detector's input size, RGB. */
+  layoutRgb?: Uint8Array;
 }
 
 /**
@@ -180,9 +188,46 @@ export async function renderPdf(
   for (const p of reply.pages ?? []) {
     const path = join(dir, `page-${String(p.page).padStart(3, "0")}.png`);
     writeFileSync(path, Buffer.from(p.png));
-    pages.push({ page: p.page, path, width: p.width, height: p.height });
+    pages.push({
+      page: p.page,
+      path,
+      width: p.width,
+      height: p.height,
+      layoutRgb: p.layoutRgb ? new Uint8Array(p.layoutRgb) : undefined,
+    });
   }
   return { dir, pages };
+}
+
+/**
+ * Cut a rendered page into the blocks a detector found.
+ *
+ * The crops land beside the page they came from, named for their index, so a
+ * failed scan leaves something a human can look at instead of a temp file
+ * nobody can match to a box.
+ */
+export async function cropBlocks(
+  pagePath: string,
+  boxes: [number, number, number, number][],
+  pad = 6,
+): Promise<{ path: string; width: number; height: number }[]> {
+  if (boxes.length === 0) return [];
+  const bytes = readFileSync(pagePath);
+  const reply = await askRasteriser({
+    kind: "crop",
+    bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
+    boxes,
+    pad,
+  });
+  if (reply.error) throw new Error(reply.error);
+  const base = pagePath.replace(/\.png$/i, "");
+  const out: { path: string; width: number; height: number }[] = [];
+  for (const p of reply.pages ?? []) {
+    const path = `${base}-block-${String(p.page).padStart(3, "0")}.png`;
+    writeFileSync(path, Buffer.from(p.png));
+    out.push({ path, width: p.width, height: p.height });
+  }
+  return out;
 }
 
 export async function disposePages(dir: string): Promise<void> {
