@@ -234,11 +234,34 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
       />,
     );
   },
-  browser: function BrowserDockPanel() {
+  browser: function BrowserDockPanel(props) {
+    /**
+     * A <webview> cannot be MOVED to another window — only rebuilt there.
+     *
+     * Popping a group out is dockview adopting its live DOM into a second
+     * window, which is exactly right for React nodes and exactly wrong for
+     * this one: Chromium tears the guest down and attaches a new one that
+     * is not wired to either window's input. The page is drawn and nothing
+     * you click on it does anything. (Probed directly: after the move the
+     * element reports a NEW webContents id, and delivering a real mouse
+     * event to it takes the process down — scripts/popout-webview-probe.cjs.)
+     *
+     * So the panel is remounted whenever it changes windows: React drops
+     * the adopted elements and builds fresh ones in the document they now
+     * belong to. The tabs are in the store, so nothing is lost but the
+     * page loads themselves.
+     */
+    const [generation, setGeneration] = useState(0);
+    useEffect(() => {
+      const disposable = props.api.onDidLocationChange(() =>
+        setGeneration((g) => g + 1),
+      );
+      return () => disposable.dispose();
+    }, [props.api]);
     return (
       <div className="relative h-full min-h-0 overflow-hidden">
         <PanelBoundary>
-          <BrowserPanel />
+          <BrowserPanel key={generation} />
         </PanelBoundary>
       </div>
     );

@@ -1461,7 +1461,20 @@ export function ChatView({
                   })}
 
                   {showWorking && (
-                    <MessageScrollerItem messageId="__working" scrollAnchor>
+                    // NOT a scroll anchor, though it is the newest thing on
+                    // screen and the temptation is obvious.
+                    //
+                    // An anchor means "when items arrive, put THIS at the top
+                    // of the viewport", and the scroller obeys it whether or
+                    // not the reader has scrolled away. The working row is
+                    // last, so every new tool call during a run threw the
+                    // feed to the very end — you could not read what the
+                    // model had just done while it was doing the next thing.
+                    //
+                    // Without it the scroller falls back to the rule that was
+                    // wanted all along: follow the bottom for someone who is
+                    // AT the bottom, and leave everyone else where they are.
+                    <MessageScrollerItem messageId="__working">
                       <WorkingRow messages={messages} startedAt={turnStartedAt} />
                     </MessageScrollerItem>
                   )}

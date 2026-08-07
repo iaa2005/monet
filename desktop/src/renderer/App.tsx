@@ -724,6 +724,20 @@ export default function App(): JSX.Element {
     void api()?.chat.setVisibleSession?.(visibleSessionId);
   }, [visibleSessionId]);
 
+  // A chat that names itself into existence.
+  //
+  // Sending the first message from the zero state CREATES the session, and
+  // only the store was told: the header kept reading its own copy, so the
+  // chat had a title, a transcript and a running turn while Rename, Fork
+  // and Export stayed hidden behind a menu that would not appear until you
+  // clicked the same chat in the sidebar. The store is where a session id
+  // becomes true; this follows it.
+  useEffect(() => {
+    setCurrentSessionId((prev) =>
+      prev === visibleSessionId ? prev : visibleSessionId,
+    );
+  }, [visibleSessionId]);
+
 
   // Resolve THIS chat's engine + whether it has a shell. Re-read when the chat
   // changes and when Settings closes (the global default may have changed).
