@@ -64,6 +64,19 @@ function TaskRow({ task }: { task: TaskEntry }): JSX.Element {
   const clipped = out.length > OUTPUT_LIMIT;
   const shown = clipped ? out.slice(-OUTPUT_LIMIT) : out;
 
+  // The meta line used to name the tool unconditionally, and the title
+  // already begins with it — "OCRScan" above "OCRScan Completed 4m 20s".
+  // Not always, though: a tool call that authored its own description
+  // gets a title with no tool name in it, and then this line is the only
+  // place it appears. So it is shown when it adds something.
+  const label = toolLabel(task.tool);
+  const titleNamesTool =
+    task.title === label || task.title.startsWith(`${label} · `);
+
+  // A finished row has nothing left to say. It steps back — but only the
+  // ROW does: whatever is inside it is what somebody opened it to read.
+  const finished = task.status === "done";
+
   return (
     // overflow-hidden so the row's hover fill is cut by the card's own radius —
     // without it the highlight is a square behind rounded corners — and so the
@@ -84,15 +97,25 @@ function TaskRow({ task }: { task: TaskEntry }): JSX.Element {
           ) : task.status === "error" ? (
             <X className="size-3.5 text-destructive" />
           ) : (
-            <Check className="size-3.5 text-muted-foreground" />
+            <Check className="size-3.5 text-muted-foreground/70" />
           )}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] text-foreground">
+          <span
+            className={cn(
+              "block truncate text-[13px]",
+              finished ? "text-muted-foreground" : "text-foreground",
+            )}
+          >
             {task.title}
           </span>
-          <span className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-            <span>{toolLabel(task.tool)}</span>
+          <span
+            className={cn(
+              "mt-0.5 flex items-center gap-2 text-[11px]",
+              finished ? "text-muted-foreground/70" : "text-muted-foreground",
+            )}
+          >
+            {!titleNamesTool && <span>{label}</span>}
             <span>{STATUS_TEXT[task.status]}</span>
             <span className="tabular-nums">{taskDuration(task)}</span>
           </span>
@@ -144,8 +167,11 @@ function TaskRow({ task }: { task: TaskEntry }): JSX.Element {
               {task.detail}
             </pre>
           )}
+          {/* Full contrast, whatever the row's state: a finished task's
+              output is not less worth reading than a running one's, and
+              this is the text somebody opened the row for. */}
           {out && (
-            <pre className="max-h-64 overflow-auto border-t border-border bg-black/[0.05] px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground dark:bg-white/[0.06]">
+            <pre className="max-h-64 overflow-auto border-t border-border bg-black/[0.05] px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground dark:bg-white/[0.06]">
               {clipped && (
                 <span className="select-none italic">
                   … {out.length - OUTPUT_LIMIT} earlier characters hidden{"\n"}

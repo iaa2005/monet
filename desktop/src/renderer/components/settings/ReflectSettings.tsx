@@ -20,7 +20,21 @@ interface Stats {
   perDayMinutes: { date: string; minutes: number }[];
 }
 
-const PALETTE = ["#a84b2a", "#c47a52", "#d9a380", "#ecc9ad", "#f4e2d0"];
+/**
+ * Five steps of the brand colour, darkest first.
+ *
+ * Written as CSS rather than as hexes so it follows `--brand-hue` with
+ * everything else. It used to be five terracotta literals, which is why
+ * this chart stayed orange after the app turned blue — the palette had no
+ * idea it was the brand.
+ */
+const PALETTE = [
+  "hsl(var(--brand-hue) 62% 38%)",
+  "hsl(var(--brand-hue) 55% 52%)",
+  "hsl(var(--brand-hue) 52% 66%)",
+  "hsl(var(--brand-hue) 55% 80%)",
+  "hsl(var(--brand-hue) 60% 90%)",
+];
 
 const WEEKDAYS = [
   "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
@@ -94,7 +108,7 @@ function ActivityChart({
         <polyline
           points={pts.join(" ")}
           fill="none"
-          stroke="#a84b2a"
+          stroke={PALETTE[0]}
           strokeWidth={1.8}
           strokeLinejoin="round"
         />

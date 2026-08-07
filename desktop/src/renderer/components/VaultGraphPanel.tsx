@@ -31,8 +31,33 @@ interface SimNode extends VaultGraphNode {
   r: number;
 }
 
-/** Distinct hues per vault; theme decides lightness. */
-const HUES = [18, 210, 140, 280, 45, 330];
+/**
+ * The brand's hue as a number, for the canvas.
+ *
+ * A canvas cannot use `hsl(var(--brand-hue) …)` — it wants a string it can
+ * parse — so the one place the brand is written down is read out of the
+ * stylesheet instead of copied. Copied is what it was: the first vault was
+ * painted hue 18, which was the brand until the app turned blue, and then
+ * it was just an orange graph nobody could explain.
+ */
+function brandHue(): number {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(
+    "--brand-hue",
+  );
+  const n = Number.parseFloat(raw);
+  return Number.isFinite(n) ? n : 211;
+}
+
+/**
+ * Distinct hues per vault; theme decides lightness.
+ *
+ * The first vault wears the brand — most people have one vault, and it
+ * should look like it belongs to this app. The rest are spaced around the
+ * wheel and deliberately far from it.
+ */
+function vaultHues(): number[] {
+  return [brandHue(), 140, 280, 45, 330, 175];
+}
 
 const SIM_FRAMES = 240;
 
@@ -222,7 +247,7 @@ export function VaultGraphPanel({
       ctx.stroke();
       if (focus) {
         ctx.lineWidth = 1.4 / view.scale;
-        ctx.strokeStyle = `hsl(255 70% ${dark ? 65 : 55}%)`;
+        ctx.strokeStyle = `hsl(${brandHue()} 70% ${dark ? 65 : 55}%)`;
         ctx.beginPath();
         for (const e of edgesRef.current) {
           const a = nodesRef.current[e.a];
@@ -243,11 +268,12 @@ export function VaultGraphPanel({
       const fontPx =
         (9.5 * Math.sqrt(Math.max(1, view.scale))) / view.scale;
 
+      const hues = vaultHues();
       const vaultHue = new Map<string, number>();
       nodesRef.current.forEach((n, i) => {
         if (!vaultHue.has(n.vaultName))
-          vaultHue.set(n.vaultName, HUES[vaultHue.size % HUES.length]);
-        const hue = vaultHue.get(n.vaultName) ?? 18;
+          vaultHue.set(n.vaultName, hues[vaultHue.size % hues.length]);
+        const hue = vaultHue.get(n.vaultName) ?? hues[0];
         const orphan = n.links === 0;
         const hover = focus?.id === n.id;
         const dimmed = focus != null && !near.has(i);
@@ -258,7 +284,7 @@ export function VaultGraphPanel({
         // it — transparency reads as a rendering glitch, grey reads as
         // "not the subject right now".
         ctx.fillStyle = hover
-          ? `hsl(255 70% ${dark ? 68 : 55}%)`
+          ? `hsl(${brandHue()} 70% ${dark ? 68 : 55}%)`
           : dimmed
             ? dark
               ? "hsl(0 0% 26%)"
@@ -418,7 +444,7 @@ export function VaultGraphPanel({
                 <span
                   className="size-2 rounded-full"
                   style={{
-                    backgroundColor: `hsl(${HUES[i % HUES.length]} ${dark ? 65 : 70}% ${dark ? 62 : 45}%)`,
+                    backgroundColor: `hsl(${vaultHues()[i % vaultHues().length]} ${dark ? 65 : 70}% ${dark ? 62 : 45}%)`,
                   }}
                 />
                 {name}

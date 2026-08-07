@@ -456,22 +456,27 @@ function GeneralSection({
                 <span className="text-sm font-medium capitalize">{t}</span>
                 {theme === t && <Check className="size-4" />}
               </div>
+              {/* A miniature of the real thing: chrome, sidebar, canvas.
+                  These were four warm hexes from an earlier palette and
+                  matched nothing on screen — the light swatch was cream
+                  while the app was grey. Painted from the tokens now, so
+                  the preview cannot drift from what it previews. */}
               <div
                 className={cn(
                   "flex h-16 gap-1 rounded-md border border-border p-1.5",
-                  t === "light" ? "bg-[#f7f6f1]" : "bg-[#2a2926]",
+                  t === "light" ? "bg-[hsl(220_5%_97%)]" : "bg-[hsl(0_0%_9.4%)]",
                 )}
               >
                 <div
                   className={cn(
                     "w-1/3 rounded",
-                    t === "light" ? "bg-[#e9e7df]" : "bg-[#201f1d]",
+                    t === "light" ? "bg-[hsl(220_4%_95%)]" : "bg-[hsl(0_0%_12.2%)]",
                   )}
                 />
                 <div
                   className={cn(
                     "flex-1 rounded",
-                    t === "light" ? "bg-white" : "bg-[#323029]",
+                    t === "light" ? "bg-white" : "bg-[hsl(0_0%_7.1%)]",
                   )}
                 />
               </div>

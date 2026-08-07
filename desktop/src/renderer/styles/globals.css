@@ -38,9 +38,9 @@
 
 /*
  * Palette lifted from the official Claude Code design tokens (HSL).
- * Canvas is a soft warm off-white (bg-100); elevated surfaces (cards, inputs,
- * code) are white (bg-000). Primary action color is near-black; the terracotta
- * brand color is reserved for the logo mark; links are blue.
+ * Canvas is a soft off-white (bg-100); elevated surfaces (cards, inputs,
+ * code) are white (bg-000). Primary action color is near-black; the accent
+ * — mark, links, rings, selection — is `--brand-hue` and nothing else.
  */
 :root {
     /* Strict corners, Cursor-style: everything in the app derives from this
@@ -62,19 +62,32 @@
 
     --text-000: 210 2.6% 7.6%;
     --text-200: 210 2.5% 23.3%;
-    /* Secondary text. Was 53.7%, which measures 3.32:1 on the canvas — under the
-       4.5:1 AA floor for normal text, and this token carries every subtitle,
-       meta line and sidebar label in the app. At 43% it is 4.85 on the canvas,
-       4.96 on a card and 4.64 on a muted surface. */
-    --text-400: 210 3.1% 43%;
+    /* Secondary text — every subtitle, meta line, sidebar label and most
+       icons in the app. It has been walked down twice for the same reason:
+       53.7% measured 3.32:1 on the canvas, under the 4.5:1 AA floor; 43%
+       cleared the floor at 5.05:1 but still read as washed out next to
+       near-black body text.
 
-    /* Cursor's orange, carrying both roles: the mark AND the accent. The
-       link value is darker than the mark so it clears AA on white
-       (4.84:1, measured by scripts/palette-probe.cjs); the mark only ever
-       sits on large glyphs and fills. */
-    /*--brand: 18 92% 52%;*/
-    --brand: 211 92% 52%;
-    --link: 18 88% 42%;
+       30% is 8.38:1 on the canvas, 8.56 on a card, 8.01 on a muted
+       surface — half again the contrast of AA. Further is possible: there
+       is no middle tier to collide with (`--text-200` is declared and
+       used nowhere), so the only thing stopping this from being black is
+       that secondary text should still be legible AS secondary. */
+    --text-400: 210 3.1% 30%;
+
+    /* THE BRAND IS ONE NUMBER. Change this hue and every accent in the app
+       follows — the mark, the links, the focus rings, the selection wash,
+       the charts. It used to be spelled out in four places instead, and
+       changing the app from orange to blue left the links orange, because
+       nothing said they were the same colour.
+
+       Saturation and lightness stay where they are: they were measured,
+       not chosen. The link is darker than the mark so it clears AA on the
+       canvas (5.35:1 at hue 211, checked by scripts/brand-hue-probe.cjs);
+       the mark only ever sits on large glyphs and fills. */
+    --brand-hue: 211;
+    --brand: var(--brand-hue) 92% 52%;
+    --link: var(--brand-hue) 88% 42%;
 
     --background: hsl(var(--bg-100));
     --foreground: hsl(var(--text-000));
@@ -144,10 +157,11 @@
        50.2% lightness. 62% gives 6.6:1 there and 7.1:1 on the deep surface. */
     --text-400: 0 0% 62%;
 
-    /* The same orange, lifted for the deep surfaces: 6.0:1 on #121212. */
-    /*--brand: 20 95% 62%;*/
-    --brand: 211 95% 62%;
-    --link: 20 95% 62%;
+    /* The same hue, lifted for the deep surfaces: 6.5:1 on #121212. Dark
+       needs no separate link value — at this lightness the mark already
+       clears AA, so both roles share it. */
+    --brand: var(--brand-hue) 95% 62%;
+    --link: var(--brand-hue) 95% 62%;
 
     --background: hsl(var(--bg-100));
     --foreground: hsl(var(--text-000));

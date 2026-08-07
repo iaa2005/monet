@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, Menu } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeTheme } from "electron";
+import { canvasFor } from "../shared/canvas-colour.js";
 import { APP_NAME } from "@shared/brand.js";
 import { dirname, join } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -172,7 +173,7 @@ function installWebviewGuards(win: BrowserWindow): void {
         action: "allow",
         overrideBrowserWindowOptions: {
           autoHideMenuBar: true,
-          backgroundColor: "#f7f6f1",
+          backgroundColor: canvasFor(nativeTheme.shouldUseDarkColors),
           webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
@@ -231,7 +232,7 @@ function createWindow(): void {
     // Hide the native title bar but keep the resizable window frame so we can
     // draw a custom header + window controls (looks native, not Electron).
     titleBarStyle: "hidden",
-    backgroundColor: "#f7f6f1",
+    backgroundColor: canvasFor(nativeTheme.shouldUseDarkColors),
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),
       sandbox: false,
@@ -309,7 +310,7 @@ function openSecondaryWindow(): void {
     // Electron and shows Electron's own logo unless it is handed one.
     ...(appIconPath() ? { icon: appIconPath() as string } : {}),
     titleBarStyle: "hidden",
-    backgroundColor: "#f7f6f1",
+    backgroundColor: canvasFor(nativeTheme.shouldUseDarkColors),
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),
       sandbox: false,
