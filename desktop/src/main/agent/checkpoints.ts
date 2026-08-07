@@ -11,7 +11,7 @@
  */
 
 import { spawn } from "child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getDataSubdir } from "../data-dir.js";
 import {
@@ -207,6 +207,99 @@ export async function snapshotWorkspace(
   } catch {
     return null;
   }
+}
+
+/**
+ * A content-hash index of the workspace: path → blob sha.
+ *
+ * Git does the hashing, which is the point. `add -A` brings the index up
+ * to date with the working tree — respecting the project's .gitignore and
+ * the store's own excludes, so node_modules never enters the picture —
+ * and `ls-files -s` then reads back an exact hash per file. Written by
+ * hand this would be a directory walk plus a hashing loop plus an ignore
+ * parser, and the ignore parser is the part that would be subtly wrong.
+ *
+ * This is what a WINDOW is made of: one of these before a tool runs and
+ * one after, and the difference is what that tool changed — whether it
+ * said so or not, which is how a Python script's writes are caught.
+ */
+export async function indexWorkspace(
+  sessionId: string,
+  workspace: string | undefined,
+): Promise<Map<string, string> | null> {
+  if (!workspace || !existsSync(workspace)) return null;
+  const gitDir = shadowDir(sessionId);
+  if (!isInited(gitDir)) return null;
+  const add = await git(workspace, gitDir, ["add", "-A"], 60_000);
+  if (add.code !== 0) return null;
+  const list = await git(workspace, gitDir, ["ls-files", "-s"], 60_000);
+  if (list.code !== 0) return null;
+  const index = new Map<string, string>();
+  for (const line of list.stdout.split("\n")) {
+    // "<mode> <sha> <stage>\t<path>"
+    const tab = line.indexOf("\t");
+    if (tab < 0) continue;
+    const sha = line.slice(0, tab).split(/\s+/)[1];
+    const path = line.slice(tab + 1);
+    if (sha && path) index.set(path, sha);
+  }
+  return index;
+}
+
+/**
+ * Put back exactly the files a turn changed, and nothing else.
+ *
+ * This replaces `reset --hard`, which restored the whole tree — including
+ * files the person at the keyboard had edited while the turn ran, with no
+ * warning and no way back. Here the caller has already worked out which
+ * files are the turn's (see file-ledger.ts); this only carries the plan
+ * out, file by file, and reports what it could not do rather than
+ * pretending.
+ */
+export async function restoreFiles(
+  sessionId: string,
+  workspace: string | undefined,
+  sha: string,
+  plan: { write: string[]; delete: string[] },
+): Promise<{ ok: boolean; restored: number; deleted: number; error?: string }> {
+  if (!workspace || !existsSync(workspace))
+    return { ok: false, restored: 0, deleted: 0, error: "No workspace." };
+  const gitDir = shadowDir(sessionId);
+  if (!isInited(gitDir))
+    return { ok: false, restored: 0, deleted: 0, error: "No checkpoints yet." };
+  if (!/^[0-9a-f]{7,40}$/i.test(sha))
+    return { ok: false, restored: 0, deleted: 0, error: "Invalid checkpoint id." };
+  const owner = storedWorktree(gitDir);
+  if (owner && !sameFolder(owner, workspace))
+    return {
+      ok: false,
+      restored: 0,
+      deleted: 0,
+      error: `These checkpoints belong to ${owner}, not ${workspace}.`,
+    };
+
+  let restored = 0;
+  let deleted = 0;
+  // `checkout <sha> -- <path>` writes one path from that commit into the
+  // working tree, which is the narrow version of what reset --hard did to
+  // everything. Done one at a time so a single missing path — a file that
+  // did not exist at that checkpoint — costs that file and not the batch.
+  for (const path of plan.write) {
+    const r = await git(workspace, gitDir, ["checkout", sha, "--", path], 30_000);
+    if (r.code === 0) restored++;
+  }
+  for (const path of plan.delete) {
+    try {
+      const full = join(workspace, path);
+      if (existsSync(full)) {
+        rmSync(full, { force: true });
+        deleted++;
+      }
+    } catch {
+      /* a file that will not delete is left, and reported by the count */
+    }
+  }
+  return { ok: true, restored, deleted };
 }
 
 /**
