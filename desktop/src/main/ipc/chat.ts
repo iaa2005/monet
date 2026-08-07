@@ -540,11 +540,65 @@ export function registerChatIPC(): void {
       }
     }
 
+    // Ask when it is ambiguous — before anything is built, while changing
+    // course is still free. A fresh context reads the request alone; if it
+    // finds a fork where guessing wrong wastes the work, the HARNESS asks
+    // and the answers ride in with the brief. See verify/clarify.ts.
+    let clarifyNote = "";
+    // Only on the chat's first prompt: inside a conversation, ambiguity is
+    // resolved by everything already said, and a dialog would be an
+    // interruption rather than a shortcut.
+    if (wasUntitled && payload.space !== "home") {
+      try {
+        const { isFeatureOn } = await import("../agent/features.js");
+        const { clarifyPrompt, parseClarify, answersNote, worthClarifying } =
+          await import("../verify/clarify.js");
+        if (isFeatureOn("clarify") && worthClarifying(message)) {
+          const provider = getProviderManager().getActive();
+          if (provider) {
+            const reply = await createAdapter(provider).complete(
+              {
+                model: provider.model,
+                system:
+                  "You answer in the exact shape you are given, and nothing else.",
+                messages: [{ role: "user", content: clarifyPrompt(message) }],
+                max_tokens: 400,
+                temperature: 0,
+              },
+              abort.signal,
+            );
+            const text =
+              typeof reply.content === "string"
+                ? reply.content
+                : reply.content
+                    .map((b) => (b.type === "text" ? b.text : ""))
+                    .join("");
+            const outcome = parseClarify(text);
+            if (outcome.status === "ask" && !abort.signal.aborted) {
+              const result = await askUserFromRenderer(
+                win,
+                outcome.questions.map((q) => ({
+                  header: q.header,
+                  question: q.question,
+                  options: q.options.map((label) => ({ label })),
+                  multiSelect: false,
+                })),
+              );
+              if (!result.cancelled && result.answers.length)
+                clarifyNote = `\n\n${answersNote(result.answers)}`;
+            }
+          }
+        }
+      } catch {
+        /* a question that could not be asked is not a failed turn */
+      }
+    }
+
     try {
       await runAgent(
         sessionId,
         await buildUserContent(
-          message,
+          message + clarifyNote,
           payload.attachments,
           payload.space,
           sessionId,
@@ -653,6 +707,24 @@ export function registerChatIPC(): void {
             }
           } catch {
             /* a review that fails is a review that did not happen */
+          }
+        }
+
+        // Actually run it: a green typecheck says the code is well-formed,
+        // not that the page renders or that its first request returns 200.
+        // Starts the project's own dev server, opens the page out of sight,
+        // and hands back what went wrong. See verify/smoke.ts.
+        if (isFeatureOn("smoke") && !abort.signal.aborted) {
+          try {
+            const { runSmoke } = await import("../verify/smoke-run.js");
+            const { smokePrompt, smokeSummary } = await import("../verify/smoke.js");
+            emit({ type: "harness", text: "Starting the app to see if it runs" });
+            const outcome = await runSmoke(cwd, () => abort.signal.aborted);
+            emit({ type: "harness", text: smokeSummary(outcome) });
+            if (outcome.status === "problems" && !abort.signal.aborted)
+              await runAgent(sessionId, smokePrompt(outcome), emit, runOptions);
+          } catch {
+            /* a smoke run that fails is not the user's change being wrong */
           }
         }
       }
