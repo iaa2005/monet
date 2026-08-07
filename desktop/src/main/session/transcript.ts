@@ -40,8 +40,16 @@ function db(): ReturnType<typeof getSessionDb> {
         role TEXT NOT NULL,
         content TEXT NOT NULL,
         hidden INTEGER NOT NULL DEFAULT 0,
+        -- Stable across saves, and the same id the display side uses where
+        -- the two describe the same message. See the migration below.
+        msg_id TEXT,
+        -- 0 once something took it out of the model's context (a compaction,
+        -- an undone prompt, a prompt removed by hand). The row stays.
+        in_context INTEGER NOT NULL DEFAULT 1,
         PRIMARY KEY (session_id, seq)
       );
+      CREATE INDEX IF NOT EXISTS idx_transcript_msgid
+        ON transcript(session_id, msg_id);
       CREATE INDEX IF NOT EXISTS idx_transcript_session ON transcript(session_id);
       CREATE TABLE IF NOT EXISTS context_events (
         id TEXT PRIMARY KEY,
@@ -60,6 +68,26 @@ function db(): ReturnType<typeof getSessionDb> {
     }[];
     if (!cols.some((c) => c.name === "hidden"))
       d.exec("ALTER TABLE transcript ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0");
+    // A STABLE IDENTITY for a model message, and whether the model can still
+    // read it.
+    //
+    // This table was keyed by position alone — (session_id, seq) — and every
+    // save deleted the session's rows and re-inserted them renumbered. So a
+    // message had no identity, the display side (which does have ids) could
+    // only be related to it by COUNTING user turns, and because this side
+    // also gets truncated by compaction and undo, the chat had to
+    // reconstruct "what is still in context" by replaying the arithmetic of
+    // every past operation.
+    //
+    // With an id and a flag, all of that becomes a lookup: out-of-context is
+    // a property of a message rather than a range to be derived, and it is
+    // reversible, which a truncation is not.
+    if (!cols.some((c) => c.name === "msg_id"))
+      d.exec("ALTER TABLE transcript ADD COLUMN msg_id TEXT");
+    if (!cols.some((c) => c.name === "in_context"))
+      d.exec(
+        "ALTER TABLE transcript ADD COLUMN in_context INTEGER NOT NULL DEFAULT 1",
+      );
     ready = true;
   }
   return d;
@@ -76,22 +104,32 @@ export function loadTranscript(sessionId: string): LLMMessage[] {
 export function loadTranscriptWithMeta(sessionId: string): {
   messages: LLMMessage[];
   hidden: boolean[];
+  ids: (string | null)[];
+  inContext: boolean[];
 } {
   try {
     const rows = db()
       .prepare(
-        "SELECT role, content, hidden FROM transcript WHERE session_id = ? ORDER BY seq ASC",
+        "SELECT role, content, hidden, msg_id, in_context FROM transcript WHERE session_id = ? ORDER BY seq ASC",
       )
-      .all(sessionId) as { role: string; content: string; hidden: number }[];
+      .all(sessionId) as {
+      role: string;
+      content: string;
+      hidden: number;
+      msg_id: string | null;
+      in_context: number;
+    }[];
     return {
       messages: rows.map((r) => ({
         role: r.role as LLMMessage["role"],
         content: JSON.parse(r.content) as LLMMessage["content"],
       })),
       hidden: rows.map((r) => r.hidden === 1),
+      ids: rows.map((r) => r.msg_id),
+      inContext: rows.map((r) => r.in_context !== 0),
     };
   } catch {
-    return { messages: [], hidden: [] };
+    return { messages: [], hidden: [], ids: [], inContext: [] };
   }
 }
 
@@ -112,13 +150,18 @@ export function replaceTranscript(
   sessionId: string,
   messages: LLMMessage[],
   hidden?: boolean[],
+  meta?: { ids?: (string | null)[]; inContext?: boolean[] },
 ): void {
   try {
     const d = db();
     const tx = d.transaction(() => {
+      // Identity has to survive the rewrite. This still deletes and
+      // re-inserts — the whole array is the unit the agent holds in memory —
+      // but the id and the context flag ride along per message instead of
+      // being invented anew, which is what makes them stable.
       d.prepare("DELETE FROM transcript WHERE session_id = ?").run(sessionId);
       const insert = d.prepare(
-        "INSERT INTO transcript (session_id, seq, role, content, hidden) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO transcript (session_id, seq, role, content, hidden, msg_id, in_context) VALUES (?, ?, ?, ?, ?, ?, ?)",
       );
       messages.forEach((m, i) =>
         insert.run(
@@ -127,6 +170,8 @@ export function replaceTranscript(
           m.role,
           JSON.stringify(m.content),
           hidden?.[i] ? 1 : 0,
+          meta?.ids?.[i] ?? null,
+          meta?.inContext?.[i] === false ? 0 : 1,
         ),
       );
     });

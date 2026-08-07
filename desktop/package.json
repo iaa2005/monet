@@ -48,6 +48,7 @@
     "smoke:ocr": "node scripts/smoke-agent.mjs scripts/ocr-probe.ts",
     "smoke:sources": "node scripts/smoke-agent.mjs scripts/model-sources-probe.ts",
     "smoke:filters": "node scripts/smoke-agent.mjs scripts/session-filters-probe.ts",
+    "smoke:transcriptid": "node scripts/build-db-probe.mjs scripts/transcript-identity-probe.ts && electron out/probe/transcript-identity-probe.mjs",
     "smoke:artifacttiming": "node scripts/renderer-probe.mjs scripts/artifact-timing-probe.ts",
     "smoke:hue": "npm run build && electron scripts/brand-hue-probe.cjs",
     "smoke:raster": "node scripts/build-raster-probe.mjs && electron scripts/ocr-rasterise-probe.cjs",
