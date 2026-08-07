@@ -20,6 +20,7 @@ import { tunablePrompt } from "../../prompts/index.js";
 import { blockGoal, recordJudgeRejection } from "./state.js";
 import { clearGoal, loadGoal, saveGoal } from "./store.js";
 import { judgeCompletion, MAX_JUDGE_REJECTIONS } from "./judge.js";
+import { isFeatureOn } from "../features.js";
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
@@ -146,7 +147,7 @@ export const UpdateGoalTool = buildTool({
       // diff since the goal's baseline. Capped, and it fails open — see
       // judge.ts for why both.
       const rejections = goal.judgeRejections ?? 0;
-      if (rejections < MAX_JUDGE_REJECTIONS) {
+      if (rejections < MAX_JUDGE_REJECTIONS && isFeatureOn("judge")) {
         let diff: string | null = null;
         if (cwd && goal.baselineSha) {
           try {

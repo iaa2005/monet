@@ -568,8 +568,9 @@ export function registerChatIPC(): void {
         lastRunEditedFiles(sessionId).length > 0
       ) {
         const { getVerifyConfig, knownRedFor } = await import("../verify/state.js");
+        const { isFeatureOn } = await import("../agent/features.js");
         const cfg = getVerifyConfig();
-        if (cfg.enabled) {
+        if (cfg.enabled && isFeatureOn("verify")) {
           const { runVerifyLoop } = await import("../verify/loop.js");
           const outcome = await runVerifyLoop({
             cwd,

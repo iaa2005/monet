@@ -29,6 +29,8 @@ import {
   isKeepingAwake,
   type PowerConfig,
 } from "../app/power.js";
+import { getFeatures, setFeatures } from "../agent/features.js";
+import type { FeatureFlags } from "@shared/agent-features.js";
 import { reloadPrompts, promptsDirPath } from "../prompts/index.js";
 import { resetVendorTools } from "../agent/vendor-tools.js";
 import { seedTunablePrompts } from "../agent/index.js";
@@ -59,6 +61,14 @@ export function registerTuningIPC(): void {
       resetVendorTools(); // toolset advertisement changes (defer MCP + ToolSearch)
       return next;
     },
+  );
+
+  // What the harness does for the model, as switches. One file, one pair of
+  // channels — see shared/agent-features.ts for why each one is a choice.
+  ipcMain.handle("features:get", (): FeatureFlags => getFeatures());
+  ipcMain.handle(
+    "features:set",
+    (_e, patch: Partial<FeatureFlags>): FeatureFlags => setFeatures(patch),
   );
 
   ipcMain.handle("caveman:get", (): CavemanConfig => getCavemanConfig());

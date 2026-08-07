@@ -10,6 +10,7 @@ import type {
 } from "../../main/llm/models-dev.js";
 import type { ConnectorAccount } from "../../main/connectors/types.js";
 import type { UiPrefs } from "../../main/app/ui-prefs.js";
+import type { FeatureFlags } from "@shared/agent-features";
 import type { UiConnectorService } from "../../main/connectors/services/types.js";
 import type { BrowserConfig } from "../../main/browser/config.js";
 import type { DevServer } from "../../main/browser/dev-servers.js";
@@ -1249,6 +1250,8 @@ export interface ElectronAPI {
     }) => Promise<{ keepAwake: boolean; active: boolean }>;
     toolSearchGet: () => Promise<{ enabled: boolean }>;
     toolSearchSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
+    featuresGet: () => Promise<FeatureFlags>;
+    featuresSet: (patch: Partial<FeatureFlags>) => Promise<FeatureFlags>;
     cavemanGet: () => Promise<{ enabled: boolean }>;
     cavemanSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
     leanGet: () => Promise<{ leanTools: boolean; vendorMemory: boolean }>;

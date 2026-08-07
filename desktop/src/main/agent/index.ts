@@ -22,6 +22,7 @@ import {
   getSubAgentPrompt,
 } from "./prompts-vendor.js";
 import { CONNECTOR_TOOL_NAMES } from "./connector-tools.js";
+import { isFeatureOn } from "./features.js";
 import { connectorServerNames } from "../mcp/manager.js";
 import { getService } from "../connectors/services/registry.js";
 import {
@@ -242,6 +243,40 @@ const DISCIPLINE_DEFAULT = [
   "  with the work half-done.",
 ].join("\n");
 
+/**
+ * What "make it nice" has to be replaced with.
+ *
+ * A weak model told to make a good interface produces a grey wall of
+ * unlabelled buttons, because "good" is not an instruction it can check
+ * itself against. Every line here is a thing that can be LOOKED FOR in the
+ * result — a state that exists or does not, a scale that is one scale or
+ * several. Tunable via prompts/design.md.
+ */
+const DESIGN_DEFAULT = [
+  "# Interface standards (when you build or change UI)",
+  "- ONE spacing scale (4/8/12/16/24…). Never invent one-off margins.",
+  "- ONE accent colour, from the existing theme. Everything else is text,",
+  "  surface and border. Do not introduce a second brand hue.",
+  "- Every control has four states: rest, hover, active/pressed, disabled —",
+  "  and a visible keyboard focus ring. A control with one state looks dead.",
+  "- Every button says what it DOES (\"Save changes\", not \"OK\"). Destructive",
+  "  actions are visually distinct and confirmed.",
+  "- Every list and panel has an EMPTY state, a LOADING state and an ERROR",
+  "  state, each with one sentence saying what to do next. Blank is not a state.",
+  "- Nothing moves under the pointer: no layout shift when data arrives, no",
+  "  content jumping as images load. Reserve the space.",
+  "- Text: one family, at most three sizes on a screen, and real contrast —",
+  "  body text near-black on light, never mid-grey on grey.",
+  "- Anything slower than ~300ms shows progress; anything irreversible asks",
+  "  first; anything that failed says why, in words, where it failed.",
+  "- Check it at a narrow window too. Horizontal scrollbars on the page are a",
+  "  bug, not a layout.",
+].join("\n");
+
+export function agentDesignPrompt(): string {
+  return tunablePrompt("design", DESIGN_DEFAULT);
+}
+
 /** The method / discipline blocks, exported so delegated runs (sub-agents)
  * inherit the same rules the main agent works under. */
 export function agentMethodPrompt(): string {
@@ -272,11 +307,16 @@ function withUserMemory(
       // Home has no workspace, and a lesson about this repo's flaky build
       // belongs in no other folder's context. The run pinned its cwd before
       // the prompt was built, so the global path is this run's path.
-      includeMemory && space !== "home"
+      includeMemory && space !== "home" && isFeatureOn("lessons")
         ? buildLessonsPrompt(getWorkspacePath())
         : "",
-      tunablePrompt("method", METHOD_DEFAULT),
-      tunablePrompt("discipline", DISCIPLINE_DEFAULT),
+      // Each of these is paid on EVERY turn, which is why each is a switch —
+      // see shared/agent-features.ts.
+      isFeatureOn("method") ? tunablePrompt("method", METHOD_DEFAULT) : "",
+      isFeatureOn("discipline")
+        ? tunablePrompt("discipline", DISCIPLINE_DEFAULT)
+        : "",
+      isFeatureOn("design") ? agentDesignPrompt() : "",
       tunablePrompt("system-append", ""),
       isCaveman() ? cavemanDirective() : "",
     ]
@@ -1551,7 +1591,11 @@ async function runAgentScoped(
     // What earlier goals in this workspace did — continuity, not ceremony.
     // Home has no workspace to remember.
     let history: string | undefined;
-    if (activeGoal.status === "active" && space !== "home") {
+    if (
+      activeGoal.status === "active" &&
+      space !== "home" &&
+      isFeatureOn("runNotes")
+    ) {
       try {
         history =
           goalHistoryBlock(goalRunNotes(getWorkspacePath())) ?? undefined;
@@ -1829,7 +1873,10 @@ async function runAgentScoped(
       // why it joins the last user message instead of becoming a new one, and
       // why it is bounded.
       const empty = isEmptyReply(assistantText, toolCalls.length);
-      if (shouldNudge({ emptyReply: empty, nudgesUsed, nudgedLastTurn })) {
+      if (
+        isFeatureOn("nudge") &&
+        shouldNudge({ emptyReply: empty, nudgesUsed, nudgedLastTurn })
+      ) {
         nudgesUsed++;
         nudgedLastTurn = true;
         console.warn(
@@ -2135,7 +2182,7 @@ async function runAgentScoped(
     // until now it did not: it spent forty turns as if they were free and
     // got cut off mid-thought. One line, once, riding back with the tool
     // results it is about to read.
-    if (shouldWarnBudget(turn, budget)) {
+    if (isFeatureOn("budget") && shouldWarnBudget(turn, budget)) {
       onEvent({
         type: "harness",
         text: `${stepsLeft(turn, budget)} steps left — asked the model to start converging`,
@@ -2152,7 +2199,7 @@ async function runAgentScoped(
   // turn with the tools taken away — it cannot act any more, but it can hand
   // the work over. See turn-budget.ts.
   let wrapUpText = "";
-  if (!signal?.aborted) {
+  if (!signal?.aborted && isFeatureOn("budget")) {
     onEvent({
       type: "harness",
       text: "Out of steps — asked the model for a handoff summary",

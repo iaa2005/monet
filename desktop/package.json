@@ -49,6 +49,7 @@
     "smoke:ocr": "node scripts/smoke-agent.mjs scripts/ocr-probe.ts",
     "smoke:sources": "node scripts/smoke-agent.mjs scripts/model-sources-probe.ts",
     "smoke:filters": "node scripts/smoke-agent.mjs scripts/session-filters-probe.ts",
+    "smoke:features": "node scripts/smoke-agent.mjs scripts/agent-features-probe.ts",
     "smoke:transcriptid": "node scripts/build-db-probe.mjs scripts/transcript-identity-probe.ts && electron out/probe/transcript-identity-probe.mjs",
     "smoke:turncontext": "node scripts/renderer-probe.mjs scripts/turn-context-probe.ts",
     "smoke:compactctx": "node scripts/smoke-agent.mjs scripts/compaction-context-probe.ts",

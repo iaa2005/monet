@@ -11,6 +11,7 @@ import type {
 } from "../main/ipc/permissions.js";
 import type { AskUserRequest, AskUserAnswer } from "../main/ipc/ask-user.js";
 import type { UiPrefs } from "../main/app/ui-prefs.js";
+import type { FeatureFlags } from "../shared/agent-features.js";
 import type { PlanApprovalRequest, PlanDecision } from "../main/ipc/plan.js";
 import type { ConnectorAccount } from "../main/connectors/types.js";
 import type { UiConnectorService } from "../main/connectors/services/types.js";
@@ -1303,6 +1304,9 @@ const electronAPI = {
       ipcRenderer.invoke("toolsearch:get"),
     toolSearchSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
       ipcRenderer.invoke("toolsearch:set", patch),
+    featuresGet: (): Promise<FeatureFlags> => ipcRenderer.invoke("features:get"),
+    featuresSet: (patch: Partial<FeatureFlags>): Promise<FeatureFlags> =>
+      ipcRenderer.invoke("features:set", patch),
     cavemanGet: (): Promise<{ enabled: boolean }> =>
       ipcRenderer.invoke("caveman:get"),
     cavemanSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
