@@ -39,6 +39,8 @@ const electronAPI = {
     send: (payload: {
       sessionId?: string;
       message: string;
+      /** The user bubble's id, tying this prompt to its transcript turn. */
+      userMessageId?: string;
       seed?: { role: "user" | "assistant"; content: string }[];
       mode?: string;
       space?: string;
@@ -88,6 +90,18 @@ const electronAPI = {
       turnsLeft: number;
       messagesDropped: number;
     }> => ipcRenderer.invoke("chat:undoPrompts", sessionId, count),
+    /** Which prompts the model can still read — drawn directly, not derived. */
+    turnContext: (
+      sessionId: string,
+    ): Promise<{ id: string; inContext: boolean }[]> =>
+      ipcRenderer.invoke("chat:turnContext", sessionId),
+    /** Take one prompt (and its turn) out of the model's context, or put it back. */
+    setTurnContext: (
+      sessionId: string,
+      messageId: string,
+      inContext: boolean,
+    ): Promise<{ ok: boolean; changed: number }> =>
+      ipcRenderer.invoke("chat:setTurnContext", sessionId, messageId, inContext),
     undoableTurns: (sessionId: string): Promise<number> =>
       ipcRenderer.invoke("chat:undoableTurns", sessionId),
     reset: (sessionId?: string): Promise<{ ok: boolean }> =>

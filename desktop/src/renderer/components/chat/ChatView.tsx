@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef, memo } from "react";
+import { useCallback, useEffect, useState, useMemo, useRef, memo } from "react";
 import { useChatStore, INTERRUPT_MARK } from "@/stores/chatStore";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { ToolCallBubble } from "./ToolCallBubble";
@@ -32,6 +32,8 @@ import {
   GitPullRequest,
   History,
   Loader2,
+  Eye,
+  EyeOff,
   Pencil,
   Play,
   RotateCcw,
@@ -65,13 +67,6 @@ import type {
 import type { ChatMessage, ToolCall } from "@/types/chat";
 import { SelectionText } from "./SelectionText";
 import { joinSelections, splitSelections, usedRefs } from "@/lib/selection-marks";
-import {
-  buildContextMap,
-  describeRange,
-  outOfContextRanges,
-  type ContextEventInfo,
-  type OutRange,
-} from "@/lib/context-map";
 import {
   copyTargets as computeCopyTargets,
   rendersAsCard,
@@ -350,9 +345,15 @@ const MessageRow = memo(
   function MessageRow({
     msg,
     mode,
+    droppedFromContext,
+    onToggleContext,
   }: {
     msg: ChatMessage;
     mode?: TranscriptMode;
+    /** This prompt is not being sent to the model. */
+    droppedFromContext?: boolean;
+    /** Toggle that. Absent while a run is in flight. */
+    onToggleContext?: (messageId: string) => void | Promise<void>;
   }): JSX.Element {
     const isStreaming = useChatStore((s) => s.isStreaming);
     const home = useChatStore((s) => s.space === "home");
@@ -507,6 +508,28 @@ const MessageRow = memo(
                   >
                     <RotateCcw className="size-3" />
                   </button>
+                  {/* Take this ONE prompt out of what the model reads — its
+                      reply and tool calls go with it. Nothing is deleted:
+                      the turn stays on screen, fainter, and the button puts
+                      it back. */}
+                  {onToggleContext && (
+                    <button
+                      type="button"
+                      title={
+                        droppedFromContext
+                          ? "Put this prompt back into the model's context"
+                          : "Remove this prompt (and its reply) from the model's context — nothing is deleted, and files are untouched"
+                      }
+                      onClick={() => void onToggleContext(msg.id)}
+                      className="rounded-md p-1 text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+                    >
+                      {droppedFromContext ? (
+                        <Eye className="size-3" />
+                      ) : (
+                        <EyeOff className="size-3" />
+                      )}
+                    </button>
+                  )}
                 </div>
               )}
               {/* Code: filesystem-aware rewind lives under the user message —
@@ -564,40 +587,16 @@ type GroupedItem =
   | { type: "artifact-strip"; id: string; items: ArtifactItem[] };
 
 /**
- * The line the model reads from — drawn where the context actually begins
- * again, with what happened and when.
+ * What a message the model no longer reads looks like: present, plainly
+ * not the model's any more, and nothing else.
  *
- * Above it the messages stay on screen but are dimmed and struck with a
- * brand-coloured edge: still yours to read, no longer the model's.
+ * It used to carry a brand-coloured edge as well, to pair with a divider
+ * drawn across the chat. Both are gone: a rule saying "everything above
+ * here is out" stops being true the moment a prompt in the MIDDLE is
+ * dropped, which is now an ordinary thing to do. Faint is enough, and it
+ * is the only thing that reads correctly whichever turns are out.
  */
-function ContextBreak({ ranges }: { ranges: OutRange[] }): JSX.Element {
-  return (
-    <div className="my-1 flex items-center gap-2 px-1">
-      <div className="h-px flex-1 bg-brand/40" />
-      <div className="flex flex-col items-center gap-0.5">
-        {ranges.map((r) => (
-          <span
-            key={r.id}
-            className="rounded-full border border-brand/30 bg-brand/10 px-2 py-0.5 text-[10px] text-muted-foreground"
-            title={`${describeRange(r)} · ${new Date(r.at).toLocaleString()}`}
-          >
-            {describeRange(r)} ·{" "}
-            {new Date(r.at).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </span>
-        ))}
-      </div>
-      <div className="h-px flex-1 bg-brand/40" />
-    </div>
-  );
-}
-
-/** What an out-of-context message looks like: present, but plainly not the
- * model's any more. */
-const OUT_OF_CONTEXT_CLASS =
-  "relative opacity-55 saturate-50 before:absolute before:-left-2 before:top-0 before:h-full before:w-0.5 before:rounded-full before:bg-brand/40";
+const OUT_OF_CONTEXT_CLASS = "opacity-45 saturate-50";
 
 /** In Normal mode, consecutive tool messages become a single group card.
  * In every mode, a turn that produced sandbox files gets an artifact strip
@@ -1101,40 +1100,60 @@ export function ChatView({
     [messages, transcriptMode, isStreaming],
   );
 
-  // ── What the model can still read ──────────────────────────────────
-  // A compaction folds the front of the chat into a summary; "Undo last
-  // prompt" drops the tail. Neither touches what is on screen, so without
-  // this the user reads a conversation half of which, to the model, never
-  // happened. See lib/context-map.ts.
-  const [ctxEvents, setCtxEvents] = useState<ContextEventInfo[]>([]);
-  // Re-read when the transcript grows (an auto-compaction happens mid-run)
-  // and when something changed the context WITHOUT changing the transcript —
-  // an undone prompt adds no message to notice.
+  // A counter that changes whenever something moved the context WITHOUT
+  // adding a message — an undone prompt, a prompt taken out by hand — so
+  // the list below is re-read. The context EVENTS are still logged, but
+  // nothing derives the truth from them any more.
   const contextVersion = useChatStore((s) => s.contextVersion);
   const ctxVersion = messages.length + contextVersion * 100000;
-  useEffect(() => {
-    let alive = true;
-    void api()
-      ?.chat.contextEvents(sessionId ?? "default")
-      .then((evs) => {
-        if (alive) setCtxEvents((evs ?? []) as ContextEventInfo[]);
-      })
-      .catch(() => {
-        /* the transcript reads fine without the map */
-      });
-    return () => {
-      alive = false;
-    };
-  }, [sessionId, ctxVersion]);
 
-  const contextMap = useMemo(
-    () =>
-      buildContextMap(
-        messages.map((m) => m.role),
-        outOfContextRanges(ctxEvents),
-      ),
-    [messages, ctxEvents],
+  /**
+   * Which prompts the model can still read — asked, not derived.
+   *
+   * This used to be arithmetic: replay every compaction and undo, track a
+   * head offset, convert context-relative turn counts into absolute ones,
+   * and hope the boundary landed on the right message. The transcript now
+   * carries the answer per message, so the chat asks for it.
+   */
+  const [outOfContext, setOutOfContext] = useState<Set<string>>(new Set());
+  const refreshContext = useCallback(async () => {
+    if (!sessionId) return;
+    const turns = await api()?.chat.turnContext(sessionId);
+    setOutOfContext(
+      new Set((turns ?? []).filter((t) => !t.inContext).map((t) => t.id)),
+    );
+  }, [sessionId]);
+  useEffect(() => {
+    void refreshContext();
+  }, [refreshContext, ctxVersion, isStreaming]);
+
+  const toggleTurnContext = useCallback(
+    async (messageId: string) => {
+      if (!sessionId) return;
+      const dropped = outOfContext.has(messageId);
+      const r = await api()?.chat.setTurnContext(sessionId, messageId, dropped);
+      // A prompt sent before this build has no transcript turn to point
+      // at; saying nothing would read as a dead button.
+      if (r && !r.ok) return;
+      await refreshContext();
+    },
+    [sessionId, outOfContext, refreshContext],
   );
+
+  /**
+   * A turn is dropped by its PROMPT, so every message after a dropped
+   * prompt is dropped too until the next prompt. Walked once here rather
+   * than asked per message.
+   */
+  const droppedRows = useMemo(() => {
+    const out = new Set<number>();
+    let dropping = false;
+    messages.forEach((m, i) => {
+      if (m.role === "user") dropping = outOfContext.has(m.id);
+      if (dropping) out.add(i);
+    });
+    return out;
+  }, [messages, outOfContext]);
 
   /** Message index behind a grouped item — tool groups and artifact strips
    * carry it in their id (see groupMessages). */
@@ -1376,16 +1395,12 @@ export function ChatView({
                     // Where this item sits relative to what the model can
                     // still read — see lib/context-map.ts.
                     const msgIdx = indexOfItem(item);
-                    const outOfCtx = msgIdx >= 0 && contextMap.out.has(msgIdx);
-                    const breakHere =
-                      msgIdx >= 0 ? contextMap.markers.get(msgIdx) : undefined;
-                    const withBreak = (nodes: JSX.Element[]): JSX.Element[] =>
-                      breakHere
-                        ? [
-                            <ContextBreak key={`br-${msgIdx}`} ranges={breakHere} />,
-                            ...nodes,
-                          ]
-                        : nodes;
+                    const outOfCtx = msgIdx >= 0 && droppedRows.has(msgIdx);
+                    // No dividers any more: a dropped turn is simply
+                    // fainter. A rule across the chat said "everything
+                    // above here is gone", which stops being true the
+                    // moment a prompt in the MIDDLE is dropped.
+                    const withBreak = (nodes: JSX.Element[]): JSX.Element[] => nodes;
                     if ("type" in item && item.type === "tool-group") {
                       const el = (
                         <MessageScrollerItem
@@ -1432,20 +1447,18 @@ export function ChatView({
                         <MessageRow
                           msg={item as ChatMessage}
                           mode={transcriptMode}
+                          droppedFromContext={outOfContext.has(
+                            (item as ChatMessage).id,
+                          )}
+                          onToggleContext={
+                            isStreaming ? undefined : toggleTurnContext
+                          }
                         />
                       </MessageScrollerItem>
                     );
                     if (!copyBtn) return withBreak([el]);
                     return withBreak([el, <CopyRow key={`copy-${i}`} text={copyBtn} />]);
                   })}
-
-                  {/* Events whose region runs to the end of the transcript —
-                      an Undo of the very last prompt has nothing after it. */}
-                  {contextMap.trailing.length > 0 && (
-                    <MessageScrollerItem messageId="__ctx-tail">
-                      <ContextBreak ranges={contextMap.trailing} />
-                    </MessageScrollerItem>
-                  )}
 
                   {showWorking && (
                     <MessageScrollerItem messageId="__working" scrollAnchor>

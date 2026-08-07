@@ -382,6 +382,8 @@ export interface ElectronAPI {
     send: (payload: {
       sessionId?: string;
       message: string;
+      /** The user bubble's id, tying this prompt to its transcript turn. */
+      userMessageId?: string;
       seed?: { role: "user" | "assistant"; content: string }[];
       mode?: string;
       space?: string;
@@ -421,6 +423,14 @@ export interface ElectronAPI {
       sessionId: string,
       count?: number,
     ) => Promise<{ removed: number; turnsLeft: number; messagesDropped: number }>;
+    turnContext: (
+      sessionId: string,
+    ) => Promise<{ id: string; inContext: boolean }[]>;
+    setTurnContext: (
+      sessionId: string,
+      messageId: string,
+      inContext: boolean,
+    ) => Promise<{ ok: boolean; changed: number }>;
     undoableTurns: (sessionId: string) => Promise<number>;
     reset: (sessionId?: string) => Promise<{ ok: boolean }>;
     forkTranscript: (

@@ -1114,7 +1114,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         ? await rebuildAttachments(carried)
         : undefined;
 
-      get().addUserMessage(text, carried);
+      const bubble = get().addUserMessage(text, carried);
       get().startStreaming();
       const eff = localStorage.getItem(`${STORAGE_PREFIX}effort`);
       const effort =
@@ -1122,6 +1122,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
       await bridge?.chat.send({
         sessionId,
         message: text,
+        // The transcript tags its user turn with this, so the chat can
+        // later point at exactly this turn — see setTurnContext.
+        userMessageId: bubble.id,
         seed,
         space: state.space,
         effort,

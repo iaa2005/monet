@@ -56,6 +56,9 @@ interface ChatAttachment {
 interface ChatSendPayload {
   sessionId?: string;
   message: string;
+  /** The id of the user bubble the renderer drew for this prompt — the one
+   * thread between the chat's messages and the model's transcript. */
+  userMessageId?: string;
   /** Optional text-only history to seed a reopened session before the first send. */
   seed?: { role: "user" | "assistant"; content: string }[];
   /** Chat mode ("auto" | "plan" | "concise"). */
@@ -482,6 +485,10 @@ export function registerChatIPC(): void {
     livePermissionMode.set(sessionId, mode);
 
     const runOptions = {
+      // The bubble the renderer drew for this prompt. It threads the two
+      // tables together, so the chat can later say which turn a message
+      // belongs to without counting.
+      userMessageId: payload.userMessageId,
       signal: abort.signal,
       modeDirective:
         [modeDirectiveFor(mode), voiceDirectiveFor(payload.voiceGender)]

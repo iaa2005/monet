@@ -60,7 +60,6 @@
     "smoke:richtext": "node scripts/renderer-probe.mjs scripts/rich-text-probe.ts",
     "smoke:wikilinks": "node scripts/renderer-probe.mjs scripts/wikilinks-probe.ts",
     "smoke:notebook": "node scripts/renderer-probe.mjs scripts/notebook-probe.ts",
-    "smoke:ctxmap": "node scripts/renderer-probe.mjs scripts/context-map-probe.ts",
     "smoke:mcpoauth": "node scripts/smoke-agent.mjs scripts/mcp-oauth-probe.ts",
     "smoke:acp": "node scripts/acp-probe.mjs",
     "smoke:icons": "node scripts/renderer-probe.mjs scripts/icons-probe.ts",

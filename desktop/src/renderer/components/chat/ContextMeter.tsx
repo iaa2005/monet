@@ -108,14 +108,17 @@ export function ContextMeter({
     setUndoable(0);
   }, [sessionId]);
 
-  // How many prompts are still IN the model's context — not how many bubbles
-  // are on screen. After a compaction those differ, and the honest number is
-  // the one that can actually be undone.
+  // How many prompts the model still reads, and how many were taken out —
+  // counted from the transcript's own flags rather than reconstructed by
+  // replaying past operations. Both numbers come from one list, so they
+  // cannot disagree with each other or with the chat.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const n = await api()?.chat.undoableTurns(sessionId ?? "default");
-      if (!cancelled && typeof n === "number") setUndoable(n);
+      const turns = await api()?.chat.turnContext(sessionId ?? "default");
+      if (cancelled || !turns) return;
+      setUndoable(turns.filter((t) => t.inContext).length);
+      setUndone(turns.filter((t) => !t.inContext).length);
     })();
     return () => {
       cancelled = true;
@@ -303,8 +306,11 @@ export function ContextMeter({
           <div className="mt-2.5 border-t border-border pt-2">
             <div className="flex items-center gap-2 text-[11px]">
               <span className="flex-1 text-muted-foreground">
-                {undone
-                  ? `Removed ${undone} prompt${undone === 1 ? "" : "s"} from context`
+                {/* Both numbers, when any prompt is out: "how much is
+                    gone" and "how much is left" answer different
+                    questions, and showing only the first hid the second. */}
+                {undone > 0
+                  ? `${undone} prompt${undone === 1 ? "" : "s"} removed · ${undoable} still in context`
                   : `${undoable} prompt${undoable === 1 ? "" : "s"} in context`}
               </span>
               <button

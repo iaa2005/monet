@@ -368,6 +368,15 @@ const homeDirective = (): string =>
 // ─── Agent loop ─────────────────────────────────────────────────────────
 
 export interface AgentRunOptions {
+  /**
+   * The id of the user bubble this prompt is drawn as.
+   *
+   * The chat and the model transcript are two tables, and this is the one
+   * thread between them. Without it the transcript would mint its own id
+   * and the chat could not say "this bubble is that turn" — which is
+   * exactly the arithmetic-by-counting the flag replaced.
+   */
+  userMessageId?: string;
   maxTurns?: number;
   signal?: AbortSignal;
   /** Prepended to the system prompt (used by chat modes like Plan/Concise). */
@@ -1449,6 +1458,10 @@ async function runAgentScoped(
 
   const userMsg: LLMMessage = { role: "user", content: turnContent };
   messages.push(userMsg);
+  // The bubble's id, so the chat can point at this turn later. Without it
+  // the two sides could only be matched by counting, which is the thing
+  // the flag exists to stop.
+  if (options.userMessageId) messageIds.set(userMsg, options.userMessageId);
   if (hiddenTurn) hiddenTurns.add(userMsg);
   persistTranscript(sessionId);
 
