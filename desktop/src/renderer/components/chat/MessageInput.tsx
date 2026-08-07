@@ -47,6 +47,11 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { useChatStore, type StagedAttachment } from "@/stores/chatStore";
+import {
+  clampComposerHeight,
+  COMPOSER_AUTO_MAX_HEIGHT,
+  COMPOSER_DEFAULT_HEIGHT,
+} from "@shared/composer-height";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -376,6 +381,56 @@ export function MessageInput({
     [applyText],
   );
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // ─── The box's height, when the user has said what it should be ───────
+  //
+  // null = grow with the text and stop at the usual ceiling, which is what
+  // it has always done. A drag on the top edge replaces the guess with a
+  // number; a double-click there gives it back. Kept in ui-prefs.json for
+  // the same reason the sessions filters are: localStorage is keyed by
+  // origin, and in dev the origin carries vite's port, which moves.
+  const [height, setHeight] = useState<number | null>(null);
+  const [resizing, setResizing] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const prefs = await api()?.settings.uiPrefs();
+      if (!cancelled && prefs) setHeight(prefs.composerHeight ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** Drag the top edge: up is taller, because up is where the box grows. */
+  const startResize = (e: React.PointerEvent<HTMLDivElement>): void => {
+    // Not a text selection, and not a focus change — the caret stays where
+    // it was so you can resize mid-sentence.
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = height ?? taRef.current?.height() ?? COMPOSER_DEFAULT_HEIGHT;
+    let latest = clampComposerHeight(startH);
+    setResizing(true);
+    const move = (ev: PointerEvent): void => {
+      latest = clampComposerHeight(startH + (startY - ev.clientY));
+      setHeight(latest);
+    };
+    const stop = (): void => {
+      window.removeEventListener("pointermove", move);
+      setResizing(false);
+      // Written once, at the end: a preference file rewritten on every
+      // pointer move is a lot of disk for a number nobody reads until the
+      // next launch.
+      void api()?.settings.setUiPrefs({ composerHeight: latest });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+  };
+
+  const resetHeight = (): void => {
+    setHeight(null);
+    void api()?.settings.setUiPrefs({ composerHeight: null });
+  };
 
   useEffect(() => {
     if (!notice) return;
@@ -1350,7 +1405,10 @@ export function MessageInput({
         )}
         
         <div
-          className="mb-2 glass-panel p-3 pb-2 rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25"
+          className={cn(
+            "relative mb-2 glass-panel p-3 pb-2 rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25",
+            resizing && "border-foreground/25",
+          )}
           // Ctrl+V with a screenshot, an image or a copied media file lands
           // it as an attachment chip; plain text keeps its normal paste.
           onPaste={(e) => {
@@ -1361,6 +1419,32 @@ export function MessageInput({
             }
           }}
         >
+          {/* The top edge, made draggable. Nothing is drawn until the pointer
+              is on it, so the composer keeps its clean line; the grip appears
+              where the cursor already says the edge can be moved. */}
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize the message box"
+            title={
+              height
+                ? "Drag to resize — double-click to fit the text again"
+                : "Drag to resize"
+            }
+            onPointerDown={startResize}
+            onDoubleClick={resetHeight}
+            className="group absolute inset-x-3 -top-1.5 z-10 flex h-3 cursor-ns-resize items-center justify-center"
+          >
+            <div
+              className={cn(
+                "h-1 w-14 rounded-full transition-colors",
+                // The brand hue, like every other thing you can grab or
+                // follow — one number decides it, in globals.css. Solid:
+                // a washed-out grip on a glass panel reads as disabled.
+                resizing ? "bg-brand" : "bg-transparent group-hover:bg-brand",
+              )}
+            />
+          </div>
 
           <div className="flex gap-2.5 w-full items-end">
             <TokenInput
@@ -1446,7 +1530,14 @@ export function MessageInput({
                 }
               }}
               placeholder="Type / for commands"
-              className="composer-input min-w-0 flex-1 max-h-50 min-h-7 overflow-y-auto pl-1 text-sm leading-relaxed outline-none"
+              className="composer-input min-w-0 flex-1 min-h-7 overflow-y-auto pl-1 text-sm leading-relaxed outline-none"
+              // Dragged: exactly that tall, one line in it or forty.
+              // Otherwise: grow with the text, and stop at ten lines.
+              style={
+                height
+                  ? { height, maxHeight: height }
+                  : { maxHeight: COMPOSER_AUTO_MAX_HEIGHT }
+              }
             />
 
             <input

@@ -41,6 +41,9 @@ const { getUiPrefs, setUiPrefs } = await import('../src/main/app/ui-prefs.js')
 const { sanitiseFilters, DEFAULT_FILTERS } = await import(
   '../src/shared/session-filters.js'
 )
+const { COMPOSER_MIN_HEIGHT, COMPOSER_MAX_HEIGHT } = await import(
+  '../src/shared/composer-height.js'
+)
 const file = join(dataDir, 'ui-prefs.json')
 
 // ─── Nothing saved yet ──────────────────────────────────────────────────
@@ -118,6 +121,52 @@ const file = join(dataDir, 'ui-prefs.json')
     'saving the filters keeps the rest of the file',
     !!raw['somethingElse'],
     raw,
+  )
+}
+
+// ─── The height the user dragged the composer to ────────────────────────
+//
+// Same file, same rules, and one thing of its own: null is a VALUE here
+// ("go back to growing with the text"), not "nothing to save". A patch
+// keyed on truthiness would make the reset the one setting that cannot be
+// stored.
+
+{
+  writeFileSync(file, JSON.stringify({ sessionFilters: { view: 'compact' } }), 'utf-8')
+  check('a composer nobody dragged has no height', getUiPrefs().composerHeight === null)
+
+  setUiPrefs({ composerHeight: 320 })
+  check('a dragged height comes back', getUiPrefs().composerHeight === 320)
+  check(
+    '…and did not cost the filters saved beside it',
+    getUiPrefs().sessionFilters.view === 'compact',
+  )
+
+  setUiPrefs({ composerHeight: null })
+  check(
+    'and resetting it is a save, not a no-op',
+    getUiPrefs().composerHeight === null,
+    getUiPrefs().composerHeight,
+  )
+
+  setUiPrefs({ composerHeight: 99_999 })
+  check(
+    'a height taller than any screen is clamped, not honoured',
+    getUiPrefs().composerHeight === COMPOSER_MAX_HEIGHT,
+    getUiPrefs().composerHeight,
+  )
+  setUiPrefs({ composerHeight: 3 })
+  check(
+    '…and one too small to type in comes up to a line',
+    getUiPrefs().composerHeight === COMPOSER_MIN_HEIGHT,
+    getUiPrefs().composerHeight,
+  )
+
+  writeFileSync(file, JSON.stringify({ composerHeight: 'tall please' }), 'utf-8')
+  check(
+    'a hand-edited nonsense height means "grow with the text"',
+    getUiPrefs().composerHeight === null,
+    getUiPrefs().composerHeight,
   )
 }
 

@@ -23,10 +23,14 @@ import {
   sanitiseFilters,
   type SessionFilters,
 } from "../../shared/session-filters.js";
+import { sanitiseComposerHeight } from "../../shared/composer-height.js";
 
 export interface UiPrefs {
   /** How the sessions list is filtered, sorted and drawn. */
   sessionFilters: SessionFilters;
+  /** The height the user dragged the message box to, or null to let it
+   * grow with the text. */
+  composerHeight: number | null;
 }
 
 function prefsPath(): string {
@@ -47,7 +51,10 @@ function readFile(): Record<string, unknown> {
 
 export function getUiPrefs(): UiPrefs {
   const raw = readFile();
-  return { sessionFilters: sanitiseFilters(raw["sessionFilters"]) };
+  return {
+    sessionFilters: sanitiseFilters(raw["sessionFilters"]),
+    composerHeight: sanitiseComposerHeight(raw["composerHeight"]),
+  };
 }
 
 /**
@@ -63,10 +70,17 @@ export function setUiPrefs(patch: Partial<UiPrefs>): UiPrefs {
   const next: Record<string, unknown> = { ...current };
   if (patch.sessionFilters)
     next["sessionFilters"] = sanitiseFilters(patch.sessionFilters);
+  // Present-but-null is how the composer says "go back to growing with the
+  // text", so this one is keyed on the property existing, not on truthiness.
+  if ("composerHeight" in patch)
+    next["composerHeight"] = sanitiseComposerHeight(patch.composerHeight);
   try {
     writeFileSync(prefsPath(), JSON.stringify(next, null, 2), "utf-8");
   } catch {
     // A read-only data folder is not worth breaking the UI over.
   }
-  return { sessionFilters: sanitiseFilters(next["sessionFilters"]) };
+  return {
+    sessionFilters: sanitiseFilters(next["sessionFilters"]),
+    composerHeight: sanitiseComposerHeight(next["composerHeight"]),
+  };
 }

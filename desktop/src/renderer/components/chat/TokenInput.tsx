@@ -42,6 +42,9 @@ export interface TokenInputHandle {
   insertChip(label: string, tone: number, kind?: RefKind): void;
   /** Caret offset into the plain string, for the "/" menu. */
   caretOffset(): number;
+  /** The box's drawn height in px — where a drag on its top edge starts
+   * from, since until then the height is whatever the text made it. */
+  height(): number;
 }
 
 interface TokenInputProps {
@@ -63,6 +66,9 @@ interface TokenInputProps {
   onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void;
   placeholder: string;
   className?: string;
+  /** For the one thing a class cannot say: the height the user dragged
+   * this box to, which is a number that came from a pointer. */
+  style?: React.CSSProperties;
 }
 
 
@@ -258,7 +264,16 @@ function render(
 
 export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
   function TokenInput(
-    { initialText, toneFor, kindFor, onChange, onKeyDown, placeholder, className },
+    {
+      initialText,
+      toneFor,
+      kindFor,
+      onChange,
+      onKeyDown,
+      placeholder,
+      className,
+      style,
+    },
     ref,
   ) {
     const boxRef = useRef<HTMLDivElement>(null);
@@ -331,6 +346,7 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
         emit();
       },
       caretOffset: () => (boxRef.current ? caretOffsetIn(boxRef.current) : 0),
+      height: () => boxRef.current?.getBoundingClientRect().height ?? 0,
     }));
 
     return (
@@ -376,6 +392,7 @@ export const TokenInput = forwardRef<TokenInputHandle, TokenInputProps>(
           emit();
         }}
         className={className}
+        style={style}
       />
     );
   },
