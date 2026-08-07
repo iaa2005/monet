@@ -41,16 +41,26 @@
  * tempted to add a whole-page mode for this model should read that
  * sentence again.
  *
- * And a second oddity that survives from 1.5: this model is FASTER ON THE
- * CPU than on the iGPU, which is why the CPU is listed first.
+ * And a second oddity that survives from 1.5, now with a number: this
+ * model is FASTER ON THE CPU than on the iGPU, and at q8 it is not close —
+ * 92s a page against 246s. int8 matmuls have no WebGPU kernel here, so the
+ * GPU run is mostly the fallback shuttling tensors back to the processor.
+ * That is why the CPU is listed first, and why the bench honours the order.
  */
 
 import type { OcrModelInfo } from "./types.js";
 
 export const paddleOcrVl: OcrModelInfo = {
   id: "paddleocr-vl",
-  // Off until it has been measured through the real pipeline against the
-  // models that already ship — `npm run suite:ocr` is that measurement.
+  // Off for a reason that is no longer about quality: it has now been
+  // measured through the real pipeline and it holds up (72s a page on the
+  // processor, against 75s for the default; fewer mangled Russian words
+  // than either shipped model; the only one that answers with Markdown
+  // tables rather than HTML). What it does not have is anywhere to be
+  // downloaded from. Offering a model whose "Install" button cannot work
+  // is worse than not offering it, so this waits on somebody publishing
+  // the build — after which `enabled: true` and a new `repo` is the whole
+  // change.
   enabled: false,
   engine: "paddle",
   // Not a hub path: built by onnx-lab/scripts/export_paddleocr_vl.py.
@@ -61,7 +71,8 @@ export const paddleOcrVl: OcrModelInfo = {
   languages: "English, Chinese, Russian, and 100+ more",
   components: ["vision_encoder", "decoder", "embedding"],
   prompt: "OCR:",
-  secondsPerPage: 91,
+  // Measured over the thirteen benchmark pages, on the processor.
+  secondsPerPage: 72,
   short: "Great tables, sound Russian.",
   variants: [
     {

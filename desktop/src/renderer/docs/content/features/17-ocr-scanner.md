@@ -75,15 +75,15 @@ a page of bibliography, mixed Russian and English.
 
 🟢 good · 🟡 usable · 🟠 poor
 
-| | LightOnOCR-2 1B | GLM-OCR | PaddleOCR-VL *(shelved)* | Qwen3-VL 2B *(shelved)* |
+| | LightOnOCR-2 1B | GLM-OCR | PaddleOCR-VL 1.6 *(shelved)* | Qwen3-VL 2B *(shelved)* |
 | --- | --- | --- | --- | --- |
-| **Speed** | 🟡 75s a page | 🟢 50s | 🟠 91s | 🟠 173s |
-| **Load on the machine** | 🟢 725 MB | 🟢 703 MB | 🟡 858 MB | 🟠 1.45 GB |
-| **Cyrillic** | 🟢 clean, rare slips | 🟠 «Ввчиленая», «глобных резания», «OBШИЕ» in Latin letters | 🟠 «Кваантовый», «Кубин» | 🟠 narrates instead of reading |
+| **Speed** | 🟡 64s a page | 🟢 49s | 🟡 72s, on the processor | 🟠 173s |
+| **Load on the machine** | 🟢 725 MB | 🟢 703 MB | 🟠 1.15 GB | 🟠 1.45 GB |
+| **Cyrillic** | 🟢 11 half-Latin words in thirteen pages | 🟠 22 | 🟢 10 | 🟠 narrates instead of reading |
 | **Formulas** | 🟢 correct LaTeX | 🟢 correct, untidy spacing | 🟢 correct | 🟠 |
-| **Cyrillic inside formulas** | 🟠 `\text{BCTP}` for «встр» | 🟠 same | 🟠 same | 🟠 |
-| **Tables** | 🟢 correct, none invented | 🟡 reads them, but wraps 5 of 13 headings in tables that are not tables | 🟢 best of the four (OTSL) | 🟠 loops until out of tokens |
-| **Code blocks** | 🟢 fenced | 🟠 missed the fence | — | — |
+| **Cyrillic inside formulas** | 🟠 `\text{BCTP}` for «встр» | 🟠 drops the subscript instead | 🟠 `\mathrm{B c t p}` | 🟠 |
+| **Tables** | 🟢 found all four, invented none | 🟠 found all four and invented **seven** | 🟢 found all four, invented one — and the only one that answers in Markdown rather than HTML | 🟠 loops until out of tokens |
+| **Code blocks** | 🟢 fenced | 🟡 fenced, and fenced a page with no code in it | 🟢 fenced, line numbers kept | — |
 
 Three of the nine things worth measuring turn out not to depend on the
 model at all — they are the pipeline, and every model gets them:
@@ -94,9 +94,15 @@ model at all — they are the pipeline, and every model gets them:
 | **Page orientation** | 🟢 90/180/270 detected and corrected before anything reads the page; a scan 1–15° off is straightened from the angle of its own text lines. |
 | **Extracting pictures** | 🟢 Figures are cut out into `<name>-layout/` and referenced from the Markdown — never described by a model that would invent a caption. |
 
-All timings on an Intel Arc integrated GPU. **Your machine is not that
-machine**: run `npm run suite:ocr -- <folder>` on your own documents, which
-is the only benchmark that means anything.
+Timings are averages over those thirteen pages, each model on the hardware
+its own entry recommends — the two shipped ones on an Intel Arc integrated
+GPU, PaddleOCR on the processor, where it is nearly three times faster than
+on that GPU because its int8 arithmetic has no kernel there. The table
+count is scored against the layout detector, which found four real tables:
+"invented" means a heading or a paragraph came back wrapped in one.
+
+**Your machine is not that machine**: run `npm run suite:ocr -- <folder>` on
+your own documents, which is the only benchmark that means anything.
 
 ## What it gets wrong
 
@@ -105,7 +111,9 @@ Honest list, from measuring rather than from the model cards:
 - **Cyrillic inside `\text{}`.** Every model here writes `\text{BCTP}` for
   «встр» and `A.N.` for «А.Н.» — Latin letters shaped like the Cyrillic
   ones. The mathematics is right; the labels inside it are not, and this is
-  the one failure all four share.
+  the one failure all four share. In running text the same models write
+  «встречи» perfectly well; it is specifically the inside of a formula
+  where the Cyrillic turns into its Latin twins.
 - **Occasional word-level slips** on dense pages: «Границные» for
   «Граничные».
 - **Rotation beyond a right angle plus a few degrees.** A page at 30° is
