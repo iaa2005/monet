@@ -93,11 +93,11 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
       <div className="mx-auto w-full max-w-2xl px-6 py-12">
         {step === "welcome" && (
           <div className="animate-in fade-in duration-500">
-            <div className="text-center">
+            <div className="text-left">
               <h1 className="font-display text-6xl font-semibold tracking-tight text-foreground">
                 Code Monet
               </h1>
-              <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-muted-foreground">
+              <p className="mr-auto mt-4 max-w-md text-[15px] leading-relaxed text-muted-foreground">
                 A desktop AI coding agent. The power of frontier models, with a
                 native desktop experience — tools, connectors and automations,
                 all under your control.
