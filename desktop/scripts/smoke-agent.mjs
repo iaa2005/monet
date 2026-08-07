@@ -57,7 +57,21 @@ await build({
         entryFileNames: 'smoke-probe.mjs',
         format: 'es',
         banner: vendorRequireBanner,
+        // ONE chunk, or the probe tests a function that is not the one the
+        // app runs. Rollup propagates a parameter's value into a function
+        // when it believes it can see every caller — and it does not count
+        // the calls the entry makes through a dynamic chunk's namespace. It
+        // rewrote `setInContext(m, inContext)` to an unconditional
+        // `outOfContext.add(m)` on exactly that reasoning: every call site
+        // INSIDE the chunk passed false. The probe then "proved" that a
+        // prompt could not be put back into context, while the real build
+        // (one graph, all callers visible) was correct all along.
+        inlineDynamicImports: true,
       },
+      // …and no tree-shaking, for the same reason: the propagation above is
+      // part of it, and a harness that rewrites the code under test can only
+      // report on code nobody ships. The bundle gets bigger; it stays true.
+      treeshake: false,
     },
     minify: false,
     target: 'node20',

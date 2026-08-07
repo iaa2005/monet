@@ -24,6 +24,11 @@ await build({
       // Code both processes share (e.g. how a tool execution is named) —
       // kept in sync with electron.vite.config.ts and tsconfig paths.
       { find: '@shared', replacement: resolve('src/shared') },
+      // Some probes reach main-side leaf modules (the checkpoint store, the
+      // file ledger) that import electron for a path or two. With
+      // tree-shaking off those imports survive into the bundle, so they need
+      // the same stub the main-side harness uses.
+      { find: 'electron', replacement: resolve('scripts/smoke-electron-stub.ts') },
     ],
   },
   build: {
@@ -36,6 +41,13 @@ await build({
     rollupOptions: {
       input: resolve(probe),
       output: { entryFileNames: `${name}.mjs`, format: 'es' },
+      // A probe must run the code the app runs. Rollup's tree-shaking
+      // propagates a parameter's value into a function when it thinks it can
+      // see every caller, and a probe calling through an import namespace is
+      // not counted — it rewrote `setInContext(m, inContext)` into an
+      // unconditional add, and the probe duly reported that a prompt could
+      // not be put back. See scripts/smoke-agent.mjs for the whole story.
+      treeshake: false,
     },
   },
 })

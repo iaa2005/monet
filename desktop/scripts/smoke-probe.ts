@@ -1217,8 +1217,15 @@ async function main() {
   // files. Lives here rather than in a renderer probe because it operates on
   // the agent's real conversation state, which needs the vendor runtime.
   {
-    const { seedConversation, undoPrompts, undoableTurnCount, resetConversation } =
-      await import('../src/main/agent/index.js')
+    const {
+      seedConversation,
+      undoPrompts,
+      undoableTurnCount,
+      turnContextState,
+      setTurnContext,
+      messagesInContext,
+      resetConversation,
+    } = await import('../src/main/agent/index.js')
     const sid = 'undo-probe'
     resetConversation(sid)
     seedConversation(sid, [
@@ -1235,15 +1242,37 @@ async function main() {
     const one = await undoPrompts(sid, 1)
     check('undoing one removes one', one.removed === 1)
     check('and reports what is left', one.turnsLeft === 2)
-    check('the context really shrank', (await undoableTurnCount(sid)) === 2)
+    check('two prompts are still being sent', (await undoableTurnCount(sid)) === 2)
+    // Marked, not truncated — that is what makes it reversible and what lets
+    // the chat go on showing a prompt it has stopped sending.
+    check(
+      'nothing was deleted to achieve it',
+      turnContextState(sid).length === 3,
+      turnContextState(sid),
+    )
+    check(
+      'and the dropped turn really is out of the request',
+      messagesInContext(sid).length === 4,
+      messagesInContext(sid).length,
+    )
 
     const two = await undoPrompts(sid, 2)
     check('undoing two removes two', two.removed === 2)
-    check('the context is now empty of prompts', (await undoableTurnCount(sid)) === 0)
+    check('no prompt is left in context', (await undoableTurnCount(sid)) === 0)
+    check('but all three are still on record', turnContextState(sid).length === 3)
 
     // Asking for more than exists must clamp, not throw or wrap around.
     const over = await undoPrompts(sid, 99)
     check('undoing past the start removes nothing', over.removed === 0)
+
+    // …and every one of them can come back.
+    for (const t of turnContextState(sid)) setTurnContext(sid, t.id, true)
+    check('all three can be put back', (await undoableTurnCount(sid)) === 3)
+    check(
+      '…and the model is sent the whole conversation again',
+      messagesInContext(sid).length === 6,
+      String(messagesInContext(sid).length),
+    )
 
     resetConversation(sid)
     check('undo on an empty session is a no-op', (await undoPrompts(sid, 1)).removed === 0)
