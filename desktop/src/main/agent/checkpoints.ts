@@ -111,6 +111,55 @@ function isInited(gitDir: string): boolean {
 }
 
 /**
+ * The folder a shadow repo's commits were taken FROM.
+ *
+ * The store is keyed by chat, not by folder, and the two ends disagreed
+ * about which folder they meant: snapshots were taken in the run's own
+ * cwd, while rewind and the diff used the app's global workspace. Switch
+ * the workspace between a turn and a rewind and `reset --hard` wrote one
+ * folder's files into another and deleted whatever the first did not have
+ * — silently, and with no way back.
+ *
+ * So each store records its work-tree, once, and a rewind that does not
+ * match refuses instead of guessing. Recorded next to the git data rather
+ * than in the session DB because it is a property of the STORE: the file
+ * and the commits it describes cannot be separated, moved or restored
+ * apart from each other.
+ */
+function worktreeMarker(gitDir: string): string {
+  return join(gitDir, "monet-worktree");
+}
+
+function rememberWorktree(gitDir: string, workspace: string): void {
+  try {
+    if (!existsSync(worktreeMarker(gitDir)))
+      writeFileSync(worktreeMarker(gitDir), workspace, "utf8");
+  } catch {
+    /* best-effort: an unmarked store still works, it just cannot be checked */
+  }
+}
+
+/** The folder this store belongs to, or null for a store made before the
+ * marker existed. */
+export function storedWorktree(gitDir: string): string | null {
+  try {
+    const p = worktreeMarker(gitDir);
+    return existsSync(p) ? readFileSync(p, "utf8").trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Same folder? Compared case-insensitively and without a trailing
+ * separator, because Windows hands the same directory back spelled several
+ * ways and a refusal on a spelling difference is its own bug. */
+export function sameFolder(a: string, b: string): boolean {
+  const norm = (s: string): string =>
+    s.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return norm(a) === norm(b);
+}
+
+/**
  * Snapshot the workspace into the chat's shadow repo. Best-effort: returns the
  * new commit sha, or null if there's no workspace / git isn't available.
  */
@@ -136,6 +185,7 @@ export async function snapshotWorkspace(
     }
     ensureExcludes(gitDir);
     ensurePacking(gitDir);
+    rememberWorktree(gitDir, workspace);
     const add = await git(workspace, gitDir, ["add", "-A"]);
     if (add.code !== 0) {
       console.error(
@@ -256,6 +306,19 @@ export async function rewindWorkspace(
     return { ok: false, error: "No checkpoints exist for this chat yet." };
   if (!/^[0-9a-f]{7,40}$/i.test(sha))
     return { ok: false, error: "Invalid checkpoint id." };
+  // The folder these commits were taken from. Resetting them onto a
+  // DIFFERENT folder does not fail — it writes one project's files over
+  // another's and deletes whatever the first did not contain. Refusing is
+  // the only safe answer, and it is a refusal the user can act on.
+  const owner = storedWorktree(gitDir);
+  if (owner && !sameFolder(owner, workspace))
+    return {
+      ok: false,
+      error:
+        `This chat's checkpoints were taken in ${owner}, and the workspace is now ${workspace}. ` +
+        `Rewinding would write one folder's files over the other. Switch back to ${owner} to rewind.`,
+    };
+
   const kind = await git(workspace, gitDir, ["cat-file", "-t", sha], 15_000);
   if (kind.code !== 0 || kind.stdout.trim() !== "commit")
     return { ok: false, error: "That checkpoint is no longer available." };
