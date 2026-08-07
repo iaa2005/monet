@@ -376,7 +376,7 @@ async function maybeAutoTitle(
  * to disagree about. A home chat's folder is its sandbox; a code chat's is
  * whatever it was working in when the snapshots were taken.
  */
-async function checkpointFolder(sessionId: string): Promise<string> {
+export async function checkpointFolder(sessionId: string): Promise<string> {
   const { shadowDir, storedWorktree } = await import("../agent/checkpoints.js");
   const owner = storedWorktree(shadowDir(sessionId));
   if (owner) return owner;

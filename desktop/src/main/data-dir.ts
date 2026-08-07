@@ -26,6 +26,13 @@ function defaultDataDir(): string {
 let cached: string | null = null;
 
 function readOverride(): string | null {
+  // An env override beats the stored one, and is never written back. This is
+  // how a test run gets its OWN data dir: the alternative — pointing the
+  // bootstrap file at a temp folder — changes where the user's real app
+  // keeps its chats, and a probe that crashes before restoring it would
+  // leave them looking at an empty install.
+  const fromEnv = process.env.MONET_DATA_DIR;
+  if (typeof fromEnv === "string" && fromEnv.trim()) return fromEnv;
   try {
     const f = BOOTSTRAP_FILE();
     if (existsSync(f)) {

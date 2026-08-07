@@ -24,8 +24,20 @@ import { homedir } from "os";
 import { app } from "electron";
 import { getDataDir } from "../data-dir.js";
 import { getSessionStore } from "../session/store.js";
-import { loadTranscriptWithMeta } from "../session/transcript.js";
-import { runAgent } from "../agent/index.js";
+import {
+  listContextEvents,
+  loadTranscriptWithMeta,
+} from "../session/transcript.js";
+import {
+  compactSessionNow,
+  estimateSessionTokens,
+  messagesInContext,
+  runAgent,
+  setTurnContext,
+  turnContextState,
+  undoPrompts,
+} from "../agent/index.js";
+import { estimateTokens } from "../agent/compaction.js";
 import type { LLMEvent } from "../llm/adapter.js";
 
 const PORT = Number(process.env.MONET_DEV_API_PORT || 8765);
@@ -49,6 +61,8 @@ interface ChatBody {
   maxTurns?: number;
   /** Seconds before the run is abandoned (default 300). */
   timeout?: number;
+  /** Id for this prompt's bubble, so a later call can address the turn. */
+  userMessageId?: string;
 }
 
 /** Everything a caller needs to judge a run, in one payload. */
@@ -90,6 +104,11 @@ async function handleChat(body: ChatBody): Promise<unknown> {
   const steps: TurnStep[] = [];
   let finalText = "";
   let stopReason = "";
+  // The two handles a caller needs to address this turn afterwards: the id
+  // the chat draws the bubble with (and setTurnContext takes), and the
+  // commit the folder was at when the turn finished.
+  const userMessageId = body.userMessageId || `dev-${randomBytes(6).toString("hex")}`;
+  let checkpointSha = "";
 
   const abort = new AbortController();
   const timer = setTimeout(
@@ -133,6 +152,9 @@ async function handleChat(body: ChatBody): Promise<unknown> {
       case "message_stop":
         stopReason = ev.stop_reason;
         break;
+      case "checkpoint":
+        checkpointSha = ev.sha;
+        break;
       default:
         break;
     }
@@ -143,6 +165,7 @@ async function handleChat(body: ChatBody): Promise<unknown> {
       signal: abort.signal,
       space,
       cwd,
+      userMessageId,
       permissionMode: body.permissionMode ?? "bypassPermissions",
       maxTurns: body.maxTurns ?? 24,
       providerId: body.providerId,
@@ -164,9 +187,54 @@ async function handleChat(body: ChatBody): Promise<unknown> {
     space,
     cwd,
     stopReason,
+    userMessageId,
+    checkpointSha,
+    text: steps
+      .filter((s) => s.type === "text")
+      .map((s) => s.text ?? "")
+      .join("\n"),
     toolCalls: steps.filter((s) => s.type === "tool").length,
     steps,
   };
+}
+
+/**
+ * What the model is actually being sent, and what it no longer is.
+ *
+ * The same three numbers the context meter draws, from the same functions,
+ * so a harness can check the meter's arithmetic against the transcript on
+ * disk rather than against a second implementation of it.
+ */
+function contextReport(sessionId: string): unknown {
+  const live = messagesInContext(sessionId);
+  const { messages, inContext, ids } = loadTranscriptWithMeta(sessionId);
+  return {
+    sessionId,
+    turns: turnContextState(sessionId),
+    // In memory (what the next request is built from)…
+    inContextMessages: live.length,
+    inContextTokens: estimateTokens(live),
+    allTokens: estimateSessionTokens(sessionId),
+    // …and on disk (what survives a reopen).
+    stored: {
+      messages: messages.length,
+      inContext: inContext.filter(Boolean).length,
+      ids: ids.filter(Boolean).length,
+    },
+    events: listContextEvents(sessionId).map((e) => ({
+      id: e.id,
+      type: e.type,
+      manual: e.payload.manual,
+      undo: e.payload.undo,
+      beforeTokens: e.payload.beforeTokens,
+      afterTokens: e.payload.afterTokens,
+    })),
+  };
+}
+
+/** The session id in a `/verb/<id>` path. */
+function idFrom(path: string, prefix: string): string {
+  return decodeURIComponent(path.slice(prefix.length));
 }
 
 let server: ReturnType<typeof createServer> | null = null;
@@ -205,6 +273,63 @@ export function initDevApi(): void {
           json(res, 200, { sessionId: id, messages });
           return;
         }
+        // ─── Context: what the model can still read ─────────────────────
+        if (path.startsWith("/context/") && req.method === "GET") {
+          json(res, 200, contextReport(idFrom(path, "/context/")));
+          return;
+        }
+        if (path.startsWith("/context/") && req.method === "POST") {
+          const id = idFrom(path, "/context/");
+          const b = JSON.parse((await readBody(req)) || "{}") as {
+            messageId?: string;
+            inContext?: boolean;
+          };
+          if (!b.messageId) {
+            json(res, 400, { error: "messageId is required" });
+            return;
+          }
+          const r = setTurnContext(id, b.messageId, b.inContext !== false);
+          json(res, 200, { ...r, context: contextReport(id) });
+          return;
+        }
+        if (path.startsWith("/undo/") && req.method === "POST") {
+          const id = idFrom(path, "/undo/");
+          const b = JSON.parse((await readBody(req)) || "{}") as {
+            count?: number;
+          };
+          const r = await undoPrompts(id, b.count ?? 1);
+          json(res, 200, { ...r, context: contextReport(id) });
+          return;
+        }
+        if (path.startsWith("/compact/") && req.method === "POST") {
+          const id = idFrom(path, "/compact/");
+          const r = await compactSessionNow(id);
+          json(res, 200, { compacted: r, context: contextReport(id) });
+          return;
+        }
+
+        // ─── Files: the checkpoint side ─────────────────────────────────
+        if (path.startsWith("/rewind/") && req.method === "POST") {
+          const id = idFrom(path, "/rewind/");
+          const b = JSON.parse((await readBody(req)) || "{}") as {
+            sha?: string;
+          };
+          if (!b.sha) {
+            json(res, 400, { error: "sha is required" });
+            return;
+          }
+          const [{ rewindWorkspace }, { checkpointFolder }] = await Promise.all([
+            import("../agent/checkpoints.js"),
+            import("../ipc/chat.js"),
+          ]);
+          const folder = await checkpointFolder(id);
+          json(res, 200, {
+            folder,
+            ...(await rewindWorkspace(id, folder, b.sha)),
+          });
+          return;
+        }
+
         if (path === "/chat" && req.method === "POST") {
           const body = JSON.parse((await readBody(req)) || "{}") as ChatBody;
           if (!body.message) {
