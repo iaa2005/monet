@@ -9,6 +9,7 @@ import type {
   CatalogProviderInfo,
 } from "../../main/llm/models-dev.js";
 import type { ConnectorAccount } from "../../main/connectors/types.js";
+import type { UiPrefs } from "../../main/app/ui-prefs.js";
 import type { UiConnectorService } from "../../main/connectors/services/types.js";
 import type { BrowserConfig } from "../../main/browser/config.js";
 import type { DevServer } from "../../main/browser/dev-servers.js";
@@ -680,6 +681,9 @@ export interface ElectronAPI {
     getDataDir: () => Promise<{ dir: string; isDefault: boolean }>;
     setDataDir: (dir: string) => Promise<{ ok: boolean }>;
     pickDataDir: () => Promise<string | null>;
+    /** Preferences that outlive the window — <dataDir>/ui-prefs.json. */
+    uiPrefs: () => Promise<UiPrefs>;
+    setUiPrefs: (patch: Partial<UiPrefs>) => Promise<UiPrefs>;
   };
   skills: {
     list: () => Promise<SkillInfo[]>;

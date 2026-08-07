@@ -10,6 +10,7 @@ import type {
   PermissionDecision,
 } from "../main/ipc/permissions.js";
 import type { AskUserRequest, AskUserAnswer } from "../main/ipc/ask-user.js";
+import type { UiPrefs } from "../main/app/ui-prefs.js";
 import type { PlanApprovalRequest, PlanDecision } from "../main/ipc/plan.js";
 import type { ConnectorAccount } from "../main/connectors/types.js";
 import type { UiConnectorService } from "../main/connectors/services/types.js";
@@ -476,6 +477,9 @@ const electronAPI = {
       ipcRenderer.invoke("settings:setDataDir", dir),
     pickDataDir: (): Promise<string | null> =>
       ipcRenderer.invoke("settings:pickDataDir"),
+    uiPrefs: (): Promise<UiPrefs> => ipcRenderer.invoke("settings:uiPrefs"),
+    setUiPrefs: (patch: Partial<UiPrefs>): Promise<UiPrefs> =>
+      ipcRenderer.invoke("settings:setUiPrefs", patch),
   },
 
   skills: {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import type { SessionFilters } from "@/components/session-filters";
+import type { SessionFilters } from "@shared/session-filters";
 import {
   AudioLines,
   MoreVertical,

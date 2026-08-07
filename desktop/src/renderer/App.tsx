@@ -47,10 +47,9 @@ import {
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import {
-  loadFilters,
-  saveFilters,
+  DEFAULT_FILTERS,
   type SessionFilters,
-} from "@/components/session-filters";
+} from "@shared/session-filters";
 import { useTaskBadge } from "@/components/BackgroundTasks";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { FilterDropdown } from "@/components/FilterDropdown";
@@ -261,10 +260,27 @@ export default function App(): JSX.Element {
   const browserLayout = useBrowserStore((s) => s.layout);
   void browserLayout;
   const taskBadge = useTaskBadge();
-  // Read once, before first paint, so the list does not flash the default
-  // on every launch — and written back on every change.
-  const [filters, setFilters] = useState<SessionFilters>(loadFilters);
-  useEffect(() => saveFilters(filters), [filters]);
+  // Kept in <dataDir>/ui-prefs.json by main, so it survives a restart, a
+  // moved vite port and a look with a text editor. Read once on mount;
+  // `filtersReady` gates the list so it does not fetch with the defaults
+  // and then fetch again a millisecond later with the real ones.
+  const [filters, setFilters] = useState<SessionFilters>(DEFAULT_FILTERS);
+  const [filtersReady, setFiltersReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const prefs = await api()?.settings.uiPrefs();
+      if (!cancelled && prefs?.sessionFilters) setFilters(prefs.sessionFilters);
+      if (!cancelled) setFiltersReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const changeFilters = useCallback((next: SessionFilters) => {
+    setFilters(next);
+    void api()?.settings.setUiPrefs({ sessionFilters: next });
+  }, []);
   const { theme, setTheme, toggle } = useTheme();
   // Narrow subscriptions only — subscribing to the whole store re-rendered
   // the entire app on every streaming update (a major lag source).
@@ -1637,9 +1653,14 @@ export default function App(): JSX.Element {
                       <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
                         Recents
                       </span>
-                      <FilterDropdown filters={filters} onChange={setFilters} />
+                      <FilterDropdown filters={filters} onChange={changeFilters} />
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto">
+                      {/* Waits for the saved filters. The alternative is a
+                          list that loads with the defaults and reloads a
+                          moment later with the real ones — two queries and
+                          a visible jump, every launch. */}
+                      {filtersReady && (
                       <SessionList
                         onSelect={handleSelectSession}
                         onDelete={handleDeleteSession}
@@ -1653,6 +1674,7 @@ export default function App(): JSX.Element {
                         space={appMode}
                         filters={filters}
                       />
+                      )}
                     </div>
                   </div>
 

@@ -15,7 +15,7 @@ type Submenu = {
   onSelect: (value: string) => void;
 };
 
-import type { SessionFilters as Filters } from "@/components/session-filters";
+import type { SessionFilters as Filters } from "@shared/session-filters";
 
 const STATUS_OPTS: FilterOption[] = [
   { label: "Active", value: "active" },

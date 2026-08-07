@@ -1,33 +1,26 @@
 /**
- * The sessions list remembers how it was set up.
+ * The sessions list remembers how it was set up — in a file.
  *
- * It did not: the filters were a `useState` in App, so every launch put
- * the list back to "all, ungrouped, by recency". Somebody who prefers the
- * compact rows sets that once, not once a day.
+ * It did not remember at all: the filters were a `useState` in App, so
+ * every launch put the list back to "all, ungrouped, by recency". Nobody
+ * sets a filter meaning to set it once.
  *
- * Two things are worth pinning. That a round trip survives — which is the
- * feature — and that a value the app does not recognise costs ONE field
- * rather than the whole set: a filter file written by an older build, or
- * edited by hand, should not leave the list sorted by a mode that no
- * longer exists.
+ * They live in `<dataDir>/ui-prefs.json` now, which is the app's own
+ * convention for a setting that outlives the window — and unlike
+ * localStorage it does not depend on the renderer's origin, which in dev
+ * carries vite's port and changes when the port does.
+ *
+ * Three things worth pinning: a round trip through the real file, that a
+ * value the app does not recognise costs ONE field (a JSON file invites
+ * hand-editing), and that saving one preference does not wipe another.
  *
  *   npm run smoke:filters
  */
 
-// A renderer module in a Node probe: localStorage is the one browser API
-// it touches, so it gets a real one rather than a mock of the code under
-// test.
-const store = new Map<string, string>()
-;(globalThis as unknown as { localStorage: Storage }).localStorage = {
-  getItem: (k: string) => store.get(k) ?? null,
-  setItem: (k: string, v: string) => void store.set(k, String(v)),
-  removeItem: (k: string) => void store.delete(k),
-  clear: () => store.clear(),
-  key: (i: number) => [...store.keys()][i] ?? null,
-  get length() {
-    return store.size
-  },
-} as Storage
+import { mkdtempSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 let failures = 0
 function check(name: string, cond: boolean, detail?: unknown): void {
@@ -40,38 +33,61 @@ function check(name: string, cond: boolean, detail?: unknown): void {
   }
 }
 
-const { loadFilters, saveFilters, DEFAULT_FILTERS } = await import(
-  '../src/renderer/components/session-filters.js'
+const dataDir = mkdtempSync(join(tmpdir(), 'ui-prefs-probe-'))
+const { setDataDir } = await import('../src/main/data-dir.js')
+setDataDir(dataDir)
+
+const { getUiPrefs, setUiPrefs } = await import('../src/main/app/ui-prefs.js')
+const { sanitiseFilters, DEFAULT_FILTERS } = await import(
+  '../src/shared/session-filters.js'
 )
+const file = join(dataDir, 'ui-prefs.json')
 
 // ─── Nothing saved yet ──────────────────────────────────────────────────
 
 {
-  const first = loadFilters()
-  check('a fresh install gets the defaults', first.view === 'full', first)
-  check('…and shows every session', first.status === 'all', first.status)
+  const first = getUiPrefs()
+  check('a fresh install gets the defaults', first.sessionFilters.view === 'full')
+  check('…and shows every session', first.sessionFilters.status === 'all')
+  check('…without having written a file to say so', !existsSync(file))
 }
 
-// ─── The round trip ─────────────────────────────────────────────────────
+// ─── The round trip, through the real file ──────────────────────────────
 
 {
-  saveFilters({ ...DEFAULT_FILTERS, view: 'compact', group: 'date' })
-  const back = loadFilters()
+  setUiPrefs({
+    sessionFilters: { ...DEFAULT_FILTERS, view: 'compact', group: 'date' },
+  })
+  check('it wrote the file', existsSync(file))
+
+  const onDisk = JSON.parse(readFileSync(file, 'utf-8')) as {
+    sessionFilters?: { view?: string }
+  }
+  check(
+    'and the file says what it should — readable, not encoded',
+    onDisk.sessionFilters?.view === 'compact',
+    onDisk,
+  )
+
+  const back = getUiPrefs().sessionFilters
   check('a compact list is still compact next launch', back.view === 'compact')
   check('…and it did not forget the rest', back.group === 'date', back)
 
-  saveFilters({ ...back, view: 'full' })
-  check('switching back sticks too', loadFilters().view === 'full')
+  setUiPrefs({ sessionFilters: { ...back, view: 'full' } })
+  check('switching back sticks too', getUiPrefs().sessionFilters.view === 'full')
 }
 
-// ─── Junk in storage ────────────────────────────────────────────────────
+// ─── Somebody edited the file ───────────────────────────────────────────
 
 {
-  store.set(
-    'monet.session-filters',
-    JSON.stringify({ view: 'enormous', sort: 'vibes', group: 'date' }),
+  writeFileSync(
+    file,
+    JSON.stringify({
+      sessionFilters: { view: 'enormous', sort: 'vibes', group: 'date' },
+    }),
+    'utf-8',
   )
-  const cleaned = loadFilters()
+  const cleaned = getUiPrefs().sessionFilters
   check(
     'an unknown view falls back rather than rendering nothing',
     cleaned.view === 'full',
@@ -84,8 +100,35 @@ const { loadFilters, saveFilters, DEFAULT_FILTERS } = await import(
     cleaned.group,
   )
 
-  store.set('monet.session-filters', '{not json')
-  check('a corrupt file is not a crash', loadFilters().view === 'full')
+  writeFileSync(file, '{not json', 'utf-8')
+  check('a corrupt file is not a crash', getUiPrefs().sessionFilters.view === 'full')
+}
+
+// ─── One preference does not erase the next ─────────────────────────────
+
+{
+  writeFileSync(
+    file,
+    JSON.stringify({ somethingElse: { kept: true } }),
+    'utf-8',
+  )
+  setUiPrefs({ sessionFilters: { ...DEFAULT_FILTERS, view: 'compact' } })
+  const raw = JSON.parse(readFileSync(file, 'utf-8')) as Record<string, unknown>
+  check(
+    'saving the filters keeps the rest of the file',
+    !!raw['somethingElse'],
+    raw,
+  )
+}
+
+// ─── The sanitiser both sides share ─────────────────────────────────────
+
+{
+  check(
+    'garbage in, defaults out',
+    sanitiseFilters(null).view === 'full' &&
+      sanitiseFilters('nonsense').sort === 'recency',
+  )
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nSESSION FILTERS REMEMBERED')
