@@ -77,8 +77,18 @@ app.whenReady().then(async () => {
   );
 
   for (const model of models) {
-    // Every model gets the same settings apart from which model it is.
-    setOcrConfig({ modelId: model.id, dtype: model.variants[0].dtype });
+    // Every model gets the same settings apart from which model it is —
+    // and the device its own entry recommends. `devices` is ordered
+    // best-first and is not a preference: one of these models is FASTER
+    // ON THE PROCESSOR, by a factor of five, because its int8 graphs fall
+    // back node by node on the GPU. Measuring it on the GPU measures the
+    // fallback.
+    const variant = model.variants[0];
+    setOcrConfig({
+      modelId: model.id,
+      dtype: variant.dtype,
+      device: variant.devices[0],
+    });
     disposeOcrEngine();
     const dir = join(outRoot, model.id);
     mkdirSync(dir, { recursive: true });
@@ -118,7 +128,11 @@ app.whenReady().then(async () => {
     disposeOcrEngine();
   }
 
-  setOcrConfig({ modelId: before.modelId, dtype: before.dtype });
+  setOcrConfig({
+    modelId: before.modelId,
+    dtype: before.dtype,
+    device: before.device,
+  });
   writeFileSync(
     join(outRoot, "summary.json"),
     JSON.stringify(results, null, 2),

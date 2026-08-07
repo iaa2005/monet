@@ -16,14 +16,21 @@
  * them to q8. That is why the repo id names the workshop instead of a
  * hub account: nobody can download this one, it is built.
  *
- * 1.5 IS WHAT WAS SHELVED, AND 1.6 IS WHY IT MATTERED. The reason 1.5 sat
- * on the shelf was Russian — «Кваантовый», «Кубин», «Минималная единца»,
- * «крипгография». 1.6's release notes claim stronger multilingual
- * recognition, and on the same page they are right:
+ * 1.5 IS WHAT WAS SHELVED, AND THE VERDICT WAS PARTLY OURS. The reason 1.5
+ * sat on the shelf was Russian — «Кваантовый», «Кубин», «Минималная
+ * единца», «крипгография». Converting 1.6 turned up why: the preprocessing
+ * in `paddle/preprocess.ts` was normalising with OpenAI CLIP's mean and
+ * standard deviation, and sizing crops against the wrong pixel floor,
+ * because both were copied from the Python class's DEFAULTS instead of the
+ * `preprocessor_config.json` that ships with the weights. Every picture
+ * this app fed the model was shifted, scaled and cropped slightly wrong.
+ * 1.5 may well read Russian better than it was given credit for; nobody
+ * has re-measured it, and 1.6 is the version worth measuring.
  *
- *   1.5 q4     «Кваантовый», «Кубин»
- *   1.6 q8     «…смешанные производные не позволяют получить решение
- *               в виде (8.50)» — clean, with the formulas as LaTeX
+ * What 1.6 does after the fix, on a page 1.5 failed:
+ *
+ *   «…смешанные производные не позволяют получить решение в виде (8.50)»
+ *   — clean, with the display formulas as LaTeX and the inline ones inline.
  *
  * ONE MEASURED TRAP, kept here so nobody re-derives it: q8 holds up on a
  * BLOCK and falls apart on a WHOLE PAGE. Given 1260 image tokens at once

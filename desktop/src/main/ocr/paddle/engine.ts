@@ -21,7 +21,14 @@ import { readFileSync } from "fs";
 import { ort as ortModule } from "../ort.js";
 import { join } from "path";
 import { AutoTokenizer, RawImage } from "@huggingface/transformers";
-import { smartResize, patchify, MERGE_SIZE, type PatchedImage } from "./preprocess.js";
+import {
+  smartResize,
+  patchify,
+  readPreprocessing,
+  MERGE_SIZE,
+  type PatchedImage,
+  type Preprocessing,
+} from "./preprocess.js";
 import { paddleFiles, stopToken } from "./manifest.js";
 import { generate, type PaddleConfig, type PaddleSessions } from "./generate.js";
 
@@ -42,16 +49,18 @@ interface Loaded {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tokenizer: any;
   device: string;
+  /** What the installed build says its pictures should look like. */
+  pre: Preprocessing;
 }
 
 let loaded: Loaded | null = null;
 let loadedKey = "";
 
-function readJson(dir: string, name: string): Record<string, number> {
+function readJson(dir: string, name: string): Record<string, never> {
   try {
     return JSON.parse(readFileSync(join(dir, name), "utf-8")) as Record<
       string,
-      number
+      never
     >;
   } catch {
     return {};
@@ -113,6 +122,7 @@ export async function loadPaddle(
   loaded = {
     sessions: { vision, decoder, embedding } as PaddleSessions,
     cfg: readConfig(modelDir),
+    pre: readPreprocessing(readJson(modelDir, "preprocessor_config.json")),
     tokenizer: await AutoTokenizer.from_pretrained(modelDir, {
       local_files_only: true,
     }),
@@ -147,11 +157,14 @@ export function buildPrompt(text: string, imageTokens: number): string {
 }
 
 /** A picture, ready for the tower. */
-export async function prepareImage(imagePath: string): Promise<PatchedImage> {
+export async function prepareImage(
+  imagePath: string,
+  pre: Preprocessing,
+): Promise<PatchedImage> {
   const image = await RawImage.read(imagePath);
-  const fit = smartResize(image.width, image.height);
+  const fit = smartResize(image.width, image.height, pre);
   const rgb = (await image.resize(fit.width, fit.height)).rgb();
-  return patchify(rgb.data as Uint8Array, fit.width, fit.height);
+  return patchify(rgb.data as Uint8Array, fit.width, fit.height, pre);
 }
 
 export interface PaddleScanResult {
@@ -171,7 +184,7 @@ export async function scanWithPaddle(
 ): Promise<PaddleScanResult> {
   const ort = ortModule();
   const state = await loadPaddle(modelDir, device, dtype);
-  const image = await prepareImage(imagePath);
+  const image = await prepareImage(imagePath, state.pre);
 
   const full = buildPrompt(prompt, image.numImageTokens);
   const encoded = state.tokenizer.encode(full, { add_special_tokens: false });

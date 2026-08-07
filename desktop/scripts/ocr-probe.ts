@@ -41,6 +41,9 @@ const { parsePages } = await import('../src/main/ocr/tools.js')
 const { paddleFiles, stopToken } = await import(
   '../src/main/ocr/paddle/manifest.js'
 )
+const { readPreprocessing, smartResize } = await import(
+  '../src/main/ocr/paddle/preprocess.js'
+)
 
 let failures = 0
 function check(name: string, cond: boolean, detail?: unknown): void {
@@ -259,6 +262,41 @@ check('nonsense means the whole document, not page NaN', parsePages('abc').lengt
       { installed, opened },
     )
   }
+}
+
+// ─── The numbers a build is configured with, not the ones in the port ───
+
+{
+  // The crop that found this: one line of text, 944×77, from a real page.
+  // The model's own processor makes it 1204 wide. The port made it 1120,
+  // because it used the Python CLASS's default min_pixels (130 blocks)
+  // rather than the config's (144) — and normalised with CLIP's mean and
+  // standard deviation rather than the 0.5/0.5 the config asks for.
+  // Neither failed. The model read Russian as fluent nonsense and was
+  // written off as bad at Russian.
+  const configured = readPreprocessing({
+    min_pixels: 112896,
+    max_pixels: 1003520,
+    image_mean: [0.5, 0.5, 0.5],
+    image_std: [0.5, 0.5, 0.5],
+  })
+  const fitted = smartResize(944, 77, configured)
+  check(
+    'a line of text is sized the way the model expects',
+    fitted.width === 1204 && fitted.height === 112,
+    fitted,
+  )
+  check(
+    'the config wins over the defaults compiled into the port',
+    configured.minPixels === 112896 && configured.mean[0] === 0.5,
+    configured,
+  )
+  check(
+    'a build that ships no processor config still gets sane numbers',
+    readPreprocessing({}).mean.join() === '0.5,0.5,0.5' &&
+      readPreprocessing({}).minPixels === 28 * 28 * 144,
+    readPreprocessing({}),
+  )
 }
 
 // ─── Where the stop token lives ─────────────────────────────────────────
