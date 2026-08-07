@@ -38,6 +38,9 @@ const { planInstall, isInstalledSync, modelDir } = await import(
 const { getOcrConfig, setOcrConfig } = await import('../src/main/ocr/settings.js')
 const { hasOcrModel } = await import('../src/main/ocr/ready.js')
 const { parsePages } = await import('../src/main/ocr/tools.js')
+const { paddleFiles, stopToken } = await import(
+  '../src/main/ocr/paddle/manifest.js'
+)
 
 let failures = 0
 function check(name: string, cond: boolean, detail?: unknown): void {
@@ -193,6 +196,35 @@ check('nonsense means the whole document, not page NaN', parsePages('abc').lengt
     !!ocrModel(getOcrConfig().modelId),
     getOcrConfig().modelId,
   )
+
+  // A shelved model is one nobody can PICK, not one the app may replace.
+  // This read the enabled list, so a config naming a shelved model came
+  // back as the default — and a bench run then printed the shelved
+  // model's name above a different model's output, byte for byte
+  // identical to the model it had silently used.
+  const shelved = ALL_MODELS.find((m) => !m.enabled)
+  if (shelved) {
+    setOcrConfig({ modelId: shelved.id })
+    check(
+      'a shelved model stays selected rather than being swapped out',
+      getOcrConfig().modelId === shelved.id,
+      { asked: shelved.id, got: getOcrConfig().modelId },
+    )
+  }
+
+  // Every dtype the catalogue can name has to survive a round trip. This
+  // accepted only the two float ones, so a model shipped at q8 was loaded
+  // as q4 — a file that does not exist, and the failure named the model
+  // rather than the setting that mangled it.
+  for (const dtype of ['q4', 'q8', 'fp16', 'fp32'] as const) {
+    setOcrConfig({ dtype })
+    check(`a ${dtype} setting survives being saved`, getOcrConfig().dtype === dtype, {
+      asked: dtype,
+      got: getOcrConfig().dtype,
+    })
+  }
+
+  setOcrConfig({ modelId: cfg.modelId, dtype: cfg.dtype })
 }
 
 // ─── PaddleOCR-VL: its own file names, its own runtime ──────────────────
@@ -211,6 +243,52 @@ check('nonsense means the whole document, not page NaN', parsePages('abc').lengt
     'and never for a quantised embedding table, which does not exist',
     !files.required.concat(files.optional).some((f) => /embedding_q/.test(f)),
     files.required.concat(files.optional),
+  )
+
+  // The runtime opens the graphs by name and the installer downloads them
+  // by name, from two different pieces of code. They were once allowed to
+  // disagree — the runtime had q4 spelled into it — and the symptom of a
+  // model shipped at another precision was a missing file at load, long
+  // after the download said it had finished.
+  for (const variant of paddle.variants) {
+    const installed = variantFiles(paddle, variant.dtype).required
+    const opened = paddleFiles(variant.dtype)
+    check(
+      `the runtime opens the ${variant.dtype} files the installer fetched`,
+      installed.join() === [opened.vision, opened.decoder, opened.embedding].join(),
+      { installed, opened },
+    )
+  }
+}
+
+// ─── Where the stop token lives ─────────────────────────────────────────
+
+{
+  // Throwing is one of the answers under test, so every call goes through
+  // this — otherwise a regression takes the whole probe down with it and
+  // the remaining checks never report.
+  const eosOf = (
+    config: Record<string, number>,
+    generation: Record<string, number>,
+  ): number | 'threw' => {
+    try {
+      return stopToken(config, generation)
+    } catch {
+      return 'threw'
+    }
+  }
+
+  check(
+    'the stop token is read from config.json when it is there',
+    eosOf({ eos_token_id: 2 }, {}) === 2,
+  )
+  check(
+    '…and from the generation config when it is not — 1.6 moved it',
+    eosOf({ hidden_size: 1024 }, { eos_token_id: 2 }) === 2,
+  )
+  check(
+    '…and a build with neither is refused rather than left to loop',
+    eosOf({}, {}) === 'threw',
   )
 }
 

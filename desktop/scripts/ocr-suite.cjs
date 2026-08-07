@@ -58,6 +58,11 @@ app.whenReady().then(async () => {
   const models = ALL_MODELS.filter((m) =>
     wanted.length ? wanted.includes(m.id) : m.enabled,
   );
+  // Naming a model on the command line IS the decision to run it, shelved
+  // or not — measuring a candidate is how it stops being one. The app
+  // refuses shelved models on purpose (see ocrReadiness), and this bench
+  // is the one caller that means it.
+  for (const model of models) model.enabled = true;
   const pages = readdirSync(folder)
     .filter((f) => IMAGE.test(f))
     .sort();

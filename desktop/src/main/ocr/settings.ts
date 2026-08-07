@@ -9,7 +9,10 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getDataDir } from "../data-dir.js";
-import { OCR_MODELS, type OcrDevice, type OcrDtype } from "./catalog.js";
+import { ALL_MODELS, OCR_MODELS, type OcrDevice, type OcrDtype } from "./catalog.js";
+
+/** Every quantisation the catalogue may name. */
+const DTYPES: OcrDtype[] = ["q4", "q8", "fp16", "fp32"];
 
 export interface OcrConfig {
   /** Model id from the catalogue. */
@@ -55,11 +58,23 @@ export function getOcrConfig(): OcrConfig {
     if (!existsSync(configFile())) return { ...DEFAULTS };
     const raw = JSON.parse(readFileSync(configFile(), "utf-8")) as Partial<OcrConfig>;
     return {
+      // Checked against EVERY model, not just the offered ones. A shelved
+      // model is one nobody can pick in Settings, not one the app is
+      // allowed to silently replace: falling back to the default here made
+      // a bench run report a shelved model's name above another model's
+      // output, and `ocrReadiness`, which exists to say "that one is
+      // disabled", could never be reached.
       modelId:
-        typeof raw.modelId === "string" && OCR_MODELS.some((m) => m.id === raw.modelId)
+        typeof raw.modelId === "string" && ALL_MODELS.some((m) => m.id === raw.modelId)
           ? raw.modelId
           : DEFAULTS.modelId,
-      dtype: raw.dtype === "fp16" || raw.dtype === "fp32" ? raw.dtype : DEFAULTS.dtype,
+      // Every dtype the catalogue can name. This once listed only the two
+      // float ones, so a model shipped at q8 was loaded as q4 — a file
+      // that does not exist, reported as a missing model rather than a
+      // rejected setting.
+      dtype: DTYPES.includes(raw.dtype as OcrDtype)
+        ? (raw.dtype as OcrDtype)
+        : DEFAULTS.dtype,
       device:
         raw.device === "webgpu" || raw.device === "cpu" ? raw.device : DEFAULTS.device,
       dpi: clamp(raw.dpi, 72, 300, DEFAULTS.dpi),
