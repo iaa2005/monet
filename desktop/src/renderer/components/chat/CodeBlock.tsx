@@ -20,7 +20,7 @@ import { hasAnsi } from "@/lib/ansi";
 // Fenced-block languages that don't need a "language:" label chip.
 const PLAIN = new Set(["", "text", "plaintext", "txt", "output"]);
 
-function CopyButton({ text }: { text: string }): JSX.Element {
+export function CopyButton({ text }: { text: string }): JSX.Element {
   const [copied, setCopied] = useState(false);
   return (
     <button

@@ -42,6 +42,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { ArtifactsStrip } from "@/components/ArtifactsPanel";
+import { stripIndexes } from "./artifact-strips";
 import { viewArtifact } from "@/components/artifact-actions";
 import { FilePreviewTile } from "@/components/FileCard";
 import {
@@ -598,35 +599,6 @@ function ContextBreak({ ranges }: { ranges: OutRange[] }): JSX.Element {
 const OUT_OF_CONTEXT_CLASS =
   "relative opacity-55 saturate-50 before:absolute before:-left-2 before:top-0 before:h-full before:w-0.5 before:rounded-full before:bg-brand/40";
 
-/** Artifacts produced per TURN, keyed by the index of the turn's last
- * message — the strip renders right after that message, like the official
- * app's document card under the reply that created it. */
-function stripIndexes(msgs: ChatMessage[]): Map<number, ArtifactItem[]> {
-  const strips = new Map<number, ArtifactItem[]>();
-  let acc = new Map<string, ArtifactItem>(); // dedupe by name, last wins
-  let lastIdx = -1;
-  const flush = (): void => {
-    if (acc.size > 0 && lastIdx >= 0) strips.set(lastIdx, [...acc.values()]);
-    acc = new Map();
-    lastIdx = -1;
-  };
-  msgs.forEach((m, i) => {
-    if (m.role === "user") {
-      flush();
-      return;
-    }
-    lastIdx = i;
-    // Any tool whose result carries [artifact] markers contributes to the
-    // turn's strip (RunPython, RunCommand, SandboxWrite, screenshots …).
-    const out = m.toolCall?.output;
-    if (out && out.includes("[artifact]"))
-      for (const f of sandboxFilesFromOutput(out, m.timestamp))
-        acc.set(f.name, f);
-  });
-  flush();
-  return strips;
-}
-
 /** In Normal mode, consecutive tool messages become a single group card.
  * In every mode, a turn that produced sandbox files gets an artifact strip
  * right after its last message. */
@@ -679,8 +651,9 @@ function RevealEarlier({
 function groupMessages(
   msgs: ChatMessage[],
   mode: TranscriptMode,
+  streaming = false,
 ): GroupedItem[] {
-  const strips = stripIndexes(msgs);
+  const strips = stripIndexes(msgs, streaming);
   const out: GroupedItem[] = [];
   let i = 0;
   while (i < msgs.length) {
@@ -1124,8 +1097,8 @@ export function ChatView({
   const greeting = useMemo(() => pickGreeting(profileName, isFirstRun), [profileName, isFirstRun]);
 
   const grouped = useMemo(
-    () => groupMessages(messages, transcriptMode),
-    [messages, transcriptMode],
+    () => groupMessages(messages, transcriptMode, isStreaming),
+    [messages, transcriptMode, isStreaming],
   );
 
   // ── What the model can still read ──────────────────────────────────

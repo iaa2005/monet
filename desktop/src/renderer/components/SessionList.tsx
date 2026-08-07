@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import type { SessionFilters } from "@/components/session-filters";
 import {
   AudioLines,
   MoreVertical,
@@ -53,13 +54,7 @@ interface SessionListProps {
   currentSessionId?: string;
   /** Only show sessions from this space (home/code). */
   space?: string;
-  filters?: {
-    status: string;
-    activity: string;
-    group: string;
-    sort: string;
-    sortDir: string;
-  };
+  filters?: Partial<SessionFilters>;
 }
 
 function api(): ElectronAPI | undefined {
@@ -75,6 +70,7 @@ export function SessionList({
   space,
   filters,
 }: SessionListProps): JSX.Element {
+  const compact = filters?.view === "compact";
   const [allSessions, setAllSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -344,7 +340,9 @@ export function SessionList({
                         {s.title || "New session"}
                       </span>
                     </span>
-                    {s.messageCount > 0 && (
+                    {/* The compact view drops this line entirely — it is
+                        the only thing making a row two lines tall. */}
+                    {!compact && s.messageCount > 0 && (
                       <span className="block truncate text-[11px] text-muted-foreground/70">
                         {s.messageCount} msgs · {relTime(s.updatedAt)}
                       </span>

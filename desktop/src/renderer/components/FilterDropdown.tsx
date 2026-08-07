@@ -15,13 +15,7 @@ type Submenu = {
   onSelect: (value: string) => void;
 };
 
-type Filters = {
-  status: string;
-  activity: string;
-  group: string;
-  sort: string;
-  sortDir: "asc" | "desc";
-};
+import type { SessionFilters as Filters } from "@/components/session-filters";
 
 const STATUS_OPTS: FilterOption[] = [
   { label: "Active", value: "active" },
@@ -47,6 +41,13 @@ const SORT_OPTS: FilterOption[] = [
   { label: "Recency", value: "recency" },
   { label: "Name", value: "name" },
   { label: "Activity", value: "activity" },
+];
+// How much of a row to draw. Compact drops the second line — the message
+// count and how long ago the chat was used — which is what decides how
+// many sessions fit on screen.
+const VIEW_OPTS: FilterOption[] = [
+  { label: "Full", value: "full" },
+  { label: "Compact", value: "compact" },
 ];
 
 interface FilterDropdownProps {
@@ -96,6 +97,8 @@ export function FilterDropdown({
   const setStatus = (v: string) => onChange({ ...filters, status: v });
   const setActivity = (v: string) => onChange({ ...filters, activity: v });
   const setGroup = (v: string) => onChange({ ...filters, group: v });
+  const setView = (v: string) =>
+    onChange({ ...filters, view: v === "compact" ? "compact" : "full" });
   const setSort = (v: string) => {
     if (filters.sort === v) {
       onChange({
@@ -132,6 +135,12 @@ export function FilterDropdown({
       selected: filters.sort,
       onSelect: setSort,
     },
+    {
+      label: "View",
+      options: VIEW_OPTS,
+      selected: filters.view,
+      onSelect: setView,
+    },
   ];
 
   const hasActiveFilter =
@@ -139,7 +148,8 @@ export function FilterDropdown({
     filters.activity !== "all" ||
     filters.group !== "none" ||
     filters.sort !== "recency" ||
-    filters.sortDir !== "desc";
+    filters.sortDir !== "desc" ||
+    filters.view !== "full";
 
   const activeSub = subs.find((s) => s.label === hovered);
 

@@ -46,6 +46,11 @@ import {
 } from "lucide-react";
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
+import {
+  loadFilters,
+  saveFilters,
+  type SessionFilters,
+} from "@/components/session-filters";
 import { useTaskBadge } from "@/components/BackgroundTasks";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import { FilterDropdown } from "@/components/FilterDropdown";
@@ -256,13 +261,10 @@ export default function App(): JSX.Element {
   const browserLayout = useBrowserStore((s) => s.layout);
   void browserLayout;
   const taskBadge = useTaskBadge();
-  const [filters, setFilters] = useState({
-    status: "all",
-    activity: "all",
-    group: "none",
-    sort: "recency",
-    sortDir: "desc" as "asc" | "desc",
-  });
+  // Read once, before first paint, so the list does not flash the default
+  // on every launch — and written back on every change.
+  const [filters, setFilters] = useState<SessionFilters>(loadFilters);
+  useEffect(() => saveFilters(filters), [filters]);
   const { theme, setTheme, toggle } = useTheme();
   // Narrow subscriptions only — subscribing to the whole store re-rendered
   // the entire app on every streaming update (a major lag source).

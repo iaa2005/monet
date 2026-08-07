@@ -11,7 +11,7 @@ import {
 import type { ChatMessage, ToolCall } from "@/types/chat";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
-import { CodeBlock } from "./CodeBlock";
+import { CodeBlock, CopyButton } from "./CodeBlock";
 import { PlanDocCard } from "./PlanDocCard";
 import { rendersAsCard } from "./turn-state";
 import { MarkdownViewer } from "./MarkdownViewer";
@@ -187,6 +187,82 @@ function StatusIcon({ status }: { status: ToolCall["status"] }): JSX.Element {
   }
 }
 
+/**
+ * A tool's input and its output, as ONE block.
+ *
+ * They were two cards with a gap between them, which reads as two
+ * unrelated things — a command and, separately, some text. A call is one
+ * event: the thing asked for and what came back. So they share a panel and
+ * are divided by a line rather than by air.
+ *
+ * The language belongs to the INPUT and is labelled there; output has no
+ * language worth naming (it is whatever the tool printed).
+ *
+ * Each pane carries its own copy button, because copying a command and
+ * copying its output are different intentions and a single button would
+ * have to guess. They stay out of the way until the pointer is on the
+ * pane, since a block nobody is looking at should be code, not chrome.
+ */
+function ToolPane({
+  label,
+  copyText,
+  divider,
+  children,
+}: {
+  /** Shown always — this is the language, and it names the pane. */
+  label?: string;
+  copyText: string;
+  /** Not the first pane: separated by a rule, not a gap. */
+  divider?: boolean;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <div className={cn("group/pane relative", divider && "border-t border-border")}>
+      {label ? (
+        <div className="flex h-7 items-center justify-between border-b border-border/60 bg-muted/40 pl-3 pr-1">
+          <span className="font-mono text-[11px] text-muted-foreground">
+            {label}
+          </span>
+          <span className="opacity-0 transition-opacity group-hover/pane:opacity-100">
+            <CopyButton text={copyText} />
+          </span>
+        </div>
+      ) : (
+        // No label to hang it on, so it floats over the top-right corner —
+        // where the eye already goes, and where it covers no first line
+        // that a scrollbar was not covering anyway.
+        <span className="absolute right-1 top-1 z-10 rounded-md bg-card/90 opacity-0 backdrop-blur transition-opacity group-hover/pane:opacity-100">
+          <CopyButton text={copyText} />
+        </span>
+      )}
+      {children}
+    </div>
+  );
+}
+
+/** The panel the panes live in. `bare` inside a group, where the group card
+ * already draws the border. */
+function ToolPanes({
+  bare,
+  children,
+}: {
+  bare?: boolean;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <div
+      className={cn(
+        "overflow-hidden",
+        bare
+          ? "my-0"
+          : "glass-panel my-3 rounded-lg border border-border bg-card",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 function ToolDetail({
   toolCall,
   inGroup,
@@ -223,27 +299,29 @@ function ToolDetail({
   }
 
   if (name === "RunPython" || name === "SandboxWrite") {
+    const sent =
+      name === "RunPython" ? str("code") : str("content");
+    const sentLang =
+      name === "RunPython" ? "python" : langFromPath(str("name") ?? "");
     return (
-      <div className="space-y-2">
-        {name === "RunPython" && str("code") && (
-          <CodeBlock
-            code={str("code") ?? ""}
-            language="python"
-            bare={inGroup}
-        className={inGroup ? "my-0 border-0 rounded-none" : ""}
-          />
+      <ToolPanes bare={inGroup}>
+        {sent && (
+          <ToolPane label={sentLang || "text"} copyText={sent}>
+            <CodeBlock
+              code={sent}
+              language={sentLang}
+              maxHeight={name === "SandboxWrite" ? 280 : undefined}
+              bare
+              className="my-0 rounded-none border-0"
+            />
+          </ToolPane>
         )}
-        {name === "SandboxWrite" && str("content") && (
-          <CodeBlock
-            code={str("content") ?? ""}
-            language={langFromPath(str("name") ?? "")}
-            maxHeight={280}
-            bare={inGroup}
-        className={inGroup ? "my-0 border-0 rounded-none" : ""}
-          />
+        {output && (
+          <ToolPane copyText={output} divider={!!sent}>
+            <SandboxOutput output={output} inGroup />
+          </ToolPane>
         )}
-        {output && <SandboxOutput output={output} inGroup={inGroup} />}
-      </div>
+      </ToolPanes>
     );
   }
 
@@ -252,39 +330,54 @@ function ToolDetail({
   const fp = str("file_path") ?? str("path");
   const outLang = fp ? langFromPath(fp) : "text";
 
+  const command =
+    name === "Bash" || name === "PowerShell" ? str("command") : undefined;
+  const args =
+    !output && !command && Object.keys(input).length > 0
+      ? JSON.stringify(input, null, 2)
+      : undefined;
+
   return (
-    <div className="space-y-2">
-      {(name === "Bash" || name === "PowerShell") && str("command") && (
-        <CodeBlock
-          code={str("command") ?? ""}
-          language={shellLang}
-          bare={inGroup}
-        className={inGroup ? "my-0 border-0 rounded-none" : ""}
-        />
+    <ToolPanes bare={inGroup}>
+      {command && (
+        <ToolPane label={shellLang} copyText={command}>
+          <CodeBlock
+            code={command}
+            language={shellLang}
+            bare
+            className="my-0 rounded-none border-0"
+          />
+        </ToolPane>
       )}
-      {output && output.includes("[artifact]") ? (
-        // Any tool that produced files (Computer/Browser screenshots, sandbox
-        // writes) renders them as thumbnails instead of raw marker lines.
-        <SandboxOutput output={output} inGroup={inGroup} />
-      ) : output ? (
-        <CodeBlock
-          code={output}
-          language={outLang}
-          maxHeight={320}
-          bare={inGroup}
-        className={inGroup ? "my-0 border-0 rounded-none" : ""}
-        />
-      ) : Object.keys(input).length > 0 &&
-        name !== "Bash" &&
-        name !== "PowerShell" ? (
-        <CodeBlock
-          code={JSON.stringify(input, null, 2)}
-          language="json"
-          bare={inGroup}
-        className={inGroup ? "my-0 border-0 rounded-none" : ""}
-        />
-      ) : null}
-    </div>
+      {args && (
+        <ToolPane label="json" copyText={args}>
+          <CodeBlock
+            code={args}
+            language="json"
+            bare
+            className="my-0 rounded-none border-0"
+          />
+        </ToolPane>
+      )}
+      {output && (
+        <ToolPane copyText={output} divider={!!command}>
+          {output.includes("[artifact]") ? (
+            // Any tool that produced files (Computer/Browser screenshots,
+            // sandbox writes) renders them as thumbnails instead of raw
+            // marker lines.
+            <SandboxOutput output={output} inGroup />
+          ) : (
+            <CodeBlock
+              code={output}
+              language={outLang}
+              maxHeight={320}
+              bare
+              className="my-0 rounded-none border-0"
+            />
+          )}
+        </ToolPane>
+      )}
+    </ToolPanes>
   );
 }
 
