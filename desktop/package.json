@@ -14,6 +14,7 @@
     "typecheck": "node scripts/typecheck.mjs",
     "smoke:agent": "node scripts/smoke-agent.mjs",
     "smoke:retry": "node scripts/renderer-probe.mjs scripts/retry-probe.ts",
+    "smoke:editretry": "node scripts/renderer-probe.mjs scripts/edit-retry-probe.ts",
     "smoke:artifacts": "node scripts/renderer-probe.mjs scripts/artifacts-probe.ts",
     "smoke:secrets": "node scripts/renderer-probe.mjs scripts/secret-filter-probe.ts",
     "smoke:modalities": "node scripts/renderer-probe.mjs scripts/modalities-probe.ts",

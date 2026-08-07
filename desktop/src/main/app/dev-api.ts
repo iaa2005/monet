@@ -31,6 +31,7 @@ import {
 import {
   compactSessionNow,
   messagesInContext,
+  rewindTranscriptToUserTurn,
   runAgent,
   setTurnContext,
   turnContextState,
@@ -338,6 +339,23 @@ export function initDevApi(): void {
           }
           const r = await undoCompaction(id, eventId);
           json(res, 200, { restored: r, context: contextReport(id) });
+          return;
+        }
+
+        // The transcript half of "rewind to here" — the renderer pairs this
+        // with a checkpoint rewind and drops the prompt in the composer.
+        if (path.startsWith("/truncate/") && req.method === "POST") {
+          const id = idFrom(path, "/truncate/");
+          const b = JSON.parse((await readBody(req)) || "{}") as {
+            keepUserTurns?: number;
+            totalUserTurns?: number;
+          };
+          const r = await rewindTranscriptToUserTurn(
+            id,
+            b.keepUserTurns ?? 0,
+            b.totalUserTurns,
+          );
+          json(res, 200, { ...r, context: contextReport(id) });
           return;
         }
 

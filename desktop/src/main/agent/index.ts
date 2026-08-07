@@ -1873,8 +1873,14 @@ async function runAgentScoped(
             // What this turn changed, stored against the commit that
             // holds the content — so a rewind can put back exactly those
             // files and leave the rest of the folder alone.
-            const ledger = turnLedgers.get(sessionId);
-            if (ledger) saveLedger(sessionId, sha, ledger);
+            //
+            // ALWAYS stored, even when the answer was pure conversation and
+            // the map is empty. A missing ledger means "this turn is from
+            // before ledgers existed", and a rewind across one falls back to
+            // a git diff — which cannot tell the turn's changes from the
+            // user's, and deletes files they made between turns. Six turns
+            // of prose in the middle of a session were enough to lose one.
+            saveLedger(sessionId, sha, turnLedgers.get(sessionId) ?? EMPTY_DELTA);
             turnLedgers.delete(sessionId);
             onEvent({ type: "checkpoint", sha });
           }

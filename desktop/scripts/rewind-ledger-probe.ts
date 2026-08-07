@@ -122,6 +122,42 @@ await turn(() => {
   )
 }
 
+// ─── A turn that changed nothing ────────────────────────────────────────
+//
+// Most turns are conversation: no tools, no writes, and nothing for the
+// window to catch. Such a turn still takes a snapshot, and if it does not
+// also record its (empty) ledger it is indistinguishable from a turn taken
+// before ledgers existed — so the rewind falls back to a git diff for the
+// WHOLE range, and a git diff cannot tell whose change each was.
+//
+// Caught live: six turns of prose between a write and a rewind, and the
+// file the user had made in the meantime was deleted.
+
+{
+  const mark = await snapshotWorkspace(S, work)
+  await turn(() => put('written.ts', 'by the turn\n'))
+
+  // The user makes a file of their own, between turns.
+  put('theirs.ts', 'made by the user between turns\n')
+
+  // …and then a turn that only talks. It changes nothing, and says so.
+  const sha = await snapshotWorkspace(S, work)
+  saveLedger(S, sha!, EMPTY_DELTA)
+
+  const r = await rewindWorkspace(S, work, mark!)
+  check('the rewind succeeds across a turn that did nothing', r.ok, r)
+  check(
+    "the talking turn does not drag the user's file into the rewind",
+    read('theirs.ts') === 'made by the user between turns\n',
+    read('theirs.ts'),
+  )
+  check(
+    '…while the file the turn DID write is still undone',
+    read('written.ts') === null,
+    read('written.ts'),
+  )
+}
+
 // ─── A chat from before ledgers existed ─────────────────────────────────
 
 {

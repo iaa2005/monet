@@ -23,8 +23,9 @@
  *   npm run live:matrix              # everything (~10 min, ~40 real turns)
  *   npm run live:matrix code_undo    # one scenario
  *
- * Scenarios: code_undo, code_rewind, code_contested, manual_compact, home,
- * auto_compact, compact_undo. One app is booted per compaction threshold —
+ * Scenarios: code_undo, code_rewind, code_contested, manual_compact,
+ * edit_retry, home, auto_compact, compact_undo, rewind_after_compact,
+ * home_compact, home_podman. One app is booted per compaction threshold —
  * MONET_COMPACT_TOKENS is read once, when the module loads.
  */
 
@@ -101,9 +102,19 @@ async function bootApp(env) {
     )
   copyFileSync(src, join(providers, 'providers.json'))
 
+  // The app finds its portable podman under its OWN data dir, and this one is
+  // a fresh temp folder — so hand it the real install on PATH instead of
+  // copying a few hundred megabytes. Ignored by every scenario but the one
+  // that runs code inside a container.
+  const podmanBin = join(SOURCE_DATA_DIR, 'podman', 'bin')
+  const withPodman = existsSync(join(podmanBin, 'podman.exe'))
+    ? `${podmanBin};${process.env.PATH ?? ''}`
+    : process.env.PATH
+
   const child = spawn(electron, [APP_DIR], {
     env: {
       ...process.env,
+      PATH: withPodman,
       MONET_DATA_DIR: dataDir,
       MONET_DEV_API: '1',
       MONET_DEV_API_PORT: String(PORT),
@@ -611,7 +622,66 @@ scenario('manual_compact', null, async (api) => {
   discard(cwd)
 })
 
-// 7 ─ Home: the sandbox is a folder like any other.
+// 7 ─ "Rewind to here", end to end: the files AND the transcript.
+scenario('edit_retry', null, async (api) => {
+  const cwd = workspace({ 'keep.txt': 'nobody touches this\n' })
+  const write = (name, text) =>
+    `Use the Write tool to create a file named ${name} in the current directory ` +
+    `containing exactly this one line: ${text}. Then reply with only: done`
+
+  const t1 = await ask(api, {
+    message: 'Keep this in mind: the project is called ORION. Do not use any tools. Reply with only: ok',
+    cwd,
+    maxTurns: 3,
+  })
+  const s = t1.sessionId
+  await ask(api, { message: write('draft.txt', 'first draft'), sessionId: s, cwd, maxTurns: 6 })
+  const t3 = await ask(api, {
+    message: 'Keep this in mind too: the deadline is FRIDAY. Do not use any tools. Reply with only: ok',
+    sessionId: s,
+    cwd,
+    maxTurns: 3,
+  })
+  check('the middle turn wrote its file', read(cwd, 'draft.txt') !== null)
+
+  // The user edits something of their own while all that goes on.
+  put(cwd, 'mine.txt', 'typed by hand, mine\n')
+
+  // What the button does: restore the checkpoint from before the turn being
+  // edited, then cut the transcript to the same place.
+  const before = await api.get(`/context/${s}`)
+  const r = await api.post(`/rewind/${s}`, { sha: t1.checkpointSha })
+  check('the file rewind succeeds', r.ok, r)
+  const cut = await api.post(`/truncate/${s}`, {
+    keepUserTurns: 1,
+    totalUserTurns: before.turns.length,
+  })
+
+  check('the transcript is cut with full fidelity', cut.fidelity === 'full', cut)
+  check('…to one turn', cut.context.turns.length === 1, cut.context.turns)
+  check('the file that turn wrote is gone', read(cwd, 'draft.txt') === null, read(cwd, 'draft.txt'))
+  check(
+    "…and the user's own file is not",
+    read(cwd, 'mine.txt') === 'typed by hand, mine\n',
+    read(cwd, 'mine.txt'),
+  )
+  check('nor is the file nobody touched', read(cwd, 'keep.txt') !== null)
+
+  // The real test of a truncation: what the model still knows.
+  const t4 = await ask(api, {
+    message:
+      'What is the project called, and what is the deadline? If you were not told, say: not told.',
+    sessionId: s,
+    cwd,
+    maxTurns: 3,
+  })
+  check('it still knows what was said before the cut', has(t4.text, 'ORION'), t4.text)
+  check('AND HAS FORGOTTEN THE TURN THAT WAS CUT', !has(t4.text, 'FRIDAY'), t4.text)
+  void t3
+  discard(cwd)
+})
+
+// 8 ─ Home: the sandbox is a folder like any other.
 scenario('home', null, async (api, ctx) => {
   const t1 = await ask(api, {
     message:
@@ -661,6 +731,191 @@ scenario('home', null, async (api, ctx) => {
   })
   check('a home prompt taken out of context is forgotten too', !has(t4.text, 'DELTA-5'), t4.text)
   void t2
+})
+
+// 9 ─ A checkpoint has to outlive a compaction.
+//
+// The two halves of a rewind are stored apart on purpose: the files in a
+// shadow git repo, the conversation in the session DB. Compaction rewrites
+// the second and must not touch the first — but "must not" is a claim about
+// code nobody had run in that order.
+scenario('rewind_after_compact', 2500, async (api) => {
+  const cwd = workspace({ 'keep.txt': 'nobody touches this\n' })
+  const write = (name, text) =>
+    `Use the Write tool to create a file named ${name} in the current directory ` +
+    `containing exactly this one line: ${text}. Then reply with only: done`
+
+  const t1 = await ask(api, { message: write('early.txt', 'before the compaction'), cwd, maxTurns: 6 })
+  const s = t1.sessionId
+  check('the first turn wrote its file and left a checkpoint', read(cwd, 'early.txt') !== null && !!t1.checkpointSha)
+
+  await fill(api, s, cwd, 6)
+  const mid = await api.get(`/context/${s}`)
+  check(
+    'compaction happened in between',
+    mid.events.some((e) => e.type === 'compact'),
+    { events: mid.events, tokensNow: mid.allTokens },
+  )
+
+  put(cwd, 'mine.txt', 'typed by hand, mine\n')
+  const t8 = await ask(api, { message: write('late.txt', 'after the compaction'), sessionId: s, cwd, maxTurns: 6 })
+  check('and the turn after it still writes and snapshots', read(cwd, 'late.txt') !== null && !!t8.checkpointSha)
+
+  const r = await api.post(`/rewind/${s}`, { sha: t1.checkpointSha })
+  check('A CHECKPOINT FROM BEFORE THE COMPACTION STILL RESOLVES', r.ok, r)
+  check('the file written after it is gone', read(cwd, 'late.txt') === null, read(cwd, 'late.txt'))
+  check('the file written before it survives', read(cwd, 'early.txt') !== null)
+  check(
+    "the user's own file survives",
+    read(cwd, 'mine.txt') === 'typed by hand, mine\n',
+    read(cwd, 'mine.txt'),
+  )
+  check(
+    'and so does the one nobody touched',
+    read(cwd, 'keep.txt') === 'nobody touches this\n',
+  )
+  discard(cwd)
+})
+
+// 10 ─ Home gets the same treatment: compaction, a removed prompt, a rewind.
+scenario('home_compact', 2500, async (api, ctx) => {
+  const t1 = await ask(api, {
+    message: 'Keep this word in mind for later: TANGO-2. Do not use any tools. Reply with only: ok',
+    space: 'home',
+    maxTurns: 3,
+  })
+  const s = t1.sessionId
+  const box = join(ctx.dataDir, 'sandboxes', s.replace(/[^a-zA-Z0-9_-]/g, '_'))
+
+  const t2 = await ask(api, {
+    message: 'Keep this word in mind too: VICTOR-8. Do not use any tools. Reply with only: ok',
+    sessionId: s,
+    space: 'home',
+    maxTurns: 3,
+  })
+  const off = await api.post(`/context/${s}`, { messageId: t2.userMessageId, inContext: false })
+  check('a home prompt can be taken out of context', off.ok && off.changed > 0, off)
+
+  const marked = await ask(api, {
+    message:
+      'Use the SandboxWrite tool to save a file named before.txt containing exactly: home-before. Then reply with only: done',
+    sessionId: s,
+    space: 'home',
+    maxTurns: 6,
+  })
+  check('the home turn wrote into the sandbox', read(box, 'before.txt') !== null, box)
+
+  for (let i = 0; i < 6; i++)
+    await ask(api, {
+      message: `Write about 300 words describing ${SUBJECTS[i % SUBJECTS.length]}. Prose only, no lists.`,
+      sessionId: s,
+      space: 'home',
+      maxTurns: 3,
+    })
+
+  const ctx2 = await api.get(`/context/${s}`)
+  check(
+    'compaction fires in Home too',
+    ctx2.events.some((e) => e.type === 'compact'),
+    { events: ctx2.events, tokensNow: ctx2.allTokens },
+  )
+  check(
+    'and the removed prompt is still removed',
+    ctx2.stored.inContext < ctx2.stored.messages,
+    ctx2.stored,
+  )
+
+  const t = await ask(api, {
+    message: 'Which words was I told to keep in mind? List them, nothing else.',
+    sessionId: s,
+    space: 'home',
+    maxTurns: 3,
+  })
+  check('the word left in survived the home summary', has(t.text, 'TANGO-2'), t.text)
+  check('AND THE REMOVED ONE DID NOT COME BACK', !has(t.text, 'VICTOR-8'), t.text)
+
+  put(box, 'mine.txt', 'the user dropped this in\n')
+  await ask(api, {
+    message:
+      'Use the SandboxWrite tool to save a file named after.txt containing exactly: home-after. Then reply with only: done',
+    sessionId: s,
+    space: 'home',
+    maxTurns: 6,
+  })
+  const r = await api.post(`/rewind/${s}`, { sha: marked.checkpointSha })
+  check('a home rewind still works across a compaction', r.ok, r)
+  check('the later file is gone', read(box, 'after.txt') === null, read(box, 'after.txt'))
+  check('the earlier one survives', read(box, 'before.txt') !== null)
+  check(
+    "and the user's own file survives",
+    read(box, 'mine.txt') === 'the user dropped this in\n',
+    read(box, 'mine.txt'),
+  )
+})
+
+// 11 ─ A file written from INSIDE the container.
+//
+// The whole reason the ledger is built from disk rather than from tool
+// bookkeeping: a model can write a file with a Python script, and no tool
+// reports it. Here the script does not even run on this machine — it runs in
+// a container, writing through a mount. If the window around the tool batch
+// catches that, it catches anything.
+scenario('home_podman', null, async (api, ctx) => {
+  if (!existsSync(join(SOURCE_DATA_DIR, 'podman', 'bin', 'podman.exe'))) {
+    say('    SKIP  no portable podman in the source data dir')
+    return
+  }
+  const cfg = join(ctx.dataDir, 'sandbox.json')
+  writeFileSync(cfg, JSON.stringify({ engine: 'docker' }), 'utf8')
+  const python = (name, text) =>
+    `Use the RunPython tool to run exactly this, and nothing else:\n` +
+    `open("${name}", "w").write("${text}")\n` +
+    `Then reply with only: done`
+
+  try {
+    const t1 = await ask(api, {
+      message: python('by-python.txt', 'written inside the container'),
+      space: 'home',
+      maxTurns: 6,
+    })
+    const s = t1.sessionId
+    const box = join(ctx.dataDir, 'sandboxes', s.replace(/[^a-zA-Z0-9_-]/g, '_'))
+    if (
+      !check(
+        'the container wrote a file into the sandbox',
+        read(box, 'by-python.txt') !== null,
+        { box, steps: t1.steps?.slice(-2) },
+      )
+    )
+      return
+    check('and the turn still left a checkpoint', !!t1.checkpointSha, t1.checkpointSha)
+
+    put(box, 'mine.txt', 'the user dropped this in\n')
+
+    await ask(api, {
+      message: python('also-by-python.txt', 'the second script'),
+      sessionId: s,
+      space: 'home',
+      maxTurns: 6,
+    })
+    check('the second script wrote its file too', read(box, 'also-by-python.txt') !== null)
+
+    const r = await api.post(`/rewind/${s}`, { sha: t1.checkpointSha })
+    check('the rewind succeeds', r.ok, r)
+    check(
+      'A FILE NO TOOL NAMED IS STILL UNDONE',
+      read(box, 'also-by-python.txt') === null,
+      read(box, 'also-by-python.txt'),
+    )
+    check('the first script’s file survives', read(box, 'by-python.txt') !== null)
+    check(
+      "and the user's own file survives",
+      read(box, 'mine.txt') === 'the user dropped this in\n',
+      read(box, 'mine.txt'),
+    )
+  } finally {
+    writeFileSync(cfg, JSON.stringify({ engine: 'pyodide' }), 'utf8')
+  }
 })
 
 // ─── Runner ─────────────────────────────────────────────────────────────
