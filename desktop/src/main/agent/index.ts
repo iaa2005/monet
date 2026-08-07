@@ -472,6 +472,28 @@ function getCwdForRun(): string | undefined {
   return cwdForRun?.();
 }
 
+/**
+ * The folder a turn changes, whichever space it is in.
+ *
+ * Code works in the run's cwd. Home works in the chat's SANDBOX, which is
+ * a folder on disk like any other — and was the one place with no
+ * versioning at all, so edit-and-retry there had nothing to restore.
+ */
+async function turnFolder(
+  space: string | undefined,
+  sessionId: string,
+): Promise<string | undefined> {
+  if (space === "home") {
+    try {
+      const { sandboxWorkDir } = await import("../sandbox/podman-engine.js");
+      return sandboxWorkDir(sessionId);
+    } catch {
+      return undefined;
+    }
+  }
+  return getCwdForRun();
+}
+
 /** Transcript user-turn messages with NO display bubble — background-delivery
  * turns (deliverBackgroundResults sends an empty message that only carries a
  * finished sub-agent's report). Tracked by object identity so compaction and
@@ -1742,16 +1764,19 @@ async function runAgentScoped(
         // post-mortem needs, and the only trace such a turn leaves.
         empty,
       });
-      // Code Rewind: snapshot the workspace AFTER the reply is done (never
-      // blocks it) so this turn can be restored later. Home has no workspace.
-      // getCwd() (not the global) so the snapshot is taken in THIS run's folder.
-      if (space && space !== "home") {
+      // Code Rewind: snapshot the folder AFTER the reply is done (never
+      // blocks it) so this turn can be restored later.
+      //
+      // Home DOES have a folder — the chat's sandbox — and it was the one
+      // place with no versioning at all, which is why editing and
+      // retrying a prompt there restored nothing. It is a folder like any
+      // other; the only difference is where it lives.
+      {
         try {
-          const { getCwd } = await import("@vendor/utils/cwd.js");
           const { snapshotWorkspace, saveLedger } = await import(
             "./checkpoints.js"
           );
-          const sha = await snapshotWorkspace(sessionId, getCwd());
+          const sha = await snapshotWorkspace(sessionId, await turnFolder(space, sessionId));
           if (sha) {
             // What this turn changed, stored against the commit that
             // holds the content — so a rewind can put back exactly those
@@ -1885,11 +1910,11 @@ async function runAgentScoped(
     // file a script wrote, a file a build produced. What changes OUTSIDE
     // it, while the model is thinking or writing, is the user's and is
     // never touched by a rewind.
-    const watching = space !== "home" && anyWriters(toolCalls);
+    const watching = anyWriters(toolCalls);
     const beforeBatch = watching
       ? await (
           await import("./checkpoints.js")
-        ).indexWorkspace(sessionId, getCwdForRun())
+        ).indexWorkspace(sessionId, await turnFolder(space, sessionId))
       : null;
 
     const batchRun = await runBatches(batches, runOne, () => signal?.aborted === true);
@@ -1897,7 +1922,10 @@ async function runAgentScoped(
     if (beforeBatch) {
       try {
         const { indexWorkspace } = await import("./checkpoints.js");
-        const afterBatch = await indexWorkspace(sessionId, getCwdForRun());
+        const afterBatch = await indexWorkspace(
+          sessionId,
+          await turnFolder(space, sessionId),
+        );
         if (afterBatch)
           turnLedgers.set(
             sessionId,

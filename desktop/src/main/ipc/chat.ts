@@ -368,6 +368,22 @@ async function maybeAutoTitle(
   }
 }
 
+/**
+ * The folder a chat's checkpoints belong to.
+ *
+ * The store records it, so the honest source is the store — not the app's
+ * single global workspace, which is what the two ends of this feature used
+ * to disagree about. A home chat's folder is its sandbox; a code chat's is
+ * whatever it was working in when the snapshots were taken.
+ */
+async function checkpointFolder(sessionId: string): Promise<string> {
+  const { shadowDir, storedWorktree } = await import("../agent/checkpoints.js");
+  const owner = storedWorktree(shadowDir(sessionId));
+  if (owner) return owner;
+  const { getWorkspacePath } = await import("./workspace.js");
+  return getWorkspacePath();
+}
+
 export function registerChatIPC(): void {
   ipcMain.handle("chat:send", async (_event, payload: ChatSendPayload) => {
     const win = BrowserWindow.getAllWindows()[0];
@@ -872,8 +888,8 @@ export function registerChatIPC(): void {
     "checkpoints:rewind",
     async (_e, sessionId: string, sha: string) => {
       const { rewindWorkspace } = await import("../agent/checkpoints.js");
-      const { getWorkspacePath } = await import("./workspace.js");
-      return rewindWorkspace(sessionId || "default", getWorkspacePath(), sha);
+      const id = sessionId || "default";
+      return rewindWorkspace(id, await checkpointFolder(id), sha);
     },
   );
 
@@ -882,8 +898,8 @@ export function registerChatIPC(): void {
     "checkpoints:diffStat",
     async (_e, sessionId: string, sha: string) => {
       const { checkpointDiffStat } = await import("../agent/checkpoints.js");
-      const { getWorkspacePath } = await import("./workspace.js");
-      return checkpointDiffStat(sessionId || "default", getWorkspacePath(), sha);
+      const id = sessionId || "default";
+      return checkpointDiffStat(id, await checkpointFolder(id), sha);
     },
   );
 }
