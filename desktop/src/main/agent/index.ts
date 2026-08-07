@@ -88,6 +88,7 @@ import {
   CAVEMAN_COMPACT_HINT,
   withCavemanReminder,
 } from "./caveman.js";
+import { turnRange } from "./turn-context.js";
 import { clearRevealedTools } from "./revealed-tools.js";
 import { deferredLines } from "./deferred-inventory.js";
 import { browserDirective } from "./browser-directive.js";
@@ -445,6 +446,45 @@ export function resetConversation(sessionId: string): void {
  * user-turn count aligned with the visible user bubbles. */
 const hiddenTurns = new WeakSet<LLMMessage>();
 
+/**
+ * A model message's identity and whether the model may still read it.
+ *
+ * By object identity, like `hiddenTurns` — the in-memory array is the live
+ * thing and these ride along with it, so a message keeps its id and its
+ * context flag through compaction, rewinds and reordering without anyone
+ * having to thread them through every call.
+ */
+const messageIds = new WeakMap<LLMMessage, string>();
+const outOfContext = new WeakSet<LLMMessage>();
+
+let idCounter = 0;
+function newMessageId(): string {
+  idCounter += 1;
+  return `t${Date.now().toString(36)}${idCounter.toString(36)}`;
+}
+
+/** Its id, minting one the first time anybody asks. */
+export function transcriptId(m: LLMMessage): string {
+  let id = messageIds.get(m);
+  if (!id) {
+    id = newMessageId();
+    messageIds.set(m, id);
+  }
+  return id;
+}
+
+/** Can the model still read this message? */
+export function isInContext(m: LLMMessage): boolean {
+  return !outOfContext.has(m);
+}
+
+/** Take a message out of the model's view, or put it back. The message
+ * itself is never removed — that is the whole point of the flag. */
+export function setInContext(m: LLMMessage, inContext: boolean): void {
+  if (inContext) outOfContext.delete(m);
+  else outOfContext.add(m);
+}
+
 /** Write the session's live model history through to the durable transcript. */
 function persistTranscript(sessionId: string): void {
   const msgs = conversations.get(sessionId);
@@ -453,6 +493,10 @@ function persistTranscript(sessionId: string): void {
       sessionId,
       msgs,
       msgs.map((m) => hiddenTurns.has(m)),
+      {
+        ids: msgs.map((m) => transcriptId(m)),
+        inContext: msgs.map((m) => isInContext(m)),
+      },
     );
 }
 
@@ -465,12 +509,21 @@ function persistTranscript(sessionId: string): void {
  */
 export async function ensureTranscriptLoaded(sessionId: string): Promise<void> {
   if (conversations.has(sessionId)) return;
-  const { messages, hidden } = loadTranscriptWithMeta(sessionId);
+  const { messages, hidden, ids, inContext } = loadTranscriptWithMeta(sessionId);
   if (messages.length > 0) {
     conversations.set(sessionId, messages);
+    let missingIds = false;
     messages.forEach((m, i) => {
       if (hidden[i]) hiddenTurns.add(m);
+      const id = ids[i];
+      if (id) messageIds.set(m, id);
+      else missingIds = true;
+      if (inContext[i] === false) outOfContext.add(m);
     });
+    // A chat written before messages had ids gets them now, once, and is
+    // then on the same footing as every other chat. No second code path
+    // for "old transcripts" — there is only one kind.
+    if (missingIds) persistTranscript(sessionId);
   }
 }
 
@@ -568,6 +621,57 @@ function isUserTurnBoundary(m: LLMMessage): boolean {
   if (m.role !== "user" || hiddenTurns.has(m)) return false;
   if (typeof m.content === "string") return true;
   return m.content.some((b) => b.type !== "tool_result");
+}
+
+/**
+ * Take one prompt out of the model's context, or put it back — WITH the
+ * turn it started.
+ *
+ * The unit is the whole turn, and that is not tidiness: an assistant
+ * message carrying `tool_use` whose `tool_result` is missing (or the
+ * reverse) is a request the API rejects outright. So marking a user
+ * message marks everything up to the next visible user turn — its reply,
+ * its tool calls and their results.
+ *
+ * Nothing is deleted. That is what makes this reversible, and what lets
+ * the chat go on showing a prompt it has stopped sending.
+ */
+export function setTurnContext(
+  sessionId: string,
+  messageId: string,
+  inContext: boolean,
+): { ok: boolean; changed: number } {
+  const msgs = conversations.get(sessionId);
+  if (!msgs) return { ok: false, changed: 0 };
+  const start = msgs.findIndex((m) => transcriptId(m) === messageId);
+  const range = turnRange(msgs, start, isUserTurnBoundary);
+  if (!range) return { ok: false, changed: 0 };
+
+  let changed = 0;
+  for (let i = range.start; i < range.end; i++) {
+    if (isInContext(msgs[i]) !== inContext) changed++;
+    setInContext(msgs[i], inContext);
+  }
+  if (changed > 0) persistTranscript(sessionId);
+  return { ok: true, changed };
+}
+
+/** What would actually be sent right now — the transcript minus everything
+ * taken out of context. The request path and the token estimate both go
+ * through this, so "what the model sees" has one definition. */
+export function messagesInContext(sessionId: string): LLMMessage[] {
+  return (conversations.get(sessionId) ?? []).filter(isInContext);
+}
+
+/** The visible user turns, oldest first, with whether each is still being
+ * sent — everything the chat and the meter need to draw the truth. */
+export function turnContextState(
+  sessionId: string,
+): { id: string; inContext: boolean }[] {
+  const msgs = conversations.get(sessionId) ?? [];
+  return msgs
+    .filter(isUserTurnBoundary)
+    .map((m) => ({ id: transcriptId(m), inContext: isInContext(m) }));
 }
 
 /** A user turn is "empty" (no real prompt) when it carries no text/media — it
@@ -779,14 +883,24 @@ export async function undoPrompts(
   sessionId: string,
   count = 1,
 ): Promise<{ removed: number; turnsLeft: number; messagesDropped: number }> {
-  const available = await undoableTurnCount(sessionId);
-  const removed = Math.max(0, Math.min(count, available));
-  if (removed === 0) return { removed: 0, turnsLeft: available, messagesDropped: 0 };
+  await ensureTranscriptLoaded(sessionId);
+  // The turns still being sent — an already-removed prompt is not a
+  // candidate for removal a second time.
+  const live = turnContextState(sessionId).filter((t) => t.inContext);
+  const removed = Math.max(0, Math.min(count, live.length));
+  if (removed === 0)
+    return { removed: 0, turnsLeft: live.length, messagesDropped: 0 };
 
-  const keep = available - removed;
   const before = conversations.get(sessionId)?.length ?? 0;
-  const result = await rewindTranscriptToUserTurn(sessionId, keep, available);
-  const after = conversations.get(sessionId)?.length ?? 0;
+  // Marked, not truncated. The messages stay in the transcript and on
+  // screen; they simply stop being sent, which is reversible and is the
+  // same operation "remove this one prompt" performs on a turn further up.
+  let messagesDropped = 0;
+  for (const turn of live.slice(-removed))
+    messagesDropped += setTurnContext(sessionId, turn.id, false).changed;
+  const result = { fidelity: "full" as const, removed: messagesDropped };
+  const available = live.length;
+  const after = before;
 
   // State those turns produced. A todo list describing work the model can no
   // longer see is worse than no list, and a plan-mode override outliving the
@@ -801,21 +915,21 @@ export async function undoPrompts(
   }
   clearSessionMode(sessionId);
 
+  // Still recorded, because the context timeline is worth having — but it
+  // is now a LOG, not the source of truth. What is out of context is a
+  // flag on the messages themselves; nobody reconstructs it by replaying
+  // these events any more.
   recordContextEvent(sessionId, "rewind", {
     undo: true,
     removedTurns: removed,
     fidelity: result.fidelity,
-    // The counts ride on THIS event, not on the inner rewind's: undo is the
-    // only truncation that leaves the messages on screen, so it is the only
-    // one the chat should mark as out of context. A rewind or a resend trims
-    // the display along with the transcript — nothing is left behind to mark,
-    // and marking it would dim the messages sent AFTERWARDS.
-    userTurnsBefore: available,
-    userTurnsAfter: keep,
-    headOffset: contextHeadOffset(sessionId),
   });
 
-  return { removed, turnsLeft: keep, messagesDropped: Math.max(0, before - after) };
+  return {
+    removed,
+    turnsLeft: available - removed,
+    messagesDropped,
+  };
 }
 
 export async function undoCompaction(
@@ -919,7 +1033,10 @@ export async function computeContextBreakdown(
   // Prefer the renderer's estimate (it always has the visible history, even for
   // old chats never run in this process); fall back to the in-memory run.
   const messageTokens =
-    messageTokensOverride ?? estimateTokens(conversations.get(sessionId) ?? []);
+    messageTokensOverride ??
+    // Only what is still sent — a prompt taken out of context stops
+    // costing tokens, and the meter has to say so.
+    estimateTokens((conversations.get(sessionId) ?? []).filter(isInContext));
 
   let systemTokens = 0;
   let toolTokens = 0;
@@ -1433,7 +1550,13 @@ async function runAgentScoped(
     // the system prompt is thousands of tokens behind by the time the model
     // writes. Rebuilt per turn and never persisted into `messages`, so it can't
     // accumulate in the transcript or leak into compaction.
-    const turnMessages = withCavemanReminder(messages, cave);
+    // What the model actually gets: everything still in context. A message
+    // taken out — an undone prompt, one removed by hand, the front of a
+    // compacted chat — stays in the array and stays on screen; it just is
+    // not sent. Whole turns only (see setTurnContext), because an
+    // assistant `tool_use` without its `tool_result` is a request the API
+    // refuses outright.
+    const turnMessages = withCavemanReminder(messages.filter(isInContext), cave);
 
     try {
       await adapter.stream(

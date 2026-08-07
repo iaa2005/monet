@@ -730,6 +730,27 @@ export function registerChatIPC(): void {
     undoableTurnCount(sessionId || "default"),
   );
 
+  // Which prompts the model can still read, and the switch for one of them.
+  // The chat draws this directly — no arithmetic over past events.
+  ipcMain.handle("chat:turnContext", async (_e, sessionId?: string) => {
+    const { ensureTranscriptLoaded, turnContextState } = await import(
+      "../agent/index.js"
+    );
+    await ensureTranscriptLoaded(sessionId || "default");
+    return turnContextState(sessionId || "default");
+  });
+
+  ipcMain.handle(
+    "chat:setTurnContext",
+    async (_e, sessionId: string, messageId: string, inContext: boolean) => {
+      const { ensureTranscriptLoaded, setTurnContext } = await import(
+        "../agent/index.js"
+      );
+      await ensureTranscriptLoaded(sessionId || "default");
+      return setTurnContext(sessionId || "default", messageId, inContext);
+    },
+  );
+
   ipcMain.handle("chat:reset", (_event, sessionId?: string) => {
     abortBgAgents(sessionId || "default");
     resetConversation(sessionId || "default");

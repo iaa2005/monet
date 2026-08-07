@@ -33,5 +33,10 @@ await build({
   // native binding because bundling a .node file is not a thing.
   external: ["electron", "better-sqlite3"],
   alias: { "@shared": resolve("src/shared"), "@": resolve("src/renderer") },
+  // Pulling in the agent drags the connector registry along, and those
+  // modules import their icons as `?raw` — a vite convention esbuild has
+  // never heard of. The probe does not draw anything, so the bytes can be
+  // whatever; what matters is that the graph resolves.
+  loader: { ".svg": "text" },
   logLevel: "warning",
 });
