@@ -386,6 +386,52 @@ export async function checkpointDiffStat(
   return { files, insertions, deletions };
 }
 
+/**
+ * What each turn changed, kept beside the commits it refers to.
+ *
+ * `<gitDir>/ledgers.json`, sha → the turn's delta. In the store rather
+ * than in the session DB for the same reason the work-tree marker is: a
+ * ledger without its commits restores nothing, so the two must not be
+ * separable.
+ */
+function ledgerPath(gitDir: string): string {
+  return join(gitDir, "ledgers.json");
+}
+
+export function saveLedger(
+  sessionId: string,
+  sha: string,
+  delta: unknown,
+): void {
+  const gitDir = shadowDir(sessionId);
+  try {
+    // The store may not exist yet — the ledger is written right after a
+    // snapshot creates it, but "right after" is an assumption, and a
+    // silent failure here costs a rewind its precision much later.
+    if (!existsSync(gitDir)) mkdirSync(gitDir, { recursive: true });
+    const p = ledgerPath(gitDir);
+    const all = existsSync(p)
+      ? (JSON.parse(readFileSync(p, "utf8")) as Record<string, unknown>)
+      : {};
+    all[sha] = delta;
+    writeFileSync(p, JSON.stringify(all), "utf8");
+  } catch {
+    /* best-effort: without it a rewind falls back to saying it cannot */
+  }
+}
+
+export function loadLedger(sessionId: string, sha: string): unknown | null {
+  const gitDir = shadowDir(sessionId);
+  try {
+    const p = ledgerPath(gitDir);
+    if (!existsSync(p)) return null;
+    const all = JSON.parse(readFileSync(p, "utf8")) as Record<string, unknown>;
+    return all[sha] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Restore the workspace to a checkpoint commit (Rewind to here). */
 export async function rewindWorkspace(
   sessionId: string,

@@ -89,6 +89,13 @@ import {
   withCavemanReminder,
 } from "./caveman.js";
 import { turnRange } from "./turn-context.js";
+import { anyWriters } from "./writers.js";
+import {
+  changedIn,
+  foldDelta,
+  EMPTY_DELTA,
+  type Delta,
+} from "./file-ledger.js";
 import { clearRevealedTools } from "./revealed-tools.js";
 import { deferredLines } from "./deferred-inventory.js";
 import { browserDirective } from "./browser-directive.js";
@@ -445,6 +452,24 @@ export function resetConversation(sessionId: string): void {
   dropSessionContext(sessionId);
   clearSessionGrants(sessionId);
   clearRevealedTools(sessionId);
+}
+
+/**
+ * What the running turn has changed on disk so far.
+ *
+ * Filled a WINDOW at a time — one index of the folder before a batch of
+ * tools runs and one after — so a file a Python script wrote is caught
+ * along with the ones Edit named, and a file the user edits while the
+ * model is thinking is not. See file-ledger.ts for why that distinction
+ * is the whole design.
+ */
+const turnLedgers = new Map<string, Delta>();
+
+/** The folder this run is working in — the same source the end-of-turn
+ * snapshot uses, so the window and the commit describe one folder. */
+let cwdForRun: (() => string | undefined) | null = null;
+function getCwdForRun(): string | undefined {
+  return cwdForRun?.();
 }
 
 /** Transcript user-turn messages with NO display bubble — background-delivery
@@ -1391,6 +1416,14 @@ async function runAgentScoped(
       ? `${directives.join("\n\n")}\n\n${basePrompt}`
       : basePrompt;
 
+  // Where this run works, for the file windows below — the same source
+  // the end-of-turn snapshot uses, so a window and its commit can never
+  // describe two different folders.
+  {
+    const { getCwd } = await import("@vendor/utils/cwd.js");
+    cwdForRun = () => getCwd();
+  }
+
   // Full-fidelity continuation: load the durable transcript (tool blocks and
   // all) for a reopened chat before we build on it. No-op if already loaded.
   await ensureTranscriptLoaded(sessionId);
@@ -1715,9 +1748,19 @@ async function runAgentScoped(
       if (space && space !== "home") {
         try {
           const { getCwd } = await import("@vendor/utils/cwd.js");
-          const { snapshotWorkspace } = await import("./checkpoints.js");
+          const { snapshotWorkspace, saveLedger } = await import(
+            "./checkpoints.js"
+          );
           const sha = await snapshotWorkspace(sessionId, getCwd());
-          if (sha) onEvent({ type: "checkpoint", sha });
+          if (sha) {
+            // What this turn changed, stored against the commit that
+            // holds the content — so a rewind can put back exactly those
+            // files and leave the rest of the folder alone.
+            const ledger = turnLedgers.get(sessionId);
+            if (ledger) saveLedger(sessionId, sha, ledger);
+            turnLedgers.delete(sessionId);
+            onEvent({ type: "checkpoint", sha });
+          }
         } catch {
           /* best-effort */
         }
@@ -1836,7 +1879,38 @@ async function runAgentScoped(
     };
 
     const batches = planBatches(toolCalls, toolConcurrencyLookup(space, sessionId));
+
+    // The window. Everything that changes on disk between here and the
+    // line after the batch belongs to this turn — a file a tool named, a
+    // file a script wrote, a file a build produced. What changes OUTSIDE
+    // it, while the model is thinking or writing, is the user's and is
+    // never touched by a rewind.
+    const watching = space !== "home" && anyWriters(toolCalls);
+    const beforeBatch = watching
+      ? await (
+          await import("./checkpoints.js")
+        ).indexWorkspace(sessionId, getCwdForRun())
+      : null;
+
     const batchRun = await runBatches(batches, runOne, () => signal?.aborted === true);
+
+    if (beforeBatch) {
+      try {
+        const { indexWorkspace } = await import("./checkpoints.js");
+        const afterBatch = await indexWorkspace(sessionId, getCwdForRun());
+        if (afterBatch)
+          turnLedgers.set(
+            sessionId,
+            foldDelta(
+              turnLedgers.get(sessionId) ?? EMPTY_DELTA,
+              changedIn(beforeBatch, afterBatch),
+            ),
+          );
+      } catch {
+        /* a missed window costs precision, not correctness: the rewind
+           falls back to saying it cannot restore that turn */
+      }
+    }
     results.push(...batchRun.results);
     if (batchRun.aborted) {
       onEvent({ type: "error", error: "Aborted" });

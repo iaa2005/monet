@@ -53,6 +53,7 @@
     "smoke:ckptfolder": "node scripts/renderer-probe.mjs scripts/checkpoint-folder-probe.ts",
     "smoke:ledger": "node scripts/renderer-probe.mjs scripts/file-ledger-probe.ts",
     "smoke:narrowrestore": "node scripts/smoke-agent.mjs scripts/narrow-restore-probe.ts",
+    "smoke:ledgerstore": "node scripts/smoke-agent.mjs scripts/ledger-store-probe.ts",
     "smoke:artifacttiming": "node scripts/renderer-probe.mjs scripts/artifact-timing-probe.ts",
     "smoke:hue": "npm run build && electron scripts/brand-hue-probe.cjs",
     "smoke:raster": "node scripts/build-raster-probe.mjs && electron scripts/ocr-rasterise-probe.cjs",
