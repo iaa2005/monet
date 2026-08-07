@@ -184,7 +184,27 @@ def licence_of(hub: HfApi, model: dict) -> tuple[str, bool, str]:
     return (licence, licence in REDISTRIBUTABLE, note)
 
 
-def card_for(model: dict, licence: str) -> str:
+def completeness(copied: int, upstream: int) -> str:
+    """Say what was actually copied, rather than assert it.
+
+    Some of these end up complete — the file patterns for the OCR readers
+    take every graph, because the app offers three quantisations and a
+    partial copy would break the two nobody tested. Others are narrow on
+    purpose: the Whisper repos carry eight quantisations and the app pins
+    one. A card that claims the wrong one of those is a card nobody should
+    trust about anything else either.
+    """
+    if copied >= upstream:
+        return (
+            "This is a **complete copy**: every file the original publishes."
+        )
+    return (
+        f"Only the files the application downloads are here — {copied} of "
+        f"the original's {upstream} — so this is **not a complete copy**."
+    )
+
+
+def card_for(model: dict, licence: str, copied: int = 0, upstream: int = 0) -> str:
     # No `base_model_relation`: the Hub validates it against a fixed list
     # — finetune, adapter, merge, quantized — and a plain copy is none of
     # those. An invalid value fails the upload, not just the card.
@@ -204,9 +224,8 @@ not to be better.
 
 Purpose in that app: {model["why"]}.
 
-Only the files the application downloads are here, not the whole
-repository, so this is not a faithful copy. The licence and the credit
-belong to the original authors; nothing here is modified.
+{completeness(copied, upstream)} The licence and the credit belong to the
+original authors; nothing here is modified.
 """
 
 
@@ -233,7 +252,10 @@ def mirror(hub: HfApi, model: dict, work: Path) -> None:
     size = sum(p.stat().st_size for p in got)
     print(f"  {len(got)} files, {size / 1024 / 1024:.0f} MB")
 
-    (local / "README.md").write_text(card_for(model, licence), encoding="utf-8")
+    upstream = len(hub.model_info(repo).siblings)
+    (local / "README.md").write_text(
+        card_for(model, licence, len(got), upstream), encoding="utf-8"
+    )
 
     hub.create_repo(target, repo_type="model", exist_ok=True)
     hub.upload_folder(

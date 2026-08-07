@@ -98,6 +98,25 @@ fragments land in spoken order (a sequential queue guarantees it), and the
 input stays fully typeable throughout — dictate a phrase, type a
 correction, keep dictating.
 
+## Where the voices and the ears come from
+
+Every model this app installs — speech recognition, speech synthesis, page
+reading, all of it — is downloaded from **one account**,
+[huggingface.co/iaa2005](https://huggingface.co/iaa2005). They are mirrors,
+and each one credits its original: GigaAM is Sber's, Whisper is OpenAI's
+through Xenova's ONNX conversions, the voice is Supertone's.
+
+The reason is dull and worth stating. Before, the models came from six
+different accounts, and any of those can rename a repository, put it
+behind a licence click, or delete it — at which point installing a voice
+fails with a 404 for somebody who did nothing wrong. Mirroring means the
+app depends on one place instead of six.
+
+Only models whose licence permits redistribution were copied, the licence
+files travel with them, and the copies are byte-for-byte identical to the
+originals — the downloader checks a sha256 for every file and would refuse
+them otherwise.
+
 ## Small print
 
 - Very short utterances (under ~2 KB of audio) are discarded as noise —

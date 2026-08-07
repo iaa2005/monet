@@ -110,6 +110,19 @@ would rather have Markdown than a wall of HTML.
 **Your machine is not that machine**: run `npm run suite:ocr -- <folder>` on
 your own documents, which is the only benchmark that means anything.
 
+## Where the models come from
+
+All of them download from one account,
+[huggingface.co/iaa2005](https://huggingface.co/iaa2005) — mirrors, with
+each original credited on its page. Six different accounts used to be
+involved, and any of them can rename or remove a repository; the mirror is
+so that installing a model does not depend on six strangers all leaving
+things where they are.
+
+PaddleOCR-VL 1.6 is the exception that is not a mirror: no ONNX build of it
+existed, so it was converted here from Baidu's weights and published. The
+scripts that did it live in `onnx-lab/` next to the app.
+
 ## What it gets wrong
 
 Honest list, from measuring rather than from the model cards:
