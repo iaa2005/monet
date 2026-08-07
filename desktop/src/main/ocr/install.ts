@@ -398,6 +398,38 @@ export function hasLayoutFile(repo: string, file: string): boolean {
   return statSyncSize(join(ocrModelsDir(), ...repo.split("/"), file)) > 0;
 }
 
+/**
+ * The two models the fast path needs: the block finder and the line
+ * detector.
+ *
+ * They install together because they fail together — a page taken apart
+ * into blocks but never straightened is the wrong shape for the reader,
+ * and a straightener with no blocks to straighten has nothing to do. The
+ * line detector was for a long time not installed by ANYTHING: the code
+ * that uses it guards on the file existing and returns "not crooked" when
+ * it does not, so deskewing was silently off on every clean install.
+ *
+ * Here rather than in the IPC handler so a probe can call it.
+ */
+export async function installBlockFinder(
+  onProgress: ProgressFn,
+): Promise<{ ok: boolean; error?: string }> {
+  const { LAYOUT_FILE, LAYOUT_REPO } = await import("./layout.js");
+  const { DET_FILE, DET_REPO } = await import("./lines/detect.js");
+  const layout = await installLayoutModel(LAYOUT_REPO, LAYOUT_FILE, onProgress);
+  if (!layout.ok) return layout;
+  return installLayoutModel(DET_REPO, DET_FILE, onProgress);
+}
+
+/** Are both of them there? */
+export async function hasBlockFinder(): Promise<boolean> {
+  const { LAYOUT_FILE, LAYOUT_REPO } = await import("./layout.js");
+  const { DET_FILE, DET_REPO } = await import("./lines/detect.js");
+  return (
+    hasLayoutFile(LAYOUT_REPO, LAYOUT_FILE) && hasLayoutFile(DET_REPO, DET_FILE)
+  );
+}
+
 export function cancelOcrInstall(modelId: string, dtype: OcrDtype): boolean {
   const c = installing.get(`${modelId}:${dtype}`);
   if (!c) return false;

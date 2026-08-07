@@ -14,13 +14,12 @@ import {
   type OcrDtype,
   type OcrModelInfo,
 } from "../ocr/catalog.js";
-import { LAYOUT_FILE, LAYOUT_REPO } from "../ocr/layout.js";
-import { DET_FILE, DET_REPO } from "../ocr/lines/detect.js";
+import { LAYOUT_REPO } from "../ocr/layout.js";
 import {
   bytesOnDisk,
   cancelOcrInstall,
-  hasLayoutFile,
-  installLayoutModel,
+  hasBlockFinder,
+  installBlockFinder,
   installOcrModel,
   isInstalled,
   isInstalling,
@@ -99,29 +98,19 @@ export function registerOcrIPC(): void {
   // The block finder is its own install: 124 MB that turns four minutes a
   // page into twenty seconds, and the difference between "reads documents"
   // and "reads documents usefully".
-  ipcMain.handle("ocr:layoutStatus", () => ({
+  ipcMain.handle("ocr:layoutStatus", async () => ({
     repo: LAYOUT_REPO,
-    installed:
-      hasLayoutFile(LAYOUT_REPO, LAYOUT_FILE) && hasLayoutFile(DET_REPO, DET_FILE),
+    installed: await hasBlockFinder(),
     bytes: 129 * 1024 * 1024,
     size: formatBytes(129 * 1024 * 1024),
   }));
 
   ipcMain.handle("ocr:installLayout", async () => {
-    const r = await installLayoutModel(LAYOUT_REPO, LAYOUT_FILE, (p) =>
+    const r = await installBlockFinder((p) =>
       broadcast("ocr:installProgress", p),
     );
-    if (!r.ok) return r;
-    // And the line detector, 4.6 MB, which nothing was fetching. The code
-    // that reads it is complete — it is what measures how crooked a scan
-    // is so the page can be straightened — but it guards on the file being
-    // present and silently returns "not crooked" when it is not. So on
-    // every clean install, deskewing was off and nothing said so.
-    const lines = await installLayoutModel(DET_REPO, DET_FILE, (p) =>
-      broadcast("ocr:installProgress", p),
-    );
-    if (lines.ok) resetVendorTools();
-    return lines;
+    if (r.ok) resetVendorTools();
+    return r;
   });
 
   ipcMain.handle("ocr:setConfig", (_e, patch: Partial<OcrConfig>): OcrConfig => {

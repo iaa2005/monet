@@ -43,6 +43,8 @@ app.whenReady().then(async () => {
     ALL_MODELS,
     installOcrModel,
     isInstalled,
+    installBlockFinder,
+    hasBlockFinder,
     setOcrConfig,
     getOcrConfig,
     registerRasteriserIPC,
@@ -50,6 +52,28 @@ app.whenReady().then(async () => {
     closeRasteriser,
     disposeOcrEngine,
   } = await import(pathToFileURL(bundle).href);
+
+  // The block finder is not a catalogue model — it is two files that the
+  // fast path needs, and one of them was for a long time downloaded by
+  // nothing at all. `npm run probe:ocr-install -- layout` fetches both.
+  if (modelId === "layout") {
+    const started = Date.now();
+    let lastPercent = -1;
+    const r = await installBlockFinder((p) => {
+      if (p.percent === lastPercent) return;
+      lastPercent = p.percent;
+      process.stdout.write(
+        `\r  ${String(p.percent).padStart(3)}%  ${p.file ?? ""}          `,
+      );
+    });
+    process.stdout.write("\n\n");
+    check("both block-finder files downloaded", r.ok, r.error);
+    check("…and both are on disk", await hasBlockFinder());
+    console.log(`  ${((Date.now() - started) / 1000).toFixed(0)}s`);
+    console.log(failures ? `\n${failures} FAILED` : "\nINSTALL PROBE PASSED");
+    app.exit(failures ? 1 : 0);
+    return;
+  }
 
   const model = ALL_MODELS.find((m) => m.id === modelId);
   check(`the catalogue knows ${modelId}`, !!model);

@@ -35,10 +35,19 @@ def main() -> None:
         except Exception as err:
             print(f"skip {target}: {type(err).__name__}")
             continue
-        upstream = len(hub.model_info(model["repo"]).siblings)
-        # The card and .gitattributes are the mirror's own, not copies.
+        # Count the same things on both sides. The card is the mirror's
+        # own and .gitattributes is the Hub's, so counting them upstream
+        # and not downstream made a complete copy report as 38 of 40.
+        housekeeping = ("README.md", ".gitattributes")
+        upstream = len(
+            [
+                s
+                for s in hub.model_info(model["repo"]).siblings
+                if s.rfilename not in housekeeping
+            ]
+        )
         copied = len(
-            [s for s in mine.siblings if s.rfilename not in ("README.md", ".gitattributes")]
+            [s for s in mine.siblings if s.rfilename not in housekeeping]
         )
         licence, _, _ = licence_of(hub, model)
         card = card_for(model, licence, copied, upstream)
