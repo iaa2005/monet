@@ -646,6 +646,25 @@ export function seedConversation(
  */
 const compactionFloor = new Map<string, number>();
 
+/**
+ * The ids and context flags of a message list, as plain arrays.
+ *
+ * A compaction event stores the pre-compaction history so it can be undone,
+ * and it stores it as DATA — copies, with none of the identity the live
+ * messages carry in WeakMaps. Undoing without these gives every message a
+ * fresh id and puts the whole lot back in context, including prompts the
+ * user had taken out before compacting.
+ */
+function snapshotIdentity(msgs: LLMMessage[]): {
+  beforeIds: string[];
+  beforeInContext: boolean[];
+} {
+  return {
+    beforeIds: msgs.map((m) => transcriptId(m)),
+    beforeInContext: msgs.map((m) => isInContext(m)),
+  };
+}
+
 function worthCompacting(sessionId: string, live: LLMMessage[]): boolean {
   const floor = compactionFloor.get(sessionId);
   return floor === undefined || estimateTokens(live) > floor;
@@ -672,6 +691,8 @@ export async function compactSessionNow(
   const provider = getProviderManager().getActive();
   if (!provider) return null;
   const adapter = createAdapter(provider);
+  // The live objects, for their ids and flags; the copies, for the content.
+  const beforeLive = [...messages];
   const beforeSnapshot = messages.map((m) => ({ ...m }));
   const before = estimateTokens(messages.filter(isInContext));
   const compacted = await compactMessages({
@@ -702,6 +723,7 @@ export async function compactSessionNow(
       userTurnsAfter: countUserTurns(messages),
       headOffset: contextHeadOffset(sessionId),
       before: beforeSnapshot,
+      ...snapshotIdentity(beforeLive),
       after: messages.map((m) => ({ ...m })),
     });
   persistTranscript(sessionId);
@@ -1040,10 +1062,21 @@ export async function undoCompaction(
   if (!ev || ev.type !== "compact") return null;
   const before = ev.payload.before as LLMMessage[] | undefined;
   if (!Array.isArray(before) || before.length === 0) return null;
-  conversations.set(
-    sessionId,
-    before.map((m) => ({ ...m })),
-  );
+  // The snapshot is plain data — copies, with none of the WeakMap/WeakSet
+  // identity the live messages carry. Restored bare, every message would
+  // come back with a fresh id (the chat could no longer point at its turn)
+  // and IN context, which would put back prompts the user had removed
+  // before the compaction. The event carries both alongside.
+  const ids = ev.payload.beforeIds as (string | null)[] | undefined;
+  const flags = ev.payload.beforeInContext as boolean[] | undefined;
+  const restored = before.map((m, i) => {
+    const copy = { ...m };
+    const id = ids?.[i];
+    if (id) messageIds.set(copy, id);
+    if (flags && flags[i] === false) outOfContext.add(copy);
+    return copy;
+  });
+  conversations.set(sessionId, restored);
   persistTranscript(sessionId);
   dropContextEventsFrom(sessionId, ev.seq);
   return { restored: estimateTokens(before) };
@@ -1619,6 +1652,7 @@ async function runAgentScoped(
     // those very prompts back into it.
     const live = messages.filter(isInContext);
     if (shouldCompact(live, aim) && worthCompacting(sessionId, live)) {
+      const beforeLive = [...messages];
       const beforeSnapshot = messages.map((m) => ({ ...m }));
       const beforeTokens = estimateTokens(live);
       const compacted = await compactMessages({
@@ -1654,6 +1688,7 @@ async function runAgentScoped(
           userTurnsAfter: countUserTurns(messages),
           headOffset: contextHeadOffset(sessionId),
           before: beforeSnapshot,
+          ...snapshotIdentity(beforeLive),
           after: messages.map((m) => ({ ...m })),
         });
         persistTranscript(sessionId);

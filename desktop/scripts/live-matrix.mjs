@@ -2,10 +2,10 @@
  * The live matrix — the real app, the real model, the real folder.
  *
  * Everything else in scripts/ tests a piece with the rest held still. This
- * boots the BUILT app (out/main/index.js), points it at a throwaway data dir
- * carrying a copy of the user's provider config, and drives it over the
- * dev-only local API with real DeepSeek calls. Then it asks the questions a
- * unit test cannot:
+ * boots the BUILT app — the same `electron .` the user runs — points it at a
+ * throwaway data dir carrying a copy of their provider config, and drives it
+ * over the dev-only local API with real DeepSeek calls. Then it asks the
+ * questions a unit test cannot:
  *
  *   - when a prompt is taken out of context, does the MODEL stop knowing it?
  *   - when a turn is rewound, does the file the user typed meanwhile survive?
@@ -20,8 +20,12 @@
  * folder, and the work trees are temp dirs. The provider file is COPIED, so
  * the key is only ever read.
  *
- *   npm run live:matrix              # everything
+ *   npm run live:matrix              # everything (~10 min, ~40 real turns)
  *   npm run live:matrix code_undo    # one scenario
+ *
+ * Scenarios: code_undo, code_rewind, code_contested, manual_compact, home,
+ * auto_compact, compact_undo. One app is booted per compaction threshold —
+ * MONET_COMPACT_TOKENS is read once, when the module loads.
  */
 
 import { spawn } from 'node:child_process'
@@ -41,6 +45,7 @@ import { dirname, join, resolve } from 'node:path'
 const require = createRequire(import.meta.url)
 const electron = require('electron')
 
+/** Only to tell "not built yet" from "broken" — the app is launched below. */
 const MAIN = resolve('out/main/index.js')
 // Launched as `electron .`, NOT `electron out/main/index.js`. The difference
 // is app.getName(), and therefore userData — and Chromium keeps the key that
@@ -51,8 +56,10 @@ const APP_DIR = resolve('.')
 const SOURCE_DATA_DIR =
   process.env.LIVE_SOURCE_DATA_DIR ?? resolve('..', '.monet-prod')
 const PORT = Number(process.env.LIVE_API_PORT ?? 8791)
-/** One turn of a real model, with tools, is not fast. */
-const TURN_TIMEOUT_MS = 300_000
+/** One turn of a real model, with tools, is not fast — and the first turn
+ * after a boot pays for the prompt build, the skills seeding and whatever
+ * DeepSeek's queue is doing. Seen: 64s for one 300-word answer. */
+const TURN_TIMEOUT_MS = 600_000
 
 // ─── Reporting ──────────────────────────────────────────────────────────
 
@@ -132,7 +139,7 @@ async function bootApp(env) {
 }
 
 function makeApi(port, token) {
-  const call = async (method, path, body) => {
+  const once = async (method, path, body) => {
     const res = await fetch(`http://127.0.0.1:${port}${path}`, {
       method,
       headers: {
@@ -153,6 +160,18 @@ function makeApi(port, token) {
       throw new Error(`${path} → ${res.status}: ${trim(parsed.error ?? parsed)}`)
     return parsed
   }
+  // One retry, and only when the network stalled — said out loud, because a
+  // silent retry turns a hang into a slow pass. Anything the app answered,
+  // including an error, stands.
+  const call = async (method, path, body) => {
+    try {
+      return await once(method, path, body)
+    } catch (err) {
+      if (!/timeout|aborted/i.test(err.message)) throw err
+      say(`    ! ${path} timed out after ${TURN_TIMEOUT_MS / 1000}s — retrying once`)
+      return once(method, path, body)
+    }
+  }
   return {
     get: (p) => call('GET', p),
     post: (p, b) => call('POST', p, b),
@@ -161,10 +180,19 @@ function makeApi(port, token) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-/** Send a real prompt and return the whole turn. */
+/** Send a real prompt and return the whole turn.
+ *
+ * Long-term memory is OFF for every one of these. Half the matrix works by
+ * telling the model a word and then checking whether it still knows it — and
+ * the model, being helpful, reaches for the Remember tool. The word then
+ * lands in the memory file, every later session in this data dir reads it,
+ * and a check about the CONTEXT passes for a reason that has nothing to do
+ * with the context. Measured: a Home chat "remembered" a word that had been
+ * taken out, and a chat in another session knew a code word it was never
+ * told. */
 async function ask(api, body) {
   const t0 = Date.now()
-  const r = await api.post('/chat', body)
+  const r = await api.post('/chat', { memory: false, ...body })
   const secs = ((Date.now() - t0) / 1000).toFixed(1)
   say(
     `    → "${String(body.message).slice(0, 52)}…" (${secs}s, ${r.toolCalls} tools) ${JSON.stringify(
@@ -242,13 +270,13 @@ const scenario = (name, compactTokens, run) =>
 scenario('code_undo', null, async (api) => {
   const cwd = workspace({ 'keep.txt': "the user's own file\n" })
   const t1 = await ask(api, {
-    message: 'Remember this word: ALPHA-731. Reply with only: ok',
+    message: 'Keep this word in mind for later: ALPHA-731. Do not use any tools. Reply with only: ok',
     cwd,
     maxTurns: 3,
   })
   const s = t1.sessionId
   await ask(api, {
-    message: 'Remember this word too: BRAVO-842. Reply with only: ok',
+    message: 'Keep this word in mind too: BRAVO-842. Do not use any tools. Reply with only: ok',
     sessionId: s,
     cwd,
     maxTurns: 3,
@@ -400,7 +428,7 @@ scenario('code_contested', null, async (api) => {
 scenario('auto_compact', 2500, async (api) => {
   const cwd = workspace()
   const t1 = await ask(api, {
-    message: 'Remember this: the vault code is ZEBRA-77. Reply with only: ok',
+    message: 'Keep this in mind: the vault code is ZEBRA-77. Do not use any tools. Reply with only: ok',
     cwd,
     maxTurns: 3,
   })
@@ -444,13 +472,13 @@ scenario('auto_compact', 2500, async (api) => {
 scenario('compact_undo', 2500, async (api) => {
   const cwd = workspace()
   const t1 = await ask(api, {
-    message: 'Remember this word: SIGMA-9. Reply with only: ok',
+    message: 'Keep this word in mind for later: SIGMA-9. Do not use any tools. Reply with only: ok',
     cwd,
     maxTurns: 3,
   })
   const s = t1.sessionId
   await ask(api, {
-    message: 'Remember this word too: OMEGA-3. Reply with only: ok',
+    message: 'Keep this word in mind too: OMEGA-3. Do not use any tools. Reply with only: ok',
     sessionId: s,
     cwd,
     maxTurns: 3,
@@ -504,6 +532,29 @@ scenario('compact_undo', 2500, async (api) => {
     maxTurns: 3,
   })
   check('…and the model knows it again', has(t6.text, 'SIGMA-9'), t6.text)
+
+  // "Rewind through compact": the pre-compaction history comes back — and it
+  // is stored as plain data, so without its ids and flags travelling with it
+  // every restored message returns with a new id and IN context, quietly
+  // undoing the user's removal along with the compaction.
+  await api.post(`/context/${s}`, { messageId: t1.userMessageId, inContext: false })
+  const un = await api.post(`/uncompact/${s}`, {})
+  check('the compaction can be undone', !!un.restored, un.restored)
+  check(
+    'the restored history is bigger than the summary was',
+    un.context.allTokens > 2000,
+    un.context.allTokens,
+  )
+  check(
+    'THE REMOVED PROMPT IS STILL REMOVED AFTER UNDOING THE COMPACTION',
+    un.context.turns.some((t) => !t.inContext),
+    un.context.turns,
+  )
+  check(
+    '…and the turn still answers to the id the chat knows it by',
+    un.context.turns.some((t) => t.id === t1.userMessageId),
+    { want: t1.userMessageId, got: un.context.turns.map((t) => t.id) },
+  )
   discard(cwd)
 })
 
@@ -511,13 +562,13 @@ scenario('compact_undo', 2500, async (api) => {
 scenario('manual_compact', null, async (api) => {
   const cwd = workspace()
   const t1 = await ask(api, {
-    message: 'Remember this word: KILO-4. Reply with only: ok',
+    message: 'Keep this word in mind for later: KILO-4. Do not use any tools. Reply with only: ok',
     cwd,
     maxTurns: 3,
   })
   const s = t1.sessionId
   const t2 = await ask(api, {
-    message: 'Remember this word too: LIMA-6. Reply with only: ok',
+    message: 'Keep this word in mind too: LIMA-6. Do not use any tools. Reply with only: ok',
     sessionId: s,
     cwd,
     maxTurns: 3,
@@ -596,7 +647,7 @@ scenario('home', null, async (api, ctx) => {
 
   // And the context lever works the same here.
   const t3 = await ask(api, {
-    message: 'Remember this word: DELTA-5. Reply with only: ok',
+    message: 'Keep this word in mind for later: DELTA-5. Do not use any tools. Reply with only: ok',
     sessionId: s,
     space: 'home',
     maxTurns: 3,

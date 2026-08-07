@@ -30,11 +30,11 @@ import {
 } from "../session/transcript.js";
 import {
   compactSessionNow,
-  estimateSessionTokens,
   messagesInContext,
   runAgent,
   setTurnContext,
   turnContextState,
+  undoCompaction,
   undoPrompts,
 } from "../agent/index.js";
 import { estimateTokens } from "../agent/compaction.js";
@@ -63,6 +63,16 @@ interface ChatBody {
   timeout?: number;
   /** Id for this prompt's bubble, so a later call can address the turn. */
   userMessageId?: string;
+  /**
+   * Include the user's long-term memory in the system prompt (default true).
+   *
+   * An eval that tells the model to remember a word, and then checks whether
+   * it still knows it, is measuring the CONTEXT — so it has to turn this off.
+   * Otherwise the model reaches for the Remember tool, the word lands in the
+   * memory file, and every later session in that data dir knows it: the check
+   * passes for a reason that has nothing to do with what it is checking.
+   */
+  memory?: boolean;
 }
 
 /** Everything a caller needs to judge a run, in one payload. */
@@ -166,6 +176,7 @@ async function handleChat(body: ChatBody): Promise<unknown> {
       space,
       cwd,
       userMessageId,
+      memory: body.memory,
       permissionMode: body.permissionMode ?? "bypassPermissions",
       maxTurns: body.maxTurns ?? 24,
       providerId: body.providerId,
@@ -214,7 +225,10 @@ function contextReport(sessionId: string): unknown {
     // In memory (what the next request is built from)…
     inContextMessages: live.length,
     inContextTokens: estimateTokens(live),
-    allTokens: estimateSessionTokens(sessionId),
+    // …against everything the chat holds, removed turns included. The two
+    // differ by exactly what the user has taken out, which is the number a
+    // meter has to be able to show.
+    allTokens: estimateTokens(messages),
     // …and on disk (what survives a reopen).
     stored: {
       messages: messages.length,
@@ -305,6 +319,25 @@ export function initDevApi(): void {
           const id = idFrom(path, "/compact/");
           const r = await compactSessionNow(id);
           json(res, 200, { compacted: r, context: contextReport(id) });
+          return;
+        }
+        // "Rewind through compact" — the meter's own affordance.
+        if (path.startsWith("/uncompact/") && req.method === "POST") {
+          const id = idFrom(path, "/uncompact/");
+          const b = JSON.parse((await readBody(req)) || "{}") as {
+            eventId?: string;
+          };
+          const eventId =
+            b.eventId ??
+            listContextEvents(id)
+              .filter((e) => e.type === "compact")
+              .pop()?.id;
+          if (!eventId) {
+            json(res, 400, { error: "no compaction to undo" });
+            return;
+          }
+          const r = await undoCompaction(id, eventId);
+          json(res, 200, { restored: r, context: contextReport(id) });
           return;
         }
 
