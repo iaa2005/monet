@@ -918,6 +918,54 @@ scenario('home_podman', null, async (api, ctx) => {
   }
 })
 
+// 12 ─ Reconnaissance: the model cannot start coding before it has looked.
+//
+// The claim is not "it plans better" — that is unmeasurable in one run. It
+// is mechanical and checkable: during the first phase the writing tools are
+// not in the toolset, so the FIRST thing it does to the folder is a read,
+// and the work still happens afterwards.
+scenario('recon', null, async (api, ctx) => {
+  const cfg = join(ctx.dataDir, 'agent-features.json')
+  writeFileSync(cfg, JSON.stringify({ recon: true }), 'utf8')
+  const cwd = workspace({
+    'notes.md': '# Notes\n\nThe greeting lives in greet.js.\n',
+    'greet.js': 'export function greet(name) {\n  return "Hello, " + name;\n}\n',
+  })
+  try {
+    const t = await ask(api, {
+      message:
+        'Change greet.js so the greeting says "Good evening" instead of "Hello". ' +
+        'Reply with only: done',
+      cwd,
+      maxTurns: 14,
+    })
+    const calls = (t.steps ?? []).filter((s) => s.type === 'tool').map((s) => s.name)
+    const WRITERS = ['Write', 'Edit', 'MultiEdit', 'Bash', 'PowerShell', 'NotebookEdit']
+    const firstWrite = calls.findIndex((n) => WRITERS.includes(n))
+    const firstRead = calls.findIndex((n) => ['Read', 'Grep', 'Glob'].includes(n))
+    say(`    tools in order: ${calls.join(', ') || '(none)'}`)
+
+    check('it used tools at all', calls.length > 0, calls)
+    check('IT READ BEFORE IT WROTE', firstRead >= 0 && (firstWrite < 0 || firstRead < firstWrite), {
+      calls,
+      firstRead,
+      firstWrite,
+    })
+    check(
+      'and the work still happened',
+      (read(cwd, 'greet.js') ?? '').includes('Good evening'),
+      read(cwd, 'greet.js'),
+    )
+    check(
+      'the file it was not asked about is untouched',
+      (read(cwd, 'notes.md') ?? '').includes('The greeting lives in greet.js'),
+    )
+  } finally {
+    writeFileSync(cfg, JSON.stringify({ recon: false }), 'utf8')
+    discard(cwd)
+  }
+})
+
 // ─── Runner ─────────────────────────────────────────────────────────────
 
 if (!existsSync(MAIN)) {

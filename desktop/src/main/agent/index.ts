@@ -23,6 +23,14 @@ import {
 } from "./prompts-vendor.js";
 import { CONNECTOR_TOOL_NAMES } from "./connector-tools.js";
 import { isFeatureOn } from "./features.js";
+import {
+  RECON_DONE,
+  RECON_PROMPT,
+  RECON_TIMEUP,
+  RECON_TURNS,
+  reconTools,
+  worthRecon,
+} from "./recon.js";
 import { connectorServerNames } from "../mcp/manager.js";
 import { getService } from "../connectors/services/registry.js";
 import {
@@ -1658,6 +1666,25 @@ async function runAgentScoped(
   let loopSteersUsed = 0;
   let lastSteerAt = 0;
 
+  // Reconnaissance: the first turns run with the writing tools taken away,
+  // so the model cannot start coding before it has looked. Ends when it
+  // stops calling tools — which is the plan — or when the looking budget
+  // runs out. See recon.ts; the prompt rides in with the user's own.
+  let reconLeft =
+    isFeatureOn("recon") &&
+    !hiddenTurn &&
+    typeof userContent === "string" &&
+    worthRecon(userContent)
+      ? RECON_TURNS
+      : 0;
+  if (reconLeft > 0) {
+    appendUserText(messages, RECON_PROMPT);
+    onEvent({
+      type: "harness",
+      text: "Reconnaissance — reading before writing",
+    });
+  }
+
   for (let turn = 0; turn < budget; turn++) {
     if (signal?.aborted) {
       onEvent({ type: "error", error: "Aborted" });
@@ -1761,6 +1788,9 @@ async function runAgentScoped(
     // assistant `tool_use` without its `tool_result` is a request the API
     // refuses outright.
     const turnMessages = withCavemanReminder(messages.filter(isInContext), cave);
+    // While reconnaissance lasts, the model is handed a toolset in which
+    // starting to code is not an available action.
+    const turnTools = reconLeft > 0 ? reconTools(tools) : tools;
 
     try {
       await adapter.stream(
@@ -1768,7 +1798,7 @@ async function runAgentScoped(
           model: runModel,
           system: systemPrompt,
           messages: turnMessages,
-          tools,
+          tools: turnTools,
           max_tokens: provider.maxTokens || 16000,
           temperature: provider.temperature,
           effort: provider.supportsEffort ? effort : undefined,
@@ -1845,6 +1875,18 @@ async function runAgentScoped(
             ? assistantText
             : assistantBlocks,
       });
+
+    if (toolCalls.length === 0 && reconLeft > 0 && assistantText.trim()) {
+      // In a normal turn "no tool calls" means finished. In reconnaissance
+      // it means the looking is over and THIS is the plan — so the phase
+      // ends, the full toolset comes back, and the run carries on rather
+      // than stopping with a plan and no work.
+      reconLeft = 0;
+      appendUserText(messages, RECON_DONE);
+      onEvent({ type: "harness", text: "Plan in hand — starting the work" });
+      persistTranscript(sessionId);
+      continue;
+    }
 
     if (toolCalls.length === 0) {
       // The model is done — unless the user said something while it worked.
@@ -1941,6 +1983,14 @@ async function runAgentScoped(
     // The model is working again, so a nudge spent earlier no longer counts
     // as "the last thing that happened".
     nudgedLastTurn = false;
+
+    // A looking turn just spent one of its own. Running out without a plan
+    // is not a failure — it is a model that read a lot and said nothing, and
+    // the work still has to happen.
+    if (reconLeft > 0 && --reconLeft === 0) {
+      appendUserText(messages, RECON_TIMEUP);
+      onEvent({ type: "harness", text: "Done looking — starting the work" });
+    }
 
     // Execute tools through the vendor pipeline with progress events.
     //
