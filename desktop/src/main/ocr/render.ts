@@ -238,11 +238,15 @@ export async function measureImage(imagePath: string): Promise<RenderedPage> {
 }
 
 /**
- * The same page, turned by a right angle, written beside the original.
+ * The same page, turned by a right angle.
  *
  * Used when the layout detector says the page is sideways: rather than
  * carrying an angle through every later step, the page is rotated once and
  * everything downstream sees an upright document.
+ *
+ * It lands in the scan's own folder, not beside the original. Written
+ * beside it, a rotated screenshot became a SECOND page in the user's
+ * folder — and the next scan of that folder read it as one.
  */
 export async function rotatePage(
   pagePath: string,
@@ -258,7 +262,9 @@ export async function rotatePage(
   const p = reply.pages?.[0];
   if (!p) throw new Error("the rasteriser returned nothing for that rotation");
   const stem = basename(pagePath).replace(/\.[^.]+$/, "");
-  const path = join(dirname(pagePath), `${stem}-rot${Math.round(degrees)}.png`);
+  const dir = layoutDir(pagePath);
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${stem}-rot${Math.round(degrees)}.png`);
   writeFileSync(path, Buffer.from(p.png));
   return {
     page: 1,
@@ -287,6 +293,21 @@ export async function rotatePage(
  */
 let cropRun = 0;
 
+/**
+ * The folder everything a scan produces goes into.
+ *
+ * One rule: `<page name>-layout/`, beside the page. The second clause is
+ * what makes it one rule rather than two — a page that was ROTATED already
+ * lives in that folder, and its crops belong there too rather than in a
+ * `-rot270-layout` folder nested inside it.
+ */
+export function layoutDir(pagePath: string): string {
+  const dir = dirname(pagePath);
+  if (basename(dir).endsWith("-layout")) return dir;
+  const stem = basename(pagePath).replace(/\.[^.]+$/, "");
+  return join(dir, `${stem}-layout`);
+}
+
 export async function cropBlocks(
   pagePath: string,
   boxes: [number, number, number, number][],
@@ -302,8 +323,7 @@ export async function cropBlocks(
   });
   if (reply.error) throw new Error(reply.error);
 
-  const stem = basename(pagePath).replace(/\.[^.]+$/, "");
-  const dir = join(dirname(pagePath), `${stem}-layout`);
+  const dir = layoutDir(pagePath);
   mkdirSync(dir, { recursive: true });
   // Every CALL gets its own prefix. Blocks are cut in groups (a formula is
   // padded more than a paragraph), and numbering within the group meant the

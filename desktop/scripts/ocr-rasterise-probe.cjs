@@ -80,10 +80,26 @@ app.whenReady().then(async () => {
     closeRasteriser,
     isPdfPath,
     isImagePath,
+    layoutDir,
   } = await import(pathToFileURL(bundle).href);
 
   check("a PDF is recognised as one", isPdfPath("x.PDF") && !isPdfPath("x.png"));
   check("pictures are recognised too", isImagePath("shot.JPG") && !isImagePath("a.txt"));
+
+  // Everything a scan produces goes in one folder beside the page. A
+  // rotated page used to land NEXT TO the original instead, where the next
+  // scan of that folder counted it as another page to read.
+  check(
+    "a scan's leavings go in a folder of their own",
+    layoutDir(join("D:", "docs", "page.png")) === join("D:", "docs", "page-layout"),
+    layoutDir(join("D:", "docs", "page.png")),
+  );
+  check(
+    "…and a rotated page's crops join it rather than nesting",
+    layoutDir(join("D:", "docs", "page-layout", "page-rot270.png")) ===
+      join("D:", "docs", "page-layout"),
+    layoutDir(join("D:", "docs", "page-layout", "page-rot270.png")),
+  );
 
   const dir = mkdtempSync(join(tmpdir(), "ocr-raster-probe-"));
   const pdf = join(dir, "two-pages.pdf");
