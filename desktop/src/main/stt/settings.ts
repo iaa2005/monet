@@ -17,6 +17,7 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getDataDir } from "../data-dir.js";
 import { DEFAULT_STT_MODEL } from "./catalog.js";
+import { DEFAULT_WHISPER } from "../../shared/whisper-tier.js";
 
 export interface SttSettings {
   /** "local" (in-renderer whisper), "ondevice" (GigaAM via sherpa-onnx in
@@ -43,7 +44,7 @@ const DEFAULTS: SttSettings = {
   endpoint: "",
   key: "",
   model: "",
-  localModel: "Xenova/whisper-base",
+  localModel: DEFAULT_WHISPER,
   nativeModel: DEFAULT_STT_MODEL,
   ttsVoice: "F1",
   language: "",

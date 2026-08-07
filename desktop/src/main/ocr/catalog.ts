@@ -104,11 +104,18 @@ export function variantFiles(
       optional: ["onnx/embedding.onnx.data"],
     };
 
+  // fp32 has no suffix. That is the transformers.js convention — the
+  // unquantised graph is `vision_encoder.onnx` and everything else is
+  // `vision_encoder_<dtype>.onnx` — and asking for `_fp32.onnx` fails the
+  // install on a file no repo of this shape has ever published. The
+  // settings page offers fp32 for the default model, so this was a button
+  // that could not work.
+  const suffix = dtype === "fp32" ? "" : `_${dtype}`;
   const required: string[] = [];
   const optional: string[] = [];
   for (const c of model.components) {
-    required.push(`onnx/${c}_${dtype}.onnx`);
-    optional.push(`onnx/${c}_${dtype}.onnx_data`);
+    required.push(`onnx/${c}${suffix}.onnx`);
+    optional.push(`onnx/${c}${suffix}.onnx_data`);
   }
   return { required, optional };
 }

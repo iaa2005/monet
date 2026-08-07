@@ -249,6 +249,25 @@ check('nonsense means the whole document, not page NaN', parsePages('abc').lengt
     files.required.concat(files.optional),
   )
 
+  // fp32 is the file with NO suffix. Every repo of this shape publishes
+  // `vision_encoder.onnx` for the full-precision graph and a suffix for
+  // each quantisation; asking for `_fp32.onnx` fails the install on a
+  // file that has never existed. The default model offers fp32 in
+  // Advanced, so this was a button that could not work.
+  const lighton = ALL_MODELS.find((m) => m.id === 'lightonocr-2-1b')!
+  const full = variantFiles(lighton, 'fp32')
+  check(
+    'fp32 asks for the unsuffixed graphs',
+    full.required.every((f) => !/_fp32/.test(f)) &&
+      full.required.includes('onnx/vision_encoder.onnx'),
+    full.required,
+  )
+  check(
+    '…while every other precision keeps its suffix',
+    variantFiles(lighton, 'fp16').required.includes('onnx/vision_encoder_fp16.onnx'),
+    variantFiles(lighton, 'fp16').required,
+  )
+
   // The runtime opens the graphs by name and the installer downloads them
   // by name, from two different pieces of code. They were once allowed to
   // disagree — the runtime had q4 spelled into it — and the symptom of a

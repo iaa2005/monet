@@ -28,7 +28,7 @@ export const glmOcr: OcrModelInfo = {
   id: "glm-ocr",
   enabled: true,
   engine: "transformers",
-  repo: "onnx-community/GLM-OCR-ONNX",
+  repo: "iaa2005/GLM-OCR-ONNX",
   label: "GLM-OCR",
   note:
     "Zhipu's document OCR, a different family from the default and measurably faster here (28s a page against 44s), with a different set of small mistakes. Worth trying on a page the other one struggles with.",

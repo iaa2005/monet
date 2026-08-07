@@ -33,7 +33,7 @@ import {
   type Quad,
 } from "./geometry.js";
 
-export const DET_REPO = "PaddlePaddle/PP-OCRv5_mobile_det_onnx";
+export const DET_REPO = "iaa2005/PP-OCRv5_mobile_det_onnx";
 export const DET_FILE = "inference.onnx";
 
 export function detModelPath(): string {

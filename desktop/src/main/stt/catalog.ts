@@ -56,13 +56,28 @@ export interface SttModelInfo {
   punctuation: boolean;
 }
 
+/**
+ * WHY EVERY REPO BELOW SAYS `iaa2005`.
+ *
+ * These are mirrors, and the originals are credited in each `note` and in
+ * each mirror's own card. The app used to fetch its models from six
+ * different accounts, any one of which can rename, gate or delete a repo
+ * — at which point a user who did nothing wrong gets a 404 in the middle
+ * of an install. The mirrors hold exactly the files listed here, with the
+ * same sha256s, under the same licences.
+ *
+ * Upstream for the four below: csukuangfj's sherpa-onnx conversions and
+ * fussraider's GigaAM-Multilingual, all of GigaAM by Sber's GigaChat team
+ * (MIT). Use theirs, not this copy, if you are reading this outside the
+ * app.
+ */
 export const STT_MODELS: SttModelInfo[] = [
   {
     id: "gigaam-v3-rnnt-punct",
     label: "GigaAM v3 RNN-T + punctuation",
     note: "Best Russian quality, writes punctuation itself. Handles Russian mixed with English terms.",
     kind: "transducer",
-    repo: "csukuangfj/sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16",
+    repo: "iaa2005/sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16",
     languages: "Русский (+ English words inside Russian speech)",
     punctuation: true,
     files: [
@@ -92,7 +107,7 @@ export const STT_MODELS: SttModelInfo[] = [
     label: "GigaAM v3 CTC + punctuation",
     note: "Same training, a simpler decoder: faster, one file, a shade less accurate.",
     kind: "ctc",
-    repo: "csukuangfj/sherpa-onnx-nemo-ctc-punct-giga-am-v3-russian-2025-12-16",
+    repo: "iaa2005/sherpa-onnx-nemo-ctc-punct-giga-am-v3-russian-2025-12-16",
     languages: "Русский (+ English words inside Russian speech)",
     punctuation: true,
     files: [
@@ -110,7 +125,7 @@ export const STT_MODELS: SttModelInfo[] = [
     label: "GigaAM Multilingual CTC — large",
     note: "The 600M version: clearly better English, ~2.5× slower and a much bigger download.",
     kind: "ctc",
-    repo: "fussraider/GigaAM-Multilingual-sherpa-onnx-ctc",
+    repo: "iaa2005/GigaAM-Multilingual-sherpa-onnx-ctc",
     languages: "70+ (ru, en, kk, ky, uz…)",
     punctuation: false,
     files: [
@@ -128,7 +143,7 @@ export const STT_MODELS: SttModelInfo[] = [
     label: "GigaAM Multilingual CTC",
     note: "70+ languages including English. No punctuation — it writes plain lowercase text.",
     kind: "ctc",
-    repo: "fussraider/GigaAM-Multilingual-sherpa-onnx-ctc",
+    repo: "iaa2005/GigaAM-Multilingual-sherpa-onnx-ctc",
     languages: "70+ (ru, en, kk, ky, uz…)",
     punctuation: false,
     files: [

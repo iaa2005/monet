@@ -74,7 +74,7 @@ const INPUT_SIZE = 800;
  */
 const SCORE_FLOOR = 0.5;
 
-export const LAYOUT_REPO = "PaddlePaddle/PP-DocLayout_plus-L_onnx";
+export const LAYOUT_REPO = "iaa2005/PP-DocLayout_plus-L_onnx";
 export const LAYOUT_FILE = "inference.onnx";
 
 export function layoutModelPath(): string {

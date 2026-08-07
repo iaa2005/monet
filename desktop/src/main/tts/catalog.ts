@@ -23,7 +23,7 @@ export interface TtsFile {
   sha256?: string;
 }
 
-export const TTS_REPO = "Supertone/supertonic-3";
+export const TTS_REPO = "iaa2005/supertonic-3";
 
 /** The shared model: four networks plus the text-processing tables. */
 export const TTS_MODEL_FILES: TtsFile[] = [

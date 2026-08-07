@@ -24,7 +24,7 @@ export const lightOnOcr: OcrModelInfo = {
   id: "lightonocr-2-1b",
   enabled: true,
   engine: "transformers",
-  repo: "onnx-community/LightOnOCR-2-1B-ONNX",
+  repo: "iaa2005/LightOnOCR-2-1B-ONNX",
   label: "LightOnOCR-2 1B",
   note:
     "End-to-end document OCR: a page in, Markdown out, with formulas as LaTeX and tables as tables. A Mistral vision encoder on a Qwen3 decoder, 1B parameters, Apache 2.0. The best of these on Russian, and the fastest.",

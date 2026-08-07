@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 import { SttModelPicker } from "@/components/chat/SttModelPicker";
 import type { ElectronAPI, TtsProgress, TtsStatus } from "@/types/electron";
+import { WHISPER_TIERS, DEFAULT_WHISPER } from "@shared/whisper-tier";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -27,7 +28,7 @@ export function VoiceSettings(): JSX.Element {
   const [endpoint, setEndpoint] = useState("");
   const [sttKey, setSttKey] = useState("");
   const [model, setModel] = useState("");
-  const [localModel, setLocalModel] = useState("Xenova/whisper-base");
+  const [localModel, setLocalModel] = useState(DEFAULT_WHISPER);
   const [nativeModel, setNativeModel] = useState("gigaam-v3-rnnt-punct");
   const [language, setLanguage] = useState("");
 
@@ -175,11 +176,10 @@ export function VoiceSettings(): JSX.Element {
               value={localModel}
               onChange={(v) => save("localModel", v, setLocalModel)}
               className="w-3/5 justify-between"
-              options={[
-                { value: "Xenova/whisper-tiny", label: "Fast (~147 MB)" },
-                { value: "Xenova/whisper-base", label: "Balanced (~280 MB)" },
-                { value: "Xenova/whisper-small", label: "Accurate (~926 MB)" },
-              ]}
+              options={WHISPER_TIERS.map((m) => ({
+                value: m.id,
+                label: m.label,
+              }))}
             />
             <Select
               ariaLabel="Language"

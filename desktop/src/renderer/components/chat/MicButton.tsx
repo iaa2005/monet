@@ -37,6 +37,7 @@ import type { ElectronAPI } from "@/types/electron";
 // in electron-vite dev mode (a worker that fails to LOAD dies silently).
 import SttWorker from "../../workers/stt-worker?worker";
 import { useChatStore } from "@/stores/chatStore";
+import { WHISPER_TIERS, DEFAULT_WHISPER } from "@shared/whisper-tier";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -53,11 +54,7 @@ const LEGACY_KEYS = {
   language: "stt-language",
 } as const;
 
-const LOCAL_MODELS = [
-  { id: "Xenova/whisper-tiny", label: "Fast (~147 MB)" },
-  { id: "Xenova/whisper-base", label: "Balanced (~280 MB)" },
-  { id: "Xenova/whisper-small", label: "Accurate (~926 MB)" },
-];
+const LOCAL_MODELS = WHISPER_TIERS;
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -206,7 +203,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
   const [endpoint, setEndpoint] = useState<string>("");
   const [sttKey, setSttKey] = useState<string>("");
   const [model, setModel] = useState<string>("");
-  const [localModel, setLocalModel] = useState<string>("Xenova/whisper-base");
+  const [localModel, setLocalModel] = useState<string>(DEFAULT_WHISPER);
   const [nativeModel, setNativeModel] = useState<string>("gigaam-v3-rnnt-punct");
   const [language, setLanguage] = useState<string>("");
 

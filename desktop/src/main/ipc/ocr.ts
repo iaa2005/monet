@@ -15,6 +15,7 @@ import {
   type OcrModelInfo,
 } from "../ocr/catalog.js";
 import { LAYOUT_FILE, LAYOUT_REPO } from "../ocr/layout.js";
+import { DET_FILE, DET_REPO } from "../ocr/lines/detect.js";
 import {
   bytesOnDisk,
   cancelOcrInstall,
@@ -100,17 +101,27 @@ export function registerOcrIPC(): void {
   // and "reads documents usefully".
   ipcMain.handle("ocr:layoutStatus", () => ({
     repo: LAYOUT_REPO,
-    installed: hasLayoutFile(LAYOUT_REPO, LAYOUT_FILE),
-    bytes: 124 * 1024 * 1024,
-    size: formatBytes(124 * 1024 * 1024),
+    installed:
+      hasLayoutFile(LAYOUT_REPO, LAYOUT_FILE) && hasLayoutFile(DET_REPO, DET_FILE),
+    bytes: 129 * 1024 * 1024,
+    size: formatBytes(129 * 1024 * 1024),
   }));
 
   ipcMain.handle("ocr:installLayout", async () => {
     const r = await installLayoutModel(LAYOUT_REPO, LAYOUT_FILE, (p) =>
       broadcast("ocr:installProgress", p),
     );
-    if (r.ok) resetVendorTools();
-    return r;
+    if (!r.ok) return r;
+    // And the line detector, 4.6 MB, which nothing was fetching. The code
+    // that reads it is complete — it is what measures how crooked a scan
+    // is so the page can be straightened — but it guards on the file being
+    // present and silently returns "not crooked" when it is not. So on
+    // every clean install, deskewing was off and nothing said so.
+    const lines = await installLayoutModel(DET_REPO, DET_FILE, (p) =>
+      broadcast("ocr:installProgress", p),
+    );
+    if (lines.ok) resetVendorTools();
+    return lines;
   });
 
   ipcMain.handle("ocr:setConfig", (_e, patch: Partial<OcrConfig>): OcrConfig => {
