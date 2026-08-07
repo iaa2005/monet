@@ -524,6 +524,22 @@ export function registerChatIPC(): void {
       effort: payload.effort,
     };
 
+    // Where the folder stood before this turn — the baseline a second reader
+    // needs to see only what THIS turn changed. One git call, and only when
+    // somebody is going to read the answer.
+    let reviewBaseline: string | null = null;
+    if (payload.space !== "home") {
+      try {
+        const { isFeatureOn } = await import("../agent/features.js");
+        if (isFeatureOn("review")) {
+          const { currentCheckpoint } = await import("../agent/checkpoints.js");
+          reviewBaseline = await currentCheckpoint(sessionId, cwd);
+        }
+      } catch {
+        /* no baseline, no review — never a failed turn */
+      }
+    }
+
     try {
       await runAgent(
         sessionId,
@@ -587,6 +603,57 @@ export function registerChatIPC(): void {
               sessionId,
               `Verification: ${outcome.failure?.check ?? "checks"} still failing`,
             );
+        }
+
+        // A second reader: the diff goes to a fresh context that never saw
+        // the conversation. Runs AFTER the checks, so the reviewer reads a
+        // change that at least compiles — and once only. See verify/review.ts.
+        if (isFeatureOn("review") && reviewBaseline && !abort.signal.aborted) {
+          try {
+            const { diffSince } = await import("../agent/checkpoints.js");
+            const {
+              findingsPrompt,
+              parseReview,
+              reviewPrompt,
+              worthReviewing,
+            } = await import("../verify/review.js");
+            const diff = await diffSince(sessionId, cwd, reviewBaseline, 14_000);
+            const worth = worthReviewing(diff);
+            if (worth.ok && diff) {
+              emit({ type: "harness", text: "A second reader is looking at the change" });
+              const { runSubAgent } = await import("../agent/subagent.js");
+              const provider = getProviderManager().getActive();
+              const answer = await runSubAgent({
+                prompt: reviewPrompt(diff),
+                model: provider?.model ?? "",
+                cwd,
+                signal: abort.signal,
+              });
+              const outcome = parseReview(answer);
+              if (outcome.status === "findings" && !abort.signal.aborted) {
+                emit({
+                  type: "harness",
+                  text: `The reader found ${outcome.findings.length} thing${outcome.findings.length === 1 ? "" : "s"} to check`,
+                });
+                await runAgent(
+                  sessionId,
+                  findingsPrompt(outcome.findings),
+                  emit,
+                  runOptions,
+                );
+              } else {
+                emit({
+                  type: "harness",
+                  text:
+                    outcome.status === "clean"
+                      ? "The second reader found nothing"
+                      : "The second reader had nothing usable to say",
+                });
+              }
+            }
+          } catch {
+            /* a review that fails is a review that did not happen */
+          }
         }
       }
     } catch (err) {
