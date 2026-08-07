@@ -22,26 +22,9 @@ import { ort as ortModule } from "../ort.js";
 import { join } from "path";
 import { AutoTokenizer, RawImage } from "@huggingface/transformers";
 import { smartResize, patchify, MERGE_SIZE, type PatchedImage } from "./preprocess.js";
+import { paddleFiles, stopToken } from "./manifest.js";
 import { generate, type PaddleConfig, type PaddleSessions } from "./generate.js";
 
-export const PADDLE_REPO = "onnx-community/PaddleOCR-VL-1.5-ONNX";
-
-/** The graphs, and the file each one is quantised into. */
-export const PADDLE_FILES = {
-  vision: "onnx/vision_encoder_q4.onnx",
-  decoder: "onnx/decoder_q4.onnx",
-  // Not quantised on purpose: an embedding table is pure lookup, and the
-  // repo publishes no q4 of it anyway.
-  embedding: "onnx/embedding.onnx",
-  embeddingData: "onnx/embedding.onnx.data",
-} as const;
-
-export const PADDLE_CONFIG_FILES = [
-  "config.json",
-  "tokenizer.json",
-  "tokenizer_config.json",
-  "chat_template.jinja",
-];
 
 /**
  * How many patches one page may become.
@@ -64,32 +47,40 @@ interface Loaded {
 let loaded: Loaded | null = null;
 let loadedKey = "";
 
+function readJson(dir: string, name: string): Record<string, number> {
+  try {
+    return JSON.parse(readFileSync(join(dir, name), "utf-8")) as Record<
+      string,
+      number
+    >;
+  } catch {
+    return {};
+  }
+}
+
 function readConfig(dir: string): PaddleConfig {
-  const raw = JSON.parse(readFileSync(join(dir, "config.json"), "utf-8")) as {
-    hidden_size: number;
-    num_hidden_layers: number;
-    num_key_value_heads: number;
-    head_dim: number;
-    image_token_id: number;
-    eos_token_id: number;
-  };
+  const raw = readJson(dir, "config.json");
+  const eos = stopToken(raw, readJson(dir, "generation_config.json"));
+
   return {
-    hiddenSize: raw.hidden_size,
-    numLayers: raw.num_hidden_layers,
-    numKeyValueHeads: raw.num_key_value_heads,
-    headDim: raw.head_dim,
-    imageTokenId: raw.image_token_id,
-    eosTokenId: raw.eos_token_id,
+    hiddenSize: raw["hidden_size"],
+    numLayers: raw["num_hidden_layers"],
+    numKeyValueHeads: raw["num_key_value_heads"],
+    headDim: raw["head_dim"],
+    imageTokenId: raw["image_token_id"],
+    eosTokenId: eos,
   };
 }
 
 export async function loadPaddle(
   modelDir: string,
   device: "webgpu" | "cpu",
+  dtype: string,
 ): Promise<Loaded> {
-  const key = `${modelDir}:${device}`;
+  const key = `${modelDir}:${device}:${dtype}`;
   if (loaded && loadedKey === key) return loaded;
   const ort = ortModule();
+  const files = paddleFiles(dtype);
   const providers = [device === "webgpu" ? "webgpu" : "cpu"];
   const open = (file: string): Promise<unknown> =>
     ort.InferenceSession.create(join(modelDir, file), {
@@ -102,9 +93,9 @@ export async function loadPaddle(
   const openAll = (): Promise<unknown[]> => Promise.all([
     // PADDLE_VISION swaps the tower's quantisation for a comparison run;
     // the catalogue decides what ships.
-    open(process.env["PADDLE_VISION"] || PADDLE_FILES.vision),
-    open(process.env["PADDLE_DECODER"] || PADDLE_FILES.decoder),
-    open(PADDLE_FILES.embedding),
+    open(process.env["PADDLE_VISION"] || files.vision),
+    open(process.env["PADDLE_DECODER"] || files.decoder),
+    open(files.embedding),
   ]);
 
   let sessions: unknown[];
@@ -172,13 +163,14 @@ export interface PaddleScanResult {
 export async function scanWithPaddle(
   modelDir: string,
   device: "webgpu" | "cpu",
+  dtype: string,
   imagePath: string,
   prompt: string,
   maxTokens: number,
   onToken?: (text: string, tokens: number) => void,
 ): Promise<PaddleScanResult> {
   const ort = ortModule();
-  const state = await loadPaddle(modelDir, device);
+  const state = await loadPaddle(modelDir, device, dtype);
   const image = await prepareImage(imagePath);
 
   const full = buildPrompt(prompt, image.numImageTokens);

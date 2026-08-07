@@ -1,68 +1,67 @@
 /**
- * PaddleOCR-VL 1.5 — SHELVED. Working code, disabled on purpose.
+ * PaddleOCR-VL 1.6 — Baidu's document model, built here rather than found.
  *
- * Baidu's document model: 0.9B, an ERNIE-4.5 decoder on a NaViT tower that
- * reads a page at its own aspect ratio instead of squashed to a square. No
- * library loads it — @huggingface/transformers knows the decoder family but
- * not the `paddleocr_vl` wrapper, and its processor is a Python file — so
- * `ocr/paddle/` assembles it from three graphs by hand. That code works and
- * stays.
+ * 0.9B: an ERNIE-4.5 decoder on a NaViT tower that reads a page at its own
+ * aspect ratio instead of squashed to a square. No library loads it —
+ * @huggingface/transformers knows the decoder family but not the
+ * `paddleocr_vl` wrapper, and its processor is a Python file — so
+ * `ocr/paddle/` assembles it from three graphs by hand.
  *
- * Why it is off: measured against LightOnOCR on the same page, it is worse
- * at the job this app does.
+ * WHERE THE WEIGHTS COME FROM. There is no published ONNX of 1.6:
+ * PaddlePaddle ship safetensors and GGUF, the repo named
+ * `onnx-community/PaddleOCR-VL-1.6-ONNX` holds a `.gitattributes` and
+ * nothing else, and GGUF would mean llama.cpp, which this app deliberately
+ * does not carry. So it was exported — see `onnx-lab/` beside `desktop/`,
+ * which downloads the safetensors, traces the three graphs and quantises
+ * them to q8. That is why the repo id names the workshop instead of a
+ * hub account: nobody can download this one, it is built.
  *
- *                       LightOnOCR (GPU)      PaddleOCR-VL (CPU)
- *   time per page       44s                   91s
- *   table structure     correct               correct (OTSL → Markdown)
- *   Russian text        clean                 "Кваантовый", "Кубин",
- *                                             "Минималная единца",
- *                                             "крипгография"
+ * 1.5 IS WHAT WAS SHELVED, AND 1.6 IS WHY IT MATTERED. The reason 1.5 sat
+ * on the shelf was Russian — «Кваантовый», «Кубин», «Минималная единца»,
+ * «крипгография». 1.6's release notes claim stronger multilingual
+ * recognition, and on the same page they are right:
  *
- * Its table structure really is excellent, and it is trained on English and
- * Chinese — the Cyrillic is the failure, not the layout. If the documents
- * ever stop being Russian, flip `enabled` and it is back.
+ *   1.5 q4     «Кваантовый», «Кубин»
+ *   1.6 q8     «…смешанные производные не позволяют получить решение
+ *               в виде (8.50)» — clean, with the formulas as LaTeX
  *
- * One measured oddity kept here so nobody re-derives it: this model is
- * FASTER ON THE CPU than on the iGPU (91s against 104s), which is why the
- * CPU is listed first.
+ * ONE MEASURED TRAP, kept here so nobody re-derives it: q8 holds up on a
+ * BLOCK and falls apart on a WHOLE PAGE. Given 1260 image tokens at once
+ * it stops writing Cyrillic and starts writing the Latin letters that look
+ * like it — «a 3to npuBduT k BecbMa rpoMo3dkM» — and then loops. At block
+ * size (~200 image tokens) the same weights read the same page correctly.
+ * The pipeline reads blocks, so this is the regime it runs in; anyone
+ * tempted to add a whole-page mode for this model should read that
+ * sentence again.
  *
- * WHY 1.5 AND NOT 1.6 — asked, and worth writing down. 1.6 exists and is
- * the better model on paper (its release notes claim stronger multilingual
- * recognition, which is exactly the axis this one failed on). It is not
- * here because there is no ONNX of it: PaddlePaddle publish safetensors and
- * GGUF, onnx-community have not converted it, and the one repo named
- * `PaddleOCR-VL-1.6-ONNX` contains a single `.gitattributes` and nothing
- * else. GGUF would mean llama.cpp, which this app deliberately does not
- * carry.
- *
- * So the Cyrillic verdict above is 1.5's, and may not be 1.6's. The runtime
- * in ocr/paddle is version-agnostic — it reads the graph names and the
- * config — so when an ONNX 1.6 appears, changing `repo` here and re-running
- * `npm run suite:ocr` is the whole job.
+ * And a second oddity that survives from 1.5: this model is FASTER ON THE
+ * CPU than on the iGPU, which is why the CPU is listed first.
  */
 
 import type { OcrModelInfo } from "./types.js";
 
 export const paddleOcrVl: OcrModelInfo = {
   id: "paddleocr-vl",
-  // Shelved — see the note above. The runtime in ocr/paddle is kept.
+  // Off until it has been measured through the real pipeline against the
+  // models that already ship — `npm run suite:ocr` is that measurement.
   enabled: false,
   engine: "paddle",
-  repo: "onnx-community/PaddleOCR-VL-1.5-ONNX",
-  label: "PaddleOCR-VL 1.5",
+  // Not a hub path: built by onnx-lab/scripts/export_paddleocr_vl.py.
+  repo: "onnx-lab/PaddleOCR-VL-1.6-ONNX",
+  label: "PaddleOCR-VL 1.6",
   note:
-    "Baidu's document model on a hand-written pipeline. Excellent table structure (answers in OTSL, converted to Markdown here), weak on Russian, about twice as slow as the default. Shelved. This is 1.5 — 1.6 has no ONNX build yet, only safetensors and GGUF.",
-  languages: "English, Chinese, and 100+ more — but measurably weak on Russian",
+    "Baidu's document model on a hand-written pipeline. Excellent table structure (answers in OTSL, converted to Markdown here) and, unlike 1.5, sound Russian. No published ONNX exists — this build is exported locally by onnx-lab.",
+  languages: "English, Chinese, Russian, and 100+ more",
   components: ["vision_encoder", "decoder", "embedding"],
   prompt: "OCR:",
   secondsPerPage: 91,
-  short: "Great tables, weak Russian.",
+  short: "Great tables, sound Russian.",
   variants: [
     {
-      dtype: "q4",
-      bytes: 858 * 1024 * 1024,
+      dtype: "q8",
+      bytes: 1176 * 1024 * 1024,
       devices: ["cpu", "webgpu"],
-      note: "Vision tower and decoder quantised; the embedding table is not, because a lookup gains nothing from it. 91s a page on the CPU, 104s on the GPU.",
+      note: "Vision tower and decoder quantised to int8; the embedding table is not, because a lookup gains nothing from it. Bigger than the q4 build of 1.5 — q4 was measured to read «большом количестве» as «доплыком колпистстве», and a version comparison should differ in the version.",
     },
   ],
 };

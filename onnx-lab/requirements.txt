@@ -1,0 +1,17 @@
+# CPU torch only: this exports graphs, it never trains or infers at speed.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+# 4.x, not 5: the model's own code (trust_remote_code) indexes
+# ROPE_INIT_FUNCTIONS["default"], a key transformers 5 renamed. On 5.x the
+# export dies with KeyError: 'default' before it loads a single weight.
+transformers<5
+onnx
+onnxruntime
+numpy
+pillow
+huggingface_hub
+# The model's own code imports these (trust_remote_code).
+einops
+accelerate
+# torch 2.13 reaches for the dynamo exporter unless told otherwise.
+onnxscript

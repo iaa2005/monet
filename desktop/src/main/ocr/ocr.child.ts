@@ -64,6 +64,7 @@ let loadedKey = "";
 /** Set when the loaded model is driven by our own pipeline. */
 let paddleDir = "";
 let paddleDevice: "webgpu" | "cpu" = "cpu";
+let paddleDtype = "";
 let stopper: InterruptableStoppingCriteria | null = null;
 
 function send(msg: unknown): void {
@@ -104,6 +105,7 @@ async function load(req: LoadRequest): Promise<void> {
     // backend that cannot run it surfaces on the first scan rather than
     // now — and scanWithPaddle falls back to the CPU when that happens.
     paddleDevice = req.device === "cpu" ? "cpu" : "webgpu";
+    paddleDtype = req.dtype;
     loaded = null;
     loadedKey = key;
     send({ id: req.id, type: "loaded", device: paddleDevice });
@@ -141,6 +143,7 @@ async function scan(req: ScanRequest): Promise<void> {
       const r = await scanWithPaddle(
         paddleDir,
         paddleDevice,
+        paddleDtype,
         req.imagePath,
         req.prompt,
         req.maxTokens,

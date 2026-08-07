@@ -1,0 +1,7 @@
+# 9.6 GB of weights live here. The scripts are the artefact — anyone with
+# them and the venv gets the same graphs back, byte for byte, in about ten
+# minutes.
+.venv/
+models/
+out/
+__pycache__/
