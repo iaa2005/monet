@@ -24,6 +24,7 @@
 
 import { findModel, ocrModels } from "./models/index.js";
 import type {
+  OcrDevice,
   OcrEngine,
   OcrModelInfo,
   OcrDtype,
@@ -44,6 +45,25 @@ export const OCR_MODELS: OcrModelInfo[] = ocrModels();
 
 export function ocrEngineOf(model: OcrModelInfo): OcrEngine {
   return model.engine;
+}
+
+/**
+ * The backends to try, in order, for a setting and a variant.
+ *
+ * "Automatic" used to mean "the graphics card, then the processor",
+ * spelled into the loader. That is wrong for at least one model here:
+ * PaddleOCR-VL is nearly three times faster on the PROCESSOR, because its
+ * int8 matmuls have no WebGPU kernel and the run becomes fallback with
+ * tensors shuttling back and forth. The catalogue records the measured
+ * order per variant, and "Automatic" is the setting that says "you
+ * decide" — so this is where it is decided.
+ */
+export function deviceOrder(
+  setting: OcrDevice,
+  preferred: ("webgpu" | "cpu")[] | undefined,
+): ("webgpu" | "cpu")[] {
+  if (setting !== "auto") return [setting];
+  return preferred && preferred.length > 0 ? preferred : ["webgpu", "cpu"];
 }
 
 /** A model by id. A SHELVED model resolves too: a config that names one

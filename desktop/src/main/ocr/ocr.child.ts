@@ -28,6 +28,7 @@ import {
   RawImage,
   TextStreamer,
 } from "@huggingface/transformers";
+import { deviceOrder } from "./catalog.js";
 
 interface LoadRequest {
   type: "load";
@@ -37,6 +38,16 @@ interface LoadRequest {
   dtype: string;
   components: string[];
   device: "auto" | "webgpu" | "cpu";
+  /**
+   * What "auto" should mean for THIS model, best first.
+   *
+   * Not always the graphics card. One model here is nearly three times
+   * faster on the processor, because its int8 matmuls have no WebGPU
+   * kernel and the run turns into fallback with tensors going back and
+   * forth. The catalogue records that per variant; "auto" is the setting
+   * that says "you decide", so it is decided here rather than assumed.
+   */
+  preferred: ("webgpu" | "cpu")[];
   /** "paddle" routes to the hand-written pipeline in ocr/paddle. */
   engine?: string;
 }
@@ -101,10 +112,10 @@ async function load(req: LoadRequest): Promise<void> {
   // is lazy there too, so this only records what to call.
   if (req.engine === "paddle") {
     paddleDir = join(req.modelsDir, ...req.repo.split("/"));
-    // "auto" means the GPU here too. The paddle path loads lazily, so a
-    // backend that cannot run it surfaces on the first scan rather than
-    // now — and scanWithPaddle falls back to the CPU when that happens.
-    paddleDevice = req.device === "cpu" ? "cpu" : "webgpu";
+    // The paddle path loads lazily, so a backend that cannot run it
+    // surfaces on the first scan rather than now — and scanWithPaddle
+    // falls back to the CPU when that happens.
+    paddleDevice = deviceOrder(req.device, req.preferred)[0];
     paddleDtype = req.dtype;
     loaded = null;
     loadedKey = key;
@@ -119,8 +130,7 @@ async function load(req: LoadRequest): Promise<void> {
   loaded = null;
   loadedKey = "";
 
-  const order: ("webgpu" | "cpu")[] =
-    req.device === "auto" ? ["webgpu", "cpu"] : [req.device];
+  const order = deviceOrder(req.device, req.preferred);
   let lastError = "";
   for (const device of order) {
     try {

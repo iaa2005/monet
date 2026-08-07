@@ -30,6 +30,7 @@ const {
   ocrVariant,
   variantFiles,
   formatBytes,
+  deviceOrder,
   CONFIG_FILES,
 } = await import('../src/main/ocr/catalog.js')
 const { planInstall, isInstalledSync, modelDir } = await import(
@@ -262,6 +263,49 @@ check('nonsense means the whole document, not page NaN', parsePages('abc').lengt
       { installed, opened },
     )
   }
+}
+
+// ─── What "Automatic" resolves to ───────────────────────────────────────
+
+{
+  // Every variant must say where it runs, best first, because "Automatic"
+  // is now that list rather than a hardcoded preference for the graphics
+  // card. PaddleOCR-VL is nearly three times faster on the PROCESSOR — its
+  // int8 matmuls have no WebGPU kernel — and a user who never opens
+  // Advanced should get the fast one.
+  for (const model of ALL_MODELS) {
+    for (const variant of model.variants) {
+      check(
+        `${model.id} ${variant.dtype} says where it runs`,
+        variant.devices.length > 0 &&
+          variant.devices.every((d) => d === 'cpu' || d === 'webgpu'),
+        variant.devices,
+      )
+    }
+  }
+  const paddle = ALL_MODELS.find((m) => m.id === 'paddleocr-vl')!
+  check(
+    'and PaddleOCR-VL asks for the processor first',
+    paddle.variants[0].devices[0] === 'cpu',
+    paddle.variants[0].devices,
+  )
+  check(
+    'Automatic follows that order rather than always trying the GPU',
+    deviceOrder('auto', paddle.variants[0].devices).join() === 'cpu,webgpu',
+    deviceOrder('auto', paddle.variants[0].devices),
+  )
+  check(
+    '…and still tries the GPU first for a model that wants it',
+    deviceOrder('auto', ['webgpu', 'cpu']).join() === 'webgpu,cpu',
+  )
+  check(
+    'a chosen device is the only one tried',
+    deviceOrder('cpu', ['webgpu', 'cpu']).join() === 'cpu',
+  )
+  check(
+    'a variant with no measured device falls back to the old assumption',
+    deviceOrder('auto', []).join() === 'webgpu,cpu',
+  )
 }
 
 // ─── The numbers a build is configured with, not the ones in the port ───

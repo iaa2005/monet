@@ -7,14 +7,14 @@
  * `paddleocr_vl` wrapper, and its processor is a Python file — so
  * `ocr/paddle/` assembles it from three graphs by hand.
  *
- * WHERE THE WEIGHTS COME FROM. There is no published ONNX of 1.6:
+ * WHERE THE WEIGHTS COME FROM. Nobody had published an ONNX of 1.6:
  * PaddlePaddle ship safetensors and GGUF, the repo named
  * `onnx-community/PaddleOCR-VL-1.6-ONNX` holds a `.gitattributes` and
  * nothing else, and GGUF would mean llama.cpp, which this app deliberately
- * does not carry. So it was exported — see `onnx-lab/` beside `desktop/`,
- * which downloads the safetensors, traces the three graphs and quantises
- * them to q8. That is why the repo id names the workshop instead of a
- * hub account: nobody can download this one, it is built.
+ * does not carry. So it was exported here — see `onnx-lab/` beside
+ * `desktop/`, which downloads the safetensors, traces the three graphs and
+ * quantises them to int8 — and then published, which is why this entry
+ * points at a personal namespace rather than onnx-community's.
  *
  * 1.5 IS WHAT WAS SHELVED, AND THE VERDICT WAS PARTLY OURS. The reason 1.5
  * sat on the shelf was Russian — «Кваантовый», «Кубин», «Минималная
@@ -52,19 +52,17 @@ import type { OcrModelInfo } from "./types.js";
 
 export const paddleOcrVl: OcrModelInfo = {
   id: "paddleocr-vl",
-  // Off for a reason that is no longer about quality: it has now been
-  // measured through the real pipeline and it holds up (72s a page on the
-  // processor, against 75s for the default; fewer mangled Russian words
-  // than either shipped model; the only one that answers with Markdown
-  // tables rather than HTML). What it does not have is anywhere to be
-  // downloaded from. Offering a model whose "Install" button cannot work
-  // is worse than not offering it, so this waits on somebody publishing
-  // the build — after which `enabled: true` and a new `repo` is the whole
-  // change.
-  enabled: false,
+  // On. It was shelved as 1.5 for reading Russian badly, and stayed off a
+  // while longer for having nowhere to be downloaded from; neither is true
+  // now. Measured through the real pipeline over thirteen pages: 72s a
+  // page on the processor against 64s for the default, fewer mangled
+  // Russian words than either shipped model, and the only one of the three
+  // that answers with Markdown tables instead of HTML.
+  enabled: true,
   engine: "paddle",
-  // Not a hub path: built by onnx-lab/scripts/export_paddleocr_vl.py.
-  repo: "onnx-lab/PaddleOCR-VL-1.6-ONNX",
+  // Built by onnx-lab/scripts/export_paddleocr_vl.py and published from
+  // it; there is no other ONNX of 1.6 to point at.
+  repo: "iaa2005/PaddleOCR-VL-1.6-ONNX",
   label: "PaddleOCR-VL 1.6",
   note:
     "Baidu's document model on a hand-written pipeline. Excellent table structure (answers in OTSL, converted to Markdown here) and, unlike 1.5, sound Russian. No published ONNX exists — this build is exported locally by onnx-lab.",

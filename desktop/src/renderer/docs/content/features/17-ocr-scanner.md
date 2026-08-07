@@ -75,7 +75,7 @@ a page of bibliography, mixed Russian and English.
 
 🟢 good · 🟡 usable · 🟠 poor
 
-| | LightOnOCR-2 1B | GLM-OCR | PaddleOCR-VL 1.6 *(shelved)* | Qwen3-VL 2B *(shelved)* |
+| | LightOnOCR-2 1B | GLM-OCR | PaddleOCR-VL 1.6 | Qwen3-VL 2B *(shelved)* |
 | --- | --- | --- | --- | --- |
 | **Speed** | 🟡 64s a page | 🟢 49s | 🟡 72s, on the processor | 🟠 173s |
 | **Load on the machine** | 🟢 725 MB | 🟢 703 MB | 🟠 1.15 GB | 🟠 1.45 GB |
@@ -95,11 +95,17 @@ model at all — they are the pipeline, and every model gets them:
 | **Extracting pictures** | 🟢 Figures are cut out into `<name>-layout/` and referenced from the Markdown — never described by a model that would invent a caption. |
 
 Timings are averages over those thirteen pages, each model on the hardware
-its own entry recommends — the two shipped ones on an Intel Arc integrated
-GPU, PaddleOCR on the processor, where it is nearly three times faster than
-on that GPU because its int8 arithmetic has no kernel there. The table
-count is scored against the layout detector, which found four real tables:
-"invented" means a heading or a paragraph came back wrapped in one.
+it is best on — the first two on an Intel Arc integrated GPU, PaddleOCR on
+the processor, where it is nearly three times faster than on that GPU
+because its int8 arithmetic has no kernel there. The app picks that for
+you. The table count is scored against the layout detector, which found
+four real tables: "invented" means a heading or a paragraph came back
+wrapped in one.
+
+**Which to pick**, if the table is too much: **GLM-OCR** if you want it
+over with, **LightOnOCR** for a document you will not check by hand, and
+**PaddleOCR-VL** for tables, or for Russian, or for anything where you
+would rather have Markdown than a wall of HTML.
 
 **Your machine is not that machine**: run `npm run suite:ocr -- <folder>` on
 your own documents, which is the only benchmark that means anything.
@@ -124,8 +130,10 @@ Honest list, from measuring rather than from the model cards:
 
 - **Run on** — Automatic tries the graphics card and falls back to the
   processor. Some drivers take the GPU down rather than admit they cannot
-  run a model, which is why the fallback exists; and one shelved model is
-  actually *faster* on the processor.
+  run a model, which is why the fallback exists. Faster is not always the
+  graphics card: PaddleOCR-VL is nearly three times quicker on the
+  processor, because its int8 arithmetic has no kernel on this GPU and the
+  work ends up being shuttled back anyway.
 - **Detail (DPI)** — 150 by default. Lower is not faster: at 110 the model
   reads worse and writes *more*, which measured slower on the same page.
 - **Pages per scan** — a hard stop, so "read this book" cannot become an

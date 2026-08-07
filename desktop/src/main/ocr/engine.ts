@@ -14,7 +14,7 @@ import { fork, type ChildProcess } from "child_process";
 import { existsSync } from "fs";
 import { join } from "path";
 import { moduleDir } from "./module-dir.js";
-import { ocrEngineOf, ocrModel, type OcrModelInfo } from "./catalog.js";
+import { ocrEngineOf, ocrModel, ocrVariant, type OcrModelInfo } from "./catalog.js";
 import { isInstalled, modelDir } from "./install.js";
 import { getOcrConfig, ocrModelsDir } from "./settings.js";
 
@@ -171,6 +171,10 @@ export async function scanPage(
         dtype: cfg.dtype,
         components: model.components,
         device: cfg.device,
+        // The order this variant is known to be correct AND fast in. Empty
+        // would be a catalogue entry with no measured device, so the old
+        // assumption stands in for it.
+        preferred: ocrVariant(model, cfg.dtype)?.devices ?? ["webgpu", "cpu"],
         engine: ocrEngineOf(model),
       });
       if (loadedReply.type !== "loaded")

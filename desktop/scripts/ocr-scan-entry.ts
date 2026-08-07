@@ -13,3 +13,6 @@ export { disposeOcrEngine } from "../src/main/ocr/engine.js";
 // registry as well as the scanner.
 export { getOcrConfig, setOcrConfig } from "../src/main/ocr/settings.js";
 export { ALL_MODELS } from "../src/main/ocr/catalog.js";
+// So a model can be fetched the way a user fetches it — the only way to
+// find out whether what was published is what the installer expects.
+export { installOcrModel, isInstalled } from "../src/main/ocr/install.js";
