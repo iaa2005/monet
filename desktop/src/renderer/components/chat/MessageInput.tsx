@@ -498,7 +498,12 @@ export function MessageInput({
     await applyModel(ask.providerId, ask.modelId, ask.model);
     if (res?.ok && res.before != null && res.after != null) {
       setNotice(
-        `Context compacted: ~${fmtTok(res.before)} → ~${fmtTok(res.after)} tokens.`,
+        // A summary has a size of its own, and on a short conversation it is
+        // bigger than what it would replace — so compaction declines. Saying
+        // "compacted: 400 → 400" for that reads as a bug in the meter.
+        res.after < res.before
+          ? `Context compacted: ~${fmtTok(res.before)} → ~${fmtTok(res.after)} tokens.`
+          : `Nothing to compact — at ~${fmtTok(res.before)} tokens a summary would be no smaller. Switched anyway.`,
       );
     } else {
       setNotice(
@@ -884,7 +889,9 @@ export function MessageInput({
       const r = await api()?.chat.compact(sid);
       setNotice(
         r?.ok && r.before != null && r.after != null
-          ? `Context compacted: ~${fmtTok(r.before)} → ~${fmtTok(r.after)} tokens.`
+          ? r.after < r.before
+            ? `Context compacted: ~${fmtTok(r.before)} → ~${fmtTok(r.after)} tokens.`
+            : `Nothing to compact — at ~${fmtTok(r.before)} tokens a summary would be no smaller.`
           : (r?.error ?? "Nothing to compact yet."),
       );
       return;

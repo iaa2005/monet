@@ -448,6 +448,7 @@ const conversations = new Map<string, LLMMessage[]>();
  * (New session, or a rewind/edit that rebuilds the history from a truncation). */
 export function resetConversation(sessionId: string): void {
   conversations.delete(sessionId);
+  compactionFloor.delete(sessionId);
   clearTranscript(sessionId);
   dropSessionContext(sessionId);
   clearSessionGrants(sessionId);
@@ -541,6 +542,23 @@ export function setInContext(m: LLMMessage, inContext: boolean): void {
   else outOfContext.add(m);
 }
 
+/**
+ * Move everything that makes a message THAT message onto a rewritten copy of
+ * it — its id, its context flag, whether it is a hidden background turn.
+ *
+ * Compaction's lossless pass rewrites a message to blank an old tool result.
+ * The rewrite is a new object, and all three of those live on object
+ * identity, so without this the message silently becomes a different one: a
+ * new id (the chat can no longer point at its turn) and back in context (a
+ * prompt the user removed starts being sent again).
+ */
+export function carryIdentity(from: LLMMessage, to: LLMMessage): void {
+  const id = messageIds.get(from);
+  if (id) messageIds.set(to, id);
+  if (outOfContext.has(from)) outOfContext.add(to);
+  if (hiddenTurns.has(from)) hiddenTurns.add(to);
+}
+
 /** Write the session's live model history through to the durable transcript. */
 function persistTranscript(sessionId: string): void {
   const msgs = conversations.get(sessionId);
@@ -617,6 +635,27 @@ export function seedConversation(
 }
 
 /**
+ * The size at which summarising this chat turned out not to help.
+ *
+ * Compaction is not guaranteed to shrink anything: the summary has a floor of
+ * a few hundred tokens whatever it is given, so a small history compacts to
+ * something larger than itself. Without this the chat would then be over the
+ * threshold on the next turn too, and spend a model call finding that out
+ * again, every turn, forever. Cleared by growth — a bigger conversation is a
+ * new question.
+ */
+const compactionFloor = new Map<string, number>();
+
+function worthCompacting(sessionId: string, live: LLMMessage[]): boolean {
+  const floor = compactionFloor.get(sessionId);
+  return floor === undefined || estimateTokens(live) > floor;
+}
+
+function noteCompactionFloor(sessionId: string, tokens: number): void {
+  compactionFloor.set(sessionId, tokens);
+}
+
+/**
  * Compact a session's in-memory history on demand (e.g. before switching to a
  * model with a smaller context window). Returns the token estimates, or null
  * when there's nothing to compact / no provider.
@@ -634,18 +673,23 @@ export async function compactSessionNow(
   if (!provider) return null;
   const adapter = createAdapter(provider);
   const beforeSnapshot = messages.map((m) => ({ ...m }));
-  const before = estimateTokens(messages);
+  const before = estimateTokens(messages.filter(isInContext));
   const compacted = await compactMessages({
     messages,
     adapter,
     model: provider.model,
     maxTokens: provider.maxTokens || 16000,
+    // Asked for by hand, but the rules are the same: a prompt the user took
+    // out of context is not summarised back in, and a "compaction" that made
+    // the context bigger is not applied.
+    inContext: isInContext,
+    carry: carryIdentity,
   });
   if (compacted !== messages) {
     messages.length = 0;
     messages.push(...compacted);
   }
-  const after = estimateTokens(messages);
+  const after = estimateTokens(messages.filter(isInContext));
   // Record the compaction so it can be undone ("rewind through compact"):
   // the BEFORE snapshot restores the pre-compaction context.
   if (after < before)
@@ -880,18 +924,15 @@ export async function rewindTranscriptToUserTurn(
 /**
  * How many prompts can still be taken back.
  *
- * The visible user turns in the CURRENT context — which is the honest number.
- * Compaction replaces the history with a summary plus a recent tail, so turns
- * from before it are already gone from the model's view even though their
- * bubbles are still on screen. Kimi Code states the same limit ("prompts
- * before the last compaction cannot be undone"); here it falls out of counting
- * what is actually there rather than needing a special case.
+ * The ones still being SENT: a prompt already out of context cannot be
+ * removed a second time, and counting it made the meter offer to undo
+ * something that was already undone. Loads the transcript first so a chat
+ * reopened this process answers from its own history rather than from
+ * nothing.
  */
 export async function undoableTurnCount(sessionId: string): Promise<number> {
   await ensureTranscriptLoaded(sessionId);
-  const msgs = conversations.get(sessionId);
-  if (!msgs) return 0;
-  return msgs.filter(isUserTurnBoundary).length;
+  return turnContextState(sessionId).filter((t) => t.inContext).length;
 }
 
 /** User turns in a message list — the unit the context map is drawn in. */
@@ -1008,10 +1049,12 @@ export async function undoCompaction(
   return { restored: estimateTokens(before) };
 }
 
-/** Rough input-token estimate of a session's in-memory history. */
+/** Rough input-token estimate of what a session would SEND — everything the
+ * user took out of context costs nothing, and the two callers (the meter and
+ * "will this fit the model you are switching to?") both mean that. */
 export function estimateSessionTokens(sessionId: string): number {
   const messages = conversations.get(sessionId);
-  return messages ? estimateTokens(messages) : 0;
+  return messages ? estimateTokens(messages.filter(isInContext)) : 0;
 }
 
 export interface ContextCategory {
@@ -1570,9 +1613,14 @@ async function runAgentScoped(
       contextLimit: provider.contextLimit,
       outputReserve: provider.maxTokens || 16000,
     });
-    if (shouldCompact(messages, cave ? Math.floor(threshold * 0.6) : threshold)) {
+    const aim = cave ? Math.floor(threshold * 0.6) : threshold;
+    // Measured on what is actually SENT. Counting prompts the user removed
+    // would compact a chat that is already small enough — and then summarise
+    // those very prompts back into it.
+    const live = messages.filter(isInContext);
+    if (shouldCompact(live, aim) && worthCompacting(sessionId, live)) {
       const beforeSnapshot = messages.map((m) => ({ ...m }));
-      const beforeTokens = estimateTokens(messages);
+      const beforeTokens = estimateTokens(live);
       const compacted = await compactMessages({
         messages,
         adapter,
@@ -1581,9 +1629,16 @@ async function runAgentScoped(
         signal,
         terseHint: cave ? CAVEMAN_COMPACT_HINT : undefined,
         // Lets compaction stop after the lossless pass when that already fits.
-        threshold: cave ? Math.floor(threshold * 0.6) : threshold,
+        threshold: aim,
+        inContext: isInContext,
+        carry: carryIdentity,
       });
-      if (compacted !== messages) {
+      if (compacted === messages) {
+        // It had nothing to give at this size. Don't ask again until the
+        // conversation has actually grown past the point where it failed —
+        // otherwise every turn from here spends a summarisation call.
+        noteCompactionFloor(sessionId, beforeTokens);
+      } else {
         messages.length = 0;
         messages.push(...compacted);
         // Log the auto-compaction with a BEFORE snapshot so it can be undone
@@ -1591,7 +1646,9 @@ async function runAgentScoped(
         recordContextEvent(sessionId, "compact", {
           manual: false,
           beforeTokens,
-          afterTokens: estimateTokens(messages),
+          // Both numbers describe the same thing — what the model is sent —
+          // so "did it shrink?" is a question the event can be asked.
+          afterTokens: estimateTokens(messages.filter(isInContext)),
           // Where the context now starts, in turns — see contextHeadOffset.
           userTurnsBefore: countUserTurns(beforeSnapshot),
           userTurnsAfter: countUserTurns(messages),

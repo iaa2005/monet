@@ -125,6 +125,20 @@ export async function compactMessages(opts: {
   threshold?: number
   /** User turns to keep verbatim after the summary. 0 = old behaviour. */
   keepRecentTurns?: number
+  /**
+   * Whether the model is still being sent this message.
+   *
+   * A prompt the user took out of context must not be summarised — a summary
+   * of it is that content back again, which is the opposite of what they
+   * asked for — and must not be dropped either, or removing a prompt would
+   * stop being reversible. Such messages are stepped over: not read, not
+   * replaced, left exactly where they are.
+   */
+  inContext?: (m: LLMMessage) => boolean
+  /** Carry a message's identity (its id, its flags) onto the copy the
+   * lossless pass makes of it. Without this a rewritten message is a new
+   * object, and the chat can no longer point at the turn it belongs to. */
+  carry?: (from: LLMMessage, to: LLMMessage) => void
 }): Promise<LLMMessage[]> {
   const {
     messages,
@@ -135,16 +149,35 @@ export async function compactMessages(opts: {
     terseHint,
     threshold,
     keepRecentTurns = 2,
+    carry,
   } = opts
-  if (messages.length < 4) return messages
+  const inContext = opts.inContext ?? ((): boolean => true)
+
+  // Where each still-sent message sits in the full list, so the compacted
+  // result can be woven back among the ones that were left out.
+  const liveAt: number[] = []
+  for (let i = 0; i < messages.length; i++)
+    if (inContext(messages[i])) liveAt.push(i)
+  const live = liveAt.map(i => messages[i])
+  if (live.length < 4) return messages
 
   // Pass 1 — lossless. Clearing replayable tool output is often enough on its
   // own, and it costs no model call and loses nothing that was SAID.
-  const micro = microCompact(messages)
-  if (micro.cleared > 0 && threshold && estimateTokens(micro.messages) <= threshold) {
-    return micro.messages
+  const micro = microCompact(live)
+  if (micro.cleared > 0 && carry)
+    for (let j = 0; j < live.length; j++)
+      if (micro.messages[j] !== live[j]) carry(live[j], micro.messages[j])
+  const working = micro.cleared > 0 ? micro.messages : live
+
+  /** Everything this call is prepared to do short of summarising. Returns the
+   * ORIGINAL array when even that changed nothing, so the caller can tell
+   * "compaction happened" from "compaction had nothing to give". */
+  const losslessOnly = (): LLMMessage[] =>
+    micro.cleared > 0 ? weave(messages, liveAt, working, 0, null) : messages
+
+  if (micro.cleared > 0 && threshold && estimateTokens(working) <= threshold) {
+    return losslessOnly()
   }
-  const working = micro.cleared > 0 ? micro.messages : messages
 
   // Pass 2 — summarise the old part, keep the recent turns verbatim. Replacing
   // the WHOLE history with prose is what makes long sessions lose detail: the
@@ -152,7 +185,7 @@ export async function compactMessages(opts: {
   const splitAt = keepRecentTurns > 0 ? tailStart(working, keepRecentTurns) : working.length
   const toSummarise = working.slice(0, splitAt)
   const tail = working.slice(splitAt)
-  if (toSummarise.length < 2) return working
+  if (toSummarise.length < 2) return losslessOnly()
 
   try {
     const compactPrompt = terseHint
@@ -173,7 +206,7 @@ export async function compactMessages(opts: {
       signal,
     )
     const summary = formatCompactSummary(extractText(resp)).trim()
-    if (!summary) return working
+    if (!summary) return losslessOnly()
     const header: LLMMessage = {
       role: 'user',
       content:
@@ -183,11 +216,62 @@ export async function compactMessages(opts: {
           : '[The earlier conversation was automatically summarized to stay within the ' +
             'context window. Continue from this summary.]\n\n') + summary,
     }
-    return [header, ...tail]
+    // A summary can be LONGER than the exchanges it replaces: the compact
+    // prompt asks for a structured account, and that has a floor of several
+    // hundred tokens whatever it is summarising. Accepting one is the worst
+    // of every world — a model call spent, detail lost, and the context still
+    // over the threshold, so the next turn compacts again, this time
+    // summarising the summary. Measured live: 438 tokens in, 951 out.
+    const compacted = weave(messages, liveAt, working, splitAt, header)
+    if (estimateTokens(compacted.filter(inContext)) >= estimateTokens(working))
+      return losslessOnly()
+    return compacted
   } catch {
     // Even when summarising fails, the lossless pass is still a win.
-    return working
+    return losslessOnly()
   }
+}
+
+/**
+ * Put the compacted conversation back among the messages that were left out
+ * of it.
+ *
+ * `working[j]` is what became of the j-th still-sent message; the first
+ * `splitAt` of those were folded into `header` and the rest survive verbatim.
+ * Everything the model is no longer sent keeps its place and its object
+ * identity — that identity is what carries its id and its "removed" flag, so
+ * a prompt taken out of context before a compaction is still out of context,
+ * and still restorable, after one.
+ */
+function weave(
+  original: LLMMessage[],
+  liveAt: number[],
+  working: LLMMessage[],
+  splitAt: number,
+  header: LLMMessage | null,
+): LLMMessage[] {
+  const position = new Map<number, number>()
+  liveAt.forEach((at, j) => position.set(at, j))
+  const out: LLMMessage[] = []
+  let placed = header === null
+  for (let i = 0; i < original.length; i++) {
+    const j = position.get(i)
+    if (j === undefined) {
+      out.push(original[i]) // not being sent: untouched, in place
+      continue
+    }
+    if (j < splitAt) {
+      // Folded into the summary, which takes the place of the first of them.
+      if (!placed) {
+        out.push(header as LLMMessage)
+        placed = true
+      }
+      continue
+    }
+    out.push(working[j])
+  }
+  if (!placed) out.push(header as LLMMessage)
+  return out
 }
 
 /**
