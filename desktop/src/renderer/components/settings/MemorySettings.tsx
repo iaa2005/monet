@@ -4,10 +4,23 @@
  * "tell Claude something to remember" box at the bottom.
  */
 import { useEffect, useState } from "react";
-import { ArrowUp, ChevronDown, ChevronRight, Trash2, Undo2, X } from "lucide-react";
+import {
+  ArrowUp,
+  BookMarked,
+  ChevronDown,
+  ChevronRight,
+  GraduationCap,
+  MoonStar,
+  Search,
+  Timer,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import type { ElectronAPI, MemoryFileInfo, ProjectLessons } from "@/types/electron";
 import { Select } from "@/components/ui/select";
+import { SettingCard } from "./SettingCard";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -249,40 +262,42 @@ export function MemorySettings(): JSX.Element {
     <div className="flex h-full flex-col">
       <h3 className="text-base font-semibold">Memory</h3>
 
-      <div className="mt-4 flex items-start justify-between gap-4">
-        <div>
-          <div className="text-sm font-medium">Search and reference chats</div>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Allow the agent to search for relevant details in past chats
-            (adds the SearchPastChats tool).
-          </p>
-        </div>
-        <Switch
-          checked={config.searchChats}
-          onChange={(v) => void toggle("searchChats", v)}
-        />
-      </div>
+      <div className="mt-4 grid gap-2">
+      <SettingCard
+        icon={Search}
+        title="Search and reference chats"
+        description="Allow the agent to search for relevant details in past chats (adds the SearchPastChats tool)."
+        on={config.searchChats}
+        control={
+          <Switch
+            checked={config.searchChats}
+            onChange={(v) => void toggle("searchChats", v)}
+          />
+        }
+      />
 
-      <div className="mt-5 flex items-start justify-between gap-4">
-        <div>
-          <div className="text-sm font-medium">Generate memory from chats</div>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            After a conversation, quietly note durable facts (who you are,
-            projects, workflows) in a daily log. Overnight those notes are
-            consolidated into the memory files below.
-          </p>
-        </div>
-        <Switch
-          checked={config.generateMemory}
-          onChange={(v) => void toggle("generateMemory", v)}
-        />
-      </div>
+      <SettingCard
+        icon={BookMarked}
+        title="Generate memory from chats"
+        description="After a conversation, quietly note durable facts (who you are, projects, workflows) in a daily log. Overnight those notes are consolidated into the memory files below."
+        on={config.generateMemory}
+        control={
+          <Switch
+            checked={config.generateMemory}
+            onChange={(v) => void toggle("generateMemory", v)}
+          />
+        }
+      />
 
       {config.generateMemory && (
-        <div className="mt-5">
-          <div className="text-sm font-medium">Memory extraction</div>
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-sm text-muted-foreground">
+        <SettingCard
+          icon={Timer}
+          title="Memory extraction"
+          on
+          description="How often a conversation may be read for durable facts. Noting after every message would charge you for a model call you did not ask for."
+        >
+          <div className="mt-2 flex items-center justify-between gap-4">
+            <span className="text-[13px] text-muted-foreground">
               Run extraction at most once per…
             </span>
             <Select
@@ -309,17 +324,15 @@ export function MemorySettings(): JSX.Element {
               still get saved, and nightly consolidation still tidies them up.
             </p>
           )}
-        </div>
+        </SettingCard>
       )}
 
-      <div className="mt-5">
-        <div className="text-sm font-medium">Nightly consolidation</div>
-        <div className="flex items-start justify-between gap-4">
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Runs itself around 3–5am when the computer is on (and catches up
-            if it was off). Reads the day's notes with the whole memory in
-            view, merges them in, drops what's stale, and rewrites the index.
-          </p>
+      <SettingCard
+        icon={MoonStar}
+        title="Nightly consolidation"
+        on
+        description="Runs itself around 3–5am when the computer is on (and catches up if it was off). Reads the day's notes with the whole memory in view, merges them in, drops what's stale, and rewrites the index."
+        control={
           <button
             type="button"
             onClick={() => void consolidateNow()}
@@ -328,21 +341,19 @@ export function MemorySettings(): JSX.Element {
           >
             {consolidating ? "Consolidating…" : "Consolidate now"}
           </button>
-        </div>
+        }
+      >
         <div className="mt-2 text-xs text-muted-foreground">
           {consolidateMsg ?? describeConsolidation(consState)}
         </div>
-      </div>
+      </SettingCard>
 
-      <div className="mt-5">
-        <div className="text-sm font-medium">Project lessons</div>
-        <div className="flex items-start justify-between gap-4">
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Overnight, failures from each workspace — failed commands, chats
-            that stopped on errors, goals that ran out of budget — are
-            distilled into lessons injected only when you work in that folder.
-            A bad night is one click to undo.
-          </p>
+      <SettingCard
+        icon={GraduationCap}
+        title="Project lessons"
+        on
+        description="Overnight, failures from each workspace — failed commands, chats that stopped on errors, goals that ran out of budget — are distilled into lessons injected only when you work in that folder. A bad night is one click to undo."
+        control={
           <button
             type="button"
             onClick={() => void dreamNow()}
@@ -351,7 +362,8 @@ export function MemorySettings(): JSX.Element {
           >
             {dreaming ? "Learning…" : "Learn now"}
           </button>
-        </div>
+        }
+      >
         {dreamMsg && (
           <div className="mt-2 text-xs text-muted-foreground">{dreamMsg}</div>
         )}
@@ -415,6 +427,7 @@ export function MemorySettings(): JSX.Element {
             })}
           </div>
         )}
+      </SettingCard>
       </div>
 
       <div className="flex-1 pb-4">

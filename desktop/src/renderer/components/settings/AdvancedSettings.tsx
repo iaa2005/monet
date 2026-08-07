@@ -28,6 +28,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import type { ElectronAPI } from "@/types/electron";
 import { Select } from "@/components/ui/select";
+import { SettingCard } from "./SettingCard";
 import {
   FEATURES,
   defaultFeatures,
@@ -82,38 +83,21 @@ function ToggleRow({
   checked: boolean;
   onChange: (v: boolean) => void;
 }): JSX.Element {
-  const Icon = (icon && ICONS[icon]) || Zap;
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-border p-3 transition-colors hover:border-foreground/20">
-      <span
-        aria-hidden
-        className={
-          // The icon carries the state, so a switched-on capability is
-          // findable by eye in a list this long.
-          checked
-            ? "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand/12 text-brand"
-            : "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
-        }
-      >
-        <Icon className="size-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{title}</span>
-          {cost && cost !== "free" && (
-            <span className="rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
-              {COST_LABEL[cost]}
-            </span>
-          )}
-        </div>
-        <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
-          {desc}
-        </p>
-      </div>
-      <div className="mt-0.5 shrink-0">
-        <Switch checked={checked} onChange={onChange} />
-      </div>
-    </div>
+    <SettingCard
+      icon={(icon && ICONS[icon]) || Zap}
+      title={title}
+      description={desc}
+      on={checked}
+      badge={
+        cost && cost !== "free" ? (
+          <span className="rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+            {COST_LABEL[cost]}
+          </span>
+        ) : undefined
+      }
+      control={<Switch checked={checked} onChange={onChange} />}
+    />
   );
 }
 
@@ -236,7 +220,7 @@ export function AdvancedSettings(): JSX.Element {
               <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 {group}
               </h4>
-              <div className="mt-2 grid gap-2 lg:grid-cols-2">
+              <div className="mt-2 grid gap-2">
                 {inGroup.map((f) => (
                   <ToggleRow
                     key={f.id}
@@ -259,7 +243,7 @@ export function AdvancedSettings(): JSX.Element {
         <p className="mt-0.5 text-sm text-muted-foreground">
           Optional capabilities, off by default. They apply to new messages.
         </p>
-        <div className="mt-4 grid gap-2 lg:grid-cols-2">
+        <div className="mt-4 grid gap-2">
           <ToggleRow
             icon="Search"
             title="ToolSearch (defer MCP tools)"
