@@ -31,6 +31,15 @@ export interface UiPrefs {
   /** The height the user dragged the message box to, or null to let it
    * grow with the text. */
   composerHeight: number | null;
+  /**
+   * First run is over.
+   *
+   * Was localStorage, which is keyed by ORIGIN — and in dev the origin
+   * carries vite's port, so the port moving meant being welcomed to the app
+   * again. The same trap the sessions filters and the composer height were
+   * moved out of.
+   */
+  onboarded: boolean;
 }
 
 function prefsPath(): string {
@@ -54,6 +63,7 @@ export function getUiPrefs(): UiPrefs {
   return {
     sessionFilters: sanitiseFilters(raw["sessionFilters"]),
     composerHeight: sanitiseComposerHeight(raw["composerHeight"]),
+    onboarded: raw["onboarded"] === true,
   };
 }
 
@@ -74,6 +84,7 @@ export function setUiPrefs(patch: Partial<UiPrefs>): UiPrefs {
   // text", so this one is keyed on the property existing, not on truthiness.
   if ("composerHeight" in patch)
     next["composerHeight"] = sanitiseComposerHeight(patch.composerHeight);
+  if ("onboarded" in patch) next["onboarded"] = patch.onboarded === true;
   try {
     writeFileSync(prefsPath(), JSON.stringify(next, null, 2), "utf-8");
   } catch {
@@ -82,5 +93,6 @@ export function setUiPrefs(patch: Partial<UiPrefs>): UiPrefs {
   return {
     sessionFilters: sanitiseFilters(next["sessionFilters"]),
     composerHeight: sanitiseComposerHeight(next["composerHeight"]),
+    onboarded: next["onboarded"] === true,
   };
 }

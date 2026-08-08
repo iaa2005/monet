@@ -212,10 +212,34 @@ function NavRow({
 }
 
 export default function App(): JSX.Element {
-  // First-run intro: shown until the user completes (or skips) onboarding.
-  const [showOnboarding, setShowOnboarding] = useState(
-    () => !localStorage.getItem("monet-onboarded"),
-  );
+  // First-run setup: shown until it is completed or skipped through.
+  //
+  // The answer lives in ui-prefs.json, but it arrives asynchronously, and a
+  // welcome screen that flashes for somebody who set up months ago is worse
+  // than one that arrives a beat late. So it starts hidden and appears only
+  // when the file says nothing about being onboarded — with the old
+  // localStorage flag honoured once, to carry existing installs across
+  // rather than greeting them again.
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const prefs = await api()?.settings.uiPrefs().catch(() => undefined);
+      if (!alive) return;
+      const legacy = localStorage.getItem("monet-onboarded") === "done";
+      if (prefs?.onboarded || legacy) {
+        // Migrate the old flag, so this only ever happens once.
+        if (legacy && prefs && !prefs.onboarded)
+          void api()?.settings.setUiPrefs({ onboarded: true });
+        return;
+      }
+      // No bridge at all (a probe, a bare browser) is not a first run.
+      if (prefs) setShowOnboarding(true);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [view, setView] = useState<View>("chat");
   // Home = simple centered chat (no IDE chrome). Code = the full IDE shell
   // (terminal, files, changes, resizable panels).

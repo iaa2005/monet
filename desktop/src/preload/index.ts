@@ -490,6 +490,10 @@ const electronAPI = {
       ipcRenderer.invoke("settings:getDataDir"),
     setDataDir: (dir: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("settings:setDataDir", dir),
+    inspectDataDir: (
+      dir: string,
+    ): Promise<{ exists: boolean; hasData: boolean; chats: number }> =>
+      ipcRenderer.invoke("settings:inspectDataDir", dir),
     pickDataDir: (): Promise<string | null> =>
       ipcRenderer.invoke("settings:pickDataDir"),
     uiPrefs: (): Promise<UiPrefs> => ipcRenderer.invoke("settings:uiPrefs"),

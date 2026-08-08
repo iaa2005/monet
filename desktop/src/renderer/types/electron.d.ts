@@ -691,6 +691,9 @@ export interface ElectronAPI {
   settings: {
     getDataDir: () => Promise<{ dir: string; isDefault: boolean }>;
     setDataDir: (dir: string) => Promise<{ ok: boolean }>;
+    inspectDataDir: (
+      dir: string,
+    ) => Promise<{ exists: boolean; hasData: boolean; chats: number }>;
     pickDataDir: () => Promise<string | null>;
     /** Preferences that outlive the window — <dataDir>/ui-prefs.json. */
     uiPrefs: () => Promise<UiPrefs>;
