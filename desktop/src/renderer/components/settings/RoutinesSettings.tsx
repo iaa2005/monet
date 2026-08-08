@@ -56,6 +56,7 @@ import type {
   RoutineRun,
   UiConnectorService,
 } from "@/types/electron";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -267,10 +268,10 @@ export function RoutinesSettings({
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="flex items-center gap-2 text-base font-semibold">
+          <SectionTitle className="flex items-center gap-2">
             <Zap className="size-4" />
             Routines
-          </h3>
+          </SectionTitle>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Agent tasks that run on a schedule, webhook, or connector event.
             Each run opens a chat with the result.

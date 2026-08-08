@@ -17,6 +17,7 @@ import { MarkdownViewer } from "@/components/chat/MarkdownViewer";
 import { CodeBlock } from "@/components/chat/CodeBlock";
 import { DirectoryButton } from "@/components/directory/DirectoryModal";
 import type { ElectronAPI, SkillInfo } from "@/types/electron";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -267,7 +268,7 @@ function ModalShell({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-base font-semibold">{title}</h3>
+          <SectionTitle>{title}</SectionTitle>
           <button
             type="button"
             onClick={onClose}
@@ -377,7 +378,7 @@ function SkillDetailModal({
         <div className="flex items-start justify-between px-5 pb-2 pt-5">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="truncate text-base font-semibold">{skill.name}</h3>
+              <SectionTitle className="truncate">{skill.name}</SectionTitle>
               <span className="shrink-0 text-xs text-muted-foreground">
                 by {skill.author}
               </span>
@@ -603,7 +604,7 @@ export function SkillsSettings(): JSX.Element {
     <div onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-base font-semibold">Skills</h3>
+          <SectionTitle>Skills</SectionTitle>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Reusable prompts the agent can invoke by name. Click a skill to
             browse and edit its files; drop a skill folder here to import it.

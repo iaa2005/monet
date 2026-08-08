@@ -25,6 +25,7 @@ import { useDockStore } from "@/dock/dock-store";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, UiVault } from "@/types/electron";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -68,7 +69,7 @@ export function ObsidianSettings(): JSX.Element {
   return (
     <div className="space-y-4">
       <section>
-        <h3 className="text-base font-semibold">Obsidian</h3>
+        <SectionTitle>Obsidian</SectionTitle>
         <p className="mt-0.5 text-sm text-muted-foreground">
           Connect your Obsidian vaults — folders of linked Markdown notes,
           wherever they live (a cloud-synced folder works). The agent gets

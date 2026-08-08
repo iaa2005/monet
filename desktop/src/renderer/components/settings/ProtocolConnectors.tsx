@@ -28,6 +28,7 @@ import type { ElectronAPI } from "@/types/electron";
 import type { ConnectorAccount } from "../../../main/connectors/types";
 import type { UiConnectorService } from "../../../main/connectors/services/types";
 import { DirectoryButton } from "@/components/directory/DirectoryModal";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -310,7 +311,7 @@ export function ProtocolConnectors(): JSX.Element {
   return (
     <div className="space-y-4">
       <section>
-        <h3 className="text-base font-semibold">Connectors</h3>
+        <SectionTitle>Connectors</SectionTitle>
         <p className="mt-0.5 text-sm text-muted-foreground">
           Your mail, files, calendar, Telegram and dev tools. Each connects with
           a token or app password — no OAuth client to register except where a

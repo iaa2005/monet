@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import type { ElectronAPI, MemoryFileInfo, ProjectLessons } from "@/types/electron";
 import { Select } from "@/components/ui/select";
 import { SettingCard } from "./SettingCard";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -86,9 +87,9 @@ function EditMemoryModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-base font-semibold">
+          <SectionTitle>
             Edit memory <span className="font-mono text-xs text-muted-foreground">{id}</span>
-          </h3>
+          </SectionTitle>
           <button
             type="button"
             onClick={onClose}
@@ -260,7 +261,7 @@ export function MemorySettings(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
-      <h3 className="text-base font-semibold">Memory</h3>
+      <SectionTitle>Memory</SectionTitle>
 
       <div className="mt-4 grid gap-2">
       <SettingCard

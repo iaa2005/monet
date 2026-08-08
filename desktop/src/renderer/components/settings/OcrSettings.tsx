@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 type UiOcrModel = Awaited<ReturnType<NonNullable<ElectronAPI["ocr"]>["models"]>>[number];
 type OcrConfig = Awaited<ReturnType<NonNullable<ElectronAPI["ocr"]>["config"]>>;
@@ -99,7 +100,7 @@ export function OcrSettings(): React.JSX.Element {
   return (
     <div className="space-y-4">
       <section>
-        <h3 className="text-base font-semibold">OCR Scanner</h3>
+        <SectionTitle>OCR Scanner</SectionTitle>
         <p className="mt-0.5 text-sm text-muted-foreground">
           Lets the assistant read scans, PDFs and screenshots — text, formulas
           and tables. Runs on this computer; nothing is uploaded.

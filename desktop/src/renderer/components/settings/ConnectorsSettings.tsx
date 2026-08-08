@@ -8,6 +8,7 @@ import type {
   McpServerConfig,
   McpServerStatus,
 } from "@/types/electron";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -208,7 +209,7 @@ export function AddConnectorModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-base font-semibold">Add connector</h3>
+          <SectionTitle>Add connector</SectionTitle>
           <button
             type="button"
             onClick={onClose}
@@ -437,7 +438,7 @@ export function ConnectorsSettings(): JSX.Element {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-base font-semibold">MCP Servers</h3>
+          <SectionTitle>MCP Servers</SectionTitle>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Raw Model Context Protocol servers (stdio/http/sse). Connected tools
             become available to the agent as{" "}

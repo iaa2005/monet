@@ -35,6 +35,7 @@ import {
   type FeatureFlags,
   type FeatureSpec,
 } from "@shared/agent-features";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -204,7 +205,7 @@ export function AdvancedSettings(): JSX.Element {
   return (
     <div className="space-y-8">
       <section>
-        <h3 className="text-base font-semibold">How the agent works</h3>
+        <SectionTitle>How the agent works</SectionTitle>
         <p className="mt-0.5 max-w-2xl text-sm text-muted-foreground">
           A weaker model does not fail at doing — it fails at deciding when.
           These are the decisions the harness makes for it: verification that
@@ -239,7 +240,7 @@ export function AdvancedSettings(): JSX.Element {
       </section>
 
       <section>
-        <h3 className="text-base font-semibold">Advanced tools</h3>
+        <SectionTitle>Advanced tools</SectionTitle>
         <p className="mt-0.5 text-sm text-muted-foreground">
           Optional capabilities, off by default. They apply to new messages.
         </p>
@@ -276,7 +277,7 @@ export function AdvancedSettings(): JSX.Element {
       </section>
 
       <section>
-        <h3 className="text-base font-semibold">Background model</h3>
+        <SectionTitle>Background model</SectionTitle>
         <p className="mt-0.5 text-sm text-muted-foreground">
           Which model does the work that isn't the conversation: noting memory
           after a turn, the nightly consolidation, the Reflect digest, drafting a
@@ -318,7 +319,7 @@ export function AdvancedSettings(): JSX.Element {
       </section>
 
       <section>
-        <h3 className="text-base font-semibold">Prompts</h3>
+        <SectionTitle>Prompts</SectionTitle>
         <p className="mt-0.5 text-sm text-muted-foreground">
           The system prompt, mode directives and every tool description are
           editable Markdown files. Open the folder, edit a file, then reload (or

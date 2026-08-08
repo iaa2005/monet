@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { MarkdownViewer } from "@/components/chat/MarkdownViewer";
 import type { AgentSummary, ElectronAPI } from "@/types/electron";
 import { Select } from "@/components/ui/select";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -50,7 +51,7 @@ function ModalShell({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-base font-semibold">{title}</h3>
+          <SectionTitle>{title}</SectionTitle>
           <button
             type="button"
             onClick={onClose}
@@ -388,7 +389,7 @@ export function AgentsSettings(): JSX.Element {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-base font-semibold">Agents</h3>
+          <SectionTitle>Agents</SectionTitle>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Sub-agent types the main agent can delegate to via the Task tool.
             Each has its own system prompt, tools and model. Built-ins are

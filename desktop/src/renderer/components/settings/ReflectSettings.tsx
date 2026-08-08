@@ -8,6 +8,7 @@ import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, ReflectDigest } from "@/types/electron";
 import { Select } from "@/components/ui/select";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -172,7 +173,7 @@ export function ReflectSettings(): JSX.Element {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-base font-semibold">Reflect</h3>
+          <SectionTitle>Reflect</SectionTitle>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Based on your conversations in this app.
           </p>

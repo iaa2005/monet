@@ -27,6 +27,7 @@ import type { ElectronAPI, TtsProgress, TtsStatus } from "@/types/electron";
 import { WHISPER_TIERS, DEFAULT_WHISPER } from "@shared/whisper-tier";
 import { AUTO_LANG, TTS_LANGS, speechLangFor } from "@shared/tts-langs";
 import { ART_SIZE, voiceCells } from "@/lib/voice-art";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -264,7 +265,7 @@ export function VoiceSettings(): JSX.Element {
     <div className="space-y-8">
       {/* ── Dictation ─────────────────────────────────────────────────── */}
       <section>
-        <h3 className="mb-1 text-sm font-semibold text-foreground">Dictation</h3>
+        <SectionTitle>Dictation</SectionTitle>
         <p className="mb-3 text-xs text-muted-foreground">
           Speech to text for the mic button and Voice Mode. On-device engines
           need no key and keep audio on this machine.
@@ -361,7 +362,7 @@ export function VoiceSettings(): JSX.Element {
 
       {/* ── The app's voice ───────────────────────────────────────────── */}
       <section>
-        <h3 className="mb-1 text-sm font-semibold text-foreground">Voice</h3>
+        <SectionTitle>Voice</SectionTitle>
         <p className="mb-3 text-xs text-muted-foreground">
           Supertonic 3 — on-device, 31 languages, expression tags. One shared
           model (~398 MB), then each voice is a 0.3 MB download.

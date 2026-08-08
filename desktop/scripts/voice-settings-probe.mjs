@@ -259,6 +259,59 @@ try {
     { paid: ui.paid, closing: ui.closing },
   );
 
+  // ── Every settings title, in the shipped app ─────────────────────────
+  //
+  // There were three spellings across 27 headings, in Inter while the rest of
+  // the app's headings are Bounded. "The same" is a claim about computed
+  // style, so it is read from the DOM rather than from the source.
+  const titles = [];
+  for (const tab of ["General", "Editor", "Voice", "Memory", "Advanced", "Automation", "Skills"]) {
+    const clicked = await cdp.eval(`(() => {
+      const el = [...document.querySelectorAll('button')].find(
+        (b) => (b.textContent || '').trim() === ${JSON.stringify(tab)},
+      );
+      if (!el) return false;
+      el.click();
+      return true;
+    })()`);
+    if (!clicked) continue;
+    await sleep(600);
+    const seenHere = await cdp.eval(`JSON.stringify(
+      [...document.querySelectorAll('h3')].map((h) => {
+        const s = getComputedStyle(h);
+        return {
+          text: (h.textContent || '').trim().slice(0, 24),
+          family: s.fontFamily.split(',')[0].replace(/['"]/g, ''),
+          size: s.fontSize,
+          weight: s.fontWeight,
+        };
+      }),
+    )`);
+    for (const t of JSON.parse(seenHere ?? "[]")) titles.push({ tab, ...t });
+  }
+  check("settings titles were found across the tabs", titles.length >= 10, titles.length);
+  const shapes = [...new Set(titles.map((t) => `${t.family}/${t.size}/${t.weight}`))];
+  check(
+    "EVERY MAIN TITLE IS THE SAME FACE, SIZE AND WEIGHT",
+    shapes.length === 1,
+    { shapes, examples: titles.slice(0, 3) },
+  );
+  check(
+    "…and that face is Bounded, not the UI font",
+    shapes[0]?.startsWith("Bounded"),
+    shapes[0],
+  );
+
+  // Back to Voice for the screenshots below.
+  await cdp.eval(`(() => {
+    const el = [...document.querySelectorAll('button')].find(
+      (b) => (b.textContent || '').trim() === 'Voice',
+    );
+    el?.click();
+    return true;
+  })()`);
+  await sleep(800);
+
   // Both halves are below the fold on this window, and a screenshot of the
   // part that did not change proves nothing. Two shots, two scroll positions.
   const base = resolve(process.env.VOICE_SHOT ?? join(tmpdir(), "voice-settings.png"));

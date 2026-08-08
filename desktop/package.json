@@ -59,6 +59,7 @@
     "smoke:viewerraise": "node scripts/renderer-probe.mjs scripts/viewer-raise-probe.ts",
     "smoke:onboarding": "node scripts/renderer-probe.mjs scripts/onboarding-probe.ts",
     "smoke:identity": "node scripts/smoke-agent.mjs scripts/identity-probe.ts",
+    "smoke:onefont": "node scripts/smoke-agent.mjs scripts/one-font-probe.ts",
     "smoke:orrouting": "electron scripts/or-routing-probe.cjs",
     "smoke:voicecloner": "node scripts/smoke-agent.mjs scripts/voice-cloner-probe.ts",
     "smoke:voicelang": "node scripts/renderer-probe.mjs scripts/voice-lang-probe.ts",

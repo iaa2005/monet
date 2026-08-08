@@ -14,6 +14,7 @@ import type {
   ElectronAPI,
 } from "@/types/electron";
 import { isValidPattern } from "@shared/origins";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -105,7 +106,7 @@ export function AutomationSettings(): JSX.Element {
   return (
     <div className="space-y-5">
       <section>
-        <h3 className="text-base font-semibold">Automation</h3>
+        <SectionTitle>Automation</SectionTitle>
         <p className="mt-0.5 text-sm text-muted-foreground">
           Let the agent act outside the chat — available in both Home and Code.
           These reach the real world, so they are opt-in.

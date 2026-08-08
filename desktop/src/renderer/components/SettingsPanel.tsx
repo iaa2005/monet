@@ -38,6 +38,7 @@ import { ProtocolConnectors } from "@/components/settings/ProtocolConnectors";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -65,7 +66,7 @@ function StorageSection(): JSX.Element {
 
   return (
     <section>
-      <h3 className="text-base font-semibold">Data folder</h3>
+      <SectionTitle>Data folder</SectionTitle>
       <p className="mt-0.5 text-sm text-muted-foreground">
         Where chats, sessions and settings are stored. Changing it takes effect
         after a restart.
@@ -239,7 +240,7 @@ function SandboxSection(): JSX.Element {
   return (
     <div className="space-y-4">
       <section>
-        <h3 className="text-base font-semibold">Sandbox</h3>
+        <SectionTitle>Sandbox</SectionTitle>
         <p className="mt-0.5 text-sm text-muted-foreground">
           Where Home runs generated code (Python and scripts for documents,
           tables and charts). Home is isolated from your project — Code mode
@@ -398,7 +399,7 @@ function KeepAwakeSection(): JSX.Element {
 
   return (
     <section>
-      <h3 className="text-base font-semibold">Power</h3>
+      <SectionTitle>Power</SectionTitle>
       <p className="mt-0.5 text-sm text-muted-foreground">
         How this device behaves while Code Monet is running.
       </p>
@@ -435,7 +436,7 @@ function GeneralSection({
       <ProfileSection />
       <KeepAwakeSection />
       <section>
-        <h3 className="text-base font-semibold">Appearance</h3>
+        <SectionTitle>Appearance</SectionTitle>
         <p className="mt-0.5 text-sm text-muted-foreground">
           Choose how Code Monet looks on this device.
         </p>

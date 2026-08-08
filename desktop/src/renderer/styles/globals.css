@@ -7,16 +7,16 @@
  * Every heading uses the `font-display` utility and every other surface
  * inherits `--font-sans` from <body>, so swapping either face is editing
  * the two declarations at the bottom of this block — not hunting call
- * sites. Faces stay declared even when unused: Copernicus is kept so it
- * can come back without re-adding the file.
+ * sites.
+ *
+ * There used to be a third face, Galaxie Copernicus, kept declared "so it
+ * can come back without re-adding the file". It could not come back: it sat
+ * BEHIND Bounded in the display stack, where a bundled face never yields, so
+ * it rendered nowhere and only cost a download. Removed, along with the file.
+ * A serif still leaked in through Tailwind's `font-serif` default (Georgia) —
+ * those call sites are `font-display` now, so the app has two faces and no
+ * accidents.
  */
-@font-face {
-    font-family: "Copernicus";
-    src: url("../fonts/GalaxieCopernicus-Book.ttf") format("truetype");
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-}
 @font-face {
     font-family: "Bounded";
     src: url("../fonts/Bounded-Variable.ttf") format("truetype-variations");
@@ -29,7 +29,7 @@
 
 :root {
     /* THE DISPLAY FACE — headings, the wordmark, the zero states. */
-    --font-display: "Bounded", "Copernicus", Georgia, serif;
+    --font-display: "Bounded", Georgia, serif;
 }
 
 @custom-variant dark (&:is(.dark *));

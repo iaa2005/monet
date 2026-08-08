@@ -13,6 +13,7 @@ import { ChevronLeft, ChevronRight, Palette, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, PaintingInfo } from "@/types/electron";
 import { Select } from "@/components/ui/select";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -308,7 +309,7 @@ export function ProfileSection({
     <section>
       <div className="flex items-baseline justify-between">
         {heading ? (
-          <h3 className="text-base font-semibold">Profile</h3>
+          <SectionTitle>Profile</SectionTitle>
         ) : (
           <span />
         )}

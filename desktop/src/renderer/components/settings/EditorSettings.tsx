@@ -6,12 +6,13 @@
  */
 
 import { CodeThemePicker } from "./CodeThemePicker";
+import { SectionTitle } from "@/components/settings/SectionTitle";
 
 export function EditorSettings(): JSX.Element {
   return (
     <div className="space-y-5">
       <section>
-        <h3 className="text-base font-semibold">Editor</h3>
+        <SectionTitle>Editor</SectionTitle>
         <p className="mt-0.5 text-sm text-muted-foreground">
           Syntax highlighting for code everywhere it appears — chat blocks,
           diffs, notebooks and the file editor. Light and dark are separate
