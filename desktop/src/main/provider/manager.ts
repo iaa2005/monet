@@ -205,3 +205,9 @@ export function getProviderManager(): ProviderManager {
   if (!instance) instance = new ProviderManager()
   return instance
 }
+
+/** Forget the loaded providers, so the next call reads the folder that is
+ * current now. Called when the data directory is switched. */
+export function resetProviderManager(): void {
+  instance = null
+}

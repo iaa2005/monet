@@ -3,7 +3,7 @@
  */
 
 import { ipcMain } from 'electron'
-import { getProviderManager } from '../provider/manager.js'
+import { getProviderManager, type ProviderManager } from '../provider/manager.js'
 import type { LLMProviderInput } from '../provider/types.js'
 import { fetchORModels, fetchORBalance } from '../llm/openrouter-api.js'
 import { fetchProviderModels } from '../llm/fetch-models.js'
@@ -20,21 +20,29 @@ import {
 } from '../provider/routing.js'
 
 export function registerProvidersIPC(): void {
-  const pm = getProviderManager()
+  // The manager is asked for on every call, never captured here.
+  //
+  // It used to be `const pm = getProviderManager()` at registration — which
+  // means the handlers hold ONE instance for the life of the process. Switching
+  // the data folder drops the singleton so the next caller reads the new
+  // folder's providers; these handlers went on answering from the old one, so
+  // adopting a folder in first-run setup showed a provider list with no keys
+  // in it and asked for a key that was already there.
+  const pm = (): ProviderManager => getProviderManager()
 
-  ipcMain.handle('providers:list', () => pm.list())
-  ipcMain.handle('providers:get', (_e, id: string) => pm.get(id))
-  ipcMain.handle('providers:getActive', () => pm.getActive())
-  ipcMain.handle('providers:add', (_e, input: LLMProviderInput) => pm.add(input))
+  ipcMain.handle('providers:list', () => pm().list())
+  ipcMain.handle('providers:get', (_e, id: string) => pm().get(id))
+  ipcMain.handle('providers:getActive', () => pm().getActive())
+  ipcMain.handle('providers:add', (_e, input: LLMProviderInput) => pm().add(input))
   ipcMain.handle('providers:update', (_e, id: string, input: Partial<LLMProviderInput>) =>
-    pm.update(id, input),
+    pm().update(id, input),
   )
-  ipcMain.handle('providers:remove', (_e, id: string) => pm.remove(id))
-  ipcMain.handle('providers:setActive', (_e, id: string) => pm.setActive(id))
+  ipcMain.handle('providers:remove', (_e, id: string) => pm().remove(id))
+  ipcMain.handle('providers:setActive', (_e, id: string) => pm().setActive(id))
   ipcMain.handle(
     'providers:setActiveModel',
     (_e, providerId: string, modelId: string) =>
-      pm.setActiveModel(providerId, modelId),
+      pm().setActiveModel(providerId, modelId),
   )
 
   // ── OpenRouter metadata ────────────────────────────────────────────────

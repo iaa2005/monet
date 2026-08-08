@@ -65,7 +65,12 @@ export function getDataSubdir(name: string): string {
 /** Persist a new data directory override. Requires an app restart to fully apply. */
 export function setDataDir(dir: string): void {
   writeFileSync(BOOTSTRAP_FILE(), JSON.stringify({ dataDir: dir }, null, 2));
-  cached = null;
+  // The env override wins on read, so leaving it alone would mean a switch
+  // that changed the file and nothing else — the folder picker in first-run
+  // setup would appear to do nothing at all. Set both, so the process and
+  // the file agree from here on.
+  process.env["MONET_DATA_DIR"] = dir;
+  cached = dir;
 }
 
 export function isDefaultDataDir(): boolean {

@@ -191,6 +191,9 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
   const [dirFound, setDirFound] = useState<{ hasData: boolean; chats: number } | null>(
     null,
   );
+  /** Rises whenever a folder is chosen, so every later step re-reads from it.
+   * A counter rather than a flag: choosing twice has to re-read twice. */
+  const [adopted, setAdopted] = useState(0);
 
   // ── How it looks ──
   const [dark, setDark] = useState(
@@ -218,6 +221,9 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
   // ── The model ──
   const [key, setKey] = useState("");
   const [keyError, setKeyError] = useState<string | null>(null);
+  /** A provider the chosen folder already has configured. Somebody adopting
+   * their own folder should be told it is done, not asked for a key again. */
+  const [haveProvider, setHaveProvider] = useState<string | null>(null);
 
   const last = index === STEPS.length - 1;
 
@@ -252,15 +258,34 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
 
   // ── Loads, each when its step arrives and not before ──
 
+  // Whatever the current data folder already knows about you.
+  //
+  // These fields used to start empty and only ever be written, which was fine
+  // for a genuinely first run and wrong the moment somebody points the setup
+  // at a folder they have been using: it offered to write a name over the one
+  // already there, showing a blank box as if there were none. Keyed on
+  // `adopted` so choosing a folder re-reads it.
   useEffect(() => {
-    if (step !== "you" || gallery.length > 0) return;
+    if (step !== "you") return;
+    let alive = true;
+    void api()
+      ?.profile.get()
+      .then((p) => {
+        if (!alive || !p) return;
+        setName((v) => v || p.name || p.fullName || "");
+        setAbout((v) => v || p.about || "");
+      })
+      .catch(() => {});
     void api()
       ?.profile.gallery()
       .then((r) => {
-        if (r?.ok && r.items) setGallery(r.items);
+        if (alive && r?.ok && r.items) setGallery(r.items);
       })
       .catch(() => {});
-  }, [step, gallery.length]);
+    return () => {
+      alive = false;
+    };
+  }, [step, adopted]);
 
   useEffect(() => {
     if (step !== "folder" || dir) return;
@@ -297,7 +322,7 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
       offStt?.();
       offTts?.();
     };
-  }, [step]);
+  }, [step, adopted]);
 
   useEffect(() => {
     if (step !== "ocr") return;
@@ -322,9 +347,25 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
   }, [step]);
 
   useEffect(() => {
+    if (step !== "provider") return;
+    let alive = true;
+    void api()
+      ?.providers.list()
+      .then((list) => {
+        if (!alive) return;
+        const configured = (list ?? []).find((p) => !!p.apiKey);
+        setHaveProvider(configured ? configured.name : null);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [step, adopted]);
+
+  useEffect(() => {
     if (step !== "vault") return;
     void api()?.obsidian.list().then(setVaults).catch(() => {});
-  }, [step]);
+  }, [step, adopted]);
 
   // ── Actions ──
 
@@ -344,6 +385,9 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
       setDir(picked);
       setDirDefault(false);
       setDirMoved(true);
+      // Main has dropped its database handle and its provider list, so the
+      // remaining steps now read the folder just chosen. Tell them to.
+      setAdopted((n) => n + 1);
     }
   };
 
@@ -674,6 +718,13 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
 
               {step === "provider" && (
                 <div className="space-y-3">
+                  {haveProvider && (
+                    <p className="inline-flex items-center gap-1.5 text-[13px] text-brand">
+                      <Check className="size-3.5" />
+                      {haveProvider} is already set up in this folder — nothing to
+                      do here.
+                    </p>
+                  )}
                   <p className="text-[13px] leading-relaxed text-muted-foreground">
                     OpenRouter gives away free models. Make a key, paste it here,
                     and you are working.
@@ -763,9 +814,16 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
                 <ArrowRight className="size-4" />
               </Btn>
             ) : step === "provider" ? (
-              <Btn onClick={() => void saveKey()} busy={saving} disabled={!key.trim()}>
-                Save the key and start
-              </Btn>
+              haveProvider && !key.trim() ? (
+                <Btn onClick={() => void finish()} busy={saving}>
+                  Start
+                  <ArrowRight className="size-4" />
+                </Btn>
+              ) : (
+                <Btn onClick={() => void saveKey()} busy={saving} disabled={!key.trim()}>
+                  Save the key and start
+                </Btn>
+              )
             ) : (
               <Btn onClick={advance} busy={saving}>
                 Continue

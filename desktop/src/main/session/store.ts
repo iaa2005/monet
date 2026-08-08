@@ -667,3 +667,20 @@ export function getSessionStore(): SessionStore {
 export function getSessionDb(): ReturnType<typeof Database> {
   return getDb();
 }
+
+/**
+ * Let go of the database, so the next caller opens the one in whatever
+ * folder is current.
+ *
+ * Everything else that lives in the data dir is read per call and follows a
+ * switch for free; this holds a file handle, and a handle does not care that
+ * the path changed. Called when the folder is switched — see ipc/settings.
+ */
+export function closeSessionDb(): void {
+  try {
+    db?.close();
+  } catch {
+    /* already gone, or mid-write — the handle is being dropped either way */
+  }
+  db = null;
+}

@@ -168,6 +168,86 @@ const fresh = mkdtempSync(join(tmpdir(), "first-run-fresh-"));
   check("…and no overlay over it", seen.onTop !== true, JSON.stringify(seen));
 }
 
+// ─── Adopting a folder that is already somebody's ───────────────────────
+//
+// The setup's folder step can point at an EXISTING install, and every screen
+// after it is then supposed to show that folder's data — the name, the
+// avatar, the provider. That only works if the switch takes effect in the
+// RUNNING process: a database handle and a loaded provider list are held, and
+// a handle does not care that the path changed.
+//
+// Measured through the app's own bridge, from the page, the way the wizard's
+// steps do it. The native folder dialog cannot be automated, so the pick
+// itself is the one part stood in for.
+
+{
+  const prodDir = resolve("..", ".monet-prod");
+  const child = spawn(electron, [resolve("."), `--remote-debugging-port=${PORT}`], {
+    env: { ...process.env, MONET_DATA_DIR: mkdtempSync(join(tmpdir(), "adopt-")) },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  try {
+    const cdp = await attach();
+    const before = await cdp.eval(`(async () => {
+      try {
+        for (let i = 0; i < 60 && !window.electronAPI; i++)
+          await new Promise((r) => setTimeout(r, 250));
+        if (!window.electronAPI) return JSON.stringify({ error: 'no bridge' });
+        const p = await window.electronAPI.profile.get();
+        const list = await window.electronAPI.providers.list();
+        return JSON.stringify({
+          name: p.name,
+          keys: list.filter((x) => !!x.apiKey).length,
+        });
+      } catch (e) {
+        return JSON.stringify({ error: String(e && e.message ? e.message : e) });
+      }
+    })()`);
+    const startedWith = JSON.parse(before ?? "{}");
+    check("a fresh folder knows nobody", !startedWith.name, JSON.stringify(startedWith));
+    check("…and has no provider key", startedWith.keys === 0, JSON.stringify(startedWith));
+
+    const after = await cdp.eval(`(async () => {
+      await window.electronAPI.settings.setDataDir(${JSON.stringify(prodDir)});
+      const p = await window.electronAPI.profile.get();
+      const list = await window.electronAPI.providers.list();
+      const seen = await window.electronAPI.settings.inspectDataDir(${JSON.stringify(prodDir)});
+      return JSON.stringify({
+        name: p.name,
+        about: (p.about || "").length,
+        avatar: !!p.avatarDataUrl,
+        keys: list.filter((x) => !!x.apiKey).length,
+        chats: seen.chats,
+      });
+    })()`);
+    const adopted = JSON.parse(after ?? "{}");
+    check(
+      "CHOOSING AN EXISTING FOLDER BRINGS ITS PROFILE ALONG",
+      !!adopted.name,
+      JSON.stringify(adopted),
+    );
+    check("…including what it says about you", adopted.about > 0, JSON.stringify(adopted));
+    check("…and the avatar", adopted.avatar === true, JSON.stringify(adopted));
+    check(
+      "…AND ITS PROVIDER, so the last screen has nothing to ask",
+      adopted.keys > 0,
+      JSON.stringify(adopted),
+    );
+    // The count is a nicety — a locked WAL file or an older schema leaves it
+    // unknown (-1), which the setup then simply does not mention. What must
+    // NEVER happen is a confident zero for a folder full of chats.
+    check(
+      "…and its chats are counted, or honestly unknown",
+      adopted.chats > 0 || adopted.chats === -1,
+      JSON.stringify(adopted),
+    );
+    cdp.ws.close();
+  } finally {
+    child.kill();
+    await sleep(600);
+  }
+}
+
 console.log(
   failures ? `\n${failures} FAILED` : "\nTHE SETUP APPEARS EXACTLY ONCE, PER FOLDER",
 );

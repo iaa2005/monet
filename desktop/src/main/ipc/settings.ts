@@ -11,6 +11,8 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 import { getDataDir, setDataDir, isDefaultDataDir } from "../data-dir.js";
 import { getUiPrefs, setUiPrefs, type UiPrefs } from "../app/ui-prefs.js";
+import { closeSessionDb } from "../session/store.js";
+import { resetProviderManager } from "../provider/manager.js";
 
 export function registerSettingsIPC(): void {
   // Preferences that outlive the window — currently how the sessions list
@@ -30,6 +32,16 @@ export function registerSettingsIPC(): void {
 
   ipcMain.handle("settings:setDataDir", (_e, dir: string) => {
     setDataDir(dir);
+    // Everything in the data dir is read per call and follows the switch for
+    // free — except a database handle and a loaded provider list, which are
+    // held. Dropping both is what makes "choose your existing folder" during
+    // first-run setup show that folder's own chats, providers and profile
+    // rather than the ones the app happened to start with.
+    //
+    // Not everything catches up: a sandbox already provisioned, a model
+    // already loaded into memory. Those need the restart the UI mentions.
+    closeSessionDb();
+    resetProviderManager();
     return { ok: true };
   });
 
@@ -49,7 +61,9 @@ export function registerSettingsIPC(): void {
     (_e, dir: string): { exists: boolean; hasData: boolean; chats: number } => {
       try {
         if (!dir || !existsSync(dir)) return { exists: false, hasData: false, chats: 0 };
-        const db = join(dir, "sessions.db");
+        // <dataDir>/sessions/sessions.db — NOT the root. Looking in the
+        // root found nothing and reported a folder full of chats as empty.
+        const db = join(dir, "sessions", "sessions.db");
         const hasData =
           existsSync(db) ||
           existsSync(join(dir, "providers", "providers.json")) ||
@@ -74,8 +88,15 @@ export function registerSettingsIPC(): void {
               .get() as { n?: number } | undefined;
             chats = Number(row?.n ?? 0);
             probe.close();
-          } catch {
-            /* an older schema, or a locked file — the count is a nicety */
+          } catch (err) {
+            // An older schema, a WAL file another instance holds, a lock —
+            // the count is a nicety and its absence must not read as zero.
+            chats = -1;
+            console.warn(
+              "[settings] could not count chats in",
+              dir,
+              err instanceof Error ? err.message : err,
+            );
           }
         }
         return { exists: true, hasData, chats };
