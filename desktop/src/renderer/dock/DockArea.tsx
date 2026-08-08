@@ -550,12 +550,19 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
   // looked at — not every time some property of some card changes. The guard
   // matters: clicking inside a card sets it active too, and re-raising a
   // panel that is already active is what takes the caret away.
+  //
+  // Keyed on the raise SIGNAL as well as the id, because "the file you asked
+  // for is the one already active" is still a request to see it: with only
+  // the id, clicking a link to an open file whose tab was not in front did
+  // nothing — the id did not change, so this never ran, and the file had to
+  // be selected by hand afterwards.
+  const viewerRaise = useViewerStore((s) => s.raiseSeq);
   useEffect(() => {
     if (!viewerActive) return;
     const api = useDockStore.getState().api;
     const panel = api?.getPanel(viewerActive);
     if (panel && api?.activePanel?.id !== viewerActive) panel.api.setActive();
-  }, [viewerActive]);
+  }, [viewerActive, viewerRaise]);
 
   const onReady = useMemo(
     () =>

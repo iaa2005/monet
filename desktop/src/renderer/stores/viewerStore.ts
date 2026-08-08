@@ -52,6 +52,21 @@ interface ViewerState {
   docs: ViewerDoc[];
   /** The panel the dock last activated — where "open" lands. */
   activeId: string | null;
+  /**
+   * Bumped every time somebody ASKS to look at a file, even the one already
+   * active.
+   *
+   * `activeId` alone cannot say that. Clicking a link to a file that is
+   * already open sets activeId to the value it already had, so nothing
+   * changed, so nothing raised the panel — and if the dock happened to be
+   * showing a different tab, the click did nothing at all and the file had
+   * to be selected by hand. Two actions for one intention; reported.
+   *
+   * Deliberately NOT bumped by setActive: clicking inside a card sets it
+   * active too, and re-raising a panel that is already in front is what
+   * takes the caret out of the editor mid-word.
+   */
+  raiseSeq: number;
   open: (file: ViewerFile, opts?: { preview?: boolean }) => void;
   /** A preview panel becomes permanent (its tab was clicked). */
   pin: (id: string) => void;
@@ -67,6 +82,7 @@ interface ViewerState {
 export const useViewerStore = create<ViewerState>((set, get) => ({
   docs: [],
   activeId: null,
+  raiseSeq: 0,
 
   open: (file, opts) => {
     const preview = opts?.preview !== false;
@@ -76,6 +92,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
     if (existing) {
       set({
         activeId: existing.id,
+        raiseSeq: get().raiseSeq + 1,
         // Re-opening a preview as permanent pins it; never the reverse.
         docs: preview
           ? docs
@@ -91,6 +108,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
         // walking a tree does not leave a card behind for every file.
         set({
           activeId: pv.id,
+          raiseSeq: get().raiseSeq + 1,
           docs: docs.map((d) => (d.id === pv.id ? { ...d, file } : d)),
         });
         return;
@@ -98,7 +116,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
     }
 
     const doc: ViewerDoc = { id: nextId(), file, preview };
-    set({ docs: [...docs, doc], activeId: doc.id });
+    set({ docs: [...docs, doc], activeId: doc.id, raiseSeq: get().raiseSeq + 1 });
   },
 
   pin: (id) =>
