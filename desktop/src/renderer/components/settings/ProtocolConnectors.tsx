@@ -148,7 +148,11 @@ function PermissionMatrix({
   const hasOverrides = Object.keys(overrides).length > 0;
 
   return (
-    <div className="mt-2 space-y-2 rounded-lg border border-border/70 bg-black/[0.02] p-2.5 dark:bg-white/[0.03]">
+    /* Flush to the card that owns it, not floating inside it: the negative
+       margins cancel that card's padding, so this reads as its bottom
+       compartment rather than a second card with a gap around it. Only the top
+       border separates them. */
+    <div className="-mx-2.5 -mb-2.5 mt-2.5 space-y-2 rounded-b-xl border-t border-border/70 bg-black/[0.02] p-2.5 dark:bg-white/[0.03]">
       {ACCESS_GROUPS.map((g) => {
         const rows = actions.filter((a) => a.access === g.access);
         if (rows.length === 0) return null;

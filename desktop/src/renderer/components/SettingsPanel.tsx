@@ -1,5 +1,9 @@
 import { useState, useEffect, type ComponentType } from "react";
 import {
+  Box,
+  Container,
+  TerminalSquare,
+  type LucideIcon,
   Settings2,
   Mic,
   Boxes,
@@ -38,6 +42,7 @@ import { ProtocolConnectors } from "@/components/settings/ProtocolConnectors";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
+import { PickCard } from "@/components/settings/PickCard";
 import {
   SectionHeader,
   SectionTitle,
@@ -149,17 +154,20 @@ const SANDBOX_ENGINES: {
   id: string;
   title: string;
   blurb: string;
+  icon: LucideIcon;
   warn?: boolean;
   disabled?: boolean;
 }[] = [
   {
     id: "pyodide",
+    icon: Box,
     title: "Pyodide (Python in WebAssembly)",
     blurb:
       "Default. Python and JavaScript run inside the app, fully isolated — no access to your files or network. Great for documents, tables and charts (pandas, matplotlib, python-docx, openpyxl).",
   },
   {
     id: "subprocess",
+    icon: TerminalSquare,
     title: "Local subprocess (real Python / Node)",
     blurb:
       "Runs real python/node in a per-chat temp folder. Full power, but code executes on your machine WITHOUT hard isolation — use only with models you trust.",
@@ -167,6 +175,7 @@ const SANDBOX_ENGINES: {
   },
   {
     id: "docker",
+    icon: Container,
     title: "Podman container",
     blurb:
       "Real Python + Node + LaTeX (tectonic) in an isolated container. The portable Podman CLI is provisioned automatically — no manual install. The Linux backend (WSL2) and the shared image build once on first use; chats then add only copy-on-write layers, not gigabytes.",
@@ -252,46 +261,25 @@ function SandboxSection(): JSX.Element {
         {SANDBOX_ENGINES.map((e) => {
           const active = engine === e.id;
           return (
-            <button
+            <PickCard
               key={e.id}
-              type="button"
-              disabled={e.disabled}
-              onClick={() => !e.disabled && choose(e.id)}
-              className={cn(
-                "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors",
-                active
-                  ? "border-foreground/40 ring-1 ring-foreground/20"
-                  : "border-border hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
-                e.disabled && "cursor-not-allowed opacity-55 hover:bg-transparent",
-              )}
-            >
-              <span
-                className={cn(
-                  "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
-                  active
-                    ? "border-transparent bg-foreground text-background"
-                    : "border-border",
-                )}
-              >
-                {active && <Check className="size-3" />}
-              </span>
-              <span className="min-w-0">
-                <span className="flex items-center gap-1.5 text-sm font-medium">
-                  {e.title}
-                  {e.warn && (
-                    <AlertTriangle className="size-3.5 text-amber-500" />
-                  )}
+              icon={e.icon}
+              title={e.title}
+              badge={
+                <>
+                  {e.warn && <AlertTriangle className="size-3.5 text-amber-500" />}
                   {e.disabled && (
-                    <span className="rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground dark:bg-white/[0.08]">
+                    <span className="rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground dark:bg-white/[0.08]">
                       soon
                     </span>
                   )}
-                </span>
-                <span className="mt-0.5 block text-[13px] text-muted-foreground">
-                  {e.blurb}
-                </span>
-              </span>
-            </button>
+                </>
+              }
+              description={e.blurb}
+              selected={active}
+              disabled={e.disabled}
+              onClick={() => !e.disabled && choose(e.id)}
+            />
           );
         })}
       </div>
