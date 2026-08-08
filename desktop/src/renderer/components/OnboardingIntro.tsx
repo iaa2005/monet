@@ -403,7 +403,13 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
   const label = stepLabel(index);
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-background">
+    /* z-45, deliberately: ABOVE every layer the app screen uses (≤ 40) and
+       BELOW the transient ones (50+). A full-screen SCREEN is not a top-most
+       layer — the dropdowns, dialogs and the Monet carousel it opens are
+       portalled into document.body at z-50, so at z-100 this covered the very
+       things it had just opened: the work select and "From Monet Paintings"
+       both appeared to do nothing at all. */
+    <div className="fixed inset-0 z-[45] flex flex-col bg-background">
       {/* How much is left. Real, and only from the second screen — on the
           welcome there is nothing behind you to show. */}
       {index > 0 && (

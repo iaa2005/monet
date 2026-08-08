@@ -124,11 +124,15 @@ async function look(dataDir) {
         // is the point: nothing is torn down and rebuilt when it closes. So
         // "do you see the setup" is not "is the chat absent", it is what the
         // middle of the window actually hits.
-        // Presence of the overlay, not a hit test: elementFromPoint needs
-        // layout too, and this has to work on a window that is up but not
-        // yet shown.
+        // Found by what it CONTAINS, not by its z-index class: the layer
+        // moved from 100 to 45 (see the stacking check below) and a probe
+        // keyed on the number reported the screen as missing when only the
+        // number had changed.
         onTop: [...document.querySelectorAll('div')].some(
-          (d) => d.className && String(d.className).includes('z-[100]'),
+          (d) =>
+            d.className &&
+            String(d.className).includes('fixed inset-0') &&
+            /Set it up/i.test(d.textContent || ''),
         ),
       });
     })()`;
@@ -185,6 +189,77 @@ const fresh = mkdtempSync(join(tmpdir(), "first-run-fresh-"));
   check("a folder that says it is done shows the app", seen.welcome === false, JSON.stringify(seen));
   check("…with the composer where it belongs", seen.composer === true, JSON.stringify(seen));
   check("…and no overlay over it", seen.onTop !== true, JSON.stringify(seen));
+}
+
+// ─── What the setup opens must land ON TOP of it ────────────────────────
+//
+// The setup is a full-screen screen, and the controls on it open things that
+// are portalled into document.body: the work select, the Monet avatar
+// carousel. At z-100 the screen covered both — clicking them appeared to do
+// nothing at all. It sits at z-45 now: above every layer the app screen uses,
+// below every transient one.
+//
+// Checked by hit-testing, which is the only thing that can tell "behind" from
+// "absent": open the select, then ask what is actually at the middle of the
+// menu it drew.
+
+{
+  const PORT = nextPort();
+  const child = spawn(electron, [resolve("."), `--remote-debugging-port=${PORT}`], {
+    env: { ...process.env, MONET_DATA_DIR: mkdtempSync(join(tmpdir(), "layer-")) },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  try {
+    const cdp = await attach(PORT);
+    const r = await cdp.eval(`(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const txt = () => (document.body ? document.body.textContent : '');
+      for (let i = 0; i < 120 && !/Set it up/i.test(txt()); i++) await wait(250);
+      const press = async (label) => {
+        const b = [...document.querySelectorAll('button')].find((x) =>
+          x.textContent.trim().startsWith(label),
+        );
+        if (!b) return false;
+        b.click();
+        await wait(600);
+        return true;
+      };
+      if (!(await press('Set it up'))) return JSON.stringify({ error: 'no welcome' });
+      if (!(await press('Continue'))) return JSON.stringify({ error: 'no continue' });
+      if (!/About you/i.test(txt())) return JSON.stringify({ error: 'not on About you' });
+
+      // The work picker is the app's own Select — a button with a listbox.
+      const trigger = [...document.querySelectorAll('button')].find(
+        (b) => b.getAttribute('role') === 'combobox',
+      );
+      if (!trigger) return JSON.stringify({ error: 'no select' });
+      trigger.click();
+      await wait(700);
+      const menu = document.querySelector('[role="listbox"]');
+      if (!menu) return JSON.stringify({ error: 'menu never opened' });
+      const m = menu.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        Math.round(m.left + m.width / 2),
+        Math.round(m.top + Math.min(20, m.height / 2)),
+      );
+      return JSON.stringify({
+        menuOpen: true,
+        onTop: !!(hit && (menu === hit || menu.contains(hit))),
+        hit: hit ? hit.tagName + '.' + String(hit.className).slice(0, 40) : null,
+      });
+    })()`);
+    const seen = JSON.parse(r ?? "{}");
+    check("the work picker opens on the setup screen", seen.menuOpen === true, JSON.stringify(seen));
+    check(
+      "AND ITS MENU IS IN FRONT, not behind the screen that opened it",
+      seen.onTop === true,
+      JSON.stringify(seen),
+    );
+    cdp.ws.close();
+  } finally {
+    child.kill();
+    await sleep(600);
+  }
 }
 
 // ─── What is NOT checked here ───────────────────────────────────────────
