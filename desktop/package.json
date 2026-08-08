@@ -54,6 +54,7 @@
     "smoke:review": "node scripts/renderer-probe.mjs scripts/review-probe.ts",
     "smoke:smoketier": "node scripts/renderer-probe.mjs scripts/smoke-tier-probe.ts",
     "smoke:clarify": "node scripts/renderer-probe.mjs scripts/clarify-probe.ts",
+    "smoke:harnessnote": "node scripts/renderer-probe.mjs scripts/harness-note-probe.ts",
     "smoke:transcriptid": "node scripts/build-db-probe.mjs scripts/transcript-identity-probe.ts && electron out/probe/transcript-identity-probe.mjs",
     "smoke:turncontext": "node scripts/renderer-probe.mjs scripts/turn-context-probe.ts",
     "smoke:compactctx": "node scripts/smoke-agent.mjs scripts/compaction-context-probe.ts",

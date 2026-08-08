@@ -1984,13 +1984,15 @@ async function runAgentScoped(
     // as "the last thing that happened".
     nudgedLastTurn = false;
 
-    // A looking turn just spent one of its own. Running out without a plan
-    // is not a failure — it is a model that read a lot and said nothing, and
-    // the work still has to happen.
-    if (reconLeft > 0 && --reconLeft === 0) {
-      appendUserText(messages, RECON_TIMEUP);
-      onEvent({ type: "harness", text: "Done looking — starting the work" });
-    }
+    // A looking turn just spent one of its own. The NOTE about running out
+    // cannot be written here, though — the assistant message carrying this
+    // turn's tool_use blocks is the last one in the array, and a harness
+    // line lands as a user message BETWEEN a tool_use and its tool_result.
+    // Every provider rejects that outright ("tool_use ids were found without
+    // tool_result blocks immediately after"), which is a 400 on the next
+    // request and a run that dies for a reason nothing on screen explains.
+    // It rides with the tool results instead — see the end of the loop.
+    const reconEnded = reconLeft > 0 && --reconLeft === 0;
 
     // Execute tools through the vendor pipeline with progress events.
     //
@@ -2226,6 +2228,14 @@ async function runAgentScoped(
         text: `Step budget extended by ${extra} (to ${budget}) — the run is still producing new work`,
       });
       appendUserText(messages, extensionNote(extra, budget));
+    }
+
+    // Out of looking turns. Said HERE, where the last message is the tool
+    // results this line can join, rather than beside the tool_use blocks it
+    // would have separated from them.
+    if (reconEnded) {
+      appendUserText(messages, RECON_TIMEUP);
+      onEvent({ type: "harness", text: "Done looking — starting the work" });
     }
 
     // The step budget exists whether or not the model knows about it, and

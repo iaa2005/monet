@@ -41,6 +41,44 @@ export function turnRange<T>(
  * hoped for: run it over whatever is about to be sent and it must be
  * empty.
  */
+/**
+ * Calls whose result is not in the very next message.
+ *
+ * `danglingToolIds` answers "is the result anywhere at all", which is not
+ * the rule the providers enforce. Theirs is about ADJACENCY: a tool_use
+ * must be answered by the message immediately after it. A transcript can
+ * contain every result and still be refused —
+ *
+ *   API 400: `tool_use` ids were found without `tool_result` blocks
+ *   immediately after: call_00_…
+ *
+ * — which is what one harness line, written between the call and its
+ * result, does. Seen in the field; see empty-turn.ts for the guard.
+ */
+export function resultsOutOfPlace(
+  messages: { role?: string; content: unknown }[],
+): string[] {
+  const bad: string[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const content = messages[i].content;
+    if (!Array.isArray(content)) continue;
+    const calls = (content as { type?: string; id?: string }[])
+      .filter((b) => b.type === "tool_use" && b.id)
+      .map((b) => b.id as string);
+    if (calls.length === 0) continue;
+    const next = messages[i + 1]?.content;
+    const answered = new Set(
+      Array.isArray(next)
+        ? (next as { type?: string; tool_use_id?: string }[])
+            .filter((b) => b.type === "tool_result" && b.tool_use_id)
+            .map((b) => b.tool_use_id as string)
+        : [],
+    );
+    for (const id of calls) if (!answered.has(id)) bad.push(id);
+  }
+  return bad;
+}
+
 export function danglingToolIds(
   messages: { content: unknown }[],
 ): { uses: string[]; results: string[] } {

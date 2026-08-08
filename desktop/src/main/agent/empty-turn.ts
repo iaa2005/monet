@@ -49,7 +49,14 @@ export function isEmptyReply(text: string, toolCallCount: number): boolean {
   return toolCallCount === 0 && text.trim().length === 0;
 }
 
-export type NudgePlacement = "merged" | "pushed" | "none";
+export type NudgePlacement = "merged" | "pushed" | "none" | "refused";
+
+/** Does this message carry a tool call still waiting for its result? */
+function hasToolUse(m: LLMMessage): boolean {
+  return (
+    Array.isArray(m.content) && m.content.some((b) => b.type === "tool_use")
+  );
+}
 
 /**
  * Put a harness-written line where it will not break role alternation.
@@ -70,6 +77,18 @@ export function appendUserText(
   nudge: string = NUDGE,
 ): NudgePlacement {
   const last = messages[messages.length - 1];
+  // The one shape that must never be appended to: an assistant message
+  // carrying tool_use. A user message pushed here lands BETWEEN the call and
+  // its result, and every provider refuses the next request outright —
+  // "tool_use ids were found without tool_result blocks immediately after".
+  // The run then dies on a 400 that says nothing about the harness line that
+  // caused it. Seen in the field, from a reconnaissance note written one
+  // statement too early.
+  //
+  // Refused rather than relocated: this function cannot know where the
+  // results will land, and losing a harness line costs a sentence, while
+  // guessing costs the run. Callers place their notes after the results.
+  if (last?.role === "assistant" && hasToolUse(last)) return "refused";
   if (!last || last.role !== "user") {
     // Not a shape the loop produces, but pushing beats losing the run.
     messages.push({ role: "user", content: nudge });
