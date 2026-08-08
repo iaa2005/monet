@@ -512,41 +512,133 @@ function ProviderModal({
                         <div className="mt-1.5 space-y-1.5 rounded-lg border border-border/60 p-2">
                           <div>
                             <label className="text-[11px] text-muted-foreground">
-                              Prefer specific providers (comma-separated)
+                              Provider companies — SLUGS, comma-separated
                             </label>
                             <input
-                              value={(m.routing?.providers ?? []).join(", ")}
-                              onChange={(e) =>
+                              value={(
+                                m.routing?.only ??
+                                m.routing?.providers ??
+                                []
+                              ).join(", ")}
+                              onChange={(e) => {
+                                const list = e.target.value
+                                  .split(",")
+                                  .map((x) => x.trim())
+                                  .filter(Boolean);
+                                const pinned = !!m.routing?.only;
                                 patchModel(m.id, {
                                   routing: {
-                                    providers: e.target.value
-                                      .split(",")
-                                      .map((s) => s.trim())
-                                      .filter(Boolean),
-                                    allowFallbacks:
-                                      m.routing?.allowFallbacks ?? true,
+                                    ...m.routing,
+                                    only: pinned ? list : undefined,
+                                    providers: pinned ? undefined : list,
                                   },
-                                })
-                              }
+                                });
+                              }}
                               className={cn(inputXs, "font-mono")}
-                              placeholder="e.g. Anthropic, Google (empty = auto)"
+                              /* Lowercase slugs, as the API spells them. The old
+                                 placeholder said "Anthropic, Google" — display
+                                 names, which taught the wrong format. */
+                              placeholder="novita, baidu, deepinfra (empty = automatic)"
                             />
                           </div>
-                          <label className="flex cursor-pointer items-center gap-2 text-[11px] text-muted-foreground">
-                            <Switch
-                              className="h-5 w-9 [&>span]:size-4"
-                              checked={m.routing?.allowFallbacks ?? true}
+                          {/*
+                            ONE choice, not two switches. Measured against the
+                            live API, `only` and `allow_fallbacks` are not
+                            independent — they produce three behaviours between
+                            them, and the fourth combination is a duplicate:
+
+                              only:[x] + fallbacks on   → 404 (only is a HARD
+                              only:[x] + fallbacks off  → 404  filter; the flag
+                                                               changes nothing)
+                              order:[x] + fallbacks on  → served by anyone
+                              order:[x] + fallbacks off → 404 — i.e. "only"
+
+                            So: no list, a preference, or a limit.
+                          */}
+                          <div className="flex gap-1">
+                            {(
+                              [
+                                ["auto", "Automatic"],
+                                ["prefer", "Prefer these"],
+                                ["only", "Only these"],
+                              ] as const
+                            ).map(([mode, label]) => {
+                              const list =
+                                m.routing?.only ?? m.routing?.providers ?? [];
+                              const current = m.routing?.only
+                                ? "only"
+                                : list.length
+                                  ? "prefer"
+                                  : "auto";
+                              return (
+                                <button
+                                  key={mode}
+                                  type="button"
+                                  onClick={() =>
+                                    patchModel(m.id, {
+                                      routing: {
+                                        ...m.routing,
+                                        only: mode === "only" ? list : undefined,
+                                        providers:
+                                          mode === "prefer" ? list : undefined,
+                                        // Off in "only" mode because it cannot
+                                        // matter there; on for a preference,
+                                        // which is what a preference means.
+                                        allowFallbacks: mode !== "only",
+                                      },
+                                    })
+                                  }
+                                  className={cn(
+                                    "rounded-md border px-2 py-1 text-[11px] transition-colors",
+                                    current === mode
+                                      ? "border-brand/40 bg-brand/[0.08] text-foreground"
+                                      : "border-border text-muted-foreground hover:text-foreground",
+                                  )}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+                            {m.routing?.only
+                              ? "Only the companies listed may serve this model; anything else is refused with a 404 that lists the valid slugs. A typo cannot pass silently."
+                              : (m.routing?.providers?.length ?? 0) > 0
+                                ? "Tried first, then anyone. A misspelled slug is IGNORED WITHOUT COMPLAINT here — the request simply goes elsewhere, so check the company named in the reply."
+                                : "OpenRouter picks the company. It names the one it used in every reply."}
+                          </p>
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="text-[11px] text-muted-foreground">
+                              Service tier
+                            </label>
+                            <Select
+                              ariaLabel="Service tier"
+                              value={m.routing?.serviceTier ?? ""}
                               onChange={(v) =>
                                 patchModel(m.id, {
                                   routing: {
-                                    providers: m.routing?.providers ?? [],
-                                    allowFallbacks: v,
+                                    ...m.routing,
+                                    serviceTier:
+                                      v === "flex" || v === "priority" ? v : undefined,
                                   },
                                 })
                               }
+                              className="w-36 justify-between"
+                              options={[
+                                { value: "", label: "Default" },
+                                { value: "flex", label: "Flex — half price" },
+                                { value: "priority", label: "Priority" },
+                              ]}
                             />
-                            Allow fallback to other providers
-                          </label>
+                          </div>
+                          <p className="text-[10px] leading-relaxed text-muted-foreground/80">
+                            Flex is half price and slower, and only some OpenAI,
+                            Google and xAI models have it. The reply does not
+                            confirm a tier — OpenRouter echoes{" "}
+                            <code>service_tier: null</code> either way — so the
+                            bill is the only proof. A pinned company IS
+                            confirmed: every reply names who served it.
+                          </p>
                         </div>
                       )}
                     </>

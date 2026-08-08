@@ -1,3 +1,4 @@
+import type { OpenRouterRouting } from "../provider/types.js";
 import type { EffortLevel, LLMProvider } from "../provider/types.js";
 import { AnthropicClient } from "./anthropic-client.js";
 import { OpenAICompatClient } from "./openai-compat-client.js";
@@ -75,7 +76,7 @@ export interface LLMRequest {
    * Absent = provider default (no reasoning param sent). */
   effort?: EffortLevel;
   /** OpenRouter: provider routing preferences. */
-  routing?: { providers?: string[]; allowFallbacks?: boolean };
+  routing?: OpenRouterRouting;
 }
 
 /** Ensure max_tokens is a positive finite number. No hard cap — models like
@@ -106,6 +107,13 @@ export type LLMEvent =
        * reasoning budget that ate the answer.
        */
       empty?: boolean;
+      /**
+       * OpenRouter only: the company that actually served this reply, as the
+       * response's top-level `provider` field reports it ("Novita", "Baidu",
+       * "OpenAI"). The one way to check that a provider pin took effect —
+       * `service_tier` comes back null even when honoured.
+       */
+      servedBy?: string;
     }
   | { type: "error"; error: string }
   | { type: "checkpoint"; sha: string }

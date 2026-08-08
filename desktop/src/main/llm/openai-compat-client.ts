@@ -40,6 +40,8 @@ interface OpenAIChunk {
     finish_reason?: string | null;
   }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
+  /** OpenRouter: the company that served this reply ("Novita", "OpenAI"). */
+  provider?: string | null;
   error?: { message?: string };
 }
 
@@ -222,16 +224,24 @@ export class OpenAICompatClient implements LLMAdapter {
     } else if (request.temperature != null) {
       body.temperature = request.temperature;
     }
-    // OpenRouter: provider routing preferences. Everything lives inside the
-    // `provider` object — `order` (slugs to try first) and `allow_fallbacks`
-    // (there is no top-level fallbacks parameter). Only sent when configured.
+    // OpenRouter: which company runs the model. Everything except the tier
+    // lives inside the `provider` object — there is no top-level fallbacks
+    // parameter. `order` is a preference; `only` is what actually pins a
+    // company (verified against the live API: only:["novita"] came back served
+    // by Novita, only:["baidu"] by Baidu).
     if (this.isOpenRouter && request.routing) {
+      const r = request.routing;
       const provider: Record<string, unknown> = {};
-      if (request.routing.providers?.length)
-        provider.order = request.routing.providers;
-      if (request.routing.allowFallbacks !== undefined)
-        provider.allow_fallbacks = request.routing.allowFallbacks;
+      if (r.providers?.length) provider.order = r.providers;
+      if (r.only?.length) provider.only = r.only;
+      if (r.ignore?.length) provider.ignore = r.ignore;
+      if (r.sort) provider.sort = r.sort;
+      if (r.allowFallbacks !== undefined) provider.allow_fallbacks = r.allowFallbacks;
       if (Object.keys(provider).length) body.provider = provider;
+      // Top-level, not inside `provider`. Only ever a value the API defines:
+      // an unknown one is accepted with a 200 and silently reroutes.
+      if (r.serviceTier === "flex" || r.serviceTier === "priority")
+        body.service_tier = r.serviceTier;
     }
     if (stream) body.stream_options = { include_usage: true };
     return body;
@@ -274,6 +284,8 @@ export class OpenAICompatClient implements LLMAdapter {
     >();
     let finishReason: string | null | undefined;
     let usage: LLMUsage | undefined;
+    // OpenRouter names the serving company on the chunks; the last word wins.
+    let servedBy: string | undefined;
 
     // Same watchdog/guarded-read pattern as AnthropicClient.
     let watchdog: ReturnType<typeof setTimeout> | null = null;
@@ -341,6 +353,7 @@ export class OpenAICompatClient implements LLMAdapter {
         onEvent({ type: "error", error: chunk.error.message });
         return;
       }
+      if (typeof chunk.provider === "string" && chunk.provider) servedBy = chunk.provider;
       if (chunk.usage) {
         usage = {
           input_tokens: chunk.usage.prompt_tokens ?? 0,
@@ -409,6 +422,7 @@ export class OpenAICompatClient implements LLMAdapter {
         type: "message_stop",
         stop_reason: mapStopReason(finishReason),
         usage,
+        servedBy,
       });
 
       console.error(

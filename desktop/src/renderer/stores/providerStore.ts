@@ -31,7 +31,17 @@ export interface ProviderModel {
   /** OpenRouter: per-1M-token pricing for display. */
   pricing?: { promptPer1M: number; completionPer1M: number };
   /** OpenRouter: prefer these providers, allow fallbacks. */
-  routing?: { providers?: string[]; allowFallbacks?: boolean };
+  /** OpenRouter: which company runs this model. `providers` is a preference,
+   * `only` is a pin — see main/provider/types.ts for what the API does with
+   * each, and what it will not confirm (the tier). */
+  routing?: {
+    providers?: string[];
+    only?: string[];
+    ignore?: string[];
+    allowFallbacks?: boolean;
+    sort?: "price" | "throughput" | "latency";
+    serviceTier?: "flex" | "priority";
+  };
 }
 
 export interface LLMProvider {

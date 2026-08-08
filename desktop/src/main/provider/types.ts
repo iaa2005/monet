@@ -119,8 +119,40 @@ export interface ProviderModel {
   hidden?: boolean
   /** OpenRouter: per-1M-token pricing for display. */
   pricing?: { promptPer1M: number; completionPer1M: number }
-  /** OpenRouter: prefer these providers, allow fallbacks. */
-  routing?: { providers?: string[]; allowFallbacks?: boolean }
+  /** OpenRouter: which companies may serve this model, and how. */
+  routing?: OpenRouterRouting
+}
+
+/**
+ * OpenRouter provider routing — which upstream company runs the model.
+ *
+ * `order` is a PREFERENCE and `only` is a RULE, which is the distinction that
+ * matters: measured against the live API, `only: ["novita"]` came back served
+ * by Novita and `only: ["baidu"]` by Baidu, while a slug that does not exist
+ * returns 404 with the valid list in `metadata.available_providers` — so a
+ * wrong pin fails loudly instead of quietly falling back.
+ */
+export interface OpenRouterRouting {
+  /** Try these first (slugs, e.g. "novita"). A preference, not a limit. */
+  providers?: string[]
+  /** Allow ONLY these. This is what pins a company. */
+  only?: string[]
+  /** Never use these. */
+  ignore?: string[]
+  /** When false, a failed pin errors instead of going elsewhere. */
+  allowFallbacks?: boolean
+  /** Rank the candidates. */
+  sort?: 'price' | 'throughput' | 'latency'
+  /**
+   * "flex" is half price and slower, "priority" is dearer and faster.
+   *
+   * Sent as the top-level `service_tier`. Note what the API does NOT do: the
+   * response echoes `service_tier: null` whichever value is sent, and an
+   * invalid value is accepted with a 200 (it silently changed the serving
+   * company from OpenAI to Azure in testing). So this cannot be verified from
+   * a reply — only the bill shows it.
+   */
+  serviceTier?: 'flex' | 'priority'
 }
 
 export interface LLMProvider {
@@ -150,8 +182,8 @@ export interface LLMProvider {
   modalities?: Modality[]
   /** Whether the active model exposes a reasoning-effort knob (resolved). */
   supportsEffort?: boolean
-  /** OpenRouter: provider routing preferences for the active model (resolved). */
-  routing?: { providers?: string[]; allowFallbacks?: boolean }
+  /** OpenRouter: provider routing for the active model (resolved). */
+  routing?: OpenRouterRouting
 
   createdAt: string
   updatedAt: string
