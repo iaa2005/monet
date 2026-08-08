@@ -236,10 +236,10 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
     } catch {
       /* best-effort — never trap somebody on the setup */
     } finally {
-      // In the file, not localStorage: the origin carries vite's port in dev,
-      // and a moving port meant being welcomed to the app all over again.
+      // In the file, not localStorage: the flag belongs to the DATA FOLDER,
+      // and localStorage is keyed by origin — which in dev carries vite's
+      // port. See lib/first-run.ts.
       await api()?.settings.setUiPrefs({ onboarded: true }).catch(() => {});
-      localStorage.setItem("monet-onboarded", "done");
       setSaving(false);
       onDone();
     }

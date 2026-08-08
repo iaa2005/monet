@@ -66,6 +66,7 @@ import type { DockPanelId } from "@/dock/dock-layout";
 import { SubAgentTranscript } from "@/components/chat/ToolCallBubble";
 import { WindowControls } from "@/components/WindowControls";
 import { ObsidianIcon } from "@/components/ObsidianIcon";
+import { firstRunVerdict } from "@/lib/first-run";
 import { BetaBadge } from "@/components/BetaBadge";
 import { AccountMenu } from "@/components/AccountMenu";
 import { DocsPanel } from "@/components/docs/DocsPanel";
@@ -212,29 +213,21 @@ function NavRow({
 }
 
 export default function App(): JSX.Element {
-  // First-run setup: shown until it is completed or skipped through.
+  // First-run setup. Whether this IS a first run is decided in
+  // lib/first-run.ts — it reads the DATA FOLDER, never localStorage, for
+  // reasons that cost two bugs to learn.
   //
-  // The answer lives in ui-prefs.json, but it arrives asynchronously, and a
-  // welcome screen that flashes for somebody who set up months ago is worse
-  // than one that arrives a beat late. So it starts hidden and appears only
-  // when the file says nothing about being onboarded — with the old
-  // localStorage flag honoured once, to carry existing installs across
-  // rather than greeting them again.
+  // It starts hidden and appears only once the answer is in: a welcome screen
+  // that flashes for somebody who set up months ago is worse than one that
+  // arrives a beat late.
   const [showOnboarding, setShowOnboarding] = useState(false);
   useEffect(() => {
     let alive = true;
     void (async () => {
       const prefs = await api()?.settings.uiPrefs().catch(() => undefined);
       if (!alive) return;
-      const legacy = localStorage.getItem("monet-onboarded") === "done";
-      if (prefs?.onboarded || legacy) {
-        // Migrate the old flag, so this only ever happens once.
-        if (legacy && prefs && !prefs.onboarded)
-          void api()?.settings.setUiPrefs({ onboarded: true });
-        return;
-      }
-      // No bridge at all (a probe, a bare browser) is not a first run.
-      if (prefs) setShowOnboarding(true);
+      if (firstRunVerdict({ onboarded: prefs ? prefs.onboarded : null }) === "onboard")
+        setShowOnboarding(true);
     })();
     return () => {
       alive = false;

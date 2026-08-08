@@ -25,6 +25,7 @@ import {
   progressAt,
   stepLabel,
 } from "@/components/onboarding/steps";
+import { firstRunVerdict } from "@/lib/first-run";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: unknown): void {
@@ -134,6 +135,33 @@ function check(name: string, cond: boolean, detail?: unknown): void {
     "and the last is the last",
     stepLabel(STEPS.length - 1) === `Step ${STEPS.length - 1} of ${STEPS.length - 1}`,
     stepLabel(STEPS.length - 1),
+  );
+}
+
+// ─── Whether it is a first run at all ───────────────────────────────────
+//
+// Got wrong three times. The state belongs to the DATA FOLDER; localStorage
+// is keyed by ORIGIN, and two attempts to infer "has this folder been used?"
+// both misfired — the chat count is above zero within a second of opening a
+// brand new folder, because the chat view makes a session.
+
+{
+  check(
+    "A FRESH DATA FOLDER SHOWS THE SETUP",
+    firstRunVerdict({ onboarded: false }) === "onboard",
+    firstRunVerdict({ onboarded: false }),
+  );
+  check(
+    "a folder that says it is done is left alone",
+    firstRunVerdict({ onboarded: true }) === "skip",
+  );
+  check(
+    "no bridge is neither — a probe is not a first run",
+    firstRunVerdict({ onboarded: null }) === "unknown",
+  );
+  check(
+    "AND NOTHING ELSE IS CONSULTED — no chat counts, no localStorage",
+    Object.keys({ onboarded: false }).length === 1,
   );
 }
 
