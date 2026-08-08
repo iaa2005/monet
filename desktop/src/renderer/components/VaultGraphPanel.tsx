@@ -18,6 +18,7 @@ import { RefreshCw } from "lucide-react";
 import { useIsDark } from "@/components/chat/highlight";
 import { viewWorkspaceFile } from "@/components/artifact-actions";
 import type { ElectronAPI, VaultGraph, VaultGraphNode } from "@/types/electron";
+import { labelFor } from "@/lib/graph-labels";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -295,12 +296,18 @@ export function VaultGraphPanel({
                 : "hsl(0 0% 68%)"
               : `hsl(${hue} ${dark ? 65 : 70}% ${dark ? 62 : 45}%)`;
         ctx.fill();
-        // Labels appear as you zoom in — all at once they are noise. Under
-        // hover, the neighbourhood is exactly what deserves names.
-        const labelled =
-          hover || (focus ? near.has(i) : view.scale > 0.9 || n.r > 6);
-        if (labelled && !dimmed) {
-          ctx.fillStyle = `rgba(${ink},${hover ? 0.95 : 0.6})`;
+        // Labels appear as you zoom in — all at once they are noise — and
+        // dissolve as you zoom out, before they can pile onto each other.
+        // The rule lives in lib/graph-labels.ts, where a probe can hold it.
+        const label = labelFor({
+          scale: view.scale,
+          radius: n.r,
+          hover,
+          focused: focus != null,
+          inNeighbourhood: near.has(i),
+        });
+        if (label.show && !dimmed) {
+          ctx.fillStyle = `rgba(${ink},${label.alpha})`;
           ctx.font = `${fontPx}px system-ui`;
           ctx.fillText(
             n.name,

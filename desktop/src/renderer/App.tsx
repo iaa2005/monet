@@ -65,6 +65,7 @@ import { useDockStore } from "@/dock/dock-store";
 import type { DockPanelId } from "@/dock/dock-layout";
 import { SubAgentTranscript } from "@/components/chat/ToolCallBubble";
 import { WindowControls } from "@/components/WindowControls";
+import { ObsidianIcon } from "@/components/ObsidianIcon";
 import { BetaBadge } from "@/components/BetaBadge";
 import { AccountMenu } from "@/components/AccountMenu";
 import { DocsPanel } from "@/components/docs/DocsPanel";
@@ -252,6 +253,24 @@ export default function App(): JSX.Element {
   const [sessionEngine, setSessionEngine] =
     useState<"pyodide" | "subprocess" | "docker">("pyodide");
   const [homeShellSupported, setHomeShellSupported] = useState(false);
+  // Whether the header shows the Obsidian graph at all. Re-read when the
+  // Settings dialog closes, which is where a vault gets switched on or off —
+  // a button that only appears after a restart is a button nobody connects
+  // to what they just did.
+  const [hasVault, setHasVault] = useState(false);
+  useEffect(() => {
+    if (settingsOpen) return;
+    let alive = true;
+    void api()
+      ?.obsidian.list()
+      .then((list) => {
+        if (alive) setHasVault(list.some((v) => v.enabled));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [settingsOpen]);
   // The content area is a dock — the chat is its anchor panel, everything
   // else docks around it as tabs, splits, floating cards or popout windows.
   const dockOpen = useDockStore((s) => s.open);
@@ -1401,6 +1420,21 @@ export default function App(): JSX.Element {
           >
             <ListTodo className="size-4" />
           </IconBtn>
+          {/* The vault graph, but only for somebody who HAS a vault. An
+              always-present button for a feature nobody has configured is a
+              dead end you have to click to discover; it appears the moment a
+              vault is switched on and goes away with the last one. Obsidian's
+              own mark rather than a generic graph glyph — it is that app's
+              notes you are looking at. */}
+          {hasVault && (
+            <IconBtn
+              title="Obsidian graph"
+              active={dockOpen.includes("vault")}
+              onClick={() => toggleDock("vault")}
+            >
+              <ObsidianIcon className="size-4" />
+            </IconBtn>
+          )}
           {/* Opens in the right panel beside Files and Artifacts, not as its own
               popover: all three answer "what is this chat doing / what came out
               of it", so they share one surface you can resize and keep open. */}
