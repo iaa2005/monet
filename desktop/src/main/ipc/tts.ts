@@ -7,7 +7,7 @@
  * results, so one slow sentence never stalls the one already audible.
  */
 
-import { ipcMain, BrowserWindow, dialog } from "electron";
+import { ipcMain, BrowserWindow, dialog, shell } from "electron";
 import {
   cancelTtsInstall,
   installTts,
@@ -22,6 +22,7 @@ import {
   type TtsStatus,
 } from "../tts/engine.js";
 import { importCustomVoice, removeCustomVoice } from "../tts/custom-voices.js";
+import { clonerDir, prepareCloner, type ClonerProject } from "../tts/voice-cloner.js";
 import { stripTtsTags, textForSpeech, TTS_TAGS } from "../tts/catalog.js";
 import { markdownForSpeech } from "@shared/voice-tags.js";
 
@@ -68,6 +69,23 @@ export function registerTtsIPC(): void {
       return r;
     },
   );
+  // Cloning a voice needs gradients, which onnxruntime does not do — so the
+  // app hands over a Python project with the recording already in it.
+  ipcMain.handle(
+    "tts:prepareCloner",
+    (
+      _e,
+      p: { samplesBase64: string; sampleRate: number; name: string; lang: string },
+    ): ClonerProject => {
+      const buf = Buffer.from(p.samplesBase64, "base64");
+      const samples = new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
+      return prepareCloner({ ...p, samples });
+    },
+  );
+  ipcMain.handle("tts:revealCloner", (): void => {
+    shell.openPath(clonerDir());
+  });
+
   ipcMain.handle("tts:removeVoice", (_e, id: string): { ok: boolean } => {
     const r = removeCustomVoice(id);
     if (r.ok) forgetVoiceStyle(id);

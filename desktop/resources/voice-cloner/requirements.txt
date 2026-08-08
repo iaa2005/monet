@@ -1,0 +1,10 @@
+# Everything clone.py needs. Torch is the big one (~2 GB); if you have a CUDA
+# or Intel GPU, install the matching torch build first and this file will leave
+# it alone.
+torch>=2.4
+torchaudio>=2.4
+onnx>=1.16
+onnx2torch>=1.5
+onnxruntime>=1.18
+soundfile>=0.12
+numpy>=1.26

@@ -9,6 +9,11 @@ files:
   # and the .exe. Without this line the tray icon works in dev and is blank in
   # every shipped build.
   - build/icon.png
+# The voice cloner is a Python program the app COPIES OUT to the data dir, so
+# it must arrive as real files rather than inside app.asar.
+extraResources:
+  - from: resources/voice-cloner
+    to: voice-cloner
 # Native binaries can't be spawned from inside app.asar — keep them on disk
 # (spawn paths swap app.asar → app.asar.unpacked at runtime).
 asarUnpack:

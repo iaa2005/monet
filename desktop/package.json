@@ -59,6 +59,7 @@
     "smoke:viewerraise": "node scripts/renderer-probe.mjs scripts/viewer-raise-probe.ts",
     "smoke:onboarding": "node scripts/renderer-probe.mjs scripts/onboarding-probe.ts",
     "smoke:identity": "node scripts/smoke-agent.mjs scripts/identity-probe.ts",
+    "smoke:voicecloner": "node scripts/smoke-agent.mjs scripts/voice-cloner-probe.ts",
     "smoke:voicelang": "node scripts/renderer-probe.mjs scripts/voice-lang-probe.ts",
     "smoke:voicesettings": "npm run build && node scripts/voice-settings-probe.mjs",
     "smoke:firstrun": "npm run build && node scripts/first-run-probe.mjs",

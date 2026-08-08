@@ -973,6 +973,19 @@ const electronAPI = {
       ipcRenderer.invoke("tts:importVoice", p),
     removeVoice: (id: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("tts:removeVoice", id),
+    prepareCloner: (p: {
+      samplesBase64: string;
+      sampleRate: number;
+      name: string;
+      lang: string;
+    }): Promise<{
+      ok: boolean;
+      dir?: string;
+      command?: string;
+      seconds?: number;
+      error?: string;
+    }> => ipcRenderer.invoke("tts:prepareCloner", p),
+    revealCloner: (): Promise<void> => ipcRenderer.invoke("tts:revealCloner"),
     speak: (p: {
       text: string;
       voice: string;

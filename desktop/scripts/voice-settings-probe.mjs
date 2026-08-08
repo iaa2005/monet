@@ -196,6 +196,9 @@ try {
       paid: /\\$49/.test(document.body.textContent || '') &&
         /Purchases Unavailable/.test(document.body.textContent || ''),
       importer: document.querySelectorAll('input[placeholder="Name it"]').length,
+      cloner: /Clone your voice/.test(document.body.textContent || '') &&
+        [...document.querySelectorAll('button')].some((b) => (b.textContent || '').trim() === 'Record'),
+      clonerHonest: /gradients through the model/.test(document.body.textContent || ''),
       // The whole tab used to be capped at max-w-md — half the panel, with the
       // other half empty. Measured against the section it lives in.
       sectionWidth: (() => {
@@ -246,7 +249,9 @@ try {
   );
   check("and the page itself does not scroll sideways", (ui.bodyOverflow ?? 0) <= 0, ui.bodyOverflow);
   check("the saved language shows as a language, with its flag", /Russian/.test(ui.lang ?? ""), ui.lang);
-  check("importing a file is offered, with one name box", ui.importer === 1, ui.importer);
+  check("importing a file is offered, with two name boxes (cloner + import)", ui.importer === 2, ui.importer);
+  check("CLONING FROM A RECORDING IS OFFERED, with a Record button", !!ui.cloner);
+  check("…and it says why it is a separate program", !!ui.clonerHonest);
   check("the official builder is linked", !!ui.builder);
   check(
     "and what it costs is not hidden — $49, currently selling none",

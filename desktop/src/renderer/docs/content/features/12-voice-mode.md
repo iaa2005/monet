@@ -76,6 +76,54 @@ reason is structural — blending styles pulls the result towards the AVERAGE
 voice, and a particular person is nowhere near the average. Both the blender
 and the search are gone rather than left in to disappoint.
 
+### Clone it from a recording (free, offline, twenty minutes)
+
+**Settings → Voice → Clone your voice.** Record 8–40 seconds of anything, press
+*Prepare the project*, and the app writes a small Python program into
+`<dataDir>/voice-cloner/` with your recording beside it as `voice.wav`. Then:
+
+```bash
+pip install -r requirements.txt
+python clone.py voice.wav --name Sasha --minutes 20
+```
+
+It optimises the style tensors themselves:
+
+```
+style → text encoder → flow matching → vocoder → waveform
+                                                    ↓
+                 loss = 1 − cosine( CAM++(waveform), CAM++(your recording) )
+```
+
+Every arrow is differentiable once the ONNX graphs are converted to PyTorch, so
+this is gradient descent on the voice rather than a search among presets. It
+prints a similarity as it goes; import the JSON it writes.
+
+Why it is a separate program: gradients. The app runs the model through
+onnxruntime, which does inference only, and PyTorch is two gigabytes.
+
+Three things that were measured while building it, and are in the README:
+
+- **The step size matters more than anything else.** The style's own values
+  average 0.02, so Adam at `lr=0.02` destroys the voice in three steps
+  (similarity fell 0.31 → 0.05). At `lr=1e-3` it climbed 0.31 → 0.45 in eight
+  iterations, ~2 s each on CPU.
+- **onnx2torch needs two shims** for these graphs: its converter registry stops
+  at opset 13 for ops whose semantics never changed, and its Clip converter
+  refuses bounds that are not attributes — but every Clip here has a min and no
+  max, and `Clip(x, min)` is exactly `Max(x, min)`.
+- **The vector estimator's inputs are positional** in the converted module, and
+  the graph order is `noisy_latent, text_emb, style_ttl, latent_mask,
+  text_mask, current_step, total_step` — not the order the app's by-name call
+  suggests. Getting it wrong surfaces as a length mismatch deep inside the
+  estimator.
+
+The same idea, with a stronger loss (WavLM layer-4 features instead of a
+speaker embedding), is [kdrkdrkdr/supertonic.embed][embed] — worth trying if
+this plateaus too low.
+
+[embed]: https://github.com/kdrkdrkdr/supertonic.embed
+
 ### Import a style file
 
 **Settings → Voice → Import a voice file** takes any Supertonic 3 style JSON.

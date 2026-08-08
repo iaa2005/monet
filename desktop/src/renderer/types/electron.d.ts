@@ -1039,6 +1039,19 @@ export interface ElectronAPI {
       gender: "F" | "M";
     }) => Promise<{ ok: boolean; id?: string; error?: string }>;
     removeVoice: (id: string) => Promise<{ ok: boolean }>;
+    prepareCloner: (p: {
+      samplesBase64: string;
+      sampleRate: number;
+      name: string;
+      lang: string;
+    }) => Promise<{
+      ok: boolean;
+      dir?: string;
+      command?: string;
+      seconds?: number;
+      error?: string;
+    }>;
+    revealCloner: () => Promise<void>;
     speak: (p: {
       text: string;
       voice: string;

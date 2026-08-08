@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 import { SttModelPicker } from "@/components/chat/SttModelPicker";
+import { VoiceCloner } from "@/components/settings/VoiceCloner";
 import type { ElectronAPI, TtsProgress, TtsStatus } from "@/types/electron";
 import { WHISPER_TIERS, DEFAULT_WHISPER } from "@shared/whisper-tier";
 import { AUTO_LANG, TTS_LANGS, speechLangFor } from "@shared/tts-langs";
@@ -492,6 +493,11 @@ export function VoiceSettings(): JSX.Element {
                 </div>
               ))}
             </div>
+
+            <VoiceCloner
+              lang={ttsLang === AUTO_LANG ? "ru" : ttsLang === "en" ? "en" : "ru"}
+              onError={setTtsError}
+            />
 
             {/* Importing. The file is the whole voice — the 398 MB model above
                 speaks with whichever style pair it is handed. */}
