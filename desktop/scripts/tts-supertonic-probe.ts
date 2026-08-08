@@ -32,6 +32,14 @@ const {
 } = await import('../src/main/tts/catalog.js')
 const { markdownForSpeech } = await import('../src/shared/voice-tags.js')
 const { ttsStatus, ttsNativeAvailable, speak } = await import('../src/main/tts/engine.js')
+const {
+  checkVoiceStyle,
+  importCustomVoice,
+  isCustomVoice,
+  listCustomVoices,
+  removeCustomVoice,
+  voiceSlug,
+} = await import('../src/main/tts/custom-voices.js')
 
 let failures = 0
 function check(name: string, cond: boolean, detail?: unknown): void {
@@ -62,6 +70,23 @@ check('the whole model is ~398 MB', Math.abs(ttsModelBytes() - 398_361_202) < 1_
 check('ten voices, unique ids', new Set(TTS_VOICES.map((v) => v.id)).size === 10 && TTS_VOICES.length === 10)
 check('the default voice exists', !!voiceFile(DEFAULT_TTS_VOICE))
 check('an unknown voice is null, not a crash', voiceFile('X9') === null)
+// "Female 1" told the user nothing. The names are Supertone's own.
+check(
+  'every voice has a name and a line about it, all names distinct',
+  TTS_VOICES.every((v) => /^[A-Z][a-z]+$/.test(v.name) && v.desc.length > 15) &&
+    new Set(TTS_VOICES.map((v) => v.name)).size === TTS_VOICES.length,
+  TTS_VOICES.map((v) => `${v.id}:${v.name}`),
+)
+// The first letter is load-bearing: a spoken Russian reply agrees with it
+// (MessageInput reads voiceGender straight off the id).
+check(
+  'the id still carries the gender, presets and imports alike',
+  TTS_VOICES.every((v) => /^[FM]\d$/.test(v.id)) && isCustomVoice('M-sasha') && !isCustomVoice('M1'),
+)
+check(
+  'and an id that could be a path is not a custom voice',
+  !isCustomVoice('../../../etc/passwd') && !isCustomVoice('F-..\\x') && !isCustomVoice('F-'),
+)
 
 // ─── Tags ───────────────────────────────────────────────────────────────
 
@@ -145,6 +170,92 @@ check('exact sizes count as installed', st.installed)
 check('and the voice that is present reports installed', st.voices.find((v) => v.id === 'F1')?.installed === true)
 check('while an absent voice does not', st.voices.find((v) => v.id === 'M5')?.installed === false)
 
+// ─── A voice of your own ────────────────────────────────────────────────
+//
+// The whole voice is two style tensors in a JSON. Supertone's builder closes
+// on 31 August 2026, so a file already downloaded has to keep working with no
+// service behind it — which it does, because nothing here is a service.
+
+const style = (ttl: number[], dp: number[]): string =>
+  JSON.stringify({
+    style_ttl: { dims: [1, 50, 256], data: ttl, type: 'float32' },
+    style_dp: { dims: [1, 8, 16], data: dp, type: 'float32' },
+  })
+const goodStyle = style(new Array(12_800).fill(0.01), new Array(128).fill(0.02))
+
+check('a real style file passes', checkVoiceStyle(goodStyle).ok)
+check(
+  'nested data (the builder writes it in rows) passes too',
+  checkVoiceStyle(
+    JSON.stringify({
+      style_ttl: { dims: [1, 50, 256], data: [new Array(50).fill(new Array(256).fill(0.01))] },
+      style_dp: { dims: [1, 8, 16], data: [new Array(8).fill(new Array(16).fill(0.02))] },
+    }),
+  ).ok,
+  checkVoiceStyle(
+    JSON.stringify({
+      style_ttl: { dims: [1, 50, 256], data: [new Array(50).fill(new Array(256).fill(0.01))] },
+      style_dp: { dims: [1, 8, 16], data: [new Array(8).fill(new Array(16).fill(0.02))] },
+    }),
+  ).error,
+)
+check('a picture is not a voice', !checkVoiceStyle('\x89PNG\r\n').ok)
+check('an empty object is not a voice', !checkVoiceStyle('{}').ok)
+// The failure that would otherwise happen twenty seconds later, inside
+// onnxruntime, with a shape error nobody can act on.
+const v2 = checkVoiceStyle(
+  JSON.stringify({
+    style_ttl: { dims: [1, 1, 192], data: new Array(192).fill(0) },
+    style_dp: { dims: [1, 8, 16], data: new Array(128).fill(0) },
+  }),
+)
+check('A SUPERTONIC 2 EMBEDDING IS REFUSED, BY NAME', !v2.ok && /Supertonic 2/.test(v2.error ?? ''), v2)
+check(
+  'right shape, wrong amount of numbers is refused',
+  !checkVoiceStyle(style(new Array(12_799).fill(0), new Array(128).fill(0))).ok,
+)
+check(
+  'and so are values that are not numbers',
+  !checkVoiceStyle(
+    JSON.stringify({
+      style_ttl: { dims: [1, 50, 256], data: new Array(12_800).fill('x') },
+      style_dp: { dims: [1, 8, 16], data: new Array(128).fill(0) },
+    }),
+  ).ok,
+)
+
+check('a Cyrillic name still makes a filename', voiceSlug('Марина') === 'марина' && voiceSlug('!!!') === 'voice')
+
+const src = join(tempData, 'my-voice.json')
+writeFileSync(src, goodStyle, 'utf-8')
+const imported = importCustomVoice({ path: src, name: 'Марина', gender: 'F' })
+check('an import lands under a gendered id', imported.ok && imported.id === 'F-марина', imported)
+check('a nameless import is refused', !importCustomVoice({ path: src, name: '  ', gender: 'F' }).ok)
+const again = importCustomVoice({ path: src, name: 'Марина', gender: 'F' })
+check('the same name twice does not overwrite the first', again.ok && again.id === 'F-марина-2', again)
+check('both are listed, by name', listCustomVoices().length === 2)
+
+st = await ttsStatus()
+const mine = st.voices.find((v) => v.id === 'F-марина')
+check('an imported voice joins the picker', !!mine && mine.custom === true && mine.name === 'Марина', mine)
+check('and needs no download — it is already here', mine?.installed === true)
+check('the presets are still there beside it', st.voices.filter((v) => !v.custom).length === 10)
+
+// Freeing 398 MB must not take a voice that cannot be downloaded again.
+await (await import('../src/main/tts/engine.js')).removeTts()
+check('REMOVING THE MODEL KEEPS YOUR OWN VOICES', listCustomVoices().length === 2, listCustomVoices())
+st = await ttsStatus()
+check('…and the model really did go', !st.installed)
+
+removeCustomVoice('F-марина-2')
+check('a deleted voice is gone from the list and the disk', listCustomVoices().length === 1)
+check(
+  'the file went with it',
+  !existsSync(join(tempData, 'tts-models', 'custom', 'F-марина-2.json')),
+)
+removeCustomVoice('F-марина')
+check('and the last one leaves nothing behind', listCustomVoices().length === 0)
+
 // ─── The real synthesiser, when the model is on disk ────────────────────
 
 const realDirs = [
@@ -216,6 +327,33 @@ if (!ttsNativeAvailable()) {
     console.log(`      ${lsec.toFixed(1)}s audio, ${gaps} join(s), from ${longText.length} chars in ${Date.now() - t1}ms`)
     const missing = await speak({ text: 'x', voice: 'X9', lang: 'ru' })
     check('an unknown voice fails cleanly', !missing.ok && !!missing.error)
+    const goneCustom = await speak({ text: 'x', voice: 'F-nosuch', lang: 'ru' })
+    check(
+      'and a custom voice whose file is gone says so, rather than "unknown"',
+      !goneCustom.ok && /import it again/.test(goneCustom.error ?? ''),
+      goneCustom.error,
+    )
+
+    // An imported voice, through the real model: a preset's own style file
+    // stands in for a builder download — byte for byte the same kind of file.
+    // One 0.3 MB file into the live data dir, removed again below.
+    const probeImport = importCustomVoice({
+      path: join(realDir, 'F1.json'),
+      name: 'Probe',
+      gender: 'F',
+    })
+    check('a preset style imports as a voice of your own', probeImport.ok, probeImport)
+    if (probeImport.id) {
+      const rc = await speak({ text: 'Свой голос работает.', voice: probeImport.id, lang: 'ru', steps: 4 })
+      const csec = rc.samplesBase64 ? Buffer.from(rc.samplesBase64, 'base64').length / 4 / (rc.sampleRate ?? 44100) : 0
+      check('AN IMPORTED VOICE ACTUALLY SPEAKS', rc.ok && csec > 0.5, { seconds: +csec.toFixed(1), error: rc.error })
+      removeCustomVoice(probeImport.id)
+      check(
+        'and the probe leaves the real data dir as it found it',
+        !existsSync(join(realDir, '..', 'custom', `${probeImport.id}.json`)) &&
+          !listCustomVoices().some((v) => v.id === probeImport.id),
+      )
+    }
   }
 }
 

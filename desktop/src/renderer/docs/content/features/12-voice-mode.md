@@ -20,8 +20,44 @@ your voice → mic → VAD + adaptive gate → GigaAM (STT) → chat turn
   speaking a whole other language transliterates into nonsense («тюпарле
   франсе»). This is a model property, not a bug.
 - **Speech** — **Supertonic-3**, ~400 MB of ONNX running in a forked child
-  process so a slow synthesis can never freeze the app. Ten voices (F1–F5,
-  M1–M5), each a separate small style file.
+  process so a slow synthesis can never freeze the app. Ten voices, each a
+  separate 0.3 MB style file: **Sarah, Lily, Jessica, Olivia, Emily** (F1–F5)
+  and **Alex, James, Robert, Sam, Daniel** (M1–M5) — Supertone's own names and
+  characters, with the description of each on its card in Settings → Voice.
+  The letter in the id is load-bearing: a spoken Russian reply agrees with the
+  voice's gender, so a male voice never says «я закончила».
+
+## The language it reads with
+
+Supertonic does not detect language — the text is handed to it wrapped in
+`<lang>…</lang>`, and that tag decides the mouth. **Settings → Voice → Speech
+language** is that tag: 31 languages, or *Auto*, which picks per sentence by
+dominant script (so «Проверь этот PR» stays Russian, and Ukrainian is told
+apart from Russian by the four letters only it has). The same list serves
+dictation when the Whisper engine is selected.
+
+Until this setting existed the app always sent `na` — language-agnostic —
+which reads Russian with a foreign accent. If a voice ever sounded slightly
+off, that was why.
+
+## A voice of your own
+
+A voice here is not a model, it is two style tensors in a JSON file. Supertone's
+[voice builder](https://supertonic.supertone.ai/voice-builder) turns a minute of
+recorded audio into exactly that file; **Settings → Voice → Your own voice**
+imports it (name it, say whether it is female or male — that drives the Russian
+agreement above) and it joins the list with nothing else to install. Imported
+voices are validated on the way in: a Supertonic **2** embedding has different
+dimensions and is refused by name, rather than failing later inside onnxruntime.
+
+Two things worth knowing:
+
+- The builder's own notice says sign-ups closed **23 July 2026** and the service
+  closes **31 August 2026**. A JSON you already have keeps working forever —
+  synthesis is entirely on your machine, so there is no service behind it.
+- Removing the 398 MB model (the *Remove* button) deliberately leaves
+  `tts-models/custom` alone. A preset can be downloaded again; your own voice
+  may not be.
 
 ## How the reply becomes speech
 

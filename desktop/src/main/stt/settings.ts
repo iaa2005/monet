@@ -18,6 +18,7 @@ import { join } from "path";
 import { getDataDir } from "../data-dir.js";
 import { DEFAULT_STT_MODEL } from "./catalog.js";
 import { DEFAULT_WHISPER } from "../../shared/whisper-tier.js";
+import { AUTO_LANG } from "../../shared/tts-langs.js";
 
 export interface SttSettings {
   /** "local" (in-renderer whisper), "ondevice" (GigaAM via sherpa-onnx in
@@ -31,8 +32,13 @@ export interface SttSettings {
   localModel: string;
   /** Which downloaded GigaAM model the on-device engine uses. */
   nativeModel: string;
-  /** Supertonic voice for read-aloud and Voice Mode (F1…M5). */
+  /** Supertonic voice for read-aloud and Voice Mode (F1…M5, or an imported
+   * `F-…`/`M-…`). */
   ttsVoice: string;
+  /** The language the app SPEAKS: an ISO-639-1 code the synthesiser tags the
+   * text with, or "auto" to take it from the text itself. Not the same knob as
+   * `language` below — that one is what it LISTENS for. */
+  ttsLang: string;
   /** "" = auto-detect. */
   language: string;
   /** MediaDevices deviceId of the chosen microphone. */
@@ -47,6 +53,7 @@ const DEFAULTS: SttSettings = {
   localModel: DEFAULT_WHISPER,
   nativeModel: DEFAULT_STT_MODEL,
   ttsVoice: "F1",
+  ttsLang: AUTO_LANG,
   language: "",
   deviceId: "",
 };

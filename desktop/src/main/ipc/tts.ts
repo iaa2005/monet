@@ -7,12 +7,13 @@
  * results, so one slow sentence never stalls the one already audible.
  */
 
-import { ipcMain, BrowserWindow } from "electron";
+import { ipcMain, BrowserWindow, dialog } from "electron";
 import {
   cancelTtsInstall,
   installTts,
   installVoice,
   removeTts,
+  resetVoiceCache,
   speak,
   ttsNativeAvailable,
   ttsStatus,
@@ -20,6 +21,7 @@ import {
   type TtsProgress,
   type TtsStatus,
 } from "../tts/engine.js";
+import { importCustomVoice, removeCustomVoice } from "../tts/custom-voices.js";
 import { stripTtsTags, textForSpeech, TTS_TAGS } from "../tts/catalog.js";
 import { markdownForSpeech } from "@shared/voice-tags.js";
 
@@ -42,6 +44,35 @@ export function registerTtsIPC(): void {
     "tts:installVoice",
     (_e, id: string): Promise<{ ok: boolean; error?: string }> => installVoice(id),
   );
+  // A voice of your own: pick the JSON from Supertone's voice builder. The
+  // dialog lives here rather than in the renderer because main owns the file
+  // system and the validation.
+  ipcMain.handle(
+    "tts:importVoice",
+    async (
+      e,
+      p: { name: string; gender: "F" | "M" },
+    ): Promise<{ ok: boolean; id?: string; error?: string }> => {
+      const win =
+        BrowserWindow.fromWebContents(e.sender) ??
+        BrowserWindow.getFocusedWindow();
+      if (!win) return { ok: false };
+      const picked = await dialog.showOpenDialog(win, {
+        title: "Import a Supertonic 3 voice",
+        filters: [{ name: "Voice style", extensions: ["json"] }],
+        properties: ["openFile"],
+      });
+      if (picked.canceled || !picked.filePaths[0]) return { ok: false };
+      const r = importCustomVoice({ ...p, path: picked.filePaths[0] });
+      if (r.ok) resetVoiceCache();
+      return r;
+    },
+  );
+  ipcMain.handle("tts:removeVoice", (_e, id: string): { ok: boolean } => {
+    const r = removeCustomVoice(id);
+    if (r.ok) resetVoiceCache();
+    return r;
+  });
   ipcMain.handle(
     "tts:speak",
     (

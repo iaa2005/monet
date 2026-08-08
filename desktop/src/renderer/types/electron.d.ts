@@ -1034,6 +1034,11 @@ export interface ElectronAPI {
     cancelInstall: () => Promise<boolean>;
     remove: () => Promise<{ ok: boolean }>;
     installVoice: (id: string) => Promise<{ ok: boolean; error?: string }>;
+    importVoice: (p: {
+      name: string;
+      gender: "F" | "M";
+    }) => Promise<{ ok: boolean; id?: string; error?: string }>;
+    removeVoice: (id: string) => Promise<{ ok: boolean }>;
     speak: (p: {
       text: string;
       voice: string;

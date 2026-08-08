@@ -966,6 +966,13 @@ const electronAPI = {
     remove: (): Promise<{ ok: boolean }> => ipcRenderer.invoke("tts:remove"),
     installVoice: (id: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("tts:installVoice", id),
+    importVoice: (p: {
+      name: string;
+      gender: "F" | "M";
+    }): Promise<{ ok: boolean; id?: string; error?: string }> =>
+      ipcRenderer.invoke("tts:importVoice", p),
+    removeVoice: (id: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("tts:removeVoice", id),
     speak: (p: {
       text: string;
       voice: string;

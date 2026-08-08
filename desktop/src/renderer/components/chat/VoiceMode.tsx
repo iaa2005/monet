@@ -19,6 +19,7 @@ import { ClipboardList, MessageSquare, Square, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { INTERRUPT_MARK, useChatStore } from "@/stores/chatStore";
 import { markdownForSpeech, stripTtsTags } from "@shared/voice-tags";
+import { speechLangFor } from "@shared/tts-langs";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -219,7 +220,10 @@ export function VoiceMode({
       const r = await api()?.tts.speak({
         text,
         voice: settings?.ttsVoice || "F1",
-        lang: "na",
+        // "na" (language-agnostic) was the old constant here, and it gave
+        // Russian a foreign mouth. Settings → Voice picks the language; on
+        // auto it comes from this sentence's own script.
+        lang: speechLangFor(text, settings?.ttsLang),
         steps: urgent ? 4 : 8,
       });
       if (!alive.current) return;

@@ -14,7 +14,7 @@
 
 import { fork, type ChildProcess } from "child_process";
 import { createRequire } from "module";
-import { createWriteStream } from "fs";
+import { createWriteStream, existsSync } from "fs";
 import { mkdir, rm, rename, stat } from "fs/promises";
 import { join } from "path";
 import { createHash } from "crypto";
@@ -31,6 +31,11 @@ import {
   voiceFile,
   type TtsFile,
 } from "./catalog.js";
+import {
+  customVoicePath,
+  isCustomVoice,
+  listCustomVoices,
+} from "./custom-voices.js";
 
 const require = createRequire(import.meta.url);
 
@@ -38,7 +43,14 @@ export interface TtsStatus {
   installed: boolean;
   bytes: number;
   installing: boolean;
-  voices: { id: string; label: string; installed: boolean }[];
+  voices: {
+    id: string;
+    name: string;
+    desc: string;
+    installed: boolean;
+    /** Imported from a JSON, so it has no download and can be deleted. */
+    custom?: boolean;
+  }[];
 }
 
 export interface TtsProgress {
@@ -86,9 +98,25 @@ async function voiceInstalled(id: string): Promise<boolean> {
 let installing: AbortController | null = null;
 
 export async function ttsStatus(): Promise<TtsStatus> {
-  const voices = [];
+  const voices: TtsStatus["voices"] = [];
   for (const v of TTS_VOICES) {
-    voices.push({ id: v.id, label: v.label, installed: await voiceInstalled(v.id) });
+    voices.push({
+      id: v.id,
+      name: v.name,
+      desc: v.desc,
+      installed: await voiceInstalled(v.id),
+    });
+  }
+  // Imported voices are already here — there is nothing to download and no
+  // catalogue entry to be missing, so they are always "installed".
+  for (const c of listCustomVoices()) {
+    voices.push({
+      id: c.id,
+      name: c.name,
+      desc: "Your own voice",
+      installed: true,
+      custom: true,
+    });
   }
   return {
     installed: await modelInstalled(),
@@ -190,11 +218,21 @@ export async function installVoice(id: string): Promise<{ ok: boolean; error?: s
   }
 }
 
+/** Removes the 398 MB model and the preset styles — NOT `tts-models/custom`.
+ * An imported voice cannot be re-downloaded: for some of them the builder that
+ * made them no longer exists, so "free up the disk" must not take them. */
 export async function removeTts(): Promise<{ ok: boolean }> {
   cancelTtsInstall();
   disposeChild();
-  await rm(join(getDataDir(), "tts-models"), { recursive: true, force: true }).catch(() => {});
+  await rm(modelDir(), { recursive: true, force: true }).catch(() => {});
   return { ok: true };
+}
+
+/** Drop the synthesiser (and with it its style cache). Called after a custom
+ * voice is imported or deleted: the child caches styles BY PATH, and an id
+ * reused after a deletion would otherwise keep speaking in the old voice. */
+export function resetVoiceCache(): void {
+  disposeChild();
 }
 
 // ── The synthesiser process ─────────────────────────────────────────────
@@ -277,11 +315,22 @@ export async function speak(p: {
     return { ok: false, error: "On-device voice is not available on this platform." };
   if (!(await modelInstalled()))
     return { ok: false, error: "The voice model is not downloaded yet." };
-  const vf = voiceFile(p.voice);
-  if (!vf) return { ok: false, error: `Unknown voice ${p.voice}` };
-  if (!(await filePresent(modelDir(), vf))) {
-    const got = await installVoice(p.voice);
-    if (!got.ok) return { ok: false, error: got.error };
+  // An imported voice has no catalogue entry and nothing to fetch: its file is
+  // the only thing that can be missing.
+  const custom = isCustomVoice(p.voice);
+  const voicePath = custom
+    ? customVoicePath(p.voice)
+    : join(modelDir(), `${p.voice}.json`);
+  if (custom) {
+    if (!existsSync(voicePath))
+      return { ok: false, error: `The file for voice ${p.voice} is gone — import it again.` };
+  } else {
+    const vf = voiceFile(p.voice);
+    if (!vf) return { ok: false, error: `Unknown voice ${p.voice}` };
+    if (!(await filePresent(modelDir(), vf))) {
+      const got = await installVoice(p.voice);
+      if (!got.ok) return { ok: false, error: got.error };
+    }
   }
 
   const c = getChild();
@@ -301,7 +350,7 @@ export async function speak(p: {
       id,
       type: "speak",
       modelDir: modelDir(),
-      voicePath: join(modelDir(), `${p.voice}.json`),
+      voicePath,
       text: p.text,
       lang: p.lang || "na",
       steps: p.steps ?? 8,

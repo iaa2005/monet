@@ -7,8 +7,10 @@
  * on CPU (~99M params, measured RTF ≈ 0.3 on this class of machine), and a
  * licence that permits shipping (MIT code, OpenRAIL-M weights).
  *
- * One shared model (~398 MB), eleven voices as ~290 KB style tensors — so
+ * One shared model (~398 MB), ten voices as ~290 KB style tensors — so
  * "several voices to choose from" costs nothing after the first download.
+ * (The model card says eleven; the repo holds ten. F6 exists only in
+ * supertonic-2's styles.)
  *
  * Pure data + arithmetic, like the STT catalogue; the download and checksum
  * machinery is shared with it in spirit: exact sizes, sha256 where HuggingFace
@@ -52,24 +54,32 @@ export const TTS_MODEL_FILES: TtsFile[] = [
 ];
 
 export interface TtsVoiceInfo {
-  /** Style id, also the filename stem: F1…F6, M1…M5. */
+  /** Style id, also the filename stem: F1…F5, M1…M5. The first letter is the
+   * gender, and the app reads it — a spoken Russian reply agrees with it. */
   id: string;
-  label: string;
+  /** The voice's own name, as Supertone publishes it. */
+  name: string;
+  /** One line of what it sounds like. */
+  desc: string;
   bytes: number;
 }
 
-/** The eleven preset styles. Labels stay neutral — the voice is the label. */
+/**
+ * The ten preset styles. "Female 1" told you nothing; these are the names and
+ * characters Supertone gives them in the official demo (the supertonic-3
+ * Space, script.js: VOICE_DESCRIPTIONS), abridged to one line each.
+ */
 export const TTS_VOICES: TtsVoiceInfo[] = [
-  { id: "F1", label: "Female 1", bytes: 292_046 },
-  { id: "F2", label: "Female 2", bytes: 292_423 },
-  { id: "F3", label: "Female 3", bytes: 290_794 },
-  { id: "F4", label: "Female 4", bytes: 291_808 },
-  { id: "F5", label: "Female 5", bytes: 291_479 },
-  { id: "M1", label: "Male 1", bytes: 291_748 },
-  { id: "M2", label: "Male 2", bytes: 292_055 },
-  { id: "M3", label: "Male 3", bytes: 290_198 },
-  { id: "M4", label: "Male 4", bytes: 291_522 },
-  { id: "M5", label: "Male 5", bytes: 291_469 },
+  { id: "F1", name: "Sarah", desc: "Calm, slightly low; steady and composed.", bytes: 292_046 },
+  { id: "F2", name: "Lily", desc: "Bright and cheerful; playful, youthful energy.", bytes: 292_423 },
+  { id: "F3", name: "Jessica", desc: "Clear announcer style; articulate, broadcast-ready.", bytes: 290_794 },
+  { id: "F4", name: "Olivia", desc: "Crisp and confident; expressive, strong delivery.", bytes: 291_808 },
+  { id: "F5", name: "Emily", desc: "Kind and gentle; soft-spoken and soothing.", bytes: 291_479 },
+  { id: "M1", name: "Alex", desc: "Lively and upbeat; confident, clear standard tone.", bytes: 291_748 },
+  { id: "M2", name: "James", desc: "Deep and robust; calm, serious, grounded.", bytes: 292_055 },
+  { id: "M3", name: "Robert", desc: "Polished and authoritative; confident, trustworthy.", bytes: 290_198 },
+  { id: "M4", name: "Sam", desc: "Soft and neutral; youthful and approachable.", bytes: 291_522 },
+  { id: "M5", name: "Daniel", desc: "Warm and soft-spoken; calm, natural storytelling.", bytes: 291_469 },
 ];
 
 export const DEFAULT_TTS_VOICE = "F1";
