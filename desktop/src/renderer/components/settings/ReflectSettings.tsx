@@ -8,7 +8,10 @@ import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, ReflectDigest } from "@/types/electron";
 import { Select } from "@/components/ui/select";
-import { SectionTitle } from "@/components/settings/SectionTitle";
+import {
+  SectionHeader,
+  SectionTitle,
+} from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -173,10 +176,10 @@ export function ReflectSettings(): JSX.Element {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <SectionTitle>Reflect</SectionTitle>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Based on your conversations in this app.
-          </p>
+          <SectionHeader
+        title="Reflect"
+        description="Based on your conversations in this app."
+      />
         </div>
         <div className="flex items-center gap-2">
           <Select
@@ -212,7 +215,7 @@ export function ReflectSettings(): JSX.Element {
 
       {digest && (
         <>
-          <h2 className="mt-6 font-serif text-2xl font-semibold leading-snug">
+          <h2 className="mt-6 font-display text-2xl font-semibold leading-snug">
             {digest.headline}
           </h2>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
@@ -230,7 +233,7 @@ export function ReflectSettings(): JSX.Element {
               [String(stats.sessions), "Total conversations"],
             ].map(([v, l]) => (
               <div key={l}>
-                <div className="font-serif text-2xl">{v}</div>
+                <div className="font-display text-2xl">{v}</div>
                 <div className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                   {l}
                 </div>
@@ -311,7 +314,7 @@ export function ReflectSettings(): JSX.Element {
                 />
                 <div className="min-w-0">
                   <div className="flex items-baseline justify-between gap-3">
-                    <span className="font-serif text-sm font-semibold">
+                    <span className="font-display text-sm font-semibold">
                       {c.name}
                     </span>
                     <span className="text-xs tabular-nums text-muted-foreground">
@@ -348,7 +351,7 @@ export function ReflectSettings(): JSX.Element {
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                     {label(title)}
                   </div>
-                  <div className="mt-1.5 font-serif text-sm font-semibold leading-snug">
+                  <div className="mt-1.5 font-display text-sm font-semibold leading-snug">
                     {s.title}
                   </div>
                   <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">

@@ -17,7 +17,10 @@ import { MarkdownViewer } from "@/components/chat/MarkdownViewer";
 import { CodeBlock } from "@/components/chat/CodeBlock";
 import { DirectoryButton } from "@/components/directory/DirectoryModal";
 import type { ElectronAPI, SkillInfo } from "@/types/electron";
-import { SectionTitle } from "@/components/settings/SectionTitle";
+import {
+  SectionHeader,
+  SectionTitle,
+} from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -604,11 +607,10 @@ export function SkillsSettings(): JSX.Element {
     <div onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <SectionTitle>Skills</SectionTitle>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Reusable prompts the agent can invoke by name. Click a skill to
-            browse and edit its files; drop a skill folder here to import it.
-          </p>
+          <SectionHeader
+        title="Skills"
+        description="Reusable prompts the agent can invoke by name. Click a skill to browse and edit its files; drop a skill folder here to import it."
+      />
         </div>
         <div className="relative">
           <button

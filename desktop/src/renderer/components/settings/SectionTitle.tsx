@@ -38,3 +38,58 @@ export function SectionTitle({
     </h3>
   );
 }
+
+/**
+ * The line under a title, which had as many spellings as the title did:
+ * `text-xs`, `text-[13px]`, `text-sm`, some with `mb-3` and some without, some
+ * `text-muted-foreground` and one `text-muted-foreground/80`.
+ *
+ * Kept beside SectionTitle deliberately: a heading and its explanation are one
+ * decision, so both are edited in one file.
+ */
+export function SectionDescription({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}): JSX.Element {
+  return (
+    <p
+      className={cn(
+        "mt-1 text-[13px] leading-relaxed text-muted-foreground",
+        className,
+      )}
+    >
+      {children}
+    </p>
+  );
+}
+
+/**
+ * Both at once — what almost every settings section actually opens with.
+ * `description` takes nodes, not just text, so a section that needs a link or
+ * a bit of code in its explanation does not have to fall back to raw markup.
+ */
+export function SectionHeader({
+  title,
+  description,
+  /** Sits on the title's row, right-aligned: a switch, a button, a count. */
+  control,
+  className,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  control?: ReactNode;
+  className?: string;
+}): JSX.Element {
+  return (
+    <div className={cn("mb-3", className)}>
+      <div className="flex items-start justify-between gap-3">
+        <SectionTitle>{title}</SectionTitle>
+        {control}
+      </div>
+      {description && <SectionDescription>{description}</SectionDescription>}
+    </div>
+  );
+}

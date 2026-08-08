@@ -5,7 +5,16 @@
  */
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Globe, MonitorSmartphone, Plus, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Chrome,
+  ListChecks,
+  PanelRight,
+  Plus,
+  ShieldQuestion,
+  X,
+  Zap,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import type {
@@ -14,7 +23,11 @@ import type {
   ElectronAPI,
 } from "@/types/electron";
 import { isValidPattern } from "@shared/origins";
-import { SectionTitle } from "@/components/settings/SectionTitle";
+import {
+  SectionHeader,
+  SectionTitle,
+} from "@/components/settings/SectionTitle";
+import { PickCard } from "@/components/settings/PickCard";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -104,31 +117,21 @@ export function AutomationSettings(): JSX.Element {
   };
 
   return (
-    <div className="space-y-5">
-      <section>
-        <SectionTitle>Automation</SectionTitle>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Let the agent act outside the chat — available in both Home and Code.
-          These reach the real world, so they are opt-in.
-        </p>
+    <div className="divide-y divide-border">
+      <section className="pb-5">
+        <SectionHeader
+        title="Automation"
+        description="Let the agent act outside the chat — available in both Home and Code. These reach the real world, so they are opt-in."
+      />
       </section>
 
       {/* Browser Use */}
-      <div className="rounded-xl border border-border bg-card p-4">
-        <div className="flex items-start gap-3">
-          <Globe className="mt-0.5 size-5 shrink-0 text-sky-500" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm font-medium">Browser tools</span>
-              <Switch checked={browserOn} onChange={toggleBrowser} />
-            </div>
-            <p className="mt-1 text-[13px] text-muted-foreground">
-              The agent can open pages, read them, click and type. The Browser
-              panel itself is always available — this switch is about whether
-              the AGENT gets the tools for it.
-            </p>
-          </div>
-        </div>
+      <section className="py-5">
+        <SectionHeader
+          title="Browser tools"
+          description="The agent can open pages, read them, click and type. The Browser panel itself is always available — this switch is about whether the AGENT gets the tools for it."
+          control={<Switch checked={browserOn} onChange={toggleBrowser} />}
+        />
 
         {browserOn && (
           <div className="mt-4">
@@ -140,38 +143,24 @@ export function AutomationSettings(): JSX.Element {
                     "embedded",
                     "The Browser panel",
                     "The tabs beside your chat. You watch what it does, and design mode works here.",
+                    PanelRight,
                   ],
                   [
                     "external",
                     "A separate Chrome window",
                     "Its own profile under the app data folder — your real browser is never touched. For sites that refuse an embedded view, or when you need extensions.",
+                    Chrome,
                   ],
                 ] as const
-              ).map(([value, label, hint]) => (
-                <button
+              ).map(([value, label, hint, icon]) => (
+                <PickCard
                   key={value}
-                  type="button"
+                  icon={icon}
+                  title={label}
+                  description={hint}
+                  selected={engine === value}
                   onClick={() => changeEngine(value)}
-                  className={cn(
-                    "flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
-                    engine === value
-                      ? "border-link bg-link/[0.06]"
-                      : "border-border hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "mt-1 size-2 shrink-0 rounded-full",
-                      engine === value ? "bg-link" : "bg-border",
-                    )}
-                  />
-                  <span className="min-w-0">
-                    <span className="block text-[13px] font-medium">{label}</span>
-                    <span className="block text-[12px] text-muted-foreground">
-                      {hint}
-                    </span>
-                  </span>
-                </button>
+                />
               ))}
             </div>
           </div>
@@ -187,43 +176,30 @@ export function AutomationSettings(): JSX.Element {
                     "allowlist",
                     "Allowed sites run silently",
                     "localhost is always allowed. Anywhere else asks, unless you add it below.",
+                    ListChecks,
                   ],
                   [
                     "manual",
                     "Ask about everything",
                     "Every navigation and click waits for you, including on localhost.",
+                    ShieldQuestion,
                   ],
                   [
                     "auto",
                     "Never ask",
                     "Fast, and unsafe on a site you don't control: a page can carry instructions aimed at the agent.",
+                    Zap,
                   ],
                 ] as const
-              ).map(([value, label, hint]) => (
-                <button
+              ).map(([value, label, hint, icon]) => (
+                <PickCard
                   key={value}
-                  type="button"
+                  icon={icon}
+                  title={label}
+                  description={hint}
+                  selected={approval === value}
                   onClick={() => changeApproval(value)}
-                  className={cn(
-                    "flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
-                    approval === value
-                      ? "border-link bg-link/[0.06]"
-                      : "border-border hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "mt-1 size-2 shrink-0 rounded-full",
-                      approval === value ? "bg-link" : "bg-border",
-                    )}
-                  />
-                  <span className="min-w-0">
-                    <span className="block text-[13px] font-medium">{label}</span>
-                    <span className="block text-[12px] text-muted-foreground">
-                      {hint}
-                    </span>
-                  </span>
-                </button>
+                />
               ))}
             </div>
 
@@ -295,26 +271,15 @@ export function AutomationSettings(): JSX.Element {
             </span>
           </div>
         )}
-      </div>
+      </section>
 
       {/* Computer Use */}
-      <div className="rounded-xl border border-border bg-card p-4">
-        <div className="flex items-start gap-3">
-          <MonitorSmartphone className="mt-0.5 size-5 shrink-0 text-violet-500" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm font-medium">Computer Use</span>
-              <Switch checked={computerOn} onChange={toggleComputer} />
-            </div>
-            <p className="mt-1 text-[13px] text-muted-foreground">
-              The agent can take screenshots of your screen and control your
-              mouse and keyboard. Needs a multimodal model (text + images).
-              Some actions can’t be undone; close anything sensitive — the
-              agent can see your screen.
-            </p>
-          </div>
-        </div>
-
+      <section className="pt-5">
+        <SectionHeader
+          title="Computer use"
+          description="The agent can take screenshots of your screen and control your mouse and keyboard. Needs a multimodal model (text + images). Some actions cannot be undone; close anything sensitive — the agent can see your screen."
+          control={<Switch checked={computerOn} onChange={toggleComputer} />}
+        />
         {computerOn && (
           <>
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px]">
@@ -371,7 +336,7 @@ export function AutomationSettings(): JSX.Element {
             </div>
           </>
         )}
-      </div>
+      </section>
     </div>
   );
 }

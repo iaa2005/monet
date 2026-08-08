@@ -38,7 +38,10 @@ import { ProtocolConnectors } from "@/components/settings/ProtocolConnectors";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
-import { SectionTitle } from "@/components/settings/SectionTitle";
+import {
+  SectionHeader,
+  SectionTitle,
+} from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -66,11 +69,10 @@ function StorageSection(): JSX.Element {
 
   return (
     <section>
-      <SectionTitle>Data folder</SectionTitle>
-      <p className="mt-0.5 text-sm text-muted-foreground">
-        Where chats, sessions and settings are stored. Changing it takes effect
-        after a restart.
-      </p>
+      <SectionHeader
+        title="Data folder"
+        description="Where chats, sessions and settings are stored. Changing it takes effect after a restart."
+      />
       <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-2">
         <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate font-mono text-xs" title={dir}>
@@ -240,12 +242,10 @@ function SandboxSection(): JSX.Element {
   return (
     <div className="space-y-4">
       <section>
-        <SectionTitle>Sandbox</SectionTitle>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Where Home runs generated code (Python and scripts for documents,
-          tables and charts). Home is isolated from your project — Code mode
-          works directly with your files instead.
-        </p>
+        <SectionHeader
+        title="Sandbox"
+        description="Where Home runs generated code (Python and scripts for documents, tables and charts). Home is isolated from your project — Code mode works directly with your files instead."
+      />
       </section>
 
       <div className="space-y-2">
@@ -399,10 +399,10 @@ function KeepAwakeSection(): JSX.Element {
 
   return (
     <section>
-      <SectionTitle>Power</SectionTitle>
-      <p className="mt-0.5 text-sm text-muted-foreground">
-        How this device behaves while Code Monet is running.
-      </p>
+      <SectionHeader
+        title="Power"
+        description="How this device behaves while Code Monet is running."
+      />
       <div className="mt-4 flex items-start justify-between gap-4 rounded-xl border border-border p-3">
         <div className="min-w-0">
           <div className="text-sm font-medium">Keep awake</div>
@@ -436,10 +436,10 @@ function GeneralSection({
       <ProfileSection />
       <KeepAwakeSection />
       <section>
-        <SectionTitle>Appearance</SectionTitle>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Choose how Code Monet looks on this device.
-        </p>
+        <SectionHeader
+        title="Appearance"
+        description="Choose how Code Monet looks on this device."
+      />
         <div className="mt-4 grid grid-cols-2 gap-3">
           {(["light", "dark"] as const).map((t) => (
             <button

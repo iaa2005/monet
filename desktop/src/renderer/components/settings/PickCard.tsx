@@ -29,8 +29,11 @@ export function PickCard({
   needsDownload = false,
   busy = false,
   disabled = false,
+  /** 0…100 while something downloads. Takes the place of the state glyph and
+   * draws a bar under the row — a 230 MB model needs to say how far it is. */
+  progress,
   onClick,
-  /** Trailing controls (a delete button, a size). Never the tick. */
+  /** Trailing controls (cancel, delete, download). Never the tick. */
   trailing,
   children,
 }: {
@@ -43,20 +46,23 @@ export function PickCard({
   needsDownload?: boolean;
   busy?: boolean;
   disabled?: boolean;
+  progress?: number | null;
   onClick?: () => void;
   trailing?: ReactNode;
   children?: ReactNode;
 }): JSX.Element {
+  const downloading = typeof progress === "number";
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-xl border p-2 transition-colors",
+        "rounded-xl border p-2 transition-colors",
         selected
           ? "border-brand/40 bg-brand/[0.06]"
           : "border-border hover:border-foreground/20",
         disabled && "opacity-50",
       )}
     >
+      <div className="flex items-center gap-3">
       <button
         type="button"
         onClick={onClick}
@@ -90,14 +96,27 @@ export function PickCard({
           {children}
         </span>
       </button>
-      {busy ? (
-        <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
-      ) : selected ? (
-        <Check className="size-4 shrink-0 text-brand" />
-      ) : needsDownload ? (
-        <Download className="size-3.5 shrink-0 text-muted-foreground/60" />
-      ) : null}
-      {trailing}
+        {busy ? (
+          <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+        ) : downloading ? (
+          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            {progress}%
+          </span>
+        ) : selected ? (
+          <Check className="size-4 shrink-0 text-brand" />
+        ) : needsDownload ? (
+          <Download className="size-3.5 shrink-0 text-muted-foreground/60" />
+        ) : null}
+        {trailing}
+      </div>
+      {downloading && (
+        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/[0.1]">
+          <div
+            className="h-full rounded-full bg-brand transition-[width]"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 }

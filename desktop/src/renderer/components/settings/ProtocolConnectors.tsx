@@ -28,7 +28,10 @@ import type { ElectronAPI } from "@/types/electron";
 import type { ConnectorAccount } from "../../../main/connectors/types";
 import type { UiConnectorService } from "../../../main/connectors/services/types";
 import { DirectoryButton } from "@/components/directory/DirectoryModal";
-import { SectionTitle } from "@/components/settings/SectionTitle";
+import {
+  SectionHeader,
+  SectionTitle,
+} from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -311,14 +314,10 @@ export function ProtocolConnectors(): JSX.Element {
   return (
     <div className="space-y-4">
       <section>
-        <SectionTitle>Connectors</SectionTitle>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Your mail, files, calendar, Telegram and dev tools. Each connects with
-          a token or app password — no OAuth client to register except where a
-          provider demands it — and every secret is encrypted with your OS
-          keychain, never written as plain text. For a server that isn&apos;t
-          listed here, use MCP Servers.
-        </p>
+        <SectionHeader
+        title="Connectors"
+        description="Your mail, files, calendar, Telegram and dev tools. Each connects with a token or app password — no OAuth client to register except where a provider demands it — and every secret is encrypted with your OS keychain, never written as plain text. For a server that isn&apos;t listed here, use MCP Servers."
+      />
       </section>
 
       <DirectoryButton

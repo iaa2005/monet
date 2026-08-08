@@ -12,8 +12,8 @@
  */
 
 import { useEffect, useState } from "react";
-import { Check, Download, Loader2, Trash2, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Cpu, Loader2, Trash2, X } from "lucide-react";
+import { PickCard } from "@/components/settings/PickCard";
 import type { ElectronAPI, InstallProgress, SttModelStatus } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -85,44 +85,32 @@ export function SttModelPicker({
   }
 
   return (
-    <div className="flex flex-col gap-1 px-1 pb-1">
+    <div className="flex flex-col gap-1.5">
       {models.map((m) => {
         const p = progress[m.id];
         const isSelected = selected === m.id;
         return (
-          <div
+          <PickCard
             key={m.id}
-            className={cn(
-              "rounded-md border px-1.5 py-1 transition-colors",
-              isSelected ? "border-link/40 bg-link/[0.06]" : "border-transparent",
-            )}
-          >
-            <div className="flex items-start gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  onSelect(m.id);
-                  if (!m.installed && !p) install(m.id);
-                }}
-                className="flex min-w-0 flex-1 items-start gap-1.5 text-left"
-              >
-                <span className="flex w-4 shrink-0 justify-center pt-0.5">
-                  {isSelected && <Check className="size-3.5 text-link" />}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] leading-snug">{m.label}</span>
-                  <span className="block text-[11px] leading-snug text-muted-foreground">
-                    {m.languages} · {mb(m.bytes)}
-                    {m.punctuation ? " · punctuation" : ""}
-                  </span>
-                </span>
-              </button>
-              {p ? (
+            icon={Cpu}
+            title={m.label}
+            description={`${m.languages} \u00b7 ${mb(m.bytes)}${
+              m.punctuation ? " \u00b7 punctuation" : ""
+            }`}
+            selected={isSelected}
+            needsDownload={!m.installed}
+            progress={p ? p.percent : null}
+            onClick={() => {
+              onSelect(m.id);
+              if (!m.installed && !p) install(m.id);
+            }}
+            trailing={
+              p ? (
                 <button
                   type="button"
                   onClick={() => void api()?.stt.cancelInstall(m.id)}
                   title="Cancel download"
-                  className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
                 >
                   <X className="size-3.5" />
                 </button>
@@ -135,40 +123,21 @@ export function SttModelPicker({
                       .then(refresh)
                   }
                   title="Delete the downloaded files"
-                  className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive"
+                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive"
                 >
                   <Trash2 className="size-3.5" />
                 </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => install(m.id)}
-                  title={`Download ${mb(m.bytes)}`}
-                  className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
-                >
-                  <Download className="size-3.5" />
-                </button>
-              )}
-            </div>
-            {p && (
-              <div className="mt-1 flex items-center gap-1.5 pl-5">
-                <div className="h-1 flex-1 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/[0.1]">
-                  <div
-                    className="h-full rounded-full bg-link transition-[width]"
-                    style={{ width: `${p.percent}%` }}
-                  />
-                </div>
-                <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                  {p.percent}%
-                </span>
-              </div>
-            )}
+              ) : null
+            }
+          >
+            {/* The long note only for the row you chose: four of these at once
+                is a wall, and the one that matters is the current one. */}
             {isSelected && !p && (
-              <div className="pl-5 pt-0.5 text-[11px] leading-snug text-muted-foreground">
+              <span className="mt-1 block text-[11px] leading-snug text-muted-foreground">
                 {m.note}
-              </div>
+              </span>
             )}
-          </div>
+          </PickCard>
         );
       })}
       {error && (

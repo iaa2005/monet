@@ -25,7 +25,10 @@ import { useDockStore } from "@/dock/dock-store";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, UiVault } from "@/types/electron";
-import { SectionTitle } from "@/components/settings/SectionTitle";
+import {
+  SectionHeader,
+  SectionTitle,
+} from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -69,15 +72,10 @@ export function ObsidianSettings(): JSX.Element {
   return (
     <div className="space-y-4">
       <section>
-        <SectionTitle>Obsidian</SectionTitle>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Connect your Obsidian vaults — folders of linked Markdown notes,
-          wherever they live (a cloud-synced folder works). The agent gets
-          three tools: search the vault, read a note with its links and
-          backlinks, and — only when you ask it to save something — write.
-          Nothing is uploaded anywhere; notes are read from disk on demand and
-          never fed to the model wholesale.
-        </p>
+        <SectionHeader
+        title="Obsidian"
+        description="Connect your Obsidian vaults — folders of linked Markdown notes, wherever they live (a cloud-synced folder works). The agent gets three tools: search the vault, read a note with its links and backlinks, and — only when you ask it to save something — write. Nothing is uploaded anywhere; notes are read from disk on demand and never fed to the model wholesale."
+      />
       </section>
 
       <div className="flex items-center gap-2">

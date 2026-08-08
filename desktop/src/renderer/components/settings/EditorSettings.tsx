@@ -6,18 +6,19 @@
  */
 
 import { CodeThemePicker } from "./CodeThemePicker";
-import { SectionTitle } from "@/components/settings/SectionTitle";
+import {
+  SectionHeader,
+  SectionTitle,
+} from "@/components/settings/SectionTitle";
 
 export function EditorSettings(): JSX.Element {
   return (
     <div className="space-y-5">
       <section>
-        <SectionTitle>Editor</SectionTitle>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Syntax highlighting for code everywhere it appears — chat blocks,
-          diffs, notebooks and the file editor. Light and dark are separate
-          choices; the app&apos;s theme toggle decides which one you see.
-        </p>
+        <SectionHeader
+        title="Editor"
+        description="Syntax highlighting for code everywhere it appears — chat blocks, diffs, notebooks and the file editor. Light and dark are separate choices; the app&apos;s theme toggle decides which one you see."
+      />
       </section>
       <CodeThemePicker />
     </div>

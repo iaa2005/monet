@@ -35,7 +35,10 @@ import {
   type FeatureFlags,
   type FeatureSpec,
 } from "@shared/agent-features";
-import { SectionTitle } from "@/components/settings/SectionTitle";
+import {
+  SectionHeader,
+  SectionTitle,
+} from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -205,14 +208,10 @@ export function AdvancedSettings(): JSX.Element {
   return (
     <div className="space-y-8">
       <section>
-        <SectionTitle>How the agent works</SectionTitle>
-        <p className="mt-0.5 max-w-2xl text-sm text-muted-foreground">
-          A weaker model does not fail at doing — it fails at deciding when.
-          These are the decisions the harness makes for it: verification that
-          happens to it, a first turn it cannot write in, a reader it did not
-          ask for. Each costs something on the turns it was not needed, which
-          is why each one is a switch.
-        </p>
+        <SectionHeader
+        title="How the agent works"
+        description="A weaker model does not fail at doing — it fails at deciding when. These are the decisions the harness makes for it: verification that happens to it, a first turn it cannot write in, a reader it did not ask for. Each costs something on the turns it was not needed, which is why each one is a switch."
+      />
         {groups.map((group) => {
           const inGroup = FEATURES.filter((f) => f.group === group);
           if (!inGroup.length) return null;
@@ -240,10 +239,10 @@ export function AdvancedSettings(): JSX.Element {
       </section>
 
       <section>
-        <SectionTitle>Advanced tools</SectionTitle>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Optional capabilities, off by default. They apply to new messages.
-        </p>
+        <SectionHeader
+        title="Advanced tools"
+        description="Optional capabilities, off by default. They apply to new messages."
+      />
         <div className="mt-4 grid gap-2">
           <ToggleRow
             icon="Search"
@@ -277,14 +276,10 @@ export function AdvancedSettings(): JSX.Element {
       </section>
 
       <section>
-        <SectionTitle>Background model</SectionTitle>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Which model does the work that isn't the conversation: noting memory
-          after a turn, the nightly consolidation, the Reflect digest, drafting a
-          routine. Leave on the active provider, or point it at something cheap —
-          including a local Ollama / LM Studio / llama.cpp server, which needs no
-          API key.
-        </p>
+        <SectionHeader
+        title="Background model"
+        description="Which model does the work that isn't the conversation: noting memory after a turn, the nightly consolidation, the Reflect digest, drafting a routine. Leave on the active provider, or point it at something cheap — including a local Ollama / LM Studio / llama.cpp server, which needs no API key."
+      />
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Select
             ariaLabel="Background provider"
@@ -319,12 +314,10 @@ export function AdvancedSettings(): JSX.Element {
       </section>
 
       <section>
-        <SectionTitle>Prompts</SectionTitle>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          The system prompt, mode directives and every tool description are
-          editable Markdown files. Open the folder, edit a file, then reload (or
-          restart) to apply — delete a file to restore its default.
-        </p>
+        <SectionHeader
+        title="Prompts"
+        description="The system prompt, mode directives and every tool description are editable Markdown files. Open the folder, edit a file, then reload (or restart) to apply — delete a file to restore its default."
+      />
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"

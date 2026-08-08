@@ -437,7 +437,7 @@ export function MemorySettings(): JSX.Element {
           if (rows.length === 0) return null;
           return (
             <div key={key} className="mt-7">
-              <div className="text-sm font-semibold">{label}</div>
+              <SectionTitle>{label}</SectionTitle>
               <div className="mt-1">
                 {rows.map((f) => (
                   <div

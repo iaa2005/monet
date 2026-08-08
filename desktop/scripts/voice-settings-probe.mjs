@@ -302,6 +302,29 @@ try {
     shapes[0],
   );
 
+  // Automation lost its card-in-card wrappers and its coloured icons; its
+  // sections are separated by lines now, so it gets a picture of its own.
+  await cdp.eval(`(() => {
+    const el = [...document.querySelectorAll('button')].find(
+      (b) => (b.textContent || '').trim() === 'Automation',
+    );
+    el?.click();
+    return true;
+  })()`);
+  await sleep(900);
+  {
+    const shot = await cdp.send("Page.captureScreenshot", { format: "png" });
+    const data = shot?.result?.data;
+    if (data) {
+      const out = resolve(process.env.VOICE_SHOT ?? join(tmpdir(), "voice-settings.png")).replace(
+        /\.png$/,
+        "-automation.png",
+      );
+      writeFileSync(out, Buffer.from(data, "base64"));
+      console.log(`      screenshot: ${out}`);
+    }
+  }
+
   // Back to Voice for the screenshots below.
   await cdp.eval(`(() => {
     const el = [...document.querySelectorAll('button')].find(

@@ -30,7 +30,10 @@ import type { ElectronAPI, TtsProgress, TtsStatus } from "@/types/electron";
 import { WHISPER_TIERS, DEFAULT_WHISPER } from "@shared/whisper-tier";
 import { AUTO_LANG, TTS_LANGS, speechLangFor } from "@shared/tts-langs";
 import { ART_SIZE, voiceCells } from "@/lib/voice-art";
-import { SectionTitle } from "@/components/settings/SectionTitle";
+import {
+  SectionHeader,
+  SectionTitle,
+} from "@/components/settings/SectionTitle";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -268,11 +271,10 @@ export function VoiceSettings(): JSX.Element {
     <div className="space-y-8">
       {/* ── Dictation ─────────────────────────────────────────────────── */}
       <section>
-        <SectionTitle>Dictation</SectionTitle>
-        <p className="mb-3 text-xs text-muted-foreground">
-          Speech to text for the mic button and Voice Mode. On-device engines
-          need no key and keep audio on this machine.
-        </p>
+        <SectionHeader
+        title="Dictation"
+        description="Speech to text for the mic button and Voice Mode. On-device engines need no key and keep audio on this machine."
+      />
         {/* The same card as the voice list below: an icon that carries the
             state, one line of what it is, a tick when chosen. These used to be
             three bare rows with a tick floating in a 16 px gutter. */}
@@ -380,11 +382,10 @@ export function VoiceSettings(): JSX.Element {
 
       {/* ── The app's voice ───────────────────────────────────────────── */}
       <section>
-        <SectionTitle>Voice</SectionTitle>
-        <p className="mb-3 text-xs text-muted-foreground">
-          Supertonic 3 — on-device, 31 languages, expression tags. One shared
-          model (~398 MB), then each voice is a 0.3 MB download.
-        </p>
+        <SectionHeader
+        title="Voice"
+        description="Supertonic 3 — on-device, 31 languages, expression tags. One shared model (~398 MB), then each voice is a 0.3 MB download."
+      />
 
         {/* What the synthesiser is TOLD the text is: it does not detect the
             language, the tag around the text decides the mouth. */}
