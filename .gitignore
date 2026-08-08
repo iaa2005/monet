@@ -19,3 +19,11 @@ kimi-code/
 # Reference clone of itayinbarr/little-coder (Apache 2.0) — read-only.
 # See info/little-coder-audit.md.
 little-coder/
+
+# The voice cloner is run in place during development; its cache of folded
+# models and its downloaded speaker model must never reach the repo.
+desktop/resources/voice-cloner/cache/
+desktop/resources/voice-cloner/__pycache__/
+desktop/resources/voice-cloner/*.onnx
+desktop/resources/voice-cloner/*.wav
+desktop/resources/voice-cloner/*.json

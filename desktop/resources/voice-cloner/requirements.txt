@@ -7,4 +7,6 @@ onnx>=1.16
 onnx2torch>=1.5
 onnxruntime>=1.18
 soundfile>=0.12
+# WavLM (the default loss). --loss speaker runs without it.
+transformers>=4.40
 numpy>=1.26

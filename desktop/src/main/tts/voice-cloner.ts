@@ -88,11 +88,15 @@ export function prepareCloner(p: {
       error: "Download the voice model first — the cloner optimises against it.",
     };
   try {
-    for (const f of readdirSync(template)) {
-      const target = join(dir, f);
+    for (const f of readdirSync(template, { withFileTypes: true })) {
+      // FILES only. Running clone.py inside the template folder leaves a
+      // `cache/` of folded models behind, and copyFileSync on a directory is
+      // EPERM — which turned the whole handover into "operation not permitted"
+      // until a probe hit it.
+      if (!f.isFile()) continue;
       // clone.py and the docs are ours to refresh on every prepare; anything
       // the user or a run produced (their JSON, the model cache) is not.
-      copyFileSync(join(template, f), target);
+      copyFileSync(join(template, f.name), join(dir, f.name));
     }
     writeWav(join(dir, "voice.wav"), p.samples, p.sampleRate);
   } catch (err) {

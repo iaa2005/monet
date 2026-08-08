@@ -20,8 +20,24 @@ unknowns and optimises them:
 ```
 style → text encoder → flow matching → vocoder → waveform
                                                     ↓
-                 loss = 1 − cosine( CAM++(waveform), CAM++(your recording) )
+       loss = 1 − cosine( WavLM-L4 statistics of it, of your recording )
 ```
+
+**Two losses, and the default changed.** The first version compared a single
+CAM++ speaker embedding — one 512-d vector per utterance, so one scalar of
+gradient. It reached 0.67 on a 19-second Russian recording in 12 minutes and the
+result was judged "so-so" by ear. The default is now **WavLM layer 4**: still
+low-level features (timbre and articulation rather than identity), so far more of
+what makes a voice that voice. `--loss speaker` keeps the old, lighter path
+(29 MB instead of 1.2 GB); `--loss both` adds them.
+
+Because the target and the candidate say *different words*, frames cannot be
+compared one to one — there is no alignment. What is compared is the per-channel
+mean and standard deviation of the layer's features, which is text-independent by
+construction and is the same device style transfer uses (AdaIN, Gram matrices).
+
+Both numbers are printed every few iterations, so a run is comparable with the
+old one either way.
 
 Every arrow is differentiable once the ONNX graphs are converted to PyTorch, so
 this is gradient descent on the voice itself rather than a search among the ten
@@ -40,6 +56,11 @@ which optimises against SpeechBrain's ECAPA-TDNN.
 
 Measured on this pipeline (CPU, one core-heavy iteration ≈ 2 s):
 
+- With the speaker loss on a real 19-second recording: the best single preset
+  scored 0.347 and the descent reached **0.673** in 273 iterations (12 min, CPU),
+  still rising when the budget ran out. All ten presets were scored first and the
+  five female ones came in at 0.135-0.220 against 0.272-0.347 for the male ones,
+  which is a useful sign the metric is not noise.
 - Starting from the nearest preset, similarity climbed from **0.31 → 0.45**
   within eight iterations at `--lr 1e-3`.
 - `--lr 0.02` **destroys** the voice within three steps: the style's own values
@@ -55,6 +76,15 @@ Measured on this pipeline (CPU, one core-heavy iteration ≈ 2 s):
 It is a likeness, not a forgery. The model was never trained to reproduce
 arbitrary speakers.
 
+## What is not optimised
+
+`style_dp` — the rhythm tensor. It reaches only the duration predictor, whose
+answer becomes an integer number of samples: a shape, not a differentiable
+quantity, so no gradient can come back through it. An earlier version handed it
+to the optimiser anyway and the only gradient it ever got came from the anchor
+term pulling it back where it started. The rhythm you get is the nearest
+preset's; only the timbre is fitted.
+
 ## Recording
 
 20–40 seconds, one speaker, no music, no other voices, ordinary speaking voice.
@@ -68,6 +98,8 @@ help; clean audio does.
 | `--minutes` | 20 | Longer runs get closer. |
 | `--lr` | 1e-3 | Lower if the similarity jumps around; higher rarely helps. |
 | `--anchor` | 0.02 | Pull towards the starting preset. Raise it if the voice starts sounding broken rather than different. |
+| `--loss` | wavlm | `speaker` for the 29 MB path, `both` to combine. |
+| `--wavlm` | microsoft/wavlm-large | A smaller WavLM if 1.2 GB is too much. |
 | `--steps` | 4 | Flow steps per pass. 8 is more faithful and twice as slow. |
 | `--init` | auto | Force a starting preset (`F1`…`M5`) instead of scoring all ten. |
 | `--device` | auto | `cuda`, `xpu`, or `cpu`. |

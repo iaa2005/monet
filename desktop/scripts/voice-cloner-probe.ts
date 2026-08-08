@@ -73,6 +73,25 @@ check(
     /Range/.test(py) &&
     /st_size != SPEAKER_BYTES/.test(py),
 )
+// Switched on Sasha's verdict ("ну так себе") after the speaker-loss run: layer-4
+// features carry far more of a voice than one identity vector.
+check(
+  'WAVLM LAYER 4 IS THE DEFAULT LOSS, with the lighter one still available',
+  /default="wavlm"/.test(py) &&
+    /hidden_states\[WAVLM_LAYER\]/.test(py) &&
+    /WAVLM_LAYER = 4/.test(py) &&
+    /"speaker", "both"/.test(py),
+)
+check(
+  'statistics, not frames — the target says different words, so nothing aligns',
+  /h\.mean\(dim=1\), h\.std\(dim=1\)/.test(py),
+)
+// Found by a wiring probe: dp.grad came back None, because style_dp only feeds
+// the duration predictor and that answer becomes a sample count.
+check(
+  'AND THE RHYTHM TENSOR IS NOT PRETEND-OPTIMISED',
+  /Adam\(\[style_ttl\], lr=args\.lr\)/.test(py) && !/Adam\(\[style_ttl, style_dp\]/.test(py),
+)
 check(
   'the ONNX shims it needs are both there',
   /widen_converter_registry/.test(py) && /def declip/.test(py),
@@ -85,6 +104,12 @@ const samples = new Float32Array(RATE * 12)
 for (let i = 0; i < samples.length; i++)
   samples[i] = Math.sin((2 * Math.PI * 220 * i) / RATE) * 0.3
 
+// Running clone.py inside the template folder leaves a cache/ directory
+// there, and copying a directory with copyFileSync is EPERM — which broke the
+// whole handover with "operation not permitted". A stray dir must be skipped.
+mkdirSync(join(template, 'cache'), { recursive: true })
+writeFileSync(join(template, 'cache', 'folded.onnx'), 'x')
+
 const r = prepareCloner({ samples, sampleRate: RATE, name: 'Саша', lang: 'ru' })
 check('the project is prepared', r.ok, r)
 check('inside the data dir, beside tts-models', r.dir === clonerDir() && r.dir?.startsWith(tempData), r.dir)
@@ -93,6 +118,11 @@ check(
   'every template file is copied over',
   ['clone.py', 'requirements.txt', 'README.md'].every((f) => existsSync(join(clonerDir(), f))),
 )
+check(
+  'A STRAY DIRECTORY IN THE TEMPLATE DOES NOT BREAK THE COPY',
+  r.ok && !existsSync(join(clonerDir(), 'cache')),
+)
+rmSync(join(template, 'cache'), { recursive: true, force: true })
 
 const wav = readFileSync(join(clonerDir(), 'voice.wav'))
 check('the recording is a real RIFF/WAVE file', wav.subarray(0, 4).toString() === 'RIFF' && wav.subarray(8, 12).toString() === 'WAVE')
