@@ -80,6 +80,13 @@ export function prepareCloner(p: {
   const template = templateDir();
   if (!existsSync(join(template, "clone.py")))
     return { ok: false, error: `The cloner files are missing from ${template}.` };
+  // Said here rather than after two gigabytes of pip: the optimisation runs the
+  // real synthesiser, so the voice model has to be installed first.
+  if (!existsSync(join(getDataDir(), "tts-models", "supertonic-3", "vocoder.onnx")))
+    return {
+      ok: false,
+      error: "Download the voice model first — the cloner optimises against it.",
+    };
   try {
     for (const f of readdirSync(template)) {
       const target = join(dir, f);
@@ -92,10 +99,18 @@ export function prepareCloner(p: {
     return { ok: false, error: err instanceof Error ? err.message : "cannot write the project" };
   }
   const stem = (p.name.trim() || "my-voice").replace(/["\\]/g, "");
+  // --models spelled out, always. clone.py defaults to the folder next to
+  // itself, which is right only while the cloner folder stays inside the data
+  // dir that holds the model — and the very first person to run this had it in
+  // a data dir where the voice was never installed. An absolute path cannot be
+  // wrong.
+  const models = join(getDataDir(), "tts-models", "supertonic-3");
   return {
     ok: true,
     dir,
-    command: `python clone.py voice.wav --name "${stem}" --lang ${p.lang} --minutes 20`,
+    command:
+      `python clone.py voice.wav --name "${stem}" --lang ${p.lang} ` +
+      `--minutes 20 --models "${models}"`,
     seconds: p.samples.length / p.sampleRate,
   };
 }

@@ -32,6 +32,7 @@ Requires: pip install -r requirements.txt
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -119,13 +120,92 @@ SPEAKER_URL = (
     "wespeaker_en_voxceleb_CAM%2B%2B_LM.onnx"
 )
 SPEAKER_FILE = "wespeaker_en_voxceleb_CAM++_LM.onnx"
+SPEAKER_BYTES = 29_292_687
+SPEAKER_SHA256 = "e197af7e9d473030cf486b3124149a19bf37014d0e4485e4c70c483b0ec10cb2"
+
+
+def fetch_checked(url: str, target: Path, size: int, sha256: str, tries: int = 40) -> None:
+    """Download to `.part`, resume, verify, THEN rename.
+
+    Written after the first version lost the connection at 28.5 of 29.3 MB and
+    left the stump in place — the next run read it as the model and died on
+    "Protobuf parsing failed", which says nothing about the real problem. A
+    partial file must never be able to masquerade as a complete one.
+
+    `tries` is high on purpose. Measured on the connection this was built on,
+    the transfer dropped every 100-200 KB over the last megabyte: each attempt
+    resumed and made progress, and six was not enough to finish while forty is
+    plenty. Since every attempt continues where the last stopped, a high number
+    costs nothing when the network behaves.
+    """
+    part = target.with_name(target.name + ".part")
+    for attempt in range(1, tries + 1):
+        have = part.stat().st_size if part.exists() else 0
+        if have > size:
+            part.unlink()
+            have = 0
+        req = urllib.request.Request(url, headers={"User-Agent": "code-monet-cloner"})
+        if have:
+            req.add_header("Range", f"bytes={have}-")
+        try:
+            with urllib.request.urlopen(req, timeout=60) as res:
+                # A server may ignore Range and send the whole file with 200 —
+                # appending that to what we have would corrupt it silently.
+                if have and res.status != 206:
+                    have = 0
+                mode = "ab" if have else "wb"
+                with open(part, mode) as f:
+                    while True:
+                        chunk = res.read(1 << 20)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        done = f.tell()
+                        print(
+                            f"\r  {done * 100 // size}% ({done // 1_000_000} of "
+                            f"{size // 1_000_000} MB)",
+                            end="",
+                            flush=True,
+                        )
+            print()
+        except Exception as err:  # noqa: BLE001 - any network failure retries
+            print(f"\n  attempt {attempt}/{tries} failed ({err}); resuming")
+            continue
+        got = part.stat().st_size
+        if got != size:
+            print(f"  {attempt}/{tries}: {got} of {size} bytes; resuming")
+            time.sleep(min(5.0, 0.5 * attempt))
+            continue
+        digest = hashlib.sha256(part.read_bytes()).hexdigest()
+        if digest != sha256:
+            print("  checksum mismatch, starting over")
+            part.unlink()
+            continue
+        part.replace(target)
+        return
+    sys.exit(
+        f"could not download {target.name} after {tries} attempts." + "\n"
+        f"Download it by hand from {url}\nand put it next to clone.py."
+    )
 
 
 def speaker_model(work: Path, device: torch.device) -> torch.nn.Module:
     path = work / SPEAKER_FILE
+    # An earlier version of the app downloaded this same model; if it is still
+    # in the data dir, 29 MB does not need fetching twice.
     if not path.exists():
-        print(f"downloading the speaker model (~29 MB) into {path}")
-        urllib.request.urlretrieve(SPEAKER_URL, path)
+        beside = work.parent / "tts-models" / "speaker" / SPEAKER_FILE
+        if beside.exists() and beside.stat().st_size == SPEAKER_BYTES:
+            print(f"using the copy already in {beside.parent}")
+            path = beside
+    # Size first, every run: a stump from an interrupted download is the one
+    # state that looks installed and is not.
+    if path.exists() and path.stat().st_size != SPEAKER_BYTES:
+        print(f"{path.name} is {path.stat().st_size} bytes, expected {SPEAKER_BYTES} - refetching")
+        path.unlink()
+    if not path.exists():
+        print(f"downloading the speaker model ({SPEAKER_BYTES // 1_000_000} MB)")
+        fetch_checked(SPEAKER_URL, path, SPEAKER_BYTES, SPEAKER_SHA256)
     return as_torch(path, device, work / "cache")
 
 

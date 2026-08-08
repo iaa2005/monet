@@ -15,13 +15,19 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { setDataDir } from '../src/main/data-dir.js'
 
 const tempData = mkdtempSync(join(tmpdir(), 'cloner-probe-'))
 setDataDir(tempData)
+
+// The cloner optimises against the real synthesiser, so prepareCloner refuses
+// to hand over a project when the voice model is absent. One empty file is
+// enough to stand for it here — this probe tests the handover, not synthesis.
+mkdirSync(join(tempData, 'tts-models', 'supertonic-3'), { recursive: true })
+writeFileSync(join(tempData, 'tts-models', 'supertonic-3', 'vocoder.onnx'), '')
 
 const { prepareCloner, clonerDir } = await import('../src/main/tts/voice-cloner.js')
 
@@ -56,6 +62,16 @@ check(
 check(
   'the measured step size is the default, not the one that destroyed the voice',
   /default=1e-3/.test(py) && !/default=0\.02\)/.test(py),
+)
+// Reported from a real run: the transfer died at 28.5 of 29.3 MB and the stump
+// stayed on disk, so the next run read it as the model and failed on
+// "Protobuf parsing failed".
+check(
+  'THE DOWNLOAD CANNOT LEAVE A STUMP BEHIND — part file, size, checksum',
+  /\.part/.test(py) &&
+    /hashlib\.sha256/.test(py) &&
+    /Range/.test(py) &&
+    /st_size != SPEAKER_BYTES/.test(py),
 )
 check(
   'the ONNX shims it needs are both there',
@@ -101,6 +117,22 @@ check(
     r.command?.includes('--lang ru') === true,
   r.command,
 )
+// The first real run happened in a data dir with no voice model, where
+// clone.py's "look next to me" default pointed at nothing.
+check(
+  'AND SPELLS OUT THE MODEL PATH, so it works from any folder',
+  r.command?.includes(`--models "${join(tempData, 'tts-models', 'supertonic-3')}"`) === true,
+  r.command,
+)
+check(
+  'while a data dir without the voice model is refused up front',
+  (() => {
+    rmSync(join(tempData, 'tts-models', 'supertonic-3', 'vocoder.onnx'))
+    const no = prepareCloner({ samples, sampleRate: RATE, name: 'x', lang: 'ru' })
+    writeFileSync(join(tempData, 'tts-models', 'supertonic-3', 'vocoder.onnx'), '')
+    return !no.ok && /voice model first/.test(no.error ?? '')
+  })(),
+)
 check('a Cyrillic name survives into the command, quoted', r.command?.includes('"Саша"') === true, r.command)
 check(
   'a nameless run still gets a name',
@@ -109,7 +141,7 @@ check(
 
 // Preparing twice must not destroy a result from the first run.
 const mine = join(clonerDir(), 'Саша.json')
-require('node:fs').writeFileSync(mine, '{"style_ttl":1}', 'utf-8')
+writeFileSync(mine, '{"style_ttl":1}', 'utf-8')
 prepareCloner({ samples, sampleRate: RATE, name: 'Саша', lang: 'ru' })
 // Read defensively: a wipe would make this throw instead of fail, and a probe
 // that explodes reports nothing (found by breaking exactly that).
