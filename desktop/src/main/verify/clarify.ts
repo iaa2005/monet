@@ -85,8 +85,10 @@ export function parseClarify(text: string): ClarifyOutcome {
       .split("|")
       .map((s) => s.replace(/[*`]/g, "").trim())
       .filter(Boolean);
-    if (parts.length < 4) continue; // label + question + two options, minimum
     const [header, question, ...options] = parts;
+    // A label, a question and at least two things to choose between. Anything
+    // short of that is half a question, and half a question put to a person
+    // is worse than not interrupting them.
     if (!header || !question || options.length < 2) continue;
     questions.push({
       header: header.slice(0, 12),

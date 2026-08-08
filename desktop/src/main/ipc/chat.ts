@@ -524,75 +524,26 @@ export function registerChatIPC(): void {
       effort: payload.effort,
     };
 
-    // Where the folder stood before this turn — the baseline a second reader
-    // needs to see only what THIS turn changed. One git call, and only when
-    // somebody is going to read the answer.
-    let reviewBaseline: string | null = null;
-    if (payload.space !== "home") {
-      try {
-        const { isFeatureOn } = await import("../agent/features.js");
-        if (isFeatureOn("review")) {
-          const { currentCheckpoint } = await import("../agent/checkpoints.js");
-          reviewBaseline = await currentCheckpoint(sessionId, cwd);
-        }
-      } catch {
-        /* no baseline, no review — never a failed turn */
-      }
-    }
+    // Where the folder stood before this turn — the baseline a second
+    // reader needs to see only what THIS turn changed.
+    const { captureReviewBaseline } = await import("../verify/post-turn.js");
+    const reviewBaseline = await captureReviewBaseline(
+      sessionId,
+      cwd,
+      payload.space,
+    );
 
     // Ask when it is ambiguous — before anything is built, while changing
-    // course is still free. A fresh context reads the request alone; if it
-    // finds a fork where guessing wrong wastes the work, the HARNESS asks
-    // and the answers ride in with the brief. See verify/clarify.ts.
-    let clarifyNote = "";
-    // Only on the chat's first prompt: inside a conversation, ambiguity is
-    // resolved by everything already said, and a dialog would be an
-    // interruption rather than a shortcut.
-    if (wasUntitled && payload.space !== "home") {
-      try {
-        const { isFeatureOn } = await import("../agent/features.js");
-        const { clarifyPrompt, parseClarify, answersNote, worthClarifying } =
-          await import("../verify/clarify.js");
-        if (isFeatureOn("clarify") && worthClarifying(message)) {
-          const provider = getProviderManager().getActive();
-          if (provider) {
-            const reply = await createAdapter(provider).complete(
-              {
-                model: provider.model,
-                system:
-                  "You answer in the exact shape you are given, and nothing else.",
-                messages: [{ role: "user", content: clarifyPrompt(message) }],
-                max_tokens: 400,
-                temperature: 0,
-              },
-              abort.signal,
-            );
-            const text =
-              typeof reply.content === "string"
-                ? reply.content
-                : reply.content
-                    .map((b) => (b.type === "text" ? b.text : ""))
-                    .join("");
-            const outcome = parseClarify(text);
-            if (outcome.status === "ask" && !abort.signal.aborted) {
-              const result = await askUserFromRenderer(
-                win,
-                outcome.questions.map((q) => ({
-                  header: q.header,
-                  question: q.question,
-                  options: q.options.map((label) => ({ label })),
-                  multiSelect: false,
-                })),
-              );
-              if (!result.cancelled && result.answers.length)
-                clarifyNote = `\n\n${answersNote(result.answers)}`;
-            }
-          }
-        }
-      } catch {
-        /* a question that could not be asked is not a failed turn */
-      }
-    }
+    // course is still free. See verify/post-turn.ts.
+    const { clarifyBeforeTurn } = await import("../verify/post-turn.js");
+    const clarifyNote = await clarifyBeforeTurn({
+      message,
+      space: payload.space,
+      firstPrompt: wasUntitled,
+      ask: (questions) => askUserFromRenderer(win, questions),
+      emit,
+      signal: abort.signal,
+    });
 
     try {
       await runAgent(
@@ -626,107 +577,23 @@ export function registerChatIPC(): void {
         );
       }
 
-      // The verification loop: after a turn that edited files, run the
-      // project's own checks and bounce any failure back as another turn —
-      // see verify/loop.ts. Not in Home (no workspace to check), and not on
-      // goal runs, where the goal driver owns continuation and the judge
-      // owns completion.
-      if (
-        !hadGoal &&
-        payload.space !== "home" &&
-        !abort.signal.aborted &&
-        lastRunEditedFiles(sessionId).length > 0
-      ) {
-        const { getVerifyConfig, knownRedFor } = await import("../verify/state.js");
-        const { isFeatureOn } = await import("../agent/features.js");
-        const cfg = getVerifyConfig();
-        if (cfg.enabled && isFeatureOn("verify")) {
-          const { runVerifyLoop } = await import("../verify/loop.js");
-          const outcome = await runVerifyLoop({
-            cwd,
-            runTurn: (prompt) => runAgent(sessionId, prompt, emit, runOptions),
-            isAborted: () => abort.signal.aborted,
-            emit,
-            maxAttempts: cfg.maxAttempts,
-            knownRed: knownRedFor(cwd),
-          });
-          // A loop that gave up leaves the same amber mark a failed turn does —
-          // the chat needs the user, and the sidebar should say so.
-          if (outcome.status === "gave-up")
-            getSessionStore().setLastError(
-              sessionId,
-              `Verification: ${outcome.failure?.check ?? "checks"} still failing`,
-            );
-        }
-
-        // A second reader: the diff goes to a fresh context that never saw
-        // the conversation. Runs AFTER the checks, so the reviewer reads a
-        // change that at least compiles — and once only. See verify/review.ts.
-        if (isFeatureOn("review") && reviewBaseline && !abort.signal.aborted) {
-          try {
-            const { diffSince } = await import("../agent/checkpoints.js");
-            const {
-              findingsPrompt,
-              parseReview,
-              reviewPrompt,
-              worthReviewing,
-            } = await import("../verify/review.js");
-            const diff = await diffSince(sessionId, cwd, reviewBaseline, 14_000);
-            const worth = worthReviewing(diff);
-            if (worth.ok && diff) {
-              emit({ type: "harness", text: "A second reader is looking at the change" });
-              const { runSubAgent } = await import("../agent/subagent.js");
-              const provider = getProviderManager().getActive();
-              const answer = await runSubAgent({
-                prompt: reviewPrompt(diff),
-                model: provider?.model ?? "",
-                cwd,
-                signal: abort.signal,
-              });
-              const outcome = parseReview(answer);
-              if (outcome.status === "findings" && !abort.signal.aborted) {
-                emit({
-                  type: "harness",
-                  text: `The reader found ${outcome.findings.length} thing${outcome.findings.length === 1 ? "" : "s"} to check`,
-                });
-                await runAgent(
-                  sessionId,
-                  findingsPrompt(outcome.findings),
-                  emit,
-                  runOptions,
-                );
-              } else {
-                emit({
-                  type: "harness",
-                  text:
-                    outcome.status === "clean"
-                      ? "The second reader found nothing"
-                      : "The second reader had nothing usable to say",
-                });
-              }
-            }
-          } catch {
-            /* a review that fails is a review that did not happen */
-          }
-        }
-
-        // Actually run it: a green typecheck says the code is well-formed,
-        // not that the page renders or that its first request returns 200.
-        // Starts the project's own dev server, opens the page out of sight,
-        // and hands back what went wrong. See verify/smoke.ts.
-        if (isFeatureOn("smoke") && !abort.signal.aborted) {
-          try {
-            const { runSmoke } = await import("../verify/smoke-run.js");
-            const { smokePrompt, smokeSummary } = await import("../verify/smoke.js");
-            emit({ type: "harness", text: "Starting the app to see if it runs" });
-            const outcome = await runSmoke(cwd, () => abort.signal.aborted);
-            emit({ type: "harness", text: smokeSummary(outcome) });
-            if (outcome.status === "problems" && !abort.signal.aborted)
-              await runAgent(sessionId, smokePrompt(outcome), emit, runOptions);
-          } catch {
-            /* a smoke run that fails is not the user's change being wrong */
-          }
-        }
+      // What follows a turn that changed files — the project's checks, a
+      // second reader, running the app. All three live in one place so a
+      // routine, an ACP session and the dev API get them too; see
+      // verify/post-turn.ts. Not on goal runs, where the driver owns
+      // continuation and the judge owns completion.
+      if (!hadGoal && lastRunEditedFiles(sessionId).length > 0) {
+        const { runPostTurnChecks } = await import("../verify/post-turn.js");
+        await runPostTurnChecks({
+          sessionId,
+          cwd,
+          space: payload.space,
+          reviewBaseline,
+          runTurn: (prompt) => runAgent(sessionId, prompt, emit, runOptions),
+          emit,
+          isAborted: () => abort.signal.aborted,
+          onGaveUp: (msg) => getSessionStore().setLastError(sessionId, msg),
+        });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";

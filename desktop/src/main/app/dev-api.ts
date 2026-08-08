@@ -78,7 +78,7 @@ interface ChatBody {
 
 /** Everything a caller needs to judge a run, in one payload. */
 interface TurnStep {
-  type: "text" | "reasoning" | "tool" | "tool_result" | "error";
+  type: "text" | "reasoning" | "tool" | "tool_result" | "error" | "harness";
   name?: string;
   input?: unknown;
   text?: string;
@@ -160,6 +160,13 @@ async function handleChat(body: ChatBody): Promise<unknown> {
       case "error":
         steps.push({ type: "error", text: ev.error });
         break;
+      // What the HARNESS did on its own — the reconnaissance phase, the
+      // second reader, the smoke run. Without these a harness step is
+      // invisible to anything driving the app from outside, and the only
+      // evidence it ran is a side effect somebody has to infer.
+      case "harness":
+        steps.push({ type: "harness", text: ev.text });
+        break;
       case "message_stop":
         stopReason = ev.stop_reason;
         break;
@@ -171,22 +178,54 @@ async function handleChat(body: ChatBody): Promise<unknown> {
     }
   };
 
+  // The same baseline the chat captures, so the second reader sees only
+  // what this turn changed.
+  const { captureReviewBaseline, clarifyBeforeTurn, runPostTurnChecks } =
+    await import("../verify/post-turn.js");
+  const reviewBaseline = await captureReviewBaseline(sessionId, cwd, space);
+
+  // The same question the chat asks. Nothing here can answer a dialog, so a
+  // run driven from outside sees the reader decide and then proceed — which
+  // is the behaviour worth checking: an unanswered question costs no turn.
+  const clarifyNote = await clarifyBeforeTurn({
+    message: body.message,
+    space,
+    firstPrompt: !body.sessionId,
+    ask: async () => ({ cancelled: true as const }),
+    emit: onEvent,
+    signal: abort.signal,
+  });
+
+  const runOptions = {
+    signal: abort.signal,
+    space,
+    cwd,
+    userMessageId,
+    memory: body.memory,
+    permissionMode: body.permissionMode ?? "bypassPermissions",
+    maxTurns: body.maxTurns ?? 24,
+    providerId: body.providerId,
+    modelOverride: body.model,
+    // No UI is attached: a tool that needs a human is refused rather than
+    // hanging the request until the timeout.
+    requestPermission: async () => "deny" as const,
+    askUser: async () => ({ cancelled: true as const }),
+    askPlanApproval: async () => ({ decision: "keep-planning" as const }),
+  };
+
   try {
-    await runAgent(sessionId, body.message, onEvent, {
-      signal: abort.signal,
-      space,
+    await runAgent(sessionId, body.message + clarifyNote, onEvent, runOptions);
+    // Whatever the harness does after a turn, it does here too — otherwise
+    // a harness driving the app from outside cannot see the features it is
+    // there to measure. One implementation: verify/post-turn.ts.
+    await runPostTurnChecks({
+      sessionId,
       cwd,
-      userMessageId,
-      memory: body.memory,
-      permissionMode: body.permissionMode ?? "bypassPermissions",
-      maxTurns: body.maxTurns ?? 24,
-      providerId: body.providerId,
-      modelOverride: body.model,
-      // No UI is attached: a tool that needs a human is refused rather than
-      // hanging the request until the timeout.
-      requestPermission: async () => "deny",
-      askUser: async () => ({ cancelled: true }),
-      askPlanApproval: async () => ({ decision: "keep-planning" as const }),
+      space,
+      reviewBaseline,
+      runTurn: (prompt) => runAgent(sessionId, prompt, onEvent, runOptions),
+      emit: onEvent,
+      isAborted: () => abort.signal.aborted,
     });
   } finally {
     clearTimeout(timer);

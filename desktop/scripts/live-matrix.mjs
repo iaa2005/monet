@@ -966,6 +966,110 @@ scenario('recon', null, async (api, ctx) => {
   }
 })
 
+// 13 ─ A second reader, on a bug a typecheck cannot see.
+//
+// The change compiles and is wrong: an early return that skips the unlock.
+// The verification loop is green on it, which is the whole reason this
+// exists — so the measurable claim is that a fresh context reads the diff
+// and the run does not end until somebody has looked.
+scenario('review', null, async (api, ctx) => {
+  const cfg = join(ctx.dataDir, 'agent-features.json')
+  writeFileSync(cfg, JSON.stringify({ review: true }), 'utf8')
+  const cwd = workspace({
+    'lock.js': [
+      'let held = false;',
+      '',
+      'export function withLock(fn) {',
+      '  held = true;',
+      '  fn();',
+      '  held = false;',
+      '}',
+      '',
+      'export function isHeld() {',
+      '  return held;',
+      '}',
+      '',
+    ].join('\n'),
+  })
+  try {
+    const t = await ask(api, {
+      message:
+        'In lock.js, make withLock return early without calling fn when the lock ' +
+        'is already held. Use the Edit tool. Reply with only: done',
+      cwd,
+      maxTurns: 10,
+    })
+    say(`    lock.js is now:\n${(read(cwd, 'lock.js') ?? '').replace(/^/gm, '      ')}`)
+    check('the model made the change', (read(cwd, 'lock.js') ?? '') !== '', read(cwd, 'lock.js'))
+    check('and the turn ended cleanly', t.stopReason !== 'error', t.stopReason)
+
+    // The harness says what it did, in its own events — the only evidence
+    // that does not require inferring the feature from a side effect.
+    const harness = (t.steps ?? []).filter((s) => s.type === 'harness').map((s) => s.text)
+    say(`    harness said: ${harness.join(' / ') || '(nothing)'}`)
+    check(
+      'A SECOND READER ACTUALLY LOOKED',
+      harness.some((h) => /second reader/i.test(h)),
+      harness,
+    )
+    check(
+      '…and reached a verdict rather than trailing off',
+      harness.some((h) => /found (nothing|\d+ thing)|nothing usable/i.test(h)),
+      harness,
+    )
+  } finally {
+    writeFileSync(cfg, JSON.stringify({ review: false }), 'utf8')
+    discard(cwd)
+  }
+})
+
+// 14 ─ Asking, before anything is built.
+//
+// A request with a real fork in it: "make the sessions list collapsible" —
+// collapsible groups, or a collapsible panel? Guess wrong and the work is
+// wasted. The check is not that it asks THIS question; it is that the
+// harness put the question to the user instead of the model guessing.
+scenario('clarify', null, async (api, ctx) => {
+  const cfg = join(ctx.dataDir, 'agent-features.json')
+  writeFileSync(cfg, JSON.stringify({ clarify: true }), 'utf8')
+  const cwd = workspace({ 'app.js': 'export const app = 1;\n' })
+  try {
+    const t = await ask(api, {
+      message:
+        'Make the sessions list in app.js collapsible. Reply with only: done',
+      cwd,
+      maxTurns: 6,
+      timeout: 180,
+    })
+    // No renderer is attached to answer a dialog, so the ask times out and
+    // the run proceeds — which is the property worth checking: an
+    // unanswered question must not hang or kill the turn.
+    const harness = (t.steps ?? []).filter((s) => s.type === 'harness').map((s) => s.text)
+    say(`    harness said: ${harness.join(' / ') || '(nothing)'}`)
+    check(
+      'A READER LOOKED AT THE REQUEST BEFORE ANY WORK',
+      harness.some((h) => /ambiguous/i.test(h)),
+      harness,
+    )
+    check(
+      '…and reached a decision, either way',
+      harness.some((h) =>
+        /only one way|Asking \d+ question|Nothing usable/i.test(h),
+      ),
+      harness,
+    )
+    check('the run finished anyway', t.stopReason !== '', t.stopReason)
+    check(
+      'AN UNANSWERED QUESTION DOES NOT COST THE TURN',
+      (t.steps ?? []).every((s) => s.type !== 'error'),
+      (t.steps ?? []).filter((s) => s.type === 'error'),
+    )
+  } finally {
+    writeFileSync(cfg, JSON.stringify({ clarify: false }), 'utf8')
+    discard(cwd)
+  }
+})
+
 // ─── Runner ─────────────────────────────────────────────────────────────
 
 if (!existsSync(MAIN)) {
