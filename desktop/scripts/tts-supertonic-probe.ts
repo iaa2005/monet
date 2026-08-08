@@ -40,7 +40,6 @@ const {
   voiceSlug,
 } = await import('../src/main/tts/custom-voices.js')
 const { isCustomVoice, customVoicePath } = await import('../src/main/tts/paths.js')
-const { mixStyles, mixCustomVoice, previewMix } = await import('../src/main/tts/voice-mix.js')
 const { readStyleFile, styleMapOf } = await import('../src/main/tts/style-map.js')
 const { mapCells, styleMap, MAP_SIZE } = await import('../src/shared/voice-map.js')
 
@@ -279,133 +278,6 @@ check(
 removeCustomVoice('F-марина')
 check('and the last one leaves nothing behind', listCustomVoices().length === 0)
 
-// ─── Blending ───────────────────────────────────────────────────────────
-//
-// The route that costs nothing: Supertone's builder wants $49 a voice and, as
-// of August 2026, sells none. A style is a point in a latent space, so the
-// average of two points is a third voice.
-
-const flatStyle = (ttlValue: number, dpValue: number): string =>
-  style(new Array(12_800).fill(ttlValue), new Array(128).fill(dpValue))
-writeFileSync(join(tempData, 'a.json'), flatStyle(0.01, 0.03), 'utf-8')
-writeFileSync(join(tempData, 'b.json'), flatStyle(0.03, 0.07), 'utf-8')
-const A = importCustomVoice({ path: join(tempData, 'a.json'), name: 'Alpha', gender: 'F' })
-const B = importCustomVoice({ path: join(tempData, 'b.json'), name: 'Beta', gender: 'M' })
-check('two voices to blend', A.ok && B.ok, { A, B })
-
-const half = mixStyles([
-  { id: A.id as string, weight: 1 },
-  { id: B.id as string, weight: 1 },
-])
-check('a 50/50 blend is produced', half.ok, half)
-if (half.ok) {
-  const j = JSON.parse(half.json) as {
-    style_ttl: { dims: number[]; data: number[] }
-    style_dp: { dims: number[]; data: number[] }
-  }
-  check(
-    'the shape the model needs is preserved exactly',
-    JSON.stringify(j.style_ttl.dims) === '[1,50,256]' &&
-      JSON.stringify(j.style_dp.dims) === '[1,8,16]' &&
-      j.style_ttl.data.length === 12_800 &&
-      j.style_dp.data.length === 128,
-  )
-  check(
-    'AND IT IS THE AVERAGE: 0.01 with 0.03 gives 0.02',
-    j.style_ttl.data.every((x) => Math.abs(x - 0.02) < 1e-9),
-    j.style_ttl.data[0],
-  )
-  check(
-    'the rhythm tensor travels too — not one parent\'s timing on the other\'s voice',
-    j.style_dp.data.every((x) => Math.abs(x - 0.05) < 1e-9),
-    j.style_dp.data[0],
-  )
-}
-// Weights are RATIOS. Doubling them must not double the tensor, or the blend
-// comes out shouting.
-const doubled = mixStyles([
-  { id: A.id as string, weight: 2 },
-  { id: B.id as string, weight: 2 },
-])
-const tensorsOf = (r: { ok: boolean; json?: string }): string =>
-  r.ok && r.json
-    ? JSON.stringify((JSON.parse(r.json) as { style_ttl: unknown; style_dp: unknown }).style_ttl) +
-      JSON.stringify((JSON.parse(r.json) as { style_dp: unknown }).style_dp)
-    : ''
-check(
-  'weights are normalised — 2:2 is the same voice as 1:1',
-  doubled.ok && half.ok && tensorsOf(doubled) === tensorsOf(half) && tensorsOf(half).length > 100,
-)
-const lopsided = mixStyles([
-  { id: A.id as string, weight: 3 },
-  { id: B.id as string, weight: 1 },
-])
-check(
-  'and a 3:1 blend leans where it should',
-  lopsided.ok &&
-    (JSON.parse(lopsided.json) as { style_ttl: { data: number[] } }).style_ttl.data.every(
-      (x) => Math.abs(x - 0.015) < 1e-9,
-    ),
-)
-check('one voice is not a blend', !mixStyles([{ id: A.id as string, weight: 1 }]).ok)
-check(
-  'and blending something that is not downloaded says which',
-  !mixStyles([{ id: 'M5', weight: 1 }, { id: A.id as string, weight: 1 }]).ok &&
-    /M5/.test(
-      (mixStyles([{ id: 'M5', weight: 1 }, { id: A.id as string, weight: 1 }]) as { error: string })
-        .error,
-    ),
-)
-
-const saved = mixCustomVoice({
-  parts: [
-    { id: A.id as string, weight: 1 },
-    { id: B.id as string, weight: 1 },
-  ],
-  name: 'Смесь',
-  gender: 'F',
-})
-check('a blend saves as a voice of its own', saved.ok && saved.id === 'F-смесь', saved)
-st = await ttsStatus()
-check('and joins the picker with the others', st.voices.some((v) => v.id === 'F-смесь'))
-
-// The payoff of drawing the map from the tensor rather than from the name:
-// a blend LOOKS like a blend. Every cell lies between its parents'.
-const mapA = mapCells(styleMapOf(customVoicePath(A.id as string)))
-const mapB = mapCells(styleMapOf(customVoicePath(B.id as string)))
-const mapMix = mapCells(styleMapOf(customVoicePath('F-смесь')))
-check(
-  'A BLEND LOOKS LIKE A BLEND — every cell sits between its parents',
-  mapMix.every((c, i) => c >= Math.min(mapA[i], mapB[i]) - 1 && c <= Math.max(mapA[i], mapB[i]) + 1),
-  { a: mapA.slice(0, 6), b: mapB.slice(0, 6), mix: mapMix.slice(0, 6) },
-)
-check(
-  'and it is not simply one of them',
-  mapMix.join('') !== mapA.join('') && mapMix.join('') !== mapB.join(''),
-)
-
-const prev = previewMix({
-  parts: [
-    { id: A.id as string, weight: 1 },
-    { id: B.id as string, weight: 1 },
-  ],
-  gender: 'M',
-})
-check('a preview can be heard before it is named', prev.ok && prev.id === 'M-preview', prev)
-check(
-  'AND THE PREVIEW IS INVISIBLE — it is not a voice in the list',
-  !listCustomVoices().some((v) => v.id === 'M-preview') &&
-    existsSync(customVoicePath('M-preview')),
-)
-check(
-  'a style file reads back as tensors, and rubbish reads back as null',
-  !!readStyleFile(customVoicePath('M-preview')) && readStyleFile(join(tempData, 'nope.json')) === null,
-)
-check('a wrong-length tensor gets no map at all', styleMap([1, 2, 3]) === null)
-
-for (const id of [A.id, B.id, 'F-смесь'] as string[]) removeCustomVoice(id)
-rmSync(customVoicePath('M-preview'), { force: true })
-
 // ─── The real synthesiser, when the model is on disk ────────────────────
 
 const realDirs = [
@@ -519,59 +391,29 @@ if (!ttsNativeAvailable()) {
       recomputed.filter((r) => !r.same).map((r) => r.id),
     )
 
-    // Sarah and James, half each: the blend has to be audible, not just
-    // arithmetically plausible. Two real presets, the real model, then gone.
-    const blend = previewMix({
-      parts: [
-        { id: 'F1', weight: 1 },
-        { id: 'M2', weight: 1 },
-      ],
-      gender: 'F',
-    })
-    check('two presets blend into a previewable voice', blend.ok, blend)
-    if (blend.ok && blend.id) {
-      const rb = await speak({ text: 'Это смешанный голос.', voice: blend.id, lang: 'ru', steps: 4 })
-      const bsec = rb.samplesBase64
-        ? Buffer.from(rb.samplesBase64, 'base64').length / 4 / (rb.sampleRate ?? 44100)
-        : 0
-      check('A BLENDED VOICE ACTUALLY SPEAKS', rb.ok && bsec > 0.5, {
-        seconds: +bsec.toFixed(1),
-        error: rb.error,
-      })
-      // Same words in a parent's voice: a different waveform, same length —
-      // it is a new voice, not one of the two.
-      const rp = await speak({ text: 'Это смешанный голос.', voice: 'F1', lang: 'ru', steps: 4 })
-      check(
-        'and it is not simply one of its parents',
-        rb.ok && rp.ok && rb.samplesBase64 !== rp.samplesBase64,
-      )
-      // Reported: "Voice process exited (SIGTERM)" on every Listen. Dropping
-      // the cached style used to KILL the child, and the dead child's exit
-      // handler failed the request the NEW child was already carrying — the
-      // pending map was shared by every child ever forked. Two previews and
-      // two synthesyses in a row is the exact sequence.
+    // Reported: "Voice process exited (SIGTERM)" on every Listen. Dropping a
+    // cached style used to KILL the child, and the dead child's exit handler
+    // failed the request the NEW child was already carrying — the pending map
+    // was shared by every child ever forked. A style file rewritten at the same
+    // path, twice, with a synthesis after each, is that sequence.
+    const reimport = importCustomVoice({ path: join(realDir, 'F1.json'), name: 'Churn', gender: 'F' })
+    if (reimport.id) {
       let sigterm = ''
-      for (const w of [1, 3]) {
-        const again = previewMix({
-          parts: [
-            { id: 'F1', weight: w },
-            { id: 'M2', weight: 4 - w },
-          ],
-          gender: 'F',
-        })
-        forgetVoiceStyle(again.id as string)
-        const r = await speak({ text: 'Проба.', voice: again.id as string, lang: 'ru', steps: 4 })
+      for (const from of ['M2.json', 'F5.json']) {
+        writeFileSync(customVoicePath(reimport.id), readFileSync(join(realDir, from), 'utf-8'), 'utf-8')
+        forgetVoiceStyle(reimport.id)
+        const r = await speak({ text: 'Проба.', voice: reimport.id, lang: 'ru', steps: 4 })
         if (!r.ok) sigterm = r.error ?? 'failed'
       }
-      check('DRAGGING THE SLIDER DOES NOT KILL THE SYNTHESISER', sigterm === '', sigterm)
-      // …and the 400 MB stays loaded: a second utterance right after a forget
-      // must not pay the two-second cold load again.
+      check('A RESTYLED VOICE DOES NOT KILL THE SYNTHESISER', sigterm === '', sigterm)
+      // …and the 400 MB stays loaded: forgetting one style must not cost the
+      // two-second cold load again.
       const tWarm = Date.now()
       await speak({ text: 'Ещё раз.', voice: 'F1', lang: 'ru', steps: 4 })
       const warmMs = Date.now() - tWarm
       check('and the model stays loaded — a warm synthesis is fast', warmMs < 2_500, { warmMs })
-      rmSync(customVoicePath(blend.id), { force: true })
-      check('the preview leaves nothing behind either', !existsSync(customVoicePath(blend.id)))
+      removeCustomVoice(reimport.id)
+      check('and it cleans up after itself', !existsSync(customVoicePath(reimport.id)))
     }
   }
 }

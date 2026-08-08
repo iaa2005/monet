@@ -386,35 +386,8 @@ export async function speak(p: {
   });
 }
 
-/**
- * Speak with a style passed by VALUE — what the voice fit needs, sixty times
- * in a row. Skips the catalogue entirely: there is no id, no file and nothing
- * to cache or invalidate.
- */
-export async function speakStyle(p: {
-  style: { ttl: number[]; dp: number[] };
-  text: string;
-  lang?: string;
-  steps?: number;
-  speed?: number;
-}): Promise<SpeakResult> {
-  if (!ttsNativeAvailable())
-    return { ok: false, error: "On-device voice is not available on this platform." };
-  if (!(await modelInstalled()))
-    return { ok: false, error: "The voice model is not downloaded yet." };
-  return dispatch({
-    voicePath: "",
-    style: p.style,
-    text: p.text,
-    lang: p.lang || "na",
-    steps: p.steps ?? 4,
-    speed: p.speed ?? 1.05,
-  });
-}
-
 async function dispatch(payload: {
   voicePath: string;
-  style?: { ttl: number[]; dp: number[] };
   text: string;
   lang: string;
   steps: number;

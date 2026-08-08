@@ -973,49 +973,6 @@ const electronAPI = {
       ipcRenderer.invoke("tts:importVoice", p),
     removeVoice: (id: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("tts:removeVoice", id),
-    mixVoice: (p: {
-      parts: { id: string; weight: number }[];
-      name: string;
-      gender: "F" | "M";
-    }): Promise<{ ok: boolean; id?: string; error?: string }> =>
-      ipcRenderer.invoke("tts:mixVoice", p),
-    previewMix: (p: {
-      parts: { id: string; weight: number }[];
-      gender: "F" | "M";
-    }): Promise<{ ok: boolean; id?: string; error?: string }> =>
-      ipcRenderer.invoke("tts:previewMix", p),
-    matcherStatus: (): Promise<{ installed: boolean; bytes: number; available: boolean }> =>
-      ipcRenderer.invoke("tts:matcherStatus"),
-    installMatcher: (): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke("tts:installMatcher"),
-    cancelMatcher: (): Promise<boolean> => ipcRenderer.invoke("tts:cancelMatcher"),
-    onMatcherProgress: (cb: (p: TtsProgress) => void): (() => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, p: TtsProgress): void => cb(p);
-      ipcRenderer.on("tts:matcherProgress", handler);
-      return () => ipcRenderer.off("tts:matcherProgress", handler);
-    },
-    fitVoice: (p: {
-      samplesBase64: string;
-      sampleRate: number;
-      lang?: string;
-    }): Promise<{
-      ok: boolean;
-      parts?: { id: string; weight: number }[];
-      score?: number;
-      baseScore?: number;
-      error?: string;
-    }> => ipcRenderer.invoke("tts:fitVoice", p),
-    cancelFit: (): Promise<boolean> => ipcRenderer.invoke("tts:cancelFit"),
-    onFitProgress: (
-      cb: (p: { step: number; total: number; best: number }) => void,
-    ): (() => void) => {
-      const handler = (
-        _e: Electron.IpcRendererEvent,
-        p: { step: number; total: number; best: number },
-      ): void => cb(p);
-      ipcRenderer.on("tts:fitProgress", handler);
-      return () => ipcRenderer.off("tts:fitProgress", handler);
-    },
     speak: (p: {
       text: string;
       voice: string;

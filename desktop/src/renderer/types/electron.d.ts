@@ -1039,34 +1039,6 @@ export interface ElectronAPI {
       gender: "F" | "M";
     }) => Promise<{ ok: boolean; id?: string; error?: string }>;
     removeVoice: (id: string) => Promise<{ ok: boolean }>;
-    mixVoice: (p: {
-      parts: { id: string; weight: number }[];
-      name: string;
-      gender: "F" | "M";
-    }) => Promise<{ ok: boolean; id?: string; error?: string }>;
-    previewMix: (p: {
-      parts: { id: string; weight: number }[];
-      gender: "F" | "M";
-    }) => Promise<{ ok: boolean; id?: string; error?: string }>;
-    matcherStatus: () => Promise<{ installed: boolean; bytes: number; available: boolean }>;
-    installMatcher: () => Promise<{ ok: boolean; error?: string }>;
-    cancelMatcher: () => Promise<boolean>;
-    onMatcherProgress: (cb: (p: TtsProgress) => void) => () => void;
-    fitVoice: (p: {
-      samplesBase64: string;
-      sampleRate: number;
-      lang?: string;
-    }) => Promise<{
-      ok: boolean;
-      parts?: { id: string; weight: number }[];
-      score?: number;
-      baseScore?: number;
-      error?: string;
-    }>;
-    cancelFit: () => Promise<boolean>;
-    onFitProgress: (
-      cb: (p: { step: number; total: number; best: number }) => void,
-    ) => () => void;
     speak: (p: {
       text: string;
       voice: string;

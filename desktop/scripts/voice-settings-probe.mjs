@@ -196,17 +196,14 @@ try {
       paid: /\\$49/.test(document.body.textContent || '') &&
         /Purchases Unavailable/.test(document.body.textContent || ''),
       importer: document.querySelectorAll('input[placeholder="Name it"]').length,
-      blend:
-        !!document.querySelector('[aria-label="First voice"]') &&
-        !!document.querySelector('[aria-label="Second voice"]') &&
-        !!document.querySelector('input[type="range"][aria-label="Blend"]'),
-      blendA: (document.querySelector('[aria-label="First voice"]')?.textContent || '').trim(),
-      blendB: (document.querySelector('[aria-label="Second voice"]')?.textContent || '').trim(),
-      fromRecording: /Build a voice from your recording/.test(document.body.textContent || ''),
-      // No matcher in this fixture, so the card must offer the download rather
-      // than a Record button that cannot work.
-      matcherOffered: /Download the voice matcher/.test(document.body.textContent || ''),
-      recordHidden: !/Find my voice/.test(document.body.textContent || ''),
+      // The whole tab used to be capped at max-w-md — half the panel, with the
+      // other half empty. Measured against the section it lives in.
+      sectionWidth: (() => {
+        const h = [...document.querySelectorAll('h3')].find(
+          (x) => (x.textContent || '').trim() === 'Voice',
+        );
+        return h?.parentElement ? Math.round(h.parentElement.getBoundingClientRect().width) : 0;
+      })(),
       bodyOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   })())`);
@@ -242,30 +239,14 @@ try {
     { x: [...new Set(rows.map((r) => r.x))], w: [...new Set(rows.map((r) => r.w))], n: rows.length },
   );
   check("nothing is clipped inside a card", rows.every((r) => !r.clipped));
+  check(
+    "AND THE CARDS FILL THE PANEL — no max-w-md leaving half of it empty",
+    rows.length > 0 && rows[0].w >= (ui.sectionWidth ?? 0) - 4,
+    { card: rows[0]?.w, section: ui.sectionWidth },
+  );
   check("and the page itself does not scroll sideways", (ui.bodyOverflow ?? 0) <= 0, ui.bodyOverflow);
   check("the saved language shows as a language, with its flag", /Russian/.test(ui.lang ?? ""), ui.lang);
-  check(
-    "BLENDING IS OFFERED — two pickers and a slider",
-    !!ui.blend,
-    ui.blend,
-  );
-  // Both pickers came up EMPTY the first time: they can only offer voices that
-  // are installed, and the defaults were two ids that were not.
-  check(
-    "…and both pickers name a voice that is actually here",
-    !!ui.blendA && !!ui.blendB && ui.blendA !== ui.blendB,
-    { a: ui.blendA, b: ui.blendB },
-  );
-  check("and importing a file, with its own name box", ui.importer === 2, ui.importer);
-  check(
-    "BUILDING ONE FROM A RECORDING IS OFFERED",
-    !!ui.fromRecording,
-  );
-  check(
-    "…and until the matcher is downloaded it asks for that, not for a recording",
-    !!ui.matcherOffered && !!ui.recordHidden,
-    { offered: ui.matcherOffered, recordHidden: ui.recordHidden },
-  );
+  check("importing a file is offered, with one name box", ui.importer === 1, ui.importer);
   check("the official builder is linked", !!ui.builder);
   check(
     "and what it costs is not hidden — $49, currently selling none",
@@ -278,7 +259,7 @@ try {
   const base = resolve(process.env.VOICE_SHOT ?? join(tmpdir(), "voice-settings.png"));
   for (const [suffix, selector] of [
     ["cards", `svg[viewBox="0 0 12 12"]`],
-    ["blend", `input[type="range"][aria-label="Blend"]`],
+    ["own", `input[placeholder="Name it"]`],
   ]) {
     await cdp.eval(
       `(document.querySelector('${selector}')?.closest('div.rounded-xl'))?.scrollIntoView({ block: 'center' }), true`,

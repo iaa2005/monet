@@ -47,9 +47,8 @@ theirs too, and it is a better description of a voice than any adjective.
 
 Each card carries a **voice map**: a 12×12 picture of the voice's own style
 tensor — how it differs from the average of the ten. It is computed, not
-shipped, so an imported or blended voice has one too, and a blend visibly sits
-between its parents. (Supertone's cards do the same thing; their mixer draws
-the tensor as a heatmap.)
+shipped, so an imported voice has one too. (Supertone's cards do the same
+thing; their mixer draws the tensor as a heatmap.)
 
 ## The language it reads with
 
@@ -67,52 +66,15 @@ off, that was why.
 ## A voice of your own
 
 A voice here is not a model — it is two style tensors in a JSON file, and the
-398 MB model speaks with whichever pair it is handed. There are four ways to
-get a new pair, and the paid one is the one that no longer works.
+398 MB model speaks with whichever pair it is handed. Two ways to get a new
+pair, and the paid one is the one that no longer works.
 
-### From your own recording (free, offline, in the app)
-
-**Settings → Voice → Build a voice from your recording.** Say anything for a
-few seconds (or drop in an audio file). One extra 29 MB model — a CAM++
-speaker embedder, run through the sherpa-onnx that already ships for GigaAM —
-turns a clip into a vector describing *who* is speaking. Then the app searches:
-
-```
-speak a candidate → embed it → cosine against your recording → keep the best
-```
-
-The candidates are blends of the ten presets, so there are ten numbers to fit
-rather than 12 928, and the loop is a (1+λ) evolution strategy: score all ten,
-then perturb the weights, keep improvements, shrink the step when a round
-brings none. About sixty real syntheses, two minutes, cancellable, and the
-match score is shown because it is the honest number in the feature.
-
-What you get is **the closest voice the model can build out of what it has** —
-a family resemblance, not a clone. There is no style encoder in the released
-model, so nothing on this machine can do better; the ceiling is the ten
-presets and the space between them.
-
-Verified rather than hoped: given Daniel's own synthesised speech as the
-"recording", the search comes back with Daniel at 98% (`npm run
-smoke:voicefit`).
-
-### Blend two voices (free, offline, in the app)
-
-**Settings → Voice → Blend a new voice.** A style is a point in a latent space,
-so a convex combination of two points is a third voice. Pick two, drag the
-slider, press *Listen*, name it, save. Both tensors are blended — the timbre
-(`style_ttl`) and the rhythm (`style_dp`), because one parent's timing on the
-other's voice sounds like the wrong person's pacing — and the weights are
-normalised, so 2:2 is the same voice as 1:1 rather than one twice as loud.
-
-*Listen* writes the blend under a fixed unregistered id, so it can be heard
-without becoming a voice in the list. This is the same idea as
-[Topping1's Supertonic-Voice-Mixer][mixer] (from [issue #44][issue], where
-Supertone also confirmed there is no voice cloning in the released model),
-minus the Python GUI.
-
-[mixer]: https://github.com/Topping1/Supertonic-Voice-Mixer
-[issue]: https://github.com/supertone-inc/supertonic/issues/44
+An earlier version of this app tried a third: search for the blend of the ten
+presets that best matches a recording, scored by a speaker-embedding model. It
+is removed. Tested on a real voice it did not resemble it at all, and the
+reason is structural — blending styles pulls the result towards the AVERAGE
+voice, and a particular person is nowhere near the average. Both the blender
+and the search are gone rather than left in to disappoint.
 
 ### Import a style file
 
@@ -129,8 +91,8 @@ You can listen there and not download.
 
 ### Clone properly (third-party, heavy)
 
-The app's search is bounded by the ten presets. To go past them the tensor
-itself has to be optimised, which needs gradients and a speaker-identity model:
+To build a voice from a recording the tensor itself has to be optimised, which
+needs gradients and a speaker-identity model:
 [voice-builder-for-supertonic-3][clone] does exactly that (SpeechBrain's
 ECAPA-TDNN). It is a notebook with PyTorch, it takes real time, and its own
 README promises "a close, recognizable likeness rather than a studio-perfect

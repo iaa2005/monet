@@ -9,7 +9,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Blend,
   Check,
   Download,
   ExternalLink,
@@ -23,7 +22,6 @@ import {
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 import { SttModelPicker } from "@/components/chat/SttModelPicker";
-import { VoiceFromRecording } from "@/components/settings/VoiceFromRecording";
 import type { ElectronAPI, TtsProgress, TtsStatus } from "@/types/electron";
 import { WHISPER_TIERS, DEFAULT_WHISPER } from "@shared/whisper-tier";
 import { AUTO_LANG, TTS_LANGS, speechLangFor } from "@shared/tts-langs";
@@ -142,11 +140,6 @@ export function VoiceSettings(): JSX.Element {
   const [speaking, setSpeaking] = useState(false);
   const [newName, setNewName] = useState("");
   const [newGender, setNewGender] = useState<"F" | "M">("F");
-  const [mixA, setMixA] = useState("F1");
-  const [mixB, setMixB] = useState("M2");
-  const [mixW, setMixW] = useState(50);
-  const [mixName, setMixName] = useState("");
-  const [mixGender, setMixGender] = useState<"F" | "M">("F");
   const audioRef = useRef<AudioBufferSourceNode | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
 
@@ -225,47 +218,6 @@ export function VoiceSettings(): JSX.Element {
       });
   };
 
-  // The blend pickers can only offer what is installed, and that list is not
-  // known until the status arrives — a value outside it leaves the trigger
-  // blank, which is how this shipped the first time.
-  useEffect(() => {
-    const ids = (tts?.voices ?? []).filter((v) => v.installed).map((v) => v.id);
-    if (ids.length < 2) return;
-    setMixA((a) => (ids.includes(a) ? a : ids[0]));
-    setMixB((b) => (ids.includes(b) && b !== ids[0] ? b : ids[ids.length - 1]));
-  }, [tts]);
-
-  const mixParts = (): { id: string; weight: number }[] => [
-    { id: mixA, weight: 100 - mixW },
-    { id: mixB, weight: mixW },
-  ];
-
-  /** Hear the blend before it has a name: main writes it under a fixed
-   * unregistered id, so it is speakable and never appears in the picker. */
-  const playMix = async (): Promise<void> => {
-    setTtsError(null);
-    const r = await api()?.tts.previewMix({ parts: mixParts(), gender: mixGender });
-    if (!r?.ok || !r.id) {
-      setTtsError(r?.error ?? "Blend failed");
-      return;
-    }
-    await playTest(r.id);
-  };
-
-  const saveMix = (): void => {
-    setTtsError(null);
-    void api()
-      ?.tts.mixVoice({ parts: mixParts(), name: mixName, gender: mixGender })
-      .then((r) => {
-        if (r?.error) setTtsError(r.error);
-        if (r?.ok && r.id) {
-          setMixName("");
-          save("ttsVoice", r.id, setTtsVoice);
-        }
-        refreshTts();
-      });
-  };
-
   const playTest = async (voice = ttsVoice): Promise<void> => {
     stopTest();
     setSpeaking(true);
@@ -307,11 +259,6 @@ export function VoiceSettings(): JSX.Element {
     }
   };
 
-  // Only what is actually on disk can be blended: the maths reads the style
-  // files. A preset arrives the moment it is selected once.
-  const mixable = (tts?.voices ?? []).filter((v) => v.installed);
-  const enoughToMix = mixable.length >= 2;
-
   return (
     <div className="space-y-8">
       {/* ── Dictation ─────────────────────────────────────────────────── */}
@@ -344,14 +291,14 @@ export function VoiceSettings(): JSX.Element {
         </div>
 
         {engine === "ondevice" ? (
-          <div className="max-w-md">
+          <div className="">
             <SttModelPicker
               selected={nativeModel}
               onSelect={(v) => save("nativeModel", v, setNativeModel)}
             />
           </div>
         ) : engine === "local" ? (
-          <div className="flex max-w-md gap-1.5">
+          <div className="flex gap-1.5">
             <Select
               ariaLabel="Local model"
               value={localModel}
@@ -382,7 +329,7 @@ export function VoiceSettings(): JSX.Element {
             />
           </div>
         ) : (
-          <div className="flex max-w-md flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <input
               value={endpoint}
               onChange={(e) => save("endpoint", e.target.value, setEndpoint)}
@@ -421,7 +368,7 @@ export function VoiceSettings(): JSX.Element {
 
         {/* What the synthesiser is TOLD the text is: it does not detect the
             language, the tag around the text decides the mouth. */}
-        <div className="mb-3 flex max-w-md items-center justify-between gap-2 rounded-xl border border-border p-3">
+        <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-border p-3">
           <div className="min-w-0">
             <div className="text-sm font-medium">Speech language</div>
             <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
@@ -449,7 +396,7 @@ export function VoiceSettings(): JSX.Element {
         {!tts ? (
           <Loader2 className="size-4 animate-spin text-muted-foreground" />
         ) : !tts.installed ? (
-          <div className="max-w-md">
+          <div className="">
             {ttsProgress ? (
               <div className="flex items-center gap-2">
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/[0.1]">
@@ -482,7 +429,7 @@ export function VoiceSettings(): JSX.Element {
             )}
           </div>
         ) : (
-          <div className="max-w-md space-y-3">
+          <div className="space-y-3">
             {/* One column: a name, a line about the voice and a picture do not
                 fit side by side without the description wrapping mid-word. */}
             <div className="flex flex-col gap-1.5">
@@ -545,104 +492,6 @@ export function VoiceSettings(): JSX.Element {
                 </div>
               ))}
             </div>
-
-            {/* Blending. A style is a point in a latent space and the average
-                of two points is another voice — the only route to a voice of
-                your own that is free, offline and needs no encoder. */}
-            <div className="rounded-xl border border-border p-3">
-              <div className="text-sm font-medium">Blend a new voice</div>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
-                Two voices, mixed. The result is a voice that did not exist,
-                built out of files already on this machine.
-              </p>
-              {!enoughToMix && (
-                // Only the first voice comes with the model; the rest arrive
-                // when selected. Nothing to blend with one.
-                <p className="mt-2 text-[12px] text-muted-foreground/80">
-                  Pick a second voice from the list above first — each is a
-                  0.3 MB download, and a blend needs two.
-                </p>
-              )}
-              <div
-                className={cn(
-                  "mt-2.5 flex items-center gap-2",
-                  !enoughToMix && "pointer-events-none opacity-40",
-                )}
-              >
-                <Select
-                  ariaLabel="First voice"
-                  value={mixA}
-                  onChange={setMixA}
-                  className="w-28 shrink-0 justify-between"
-                  contentClassName="max-h-72"
-                  options={mixable.map((v) => ({ value: v.id, label: v.name }))}
-                />
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={mixW}
-                  aria-label="Blend"
-                  onChange={(e) => setMixW(Number(e.target.value))}
-                  className="h-1 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-border accent-brand [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand"
-                />
-                <Select
-                  ariaLabel="Second voice"
-                  value={mixB}
-                  onChange={setMixB}
-                  className="w-28 shrink-0 justify-between"
-                  contentClassName="max-h-72"
-                  options={mixable.map((v) => ({ value: v.id, label: v.name }))}
-                />
-              </div>
-              <div className="mt-1 text-center text-[11px] tabular-nums text-muted-foreground">
-                {100 - mixW}% / {mixW}%
-              </div>
-              <div
-                className={cn(
-                  "mt-2 flex items-center gap-1.5",
-                  !enoughToMix && "pointer-events-none opacity-40",
-                )}
-              >
-                <input
-                  value={mixName}
-                  onChange={(e) => setMixName(e.target.value)}
-                  placeholder="Name it"
-                  spellCheck={false}
-                  className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-link"
-                />
-                <GenderPick value={mixGender} onChange={setMixGender} />
-                <button
-                  type="button"
-                  onClick={() => (speaking ? stopTest() : void playMix())}
-                  className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[12px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                >
-                  {speaking ? <Square className="size-3.5" /> : <Play className="size-3.5" />}
-                  Listen
-                </button>
-                <button
-                  type="button"
-                  onClick={saveMix}
-                  disabled={!mixName.trim() || mixA === mixB}
-                  className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[12px] transition-colors hover:bg-black/[0.04] disabled:opacity-40 dark:hover:bg-white/[0.06]"
-                >
-                  <Blend className="size-3.5" />
-                  Save
-                </button>
-              </div>
-            </div>
-
-            <VoiceFromRecording
-              lang={ttsLang === AUTO_LANG ? "ru" : ttsLang}
-              speaking={speaking}
-              onStop={stopTest}
-              onListen={(id) => void playTest(id)}
-              onError={setTtsError}
-              onSaved={(id) => {
-                save("ttsVoice", id, setTtsVoice);
-                refreshTts();
-              }}
-            />
 
             {/* Importing. The file is the whole voice — the 398 MB model above
                 speaks with whichever style pair it is handed. */}
@@ -716,7 +565,7 @@ export function VoiceSettings(): JSX.Element {
           </div>
         )}
         {ttsError && (
-          <div className="mt-2 max-w-md rounded-md bg-destructive/10 px-2 py-1 text-[12px] text-destructive">
+          <div className="mt-2 rounded-md bg-destructive/10 px-2 py-1 text-[12px] text-destructive">
             {ttsError}
           </div>
         )}
