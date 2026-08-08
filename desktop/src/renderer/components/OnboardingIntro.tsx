@@ -42,6 +42,7 @@ import {
 import type { ElectronAPI, SttModelStatus, UiVault } from "@/types/electron";
 import { ObsidianIcon } from "@/components/ObsidianIcon";
 import { CodeThemePicker } from "@/components/settings/CodeThemePicker";
+import { ProfileSection } from "@/components/settings/ProfileSection";
 import {
   STEPS,
   progressAt,
@@ -177,12 +178,6 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
   const step: StepId = STEPS[index]?.id ?? "welcome";
   const [saving, setSaving] = useState(false);
 
-  // ── About you ──
-  const [name, setName] = useState("");
-  const [about, setAbout] = useState("");
-  const [gallery, setGallery] = useState<{ url: string; dataUrl: string }[]>([]);
-  const [picked, setPicked] = useState<string | null>(null);
-
   // ── Where your data lives ──
   const [dir, setDir] = useState("");
   const [dirDefault, setDirDefault] = useState(true);
@@ -195,7 +190,7 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
    * A counter rather than a flag: choosing twice has to re-read twice. */
   const [adopted, setAdopted] = useState(0);
 
-  // ── How it looks ──
+  // ── Choose theme ──
   const [dark, setDark] = useState(
     () => document.documentElement.classList.contains("dark"),
   );
@@ -228,28 +223,17 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
   const last = index === STEPS.length - 1;
 
   const finish = useCallback(async (): Promise<void> => {
+    // Nothing to collect: every screen saves as you use it — the profile
+    // section autosaves, a model downloads where it lives, a vault is added
+    // when it is chosen. All that is left is to stop asking.
     setSaving(true);
-    try {
-      const patch: { name?: string; about?: string; fullName?: string } = {};
-      const trimmed = name.trim();
-      if (trimmed) {
-        patch.name = trimmed;
-        patch.fullName = trimmed;
-      }
-      if (about.trim()) patch.about = about.trim();
-      if (Object.keys(patch).length) await api()?.profile.set(patch);
-      if (picked) await api()?.profile.setAvatarUrl(picked);
-    } catch {
-      /* best-effort — never trap somebody on the setup */
-    } finally {
-      // In the file, not localStorage: the flag belongs to the DATA FOLDER,
-      // and localStorage is keyed by origin — which in dev carries vite's
-      // port. See lib/first-run.ts.
-      await api()?.settings.setUiPrefs({ onboarded: true }).catch(() => {});
-      setSaving(false);
-      onDone();
-    }
-  }, [about, name, picked, onDone]);
+    // In the file, not localStorage: the flag belongs to the DATA FOLDER, and
+    // localStorage is keyed by origin — which in dev carries vite's port.
+    // See lib/first-run.ts.
+    await api()?.settings.setUiPrefs({ onboarded: true }).catch(() => {});
+    setSaving(false);
+    onDone();
+  }, [onDone]);
 
   const advance = (): void => {
     if (last) void finish();
@@ -257,35 +241,6 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
   };
 
   // ── Loads, each when its step arrives and not before ──
-
-  // Whatever the current data folder already knows about you.
-  //
-  // These fields used to start empty and only ever be written, which was fine
-  // for a genuinely first run and wrong the moment somebody points the setup
-  // at a folder they have been using: it offered to write a name over the one
-  // already there, showing a blank box as if there were none. Keyed on
-  // `adopted` so choosing a folder re-reads it.
-  useEffect(() => {
-    if (step !== "you") return;
-    let alive = true;
-    void api()
-      ?.profile.get()
-      .then((p) => {
-        if (!alive || !p) return;
-        setName((v) => v || p.name || p.fullName || "");
-        setAbout((v) => v || p.about || "");
-      })
-      .catch(() => {});
-    void api()
-      ?.profile.gallery()
-      .then((r) => {
-        if (alive && r?.ok && r.items) setGallery(r.items);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [step, adopted]);
 
   useEffect(() => {
     if (step !== "folder" || dir) return;
@@ -490,8 +445,15 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
           at eye level instead of clinging to the top edge, and the buttons
           stay where they were on the previous screen — the same place on
           every one of them, at the bottom. */}
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 py-6">
-        <div className="w-full max-w-2xl">
+      <div className="flex min-h-0 flex-1 overflow-y-auto px-6 py-6">
+        {/* `m-auto`, NOT `items-center justify-center`.
+            Centring a flex child that is TALLER than its scroll container
+            pushes the overflow off BOTH ends, and the part above the
+            container's top cannot be scrolled to at all — reported on the
+            theme step, where the light-theme grid was simply unreachable.
+            Auto margins centre while there is room and collapse to zero when
+            there is not, which is the whole difference. */}
+        <div className="m-auto w-full max-w-2xl">
         {step === "welcome" ? (
           <div className="animate-in fade-in duration-500">
             <div className="text-left">
@@ -556,48 +518,13 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
               )}
 
               {step === "you" && (
-                <div className="space-y-4">
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Your name"
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground/25"
-                  />
-                  <textarea
-                    value={about}
-                    onChange={(e) => setAbout(e.target.value)}
-                    placeholder="What you work on, how you like things done…"
-                    rows={3}
-                    className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-foreground/25"
-                  />
-                  {gallery.length > 0 && (
-                    <div>
-                      <div className="text-[13px] text-muted-foreground">
-                        Pick a face — Monet, naturally.
-                      </div>
-                      <div className="mt-2 grid grid-cols-6 gap-2">
-                        {gallery.slice(0, 12).map((g) => (
-                          <button
-                            key={g.url}
-                            type="button"
-                            onClick={() => setPicked(g.url)}
-                            className={
-                              picked === g.url
-                                ? "aspect-square overflow-hidden rounded-full ring-2 ring-brand"
-                                : "aspect-square overflow-hidden rounded-full opacity-80 transition-opacity hover:opacity-100"
-                            }
-                          >
-                            <img
-                              src={g.dataUrl}
-                              alt=""
-                              className="size-full object-cover"
-                            />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                /* The Settings section itself: the avatar with its Monet
+                   carousel, the full name, what to call you, what you do, and
+                   the instructions that ride into every chat. It autosaves, so
+                   there is nothing for this screen to collect or write — and a
+                   second, smaller set of fields would have been a second place
+                   for the same five values to disagree. */
+                <ProfileSection heading={false} />
               )}
 
               {step === "look" && (

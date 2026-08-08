@@ -251,7 +251,14 @@ function MonetPicker({
 
 // ── Profile rows ──────────────────────────────────────────────────────────
 
-export function ProfileSection(): JSX.Element {
+/**
+ * @param heading — false where the surrounding screen already names it (the
+ * first-run setup's "About you"), true in Settings, where the page is a list
+ * of sections and each needs its own title.
+ */
+export function ProfileSection({
+  heading = true,
+}: { heading?: boolean } = {}): JSX.Element {
   const [name, setName] = useState("");
   const [fullName, setFullName] = useState("");
   const [work, setWork] = useState("");
@@ -300,7 +307,11 @@ export function ProfileSection(): JSX.Element {
   return (
     <section>
       <div className="flex items-baseline justify-between">
-        <h3 className="text-base font-semibold">Profile</h3>
+        {heading ? (
+          <h3 className="text-base font-semibold">Profile</h3>
+        ) : (
+          <span />
+        )}
         {notice && (
           <span className="text-xs text-muted-foreground">{notice}</span>
         )}

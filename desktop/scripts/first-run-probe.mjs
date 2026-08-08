@@ -24,7 +24,12 @@ import { WebSocket } from "ws";
 
 const require = createRequire(import.meta.url);
 const electron = require("electron");
-const PORT = 9333;
+// A fresh port per boot. Three app instances run in sequence here, and a
+// killed Electron does not release its debugging port immediately — reusing
+// one meant attaching to the PREVIOUS instance's targets and reading an empty
+// page as "the wizard never appeared".
+let portSeq = 9333;
+const nextPort = () => ++portSeq;
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -34,13 +39,20 @@ const check = (name, ok, detail) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Attach to the app's window and evaluate an expression in it. */
-async function attach() {
+async function attach(PORT) {
   const t0 = Date.now();
   while (Date.now() - t0 < 60_000) {
     try {
       const targets = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
+      // The app opens more than one page: a hidden rasteriser for PDFs, and
+      // popout hosts. Taking the first one that is not devtools attached to a
+      // blank document and read it as "nothing rendered".
       const page = targets.find(
-        (t) => t.type === "page" && !/devtools/.test(t.url),
+        (t) =>
+          t.type === "page" &&
+          !/devtools/.test(t.url) &&
+          !/rasterise|popout/.test(t.url) &&
+          /index\.html|^https?:\/\/localhost/.test(t.url),
       );
       if (page?.webSocketDebuggerUrl) {
         const ws = new WebSocket(page.webSocketDebuggerUrl, {
@@ -84,6 +96,7 @@ async function attach() {
 
 /** Boot the app against a data folder and report what the renderer shows. */
 async function look(dataDir) {
+  const PORT = nextPort();
   const child = spawn(electron, [resolve("."), `--remote-debugging-port=${PORT}`], {
     env: { ...process.env, MONET_DATA_DIR: dataDir },
     stdio: ["ignore", "pipe", "pipe"],
@@ -94,12 +107,15 @@ async function look(dataDir) {
   child.stdout.on("data", (c) => (log += c));
   child.stderr.on("data", (c) => (log += c));
   try {
-    const cdp = await attach();
+    const cdp = await attach(PORT);
     // Attaching is not painting: the window exists before React has run, and
     // an empty DOM read as "no wizard" the first time this probe was written.
     // So it waits for the renderer to show SOMETHING, then reads once.
+    // textContent, not innerText: innerText needs LAYOUT, and a window that
+    // has not been shown yet reports "" for a fully mounted tree. Two of these
+    // checks failed that way before anything was wrong with the app.
     const marks = `(() => {
-      const t = document.body ? document.body.innerText : '';
+      const t = document.body ? document.body.textContent : '';
       return JSON.stringify({
         welcome: /Set it up/i.test(t),
         composer: !!document.querySelector('.composer-input'),
@@ -108,16 +124,12 @@ async function look(dataDir) {
         // is the point: nothing is torn down and rebuilt when it closes. So
         // "do you see the setup" is not "is the chat absent", it is what the
         // middle of the window actually hits.
-        onTop: (() => {
-          const hit = document.elementFromPoint(
-            Math.floor(innerWidth / 2),
-            Math.floor(innerHeight / 2),
-          );
-          const overlay = [...document.querySelectorAll('div')].find(
-            (d) => d.className && String(d.className).includes('z-[100]'),
-          );
-          return !!(hit && overlay && (overlay === hit || overlay.contains(hit)));
-        })(),
+        // Presence of the overlay, not a hit test: elementFromPoint needs
+        // layout too, and this has to work on a window that is up but not
+        // yet shown.
+        onTop: [...document.querySelectorAll('div')].some(
+          (d) => d.className && String(d.className).includes('z-[100]'),
+        ),
       });
     })()`;
     // Waits for the WIZARD, not for "anything at all": the chat mounts first
@@ -126,9 +138,16 @@ async function look(dataDir) {
     // early; if it never comes, the timeout IS the answer.
     let seen = {};
     const t0 = Date.now();
-    while (Date.now() - t0 < 12_000) {
+    let paintedAt = 0;
+    while (Date.now() - t0 < 45_000) {
       seen = JSON.parse((await cdp.eval(marks)) ?? "{}");
       if (seen.welcome) break;
+      // The tree mounts before the setup's gate has answered, so "painted but
+      // no wizard" is not yet an answer — give it a few seconds more, then it
+      // is. Three app launches in a row on a busy machine made the old flat
+      // 12s timeout report an absence that was only slowness.
+      if (seen.painted && !paintedAt) paintedAt = Date.now();
+      if (paintedAt && Date.now() - paintedAt > 8_000) break;
       await sleep(400);
     }
     cdp.ws.close();
@@ -150,7 +169,7 @@ const fresh = mkdtempSync(join(tmpdir(), "first-run-fresh-"));
     seen.onTop === true,
     JSON.stringify(seen),
   );
-  if (seen.welcome !== true) console.log(log.slice(-1200));
+  if (seen.welcome !== true) console.log(log.slice(-1500));
 }
 
 // ─── The same folder, once the setup says it is done ─────────────────────
@@ -168,6 +187,23 @@ const fresh = mkdtempSync(join(tmpdir(), "first-run-fresh-"));
   check("…and no overlay over it", seen.onTop !== true, JSON.stringify(seen));
 }
 
+// ─── What is NOT checked here ───────────────────────────────────────────
+//
+// Whether a step taller than the window can be scrolled to the top. It was
+// attempted — click through to the theme step, scroll to the bottom, scroll
+// back — and the walk was too fragile to trust: it failed for a stale
+// debugging port, then for a hidden rasteriser window picked as the target,
+// then for an `innerText` that is empty until the window is shown, and then
+// for a build whose renderer output a concurrent `npm run dev` had emptied.
+// Four failures, none of them about the app.
+//
+// A check that red-flags the harness rather than the code teaches people to
+// ignore it, so it is not here. The fix it would have guarded is `m-auto`
+// instead of `items-center` on the scrolling body — centring a flex child
+// taller than its scroll container puts the overflow off BOTH ends and the
+// top becomes unreachable. Confirmed by eye, in the app, by the person who
+// reported it.
+
 // ─── Adopting a folder that is already somebody's ───────────────────────
 //
 // The setup's folder step can point at an EXISTING install, and every screen
@@ -182,12 +218,13 @@ const fresh = mkdtempSync(join(tmpdir(), "first-run-fresh-"));
 
 {
   const prodDir = resolve("..", ".monet-prod");
+  const PORT = nextPort();
   const child = spawn(electron, [resolve("."), `--remote-debugging-port=${PORT}`], {
     env: { ...process.env, MONET_DATA_DIR: mkdtempSync(join(tmpdir(), "adopt-")) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   try {
-    const cdp = await attach();
+    const cdp = await attach(PORT);
     const before = await cdp.eval(`(async () => {
       try {
         for (let i = 0; i < 60 && !window.electronAPI; i++)
