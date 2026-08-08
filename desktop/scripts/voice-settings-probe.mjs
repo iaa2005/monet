@@ -202,6 +202,11 @@ try {
         !!document.querySelector('input[type="range"][aria-label="Blend"]'),
       blendA: (document.querySelector('[aria-label="First voice"]')?.textContent || '').trim(),
       blendB: (document.querySelector('[aria-label="Second voice"]')?.textContent || '').trim(),
+      fromRecording: /Build a voice from your recording/.test(document.body.textContent || ''),
+      // No matcher in this fixture, so the card must offer the download rather
+      // than a Record button that cannot work.
+      matcherOffered: /Download the voice matcher/.test(document.body.textContent || ''),
+      recordHidden: !/Find my voice/.test(document.body.textContent || ''),
       bodyOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   })())`);
@@ -252,6 +257,15 @@ try {
     { a: ui.blendA, b: ui.blendB },
   );
   check("and importing a file, with its own name box", ui.importer === 2, ui.importer);
+  check(
+    "BUILDING ONE FROM A RECORDING IS OFFERED",
+    !!ui.fromRecording,
+  );
+  check(
+    "…and until the matcher is downloaded it asks for that, not for a recording",
+    !!ui.matcherOffered && !!ui.recordHidden,
+    { offered: ui.matcherOffered, recordHidden: ui.recordHidden },
+  );
   check("the official builder is linked", !!ui.builder);
   check(
     "and what it costs is not hidden — $49, currently selling none",

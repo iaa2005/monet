@@ -87,6 +87,9 @@ export default defineConfig({
           'gigaam-child': resolve('src/main/stt/gigaam.child.ts'),
           // The Supertonic 3 voice: same isolation, its own onnxruntime.
           'supertonic-child': resolve('src/main/tts/supertonic.child.ts'),
+          // The speaker embedder behind "build a voice from a recording":
+          // sherpa-onnx again, so the same rule applies.
+          'embed-child': resolve('src/main/tts/embed.child.ts'),
           // Document OCR: a 1B vision model whose generation runs for
           // minutes. In main it would stall every IPC channel in the app.
           'ocr-child': resolve('src/main/ocr/ocr.child.ts'),

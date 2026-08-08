@@ -67,8 +67,34 @@ off, that was why.
 ## A voice of your own
 
 A voice here is not a model — it is two style tensors in a JSON file, and the
-398 MB model speaks with whichever pair it is handed. There are three ways to
-get a new pair, and only one of them is free.
+398 MB model speaks with whichever pair it is handed. There are four ways to
+get a new pair, and the paid one is the one that no longer works.
+
+### From your own recording (free, offline, in the app)
+
+**Settings → Voice → Build a voice from your recording.** Say anything for a
+few seconds (or drop in an audio file). One extra 29 MB model — a CAM++
+speaker embedder, run through the sherpa-onnx that already ships for GigaAM —
+turns a clip into a vector describing *who* is speaking. Then the app searches:
+
+```
+speak a candidate → embed it → cosine against your recording → keep the best
+```
+
+The candidates are blends of the ten presets, so there are ten numbers to fit
+rather than 12 928, and the loop is a (1+λ) evolution strategy: score all ten,
+then perturb the weights, keep improvements, shrink the step when a round
+brings none. About sixty real syntheses, two minutes, cancellable, and the
+match score is shown because it is the honest number in the feature.
+
+What you get is **the closest voice the model can build out of what it has** —
+a family resemblance, not a clone. There is no style encoder in the released
+model, so nothing on this machine can do better; the ceiling is the ten
+presets and the space between them.
+
+Verified rather than hoped: given Daniel's own synthesised speech as the
+"recording", the search comes back with Daniel at 98% (`npm run
+smoke:voicefit`).
 
 ### Blend two voices (free, offline, in the app)
 
@@ -101,15 +127,19 @@ of your audio into one — for **$49 per voice**, and as of August 2026 it sells
 none at all ("Purchases Unavailable"); the service closes **31 August 2026**.
 You can listen there and not download.
 
-### Clone from a recording (third-party, heavy)
+### Clone properly (third-party, heavy)
 
-There is no public style *encoder*, so a style cannot simply be extracted from
-audio. The community route optimises a style tensor until the speech it
-produces matches a speaker-identity embedding (SpeechBrain's ECAPA-TDNN):
-[voice-builder-for-supertonic-3][clone]. It is a notebook with PyTorch, it
-takes real time, and its own README promises "a close, recognizable likeness
-rather than a studio-perfect indistinguishable clone". Its output is a style
-JSON, so it imports here like any other.
+The app's search is bounded by the ten presets. To go past them the tensor
+itself has to be optimised, which needs gradients and a speaker-identity model:
+[voice-builder-for-supertonic-3][clone] does exactly that (SpeechBrain's
+ECAPA-TDNN). It is a notebook with PyTorch, it takes real time, and its own
+README promises "a close, recognizable likeness rather than a studio-perfect
+indistinguishable clone". Its output is a style JSON, so it imports here like
+any other.
+
+A different angle, if you want your own voice on a whole audiobook rather than
+in the app: synthesise with a preset and convert the audio afterwards with RVC.
+That is a GPU pipeline outside this app, not a style file.
 
 [clone]: https://github.com/Fawzan09/voice-builder-for-supertonic-3
 

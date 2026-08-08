@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 import { SttModelPicker } from "@/components/chat/SttModelPicker";
+import { VoiceFromRecording } from "@/components/settings/VoiceFromRecording";
 import type { ElectronAPI, TtsProgress, TtsStatus } from "@/types/electron";
 import { WHISPER_TIERS, DEFAULT_WHISPER } from "@shared/whisper-tier";
 import { AUTO_LANG, TTS_LANGS, speechLangFor } from "@shared/tts-langs";
@@ -630,6 +631,18 @@ export function VoiceSettings(): JSX.Element {
                 </button>
               </div>
             </div>
+
+            <VoiceFromRecording
+              lang={ttsLang === AUTO_LANG ? "ru" : ttsLang}
+              speaking={speaking}
+              onStop={stopTest}
+              onListen={(id) => void playTest(id)}
+              onError={setTtsError}
+              onSaved={(id) => {
+                save("ttsVoice", id, setTtsVoice);
+                refreshTts();
+              }}
+            />
 
             {/* Importing. The file is the whole voice — the 398 MB model above
                 speaks with whichever style pair it is handed. */}
