@@ -12,8 +12,7 @@
  * is a one-line change rather than a re-draw.
  */
 
-import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { Check, Download, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -35,9 +34,11 @@ export function PickCard({
   onClick,
   /** Trailing controls (cancel, delete, download). Never the tick. */
   trailing,
+  /** A compartment under the row, flush to the card's edges. */
+  footer,
   children,
 }: {
-  icon?: LucideIcon;
+  icon?: ComponentType<{ className?: string }>;
   art?: ReactNode;
   title: ReactNode;
   badge?: ReactNode;
@@ -49,6 +50,7 @@ export function PickCard({
   progress?: number | null;
   onClick?: () => void;
   trailing?: ReactNode;
+  footer?: ReactNode;
   children?: ReactNode;
 }): JSX.Element {
   const downloading = typeof progress === "number";
@@ -109,6 +111,11 @@ export function PickCard({
         ) : null}
         {trailing}
       </div>
+      {footer && (
+        <div className="-mx-2 -mb-2 mt-2 border-t border-border/70 px-2 py-1.5">
+          {footer}
+        </div>
+      )}
       {downloading && (
         <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/[0.1]">
           <div

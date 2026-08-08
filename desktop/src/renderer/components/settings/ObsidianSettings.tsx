@@ -29,6 +29,7 @@ import {
   SectionHeader,
   SectionTitle,
 } from "@/components/settings/SectionTitle";
+import { PickCard } from "@/components/settings/PickCard";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -88,14 +89,6 @@ export function ObsidianSettings(): JSX.Element {
           <Plus className="size-4" />
           Add vault…
         </button>
-        <button
-          type="button"
-          title="Re-scan all vaults"
-          onClick={() => void load()}
-          className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
-        >
-          <RefreshCw className="size-4" />
-        </button>
         {vaults.some((v) => v.enabled) && (
           <button
             type="button"
@@ -111,6 +104,17 @@ export function ObsidianSettings(): JSX.Element {
             Open graph
           </button>
         )}
+        {/* Re-scan is a maintenance action, not a primary one: it sits at the
+            far right, away from "Add vault" and "Open graph". */}
+        <button
+          type="button"
+          title="Re-scan all vaults"
+          onClick={() => void load()}
+          className="ml-auto flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]"
+        >
+          <RefreshCw className="size-3.5" />
+          Refresh
+        </button>
       </div>
 
       {error && (
@@ -128,47 +132,43 @@ export function ObsidianSettings(): JSX.Element {
       ) : (
         <div className="space-y-2">
           {vaults.map((v) => (
-            <div
+            <PickCard
               key={v.id}
-              className={cn(
-                "rounded-lg border border-border bg-card p-3",
-                !v.enabled && "opacity-60",
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex min-w-0 items-start gap-2.5">
-                  <ObsidianIcon className="mt-0.5 size-4 shrink-0 text-brand" />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      {v.name}
-                      {!v.present && (
-                        <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-normal text-amber-600 dark:text-amber-400">
-                          <TriangleAlert className="size-3" />
-                          folder not found
-                        </span>
-                      )}
-                      {v.present && !v.isObsidian && (
-                        <span
-                          title="No .obsidian folder — plain Markdown works fine, this is only a hint"
-                          className="rounded-full bg-black/[0.05] px-2 py-0.5 text-[11px] font-normal text-muted-foreground dark:bg-white/[0.07]"
-                        >
-                          plain folder
-                        </span>
-                      )}
-                    </div>
-                    <div className="truncate font-mono text-[11px] text-muted-foreground">
-                      {v.path}
-                    </div>
-                    {v.stats && (
-                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-                        <BookOpen className="size-3" />
-                        {v.stats.notes} notes · {v.stats.links} links ·{" "}
-                        {v.stats.tags} tags
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
+              icon={ObsidianIcon}
+              title={v.name}
+              badge={
+                <>
+                  {!v.present && (
+                    <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-normal text-amber-600 dark:text-amber-400">
+                      <TriangleAlert className="size-3" />
+                      folder not found
+                    </span>
+                  )}
+                  {v.present && !v.isObsidian && (
+                    <span
+                      title="No .obsidian folder — plain Markdown works fine, this is only a hint"
+                      className="rounded-full bg-black/[0.05] px-2 py-0.5 text-[11px] font-normal text-muted-foreground dark:bg-white/[0.07]"
+                    >
+                      plain folder
+                    </span>
+                  )}
+                </>
+              }
+              description={
+                <>
+                  <span className="block truncate font-mono text-[11px]">{v.path}</span>
+                  {v.stats && (
+                    <span className="mt-0.5 flex items-center gap-1 text-[11px]">
+                      <BookOpen className="size-3" />
+                      {v.stats.notes} notes · {v.stats.links} links · {v.stats.tags} tags
+                    </span>
+                  )}
+                </>
+              }
+              selected={v.enabled}
+              disabled={!v.present}
+              trailing={
+                <>
                   <button
                     type="button"
                     title="Open folder"
@@ -189,9 +189,11 @@ export function ObsidianSettings(): JSX.Element {
                   >
                     <Trash2 className="size-3.5" />
                   </button>
-                </div>
-              </div>
-              <div className="mt-2 flex items-center gap-5 border-t border-border pt-2">
+                </>
+              }
+              footer={
+                <>
+                <div className="flex items-center gap-5">
                 <label className="flex cursor-pointer items-center gap-2 text-[13px]">
                   <Switch
                     checked={v.enabled}
@@ -209,8 +211,8 @@ export function ObsidianSettings(): JSX.Element {
                   />
                   Read-only
                 </label>
-              </div>
-              <label className="mt-2 flex items-center gap-2 text-[13px]">
+                </div>
+                <label className="mt-1.5 flex items-center gap-2 text-[13px]">
                 <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
                 <span className="shrink-0 text-muted-foreground">
                   Attachments →
@@ -235,8 +237,10 @@ export function ObsidianSettings(): JSX.Element {
                   }}
                   className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none focus:border-brand"
                 />
-              </label>
-            </div>
+                </label>
+                </>
+              }
+            />
           ))}
         </div>
       )}
