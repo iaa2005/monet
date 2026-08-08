@@ -32,11 +32,18 @@ const ort = require("onnxruntime-node") as any;
 
 interface SpeakRequest {
   id: number;
-  type: "speak";
+  type: "speak" | "forget";
   /** Directory holding the six model files. */
   modelDir: string;
   /** Absolute path of the voice style JSON. */
   voicePath: string;
+  /**
+   * A style passed by value instead of by path — flattened row-major, the same
+   * numbers the JSON holds. Used by the voice fit, which tries sixty of them
+   * in a row: writing each to disk only to invalidate the cache would be file
+   * churn for nothing.
+   */
+  style?: { ttl: number[]; dp: number[] };
   text: string;
   /** BCP-47-ish two-letter code, or "na" for language-agnostic. */
   lang: string;
@@ -164,12 +171,21 @@ function splitForModel(text: string, maxLen: number): string[] {
   return out.filter((p) => /[\p{L}\p{N}]/u.test(p));
 }
 
+/** Tensors for a style handed over by value; nothing to cache, nothing to
+ * invalidate. Dims are the model's own and are not negotiable. */
+function inlineStyle(v: { ttl: number[]; dp: number[] }): { ttl: OrtTensor; dp: OrtTensor } {
+  return {
+    ttl: new ort.Tensor("float32", Float32Array.from(v.ttl), [1, 50, 256]),
+    dp: new ort.Tensor("float32", Float32Array.from(v.dp), [1, 8, 16]),
+  };
+}
+
 async function synthesizeOne(
   req: SpeakRequest,
   piece: string,
 ): Promise<{ samples: Float32Array; sampleRate: number }> {
   const m = await load(req.modelDir);
-  const s = style(req.voicePath);
+  const s = req.style ? inlineStyle(req.style) : style(req.voicePath);
 
   const text = preprocess(piece, req.lang);
   const ids = Array.from(text).map((ch) => m.indexer[String(ch.charCodeAt(0))] ?? 0);
@@ -249,6 +265,13 @@ async function synthesize(req: SpeakRequest): Promise<{ samples: Float32Array; s
 }
 
 process.on("message", (req: SpeakRequest) => {
+  // A style file rewritten at the same path (every blend preview) must not
+  // keep speaking out of this cache. Cheaper than a restart by two seconds of
+  // model loading, which is the whole point of a long-lived child.
+  if (req?.type === "forget") {
+    styles.delete(req.voicePath);
+    return;
+  }
   if (req?.type !== "speak") return;
   void (async () => {
     try {

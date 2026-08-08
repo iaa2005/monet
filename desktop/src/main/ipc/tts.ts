@@ -13,7 +13,7 @@ import {
   installTts,
   installVoice,
   removeTts,
-  resetVoiceCache,
+  forgetVoiceStyle,
   speak,
   ttsNativeAvailable,
   ttsStatus,
@@ -23,6 +23,14 @@ import {
 } from "../tts/engine.js";
 import { importCustomVoice, removeCustomVoice } from "../tts/custom-voices.js";
 import { mixCustomVoice, previewMix, type MixPart } from "../tts/voice-mix.js";
+import { fitVoice } from "../tts/voice-fit.js";
+import {
+  cancelSpeakerInstall,
+  installSpeakerModel,
+  speakerAvailable,
+  speakerModelInstalled,
+  SPEAKER_BYTES,
+} from "../tts/speaker.js";
 import { stripTtsTags, textForSpeech, TTS_TAGS } from "../tts/catalog.js";
 import { markdownForSpeech } from "@shared/voice-tags.js";
 
@@ -65,7 +73,7 @@ export function registerTtsIPC(): void {
       });
       if (picked.canceled || !picked.filePaths[0]) return { ok: false };
       const r = importCustomVoice({ ...p, path: picked.filePaths[0] });
-      if (r.ok) resetVoiceCache();
+      if (r.ok && r.id) forgetVoiceStyle(r.id);
       return r;
     },
   );
@@ -78,7 +86,7 @@ export function registerTtsIPC(): void {
       p: { parts: MixPart[]; name: string; gender: "F" | "M" },
     ): { ok: boolean; id?: string; error?: string } => {
       const r = mixCustomVoice(p);
-      if (r.ok) resetVoiceCache();
+      if (r.ok && r.id) forgetVoiceStyle(r.id);
       return r;
     },
   );
@@ -92,13 +100,69 @@ export function registerTtsIPC(): void {
       // The preview file is overwritten in place, so the child's style cache
       // would keep speaking the PREVIOUS blend — every slider move would
       // sound the same as the first one.
-      if (r.ok) resetVoiceCache();
+      if (r.ok && r.id) forgetVoiceStyle(r.id);
       return r;
     },
   );
+  // ── A voice from your own recording ──────────────────────────────────
+  ipcMain.handle("tts:matcherStatus", async () => ({
+    installed: await speakerModelInstalled(),
+    bytes: SPEAKER_BYTES,
+    available: speakerAvailable(),
+  }));
+  ipcMain.handle("tts:installMatcher", (e) => {
+    const send = (p: unknown): void => {
+      const win = BrowserWindow.fromWebContents(e.sender);
+      if (win && !win.isDestroyed()) win.webContents.send("tts:matcherProgress", p);
+    };
+    return installSpeakerModel(send);
+  });
+  ipcMain.handle("tts:cancelMatcher", (): boolean => cancelSpeakerInstall());
+
+  let fitting = false;
+  let cancelFit = false;
+  ipcMain.handle(
+    "tts:fitVoice",
+    async (
+      e,
+      p: { samplesBase64: string; sampleRate: number; lang?: string },
+    ): Promise<{
+      ok: boolean;
+      parts?: MixPart[];
+      score?: number;
+      baseScore?: number;
+      error?: string;
+    }> => {
+      if (fitting) return { ok: false, error: "Already searching." };
+      fitting = true;
+      cancelFit = false;
+      try {
+        const buf = Buffer.from(p.samplesBase64, "base64");
+        const samples = new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
+        return await fitVoice({
+          samples,
+          sampleRate: p.sampleRate,
+          lang: p.lang,
+          cancelled: () => cancelFit,
+          onProgress: (prog) => {
+            const win = BrowserWindow.fromWebContents(e.sender);
+            if (win && !win.isDestroyed()) win.webContents.send("tts:fitProgress", prog);
+          },
+        });
+      } finally {
+        fitting = false;
+      }
+    },
+  );
+  ipcMain.handle("tts:cancelFit", (): boolean => {
+    if (!fitting) return false;
+    cancelFit = true;
+    return true;
+  });
+
   ipcMain.handle("tts:removeVoice", (_e, id: string): { ok: boolean } => {
     const r = removeCustomVoice(id);
-    if (r.ok) resetVoiceCache();
+    if (r.ok) forgetVoiceStyle(id);
     return r;
   });
   ipcMain.handle(

@@ -123,6 +123,41 @@ export async function ttsStatus(): Promise<TtsStatus> {
   };
 }
 
+/**
+ * Download to `target`, checked. Shared with the speaker model next door: the
+ * STT downloader once produced a right-sized file with the wrong bytes, and
+ * that mistake is not getting a second chance anywhere.
+ */
+export async function fetchChecked(p: {
+  url: string;
+  target: string;
+  bytes: number;
+  sha256?: string;
+  signal?: AbortSignal;
+  onChunk?: (n: number) => void;
+}): Promise<void> {
+  const name = p.target.split(/[\\/]/).pop() as string;
+  const part = `${p.target}.part`;
+  const res = await fetch(p.url, { signal: p.signal });
+  if (!res.ok || !res.body) throw new Error(`${name}: HTTP ${res.status}`);
+  const hash = createHash("sha256");
+  const count = new Transform({
+    transform(chunk: Buffer, _enc, cb) {
+      p.onChunk?.(chunk.length);
+      hash.update(chunk);
+      cb(null, chunk);
+    },
+  });
+  await pipeline(Readable.fromWeb(res.body as never), count, createWriteStream(part));
+  const digest = hash.digest("hex");
+  if (p.sha256 && digest !== p.sha256)
+    throw new Error(`${name} arrived corrupt (checksum mismatch) — try again`);
+  const written = (await stat(part)).size;
+  if (written !== p.bytes)
+    throw new Error(`${name}: expected ${p.bytes} bytes, got ${written}`);
+  await rename(part, p.target);
+}
+
 async function fetchFile(
   f: TtsFile,
   signal: AbortSignal | undefined,
@@ -130,26 +165,14 @@ async function fetchFile(
 ): Promise<void> {
   const dir = modelDir();
   await mkdir(dir, { recursive: true });
-  const target = join(dir, ttsFileName(f));
-  const part = `${target}.part`;
-  const res = await fetch(ttsFileUrl(f), { signal });
-  if (!res.ok || !res.body) throw new Error(`${ttsFileName(f)}: HTTP ${res.status}`);
-  const hash = createHash("sha256");
-  const count = new Transform({
-    transform(chunk: Buffer, _enc, cb) {
-      onChunk(chunk.length);
-      hash.update(chunk);
-      cb(null, chunk);
-    },
+  await fetchChecked({
+    url: ttsFileUrl(f),
+    target: join(dir, ttsFileName(f)),
+    bytes: f.bytes,
+    sha256: f.sha256,
+    signal,
+    onChunk,
   });
-  await pipeline(Readable.fromWeb(res.body as never), count, createWriteStream(part));
-  const digest = hash.digest("hex");
-  if (f.sha256 && digest !== f.sha256)
-    throw new Error(`${ttsFileName(f)} arrived corrupt (checksum mismatch) — try again`);
-  const written = (await stat(part)).size;
-  if (written !== f.bytes)
-    throw new Error(`${ttsFileName(f)}: expected ${f.bytes} bytes, got ${written}`);
-  await rename(part, target);
 }
 
 /** The shared model + the default voice, one overall percentage. */
@@ -225,11 +248,23 @@ export async function removeTts(): Promise<{ ok: boolean }> {
   return { ok: true };
 }
 
-/** Drop the synthesiser (and with it its style cache). Called after a custom
- * voice is imported or deleted: the child caches styles BY PATH, and an id
- * reused after a deletion would otherwise keep speaking in the old voice. */
-export function resetVoiceCache(): void {
-  disposeChild();
+/**
+ * Make the synthesiser forget one style file.
+ *
+ * It caches styles BY PATH, so a file written again at the same path — every
+ * blend preview, and any id reused after a deletion — would keep speaking in
+ * the previous voice. Killing the child would also do it, and did: that cost
+ * the ~2 s model load on the next utterance, which for a slider you drag is
+ * the difference between an instrument and a wait. A one-line message is
+ * enough, and the 400 MB stays loaded.
+ */
+export function forgetVoiceStyle(id: string): void {
+  if (!live?.proc.connected) return;
+  try {
+    live.proc.send({ id: 0, type: "forget", voicePath: stylePathFor(id) });
+  } catch {
+    /* a dead child has no cache to clear */
+  }
 }
 
 // ── The synthesiser process ─────────────────────────────────────────────
@@ -243,51 +278,65 @@ interface ChildReply {
   error?: string;
 }
 
-let child: ChildProcess | null = null;
-let seq = 0;
-const pending = new Map<number, (r: ChildReply) => void>();
-
-function failAllPending(error: string): void {
-  for (const [, resolve] of pending) resolve({ id: 0, type: "error", error });
-  pending.clear();
+/**
+ * One live synthesiser and the requests waiting on IT.
+ *
+ * The pending map used to be module-global, shared by every child that had
+ * ever been forked — so a child that died AFTER its replacement had been
+ * started failed the new child's in-flight request. Symptom: "Voice process
+ * exited (SIGTERM)" on a perfectly healthy synthesis, every time something
+ * disposed the child and spoke immediately after (which the blend preview
+ * did, on purpose, to drop a cached style).
+ */
+interface VoiceChild {
+  proc: ChildProcess;
+  pending: Map<number, (r: ChildReply) => void>;
 }
 
-function getChild(): ChildProcess {
-  if (child && child.connected) return child;
+let live: VoiceChild | null = null;
+let seq = 0;
+
+function getChild(): VoiceChild {
+  if (live && live.proc.connected) return live;
   const script = fileURLToPath(new URL("./supertonic-child.js", import.meta.url));
-  child = fork(script, [], {
+  const proc = fork(script, [], {
     env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
     stdio: ["ignore", "ignore", "pipe", "ipc"],
   });
+  const self: VoiceChild = { proc, pending: new Map() };
   let stderrTail = "";
-  child.stderr?.on("data", (b: Buffer) => {
+  proc.stderr?.on("data", (b: Buffer) => {
     stderrTail = (stderrTail + b.toString()).slice(-800);
   });
-  child.on("message", (msg: ChildReply) => {
-    const resolve = pending.get(msg.id);
+  proc.on("message", (msg: ChildReply) => {
+    const resolve = self.pending.get(msg.id);
     if (!resolve) return;
-    pending.delete(msg.id);
+    self.pending.delete(msg.id);
     resolve(msg);
   });
-  child.on("error", (err) => {
-    failAllPending(`Voice process failed: ${err.message}`);
-    child = null;
-  });
-  child.on("exit", (code, signal) => {
+  /** Fails only what THIS child was carrying, and only clears the slot if it
+   * is still the current one. */
+  const bury = (error: string): void => {
+    for (const [, resolve] of self.pending) resolve({ id: 0, type: "error", error });
+    self.pending.clear();
+    if (live === self) live = null;
+  };
+  proc.on("error", (err) => bury(`Voice process failed: ${err.message}`));
+  proc.on("exit", (code, signal) => {
     const why = stderrTail.trim().split(/\r?\n/).pop() ?? "";
-    failAllPending(`Voice process exited (${signal ?? code})${why ? `: ${why}` : ""}`);
-    child = null;
+    bury(`Voice process exited (${signal ?? code})${why ? `: ${why}` : ""}`);
   });
-  return child;
+  live = self;
+  return self;
 }
 
 function disposeChild(): void {
   try {
-    child?.kill();
+    live?.proc.kill();
   } catch {
     /* already gone */
   }
-  child = null;
+  live = null;
 }
 
 const SPEAK_TIMEOUT_MS = 60_000;
@@ -328,29 +377,63 @@ export async function speak(p: {
     }
   }
 
+  return dispatch({
+    voicePath,
+    text: p.text,
+    lang: p.lang || "na",
+    steps: p.steps ?? 8,
+    speed: p.speed ?? 1.05,
+  });
+}
+
+/**
+ * Speak with a style passed by VALUE — what the voice fit needs, sixty times
+ * in a row. Skips the catalogue entirely: there is no id, no file and nothing
+ * to cache or invalidate.
+ */
+export async function speakStyle(p: {
+  style: { ttl: number[]; dp: number[] };
+  text: string;
+  lang?: string;
+  steps?: number;
+  speed?: number;
+}): Promise<SpeakResult> {
+  if (!ttsNativeAvailable())
+    return { ok: false, error: "On-device voice is not available on this platform." };
+  if (!(await modelInstalled()))
+    return { ok: false, error: "The voice model is not downloaded yet." };
+  return dispatch({
+    voicePath: "",
+    style: p.style,
+    text: p.text,
+    lang: p.lang || "na",
+    steps: p.steps ?? 4,
+    speed: p.speed ?? 1.05,
+  });
+}
+
+async function dispatch(payload: {
+  voicePath: string;
+  style?: { ttl: number[]; dp: number[] };
+  text: string;
+  lang: string;
+  steps: number;
+  speed: number;
+}): Promise<SpeakResult> {
   const c = getChild();
   const id = ++seq;
   const reply = await new Promise<ChildReply>((resolve) => {
     const timer = setTimeout(() => {
-      if (!pending.has(id)) return;
-      pending.delete(id);
+      if (!c.pending.has(id)) return;
+      c.pending.delete(id);
       disposeChild();
       resolve({ id, type: "error", error: "Synthesis timed out." });
     }, SPEAK_TIMEOUT_MS);
-    pending.set(id, (r) => {
+    c.pending.set(id, (r: ChildReply) => {
       clearTimeout(timer);
       resolve(r);
     });
-    c.send({
-      id,
-      type: "speak",
-      modelDir: modelDir(),
-      voicePath,
-      text: p.text,
-      lang: p.lang || "na",
-      steps: p.steps ?? 8,
-      speed: p.speed ?? 1.05,
-    });
+    c.proc.send({ id, type: "speak", modelDir: modelDir(), ...payload });
   });
   if (reply.type === "error") return { ok: false, error: reply.error };
   return {

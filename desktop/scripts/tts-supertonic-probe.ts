@@ -31,7 +31,7 @@ const {
   textForSpeech,
 } = await import('../src/main/tts/catalog.js')
 const { markdownForSpeech } = await import('../src/shared/voice-tags.js')
-const { ttsStatus, ttsNativeAvailable, speak } = await import('../src/main/tts/engine.js')
+const { ttsStatus, ttsNativeAvailable, speak, forgetVoiceStyle } = await import('../src/main/tts/engine.js')
 const {
   checkVoiceStyle,
   importCustomVoice,
@@ -545,6 +545,31 @@ if (!ttsNativeAvailable()) {
         'and it is not simply one of its parents',
         rb.ok && rp.ok && rb.samplesBase64 !== rp.samplesBase64,
       )
+      // Reported: "Voice process exited (SIGTERM)" on every Listen. Dropping
+      // the cached style used to KILL the child, and the dead child's exit
+      // handler failed the request the NEW child was already carrying — the
+      // pending map was shared by every child ever forked. Two previews and
+      // two synthesyses in a row is the exact sequence.
+      let sigterm = ''
+      for (const w of [1, 3]) {
+        const again = previewMix({
+          parts: [
+            { id: 'F1', weight: w },
+            { id: 'M2', weight: 4 - w },
+          ],
+          gender: 'F',
+        })
+        forgetVoiceStyle(again.id as string)
+        const r = await speak({ text: 'Проба.', voice: again.id as string, lang: 'ru', steps: 4 })
+        if (!r.ok) sigterm = r.error ?? 'failed'
+      }
+      check('DRAGGING THE SLIDER DOES NOT KILL THE SYNTHESISER', sigterm === '', sigterm)
+      // …and the 400 MB stays loaded: a second utterance right after a forget
+      // must not pay the two-second cold load again.
+      const tWarm = Date.now()
+      await speak({ text: 'Ещё раз.', voice: 'F1', lang: 'ru', steps: 4 })
+      const warmMs = Date.now() - tWarm
+      check('and the model stays loaded — a warm synthesis is fast', warmMs < 2_500, { warmMs })
       rmSync(customVoicePath(blend.id), { force: true })
       check('the preview leaves nothing behind either', !existsSync(customVoicePath(blend.id)))
     }
