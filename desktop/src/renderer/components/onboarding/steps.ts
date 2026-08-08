@@ -44,7 +44,7 @@ export const STEPS: StepSpec[] = [
     title: "About you",
     hint: "So the agent knows who it is working with. Both optional.",
   },
-  { id: "look", title: "How it looks", hint: "Change it any time in Settings." },
+  { id: "look", title: "Choose theme", hint: "Change it any time in Settings." },
   {
     id: "voice",
     title: "Talking to it",
