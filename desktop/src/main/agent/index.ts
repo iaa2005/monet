@@ -90,6 +90,7 @@ import {
   WRAP_UP_PROMPT,
 } from "./turn-budget.js";
 import { getProfilePrompt } from "../app/profile.js";
+import { agentIdentityPrompt } from "./identity.js";
 import { tunablePrompt } from "../prompts/index.js";
 import {
   isCaveman,
@@ -171,14 +172,19 @@ async function buildSystemPrompt(
       .filter(Boolean)
       .join("\n\n");
     if (prompt.trim().length > 0)
-      return withUserMemory(prompt, includeMemory, space);
+      return withUserMemory(prompt, includeMemory, space, model);
     throw new Error("vendor system prompt came back empty");
   } catch (err) {
     console.warn(
       "[agent] vendor getSystemPrompt failed, using fallback:",
       err instanceof Error ? err.message : err,
     );
-    return withUserMemory(await getFallbackSystemPrompt(), includeMemory, space);
+    return withUserMemory(
+      await getFallbackSystemPrompt(),
+      includeMemory,
+      space,
+      model,
+    );
   }
 }
 
@@ -302,9 +308,13 @@ function withUserMemory(
   prompt: string,
   includeMemory = true,
   space?: string,
+  model?: string,
 ): string {
   try {
     const extra = [
+      // What it is, before who the user is: with this slot empty a weak model
+      // fills it from training and introduces itself by an invented name.
+      agentIdentityPrompt(model),
       getProfilePrompt(),
       // The switch a routine flips: everything else here is style and
       // discipline, but THIS is the user's private notebook.
@@ -352,6 +362,7 @@ export async function seedTunablePrompts(): Promise<void> {
     seedVaultPrompt();
     (await import("../memory/store.js")).memoryPreamble();
     getProfilePrompt();
+    agentIdentityPrompt();
     homeDirective();
     tunablePrompt("system-append", "");
     tunablePrompt("method", METHOD_DEFAULT);

@@ -58,6 +58,7 @@
     "smoke:graphlabels": "node scripts/renderer-probe.mjs scripts/graph-labels-probe.ts",
     "smoke:viewerraise": "node scripts/renderer-probe.mjs scripts/viewer-raise-probe.ts",
     "smoke:onboarding": "node scripts/renderer-probe.mjs scripts/onboarding-probe.ts",
+    "smoke:identity": "node scripts/smoke-agent.mjs scripts/identity-probe.ts",
     "smoke:firstrun": "npm run build && node scripts/first-run-probe.mjs",
     "smoke:transcriptid": "node scripts/build-db-probe.mjs scripts/transcript-identity-probe.ts && electron out/probe/transcript-identity-probe.mjs",
     "smoke:turncontext": "node scripts/renderer-probe.mjs scripts/turn-context-probe.ts",
