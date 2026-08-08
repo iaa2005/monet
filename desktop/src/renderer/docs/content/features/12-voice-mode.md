@@ -87,17 +87,39 @@ pip install -r requirements.txt
 python clone.py voice.wav --name Sasha --minutes 20
 ```
 
-It optimises the style tensors themselves:
+It optimises the style tensor itself:
 
 ```
 style → text encoder → flow matching → vocoder → waveform
                                                     ↓
-                 loss = 1 − cosine( CAM++(waveform), CAM++(your recording) )
+       loss = 1 − cosine( WavLM-L4 statistics of it, of your recording )
 ```
 
 Every arrow is differentiable once the ONNX graphs are converted to PyTorch, so
 this is gradient descent on the voice rather than a search among presets. It
 prints a similarity as it goes; import the JSON it writes.
+
+**Which loss.** The first version compared one CAM++ speaker embedding — 512
+numbers per utterance, so a single scalar of gradient after the cosine. On a real
+19-second Russian recording it went from the best preset's 0.347 to **0.673** in
+273 iterations, and the result was judged "so-so" by ear. The default is now
+**WavLM layer 4**, whose features are still low-level (timbre and articulation
+rather than identity) and therefore carry far more of what makes a voice that
+voice — the loss [kdrkdrkdr/supertonic.embed][embed] uses. `--loss speaker`
+keeps the lighter path (29 MB instead of 1.2 GB) and both numbers are printed
+either way.
+
+Because the target and the candidate say *different words*, frames cannot be
+compared one to one — there is no alignment. What is compared is the per-channel
+mean and standard deviation of the layer, which is text-independent by
+construction and is style transfer's own trick (AdaIN, Gram matrices).
+
+**What is not fitted:** `style_dp`, the rhythm. It reaches only the duration
+predictor, whose answer becomes an integer number of samples — a shape, not a
+differentiable quantity, so no gradient comes back through it. An earlier version
+handed it to Adam anyway, where the only gradient it received came from the
+anchor term pulling it back where it started. The rhythm is the starting
+preset's; only the timbre is yours.
 
 Why it is a separate program: gradients. The app runs the model through
 onnxruntime, which does inference only, and PyTorch is two gigabytes.
@@ -118,9 +140,9 @@ Three things that were measured while building it, and are in the README:
   suggests. Getting it wrong surfaces as a length mismatch deep inside the
   estimator.
 
-The same idea, with a stronger loss (WavLM layer-4 features instead of a
-speaker embedding), is [kdrkdrkdr/supertonic.embed][embed] — worth trying if
-this plateaus too low.
+[kdrkdrkdr/supertonic.embed][embed] is the same idea, arrived at independently
+and found afterwards — which is its own evidence that this is the route. It
+compares layer-4 features frame by frame where its target's text is known.
 
 [embed]: https://github.com/kdrkdrkdr/supertonic.embed
 
