@@ -175,7 +175,7 @@ try {
 
   const seen = await cdp.eval(`JSON.stringify((() => {
     const cards = [...document.querySelectorAll('div.rounded-xl')].filter(
-      (d) => d.querySelector('svg[viewBox="0 0 8 8"]'),
+      (d) => d.querySelector('svg[viewBox="0 0 12 12"]'),
     );
     const rect = (e) => {
       const r = e.getBoundingClientRect();
@@ -184,7 +184,7 @@ try {
     const rows = cards.map((c) => ({
       text: (c.textContent || '').trim().replace(/\\s+/g, ' '),
       ...rect(c),
-      ink: c.querySelectorAll('svg[viewBox="0 0 8 8"] rect').length,
+      ink: c.querySelectorAll('svg[viewBox="0 0 12 12"] rect').length,
       clipped: c.scrollWidth > c.clientWidth + 1,
     }));
     const trigger = document.querySelector('[aria-label="Speech language"]');
@@ -193,7 +193,15 @@ try {
       lang: trigger ? (trigger.textContent || '').trim() : null,
       builder: /voice builder/i.test(document.body.textContent || ''),
       closing: /31 August 2026/.test(document.body.textContent || ''),
-      importer: !!document.querySelector('input[placeholder="Name it"]'),
+      paid: /\\$49/.test(document.body.textContent || '') &&
+        /Purchases Unavailable/.test(document.body.textContent || ''),
+      importer: document.querySelectorAll('input[placeholder="Name it"]').length,
+      blend:
+        !!document.querySelector('[aria-label="First voice"]') &&
+        !!document.querySelector('[aria-label="Second voice"]') &&
+        !!document.querySelector('input[type="range"][aria-label="Blend"]'),
+      blendA: (document.querySelector('[aria-label="First voice"]')?.textContent || '').trim(),
+      blendB: (document.querySelector('[aria-label="Second voice"]')?.textContent || '').trim(),
       bodyOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   })())`);
@@ -231,19 +239,41 @@ try {
   check("nothing is clipped inside a card", rows.every((r) => !r.clipped));
   check("and the page itself does not scroll sideways", (ui.bodyOverflow ?? 0) <= 0, ui.bodyOverflow);
   check("the saved language shows as a language, with its flag", /Russian/.test(ui.lang ?? ""), ui.lang);
-  check("the way to build your own voice is offered", !!ui.builder && !!ui.importer);
-  check("with the honest closing date", !!ui.closing);
-
-  // The cards are below the fold on this window, and a screenshot of the part
-  // that did not change proves nothing.
-  await cdp.eval(
-    `(document.querySelector('svg[viewBox="0 0 8 8"]')?.closest('div.rounded-xl'))?.scrollIntoView({ block: 'center' }), true`,
+  check(
+    "BLENDING IS OFFERED — two pickers and a slider",
+    !!ui.blend,
+    ui.blend,
   );
-  await sleep(600);
-  const shot = await cdp.send("Page.captureScreenshot", { format: "png" });
-  const data = shot?.result?.data;
-  if (data) {
-    const out = resolve(process.env.VOICE_SHOT ?? join(tmpdir(), "voice-settings.png"));
+  // Both pickers came up EMPTY the first time: they can only offer voices that
+  // are installed, and the defaults were two ids that were not.
+  check(
+    "…and both pickers name a voice that is actually here",
+    !!ui.blendA && !!ui.blendB && ui.blendA !== ui.blendB,
+    { a: ui.blendA, b: ui.blendB },
+  );
+  check("and importing a file, with its own name box", ui.importer === 2, ui.importer);
+  check("the official builder is linked", !!ui.builder);
+  check(
+    "and what it costs is not hidden — $49, currently selling none",
+    !!ui.paid && !!ui.closing,
+    { paid: ui.paid, closing: ui.closing },
+  );
+
+  // Both halves are below the fold on this window, and a screenshot of the
+  // part that did not change proves nothing. Two shots, two scroll positions.
+  const base = resolve(process.env.VOICE_SHOT ?? join(tmpdir(), "voice-settings.png"));
+  for (const [suffix, selector] of [
+    ["cards", `svg[viewBox="0 0 12 12"]`],
+    ["blend", `input[type="range"][aria-label="Blend"]`],
+  ]) {
+    await cdp.eval(
+      `(document.querySelector('${selector}')?.closest('div.rounded-xl'))?.scrollIntoView({ block: 'center' }), true`,
+    );
+    await sleep(600);
+    const shot = await cdp.send("Page.captureScreenshot", { format: "png" });
+    const data = shot?.result?.data;
+    if (!data) continue;
+    const out = base.replace(/\.png$/, `-${suffix}.png`);
     writeFileSync(out, Buffer.from(data, "base64"));
     console.log(`      screenshot: ${out}`);
   }

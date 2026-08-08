@@ -22,6 +22,7 @@ import {
   type TtsStatus,
 } from "../tts/engine.js";
 import { importCustomVoice, removeCustomVoice } from "../tts/custom-voices.js";
+import { mixCustomVoice, previewMix, type MixPart } from "../tts/voice-mix.js";
 import { stripTtsTags, textForSpeech, TTS_TAGS } from "../tts/catalog.js";
 import { markdownForSpeech } from "@shared/voice-tags.js";
 
@@ -64,6 +65,33 @@ export function registerTtsIPC(): void {
       });
       if (picked.canceled || !picked.filePaths[0]) return { ok: false };
       const r = importCustomVoice({ ...p, path: picked.filePaths[0] });
+      if (r.ok) resetVoiceCache();
+      return r;
+    },
+  );
+  // Blending: the free route to a voice of your own, since Supertone's builder
+  // charges per voice and currently sells none. Pure arithmetic on the styles.
+  ipcMain.handle(
+    "tts:mixVoice",
+    (
+      _e,
+      p: { parts: MixPart[]; name: string; gender: "F" | "M" },
+    ): { ok: boolean; id?: string; error?: string } => {
+      const r = mixCustomVoice(p);
+      if (r.ok) resetVoiceCache();
+      return r;
+    },
+  );
+  ipcMain.handle(
+    "tts:previewMix",
+    (
+      _e,
+      p: { parts: MixPart[]; gender: "F" | "M" },
+    ): { ok: boolean; id?: string; error?: string } => {
+      const r = previewMix(p);
+      // The preview file is overwritten in place, so the child's style cache
+      // would keep speaking the PREVIOUS blend — every slider move would
+      // sound the same as the first one.
       if (r.ok) resetVoiceCache();
       return r;
     },

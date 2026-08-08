@@ -973,6 +973,17 @@ const electronAPI = {
       ipcRenderer.invoke("tts:importVoice", p),
     removeVoice: (id: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("tts:removeVoice", id),
+    mixVoice: (p: {
+      parts: { id: string; weight: number }[];
+      name: string;
+      gender: "F" | "M";
+    }): Promise<{ ok: boolean; id?: string; error?: string }> =>
+      ipcRenderer.invoke("tts:mixVoice", p),
+    previewMix: (p: {
+      parts: { id: string; weight: number }[];
+      gender: "F" | "M";
+    }): Promise<{ ok: boolean; id?: string; error?: string }> =>
+      ipcRenderer.invoke("tts:previewMix", p),
     speak: (p: {
       text: string;
       voice: string;

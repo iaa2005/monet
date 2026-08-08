@@ -19,7 +19,8 @@ import {
   langName,
   speechLangFor,
 } from "@shared/tts-langs";
-import { ART_SIZE, voiceArt } from "@/lib/voice-art";
+import { ART_SIZE, voiceArt, voiceCells } from "@/lib/voice-art";
+import { MAP_SIZE, mapCells } from "@shared/voice-map";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: unknown): void {
@@ -110,9 +111,29 @@ check(
 
 // ─── The art ────────────────────────────────────────────────────────────
 
+// The picture comes from the VOICE where there is one — the style tensor as a
+// 12×12 map (probed against the real files in smoke:tts). The id-derived
+// identicon below is the fallback for a style file that cannot be read.
+const REAL = "5b0894076a898ea98b92a8e744cda8b80454f7a30968b955c6c836b5ea256a6f7690669cf8910b235082a6c9b22877589c7969a7978bdb87d3458b03672767d8bf7668fdc7b089d2";
+check(
+  "A VOICE WITH A MAP IS DRAWN FROM ITS MAP, not its name",
+  voiceCells({ id: "F1", art: REAL }).join(",") === mapCells(REAL).join(",") &&
+    voiceCells({ id: "F1", art: REAL }).join(",") !== voiceArt("F1").join(","),
+);
+check(
+  "and one without falls back to the id",
+  voiceCells({ id: "F1" }).join(",") === voiceArt("F1").join(","),
+);
+check(
+  "a map round-trips through hex",
+  mapCells(REAL).length === MAP_SIZE * MAP_SIZE &&
+    mapCells(REAL).every((c) => c >= 0 && c <= 15),
+);
+check("and the middle of the range means 'nothing to say'", mapCells("zz").every((c) => c === 8));
+
 const F1 = voiceArt("F1");
-check("a voice's picture is a full grid", F1.length === ART_SIZE * ART_SIZE);
-check("with only the three tones", F1.every((c) => c === 0 || c === 1 || c === 2));
+check("the fallback is a full grid", F1.length === ART_SIZE * ART_SIZE);
+check("in the same 0…15 range as a real map", F1.every((c) => c >= 0 && c <= 15));
 check(
   "SAME VOICE, SAME PICTURE — twice in a row and after the others",
   JSON.stringify(voiceArt("F1")) === JSON.stringify(F1) &&
@@ -134,10 +155,10 @@ check(
 check(
   "and none of them is blank or solid",
   ids.every((id) => {
-    const ink = voiceArt(id).filter((c) => c !== 0).length;
-    return ink > 8 && ink < ART_SIZE * ART_SIZE - 4;
+    const ink = voiceArt(id).filter((c) => Math.abs(c - 8) > 1).length;
+    return ink > 20 && ink < ART_SIZE * ART_SIZE - 20;
   }),
-  ids.map((id) => voiceArt(id).filter((c) => c !== 0).length),
+  ids.map((id) => voiceArt(id).filter((c) => Math.abs(c - 8) > 1).length),
 );
 
 console.log(failures ? `\n${failures} FAILED` : "\nthe voice knows what it is reading");

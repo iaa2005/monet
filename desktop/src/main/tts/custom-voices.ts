@@ -18,16 +18,10 @@
  * One rule for both kinds beats a second lookup that can disagree.
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "fs";
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
-import { getDataDir } from "../data-dir.js";
+import { customVoicePath, customVoicesDir, isCustomVoice } from "./paths.js";
+import { styleMapOf } from "./style-map.js";
 
 /** The shape every preset has, and therefore the shape the model expects.
  * A Supertonic 2 embedding is the same file format with different dims — it
@@ -43,26 +37,8 @@ export interface CustomVoice {
   id: string;
   name: string;
   bytes: number;
-}
-
-export function customVoicesDir(): string {
-  const d = join(getDataDir(), "tts-models", "custom");
-  if (!existsSync(d)) mkdirSync(d, { recursive: true });
-  return d;
-}
-
-/**
- * Preset ids are two characters and hold no dash; a custom id always does.
- * Strict on purpose: this is also the guard that keeps an id — which arrives
- * over IPC — from becoming a path. Anything else is simply not a custom
- * voice, and the preset lookup rejects it by name.
- */
-export function isCustomVoice(id: string): boolean {
-  return /^[FM]-[a-z0-9Ѐ-ӿ-]{1,40}$/i.test(id);
-}
-
-export function customVoicePath(id: string): string {
-  return join(customVoicesDir(), `${id}.json`);
+  /** Its voice map — see shared/voice-map.ts. */
+  art?: string;
 }
 
 const registryFile = (): string => join(customVoicesDir(), "voices.json");
@@ -92,7 +68,12 @@ export function listCustomVoices(): CustomVoice[] {
   for (const [id, meta] of Object.entries(reg)) {
     const p = customVoicePath(id);
     if (!existsSync(p)) continue;
-    out.push({ id, name: meta.name || id, bytes: statSync(p).size });
+    out.push({
+      id,
+      name: meta.name || id,
+      bytes: statSync(p).size,
+      art: styleMapOf(p) ?? undefined,
+    });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -177,14 +158,26 @@ export function importCustomVoice(p: {
   }
   const check = checkVoiceStyle(text);
   if (!check.ok) return { ok: false, error: check.error };
+  return registerCustomVoice({ gender: p.gender, name, json: text });
+}
 
-  const base = `${p.gender}-${voiceSlug(name)}`;
+/**
+ * Save a style under a fresh id and put it in the picker. Shared by the
+ * importer and the blender: "Марина" twice must give two voices, not one
+ * overwritten, and the id must stay a filename.
+ */
+export function registerCustomVoice(p: {
+  gender: "F" | "M";
+  name: string;
+  json: string;
+}): ImportResult {
+  const base = `${p.gender}-${voiceSlug(p.name)}`;
   const reg = readRegistry();
   let id = base;
   for (let n = 2; reg[id] || existsSync(customVoicePath(id)); n++) id = `${base}-${n}`;
   try {
-    writeFileSync(customVoicePath(id), text, "utf-8");
-    writeRegistry({ ...reg, [id]: { name } });
+    writeFileSync(customVoicePath(id), p.json, "utf-8");
+    writeRegistry({ ...reg, [id]: { name: p.name } });
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "cannot save the voice" };
   }

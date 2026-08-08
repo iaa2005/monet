@@ -21,11 +21,35 @@ your voice → mic → VAD + adaptive gate → GigaAM (STT) → chat turn
   франсе»). This is a model property, not a bug.
 - **Speech** — **Supertonic-3**, ~400 MB of ONNX running in a forked child
   process so a slow synthesis can never freeze the app. Ten voices, each a
-  separate 0.3 MB style file: **Sarah, Lily, Jessica, Olivia, Emily** (F1–F5)
-  and **Alex, James, Robert, Sam, Daniel** (M1–M5) — Supertone's own names and
-  characters, with the description of each on its card in Settings → Voice.
-  The letter in the id is load-bearing: a spoken Russian reply agrees with the
-  voice's gender, so a male voice never says «я закончила».
+  separate 0.3 MB style file (table below). The letter in the id is
+  load-bearing: a spoken Russian reply agrees with the voice's gender, so a
+  male voice never says «я закончила».
+
+## The ten voices
+
+Supertone's own names and characters ([their docs][voices]); the use case is
+theirs too, and it is a better description of a voice than any adjective.
+
+| Id | Name | Sounds like | Made for |
+| --- | --- | --- | --- |
+| F1 | Sarah | Calm, slightly low; steady and composed | Customer service, guided instructions |
+| F2 | Lily | Bright, cheerful, playful, youthful | Youth content, social video |
+| F3 | Jessica | Clear announcer style; broadcast-ready | Commercials, formal presentations |
+| F4 | Olivia | Crisp and confident; strong delivery | Business explainers, training |
+| F5 | Emily | Kind and gentle; soft-spoken, soothing | Audiobooks, wellness |
+| M1 | Alex | Lively and upbeat; clear standard tone | Promos, general narration |
+| M2 | James | Deep and robust; calm, serious, grounded | Corporate, documentary |
+| M3 | Robert | Polished and authoritative; trustworthy | Business presentations |
+| M4 | Sam | Soft, neutral, youthful, approachable | Educational content, onboarding |
+| M5 | Daniel | Warm and soft-spoken; storytelling | Audiobooks, relaxation |
+
+[voices]: https://supertone-inc.github.io/supertonic-py/voices/
+
+Each card carries a **voice map**: a 12×12 picture of the voice's own style
+tensor — how it differs from the average of the ten. It is computed, not
+shipped, so an imported or blended voice has one too, and a blend visibly sits
+between its parents. (Supertone's cards do the same thing; their mixer draws
+the tensor as a heatmap.)
 
 ## The language it reads with
 
@@ -42,22 +66,56 @@ off, that was why.
 
 ## A voice of your own
 
-A voice here is not a model, it is two style tensors in a JSON file. Supertone's
-[voice builder](https://supertonic.supertone.ai/voice-builder) turns a minute of
-recorded audio into exactly that file; **Settings → Voice → Your own voice**
-imports it (name it, say whether it is female or male — that drives the Russian
-agreement above) and it joins the list with nothing else to install. Imported
-voices are validated on the way in: a Supertonic **2** embedding has different
-dimensions and is refused by name, rather than failing later inside onnxruntime.
+A voice here is not a model — it is two style tensors in a JSON file, and the
+398 MB model speaks with whichever pair it is handed. There are three ways to
+get a new pair, and only one of them is free.
 
-Two things worth knowing:
+### Blend two voices (free, offline, in the app)
 
-- The builder's own notice says sign-ups closed **23 July 2026** and the service
-  closes **31 August 2026**. A JSON you already have keeps working forever —
-  synthesis is entirely on your machine, so there is no service behind it.
-- Removing the 398 MB model (the *Remove* button) deliberately leaves
-  `tts-models/custom` alone. A preset can be downloaded again; your own voice
-  may not be.
+**Settings → Voice → Blend a new voice.** A style is a point in a latent space,
+so a convex combination of two points is a third voice. Pick two, drag the
+slider, press *Listen*, name it, save. Both tensors are blended — the timbre
+(`style_ttl`) and the rhythm (`style_dp`), because one parent's timing on the
+other's voice sounds like the wrong person's pacing — and the weights are
+normalised, so 2:2 is the same voice as 1:1 rather than one twice as loud.
+
+*Listen* writes the blend under a fixed unregistered id, so it can be heard
+without becoming a voice in the list. This is the same idea as
+[Topping1's Supertonic-Voice-Mixer][mixer] (from [issue #44][issue], where
+Supertone also confirmed there is no voice cloning in the released model),
+minus the Python GUI.
+
+[mixer]: https://github.com/Topping1/Supertonic-Voice-Mixer
+[issue]: https://github.com/supertone-inc/supertonic/issues/44
+
+### Import a style file
+
+**Settings → Voice → Import a voice file** takes any Supertonic 3 style JSON.
+It is validated on the way in: a Supertonic **2** embedding has different
+dimensions and is refused by name, rather than failing later inside
+onnxruntime with a shape error.
+
+Where such a file comes from is the awkward part. Supertone's own
+[voice builder](https://supertonic.supertone.ai/voice-builder) turns a minute
+of your audio into one — for **$49 per voice**, and as of August 2026 it sells
+none at all ("Purchases Unavailable"); the service closes **31 August 2026**.
+You can listen there and not download.
+
+### Clone from a recording (third-party, heavy)
+
+There is no public style *encoder*, so a style cannot simply be extracted from
+audio. The community route optimises a style tensor until the speech it
+produces matches a speaker-identity embedding (SpeechBrain's ECAPA-TDNN):
+[voice-builder-for-supertonic-3][clone]. It is a notebook with PyTorch, it
+takes real time, and its own README promises "a close, recognizable likeness
+rather than a studio-perfect indistinguishable clone". Its output is a style
+JSON, so it imports here like any other.
+
+[clone]: https://github.com/Fawzan09/voice-builder-for-supertonic-3
+
+Whatever the source: removing the 398 MB model (the *Remove* button)
+deliberately leaves `tts-models/custom` alone. A preset can be downloaded
+again; your own voice may not be.
 
 ## How the reply becomes speech
 

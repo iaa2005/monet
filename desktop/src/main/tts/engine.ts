@@ -31,11 +31,8 @@ import {
   voiceFile,
   type TtsFile,
 } from "./catalog.js";
-import {
-  customVoicePath,
-  isCustomVoice,
-  listCustomVoices,
-} from "./custom-voices.js";
+import { listCustomVoices } from "./custom-voices.js";
+import { isCustomVoice, modelDir, stylePathFor } from "./paths.js";
 
 const require = createRequire(import.meta.url);
 
@@ -48,7 +45,9 @@ export interface TtsStatus {
     name: string;
     desc: string;
     installed: boolean;
-    /** Imported from a JSON, so it has no download and can be deleted. */
+    /** Its voice map — see shared/voice-map.ts. */
+    art?: string;
+    /** Imported or blended, so it has no download and can be deleted. */
     custom?: boolean;
   }[];
 }
@@ -68,10 +67,6 @@ export function ttsNativeAvailable(): boolean {
   } catch {
     return false;
   }
-}
-
-function modelDir(): string {
-  return join(getDataDir(), "tts-models", "supertonic-3");
 }
 
 async function filePresent(dir: string, f: TtsFile): Promise<boolean> {
@@ -104,16 +99,18 @@ export async function ttsStatus(): Promise<TtsStatus> {
       id: v.id,
       name: v.name,
       desc: v.desc,
+      art: v.art,
       installed: await voiceInstalled(v.id),
     });
   }
-  // Imported voices are already here — there is nothing to download and no
+  // Imported and blended voices are already here — nothing to download and no
   // catalogue entry to be missing, so they are always "installed".
   for (const c of listCustomVoices()) {
     voices.push({
       id: c.id,
       name: c.name,
       desc: "Your own voice",
+      art: c.art,
       installed: true,
       custom: true,
     });
@@ -318,9 +315,7 @@ export async function speak(p: {
   // An imported voice has no catalogue entry and nothing to fetch: its file is
   // the only thing that can be missing.
   const custom = isCustomVoice(p.voice);
-  const voicePath = custom
-    ? customVoicePath(p.voice)
-    : join(modelDir(), `${p.voice}.json`);
+  const voicePath = stylePathFor(p.voice);
   if (custom) {
     if (!existsSync(voicePath))
       return { ok: false, error: `The file for voice ${p.voice} is gone — import it again.` };

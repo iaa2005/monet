@@ -1039,6 +1039,15 @@ export interface ElectronAPI {
       gender: "F" | "M";
     }) => Promise<{ ok: boolean; id?: string; error?: string }>;
     removeVoice: (id: string) => Promise<{ ok: boolean }>;
+    mixVoice: (p: {
+      parts: { id: string; weight: number }[];
+      name: string;
+      gender: "F" | "M";
+    }) => Promise<{ ok: boolean; id?: string; error?: string }>;
+    previewMix: (p: {
+      parts: { id: string; weight: number }[];
+      gender: "F" | "M";
+    }) => Promise<{ ok: boolean; id?: string; error?: string }>;
     speak: (p: {
       text: string;
       voice: string;

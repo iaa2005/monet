@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  Blend,
   Check,
   Download,
   ExternalLink,
@@ -25,7 +26,7 @@ import { SttModelPicker } from "@/components/chat/SttModelPicker";
 import type { ElectronAPI, TtsProgress, TtsStatus } from "@/types/electron";
 import { WHISPER_TIERS, DEFAULT_WHISPER } from "@shared/whisper-tier";
 import { AUTO_LANG, TTS_LANGS, speechLangFor } from "@shared/tts-langs";
-import { ART_SIZE, voiceArt } from "@/lib/voice-art";
+import { ART_SIZE, voiceCells } from "@/lib/voice-art";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -40,29 +41,84 @@ const TEST_PHRASE: Record<string, string> = {
   en: "Hi! This is the Code Monet voice. <breath> Replies sound like this — with pauses and intonation.",
 };
 
-/** The voice's picture: computed from its id, so an imported voice has one
- * too. See lib/voice-art.ts. */
-function VoiceArt({ id, className }: { id: string; className?: string }): JSX.Element {
-  const cells = voiceArt(id);
+/**
+ * The voice's picture — its own style tensor where there is one, its id
+ * otherwise. See lib/voice-art.ts and shared/voice-map.ts.
+ *
+ * The middle of the range is "same as the average voice" and draws nothing:
+ * distance from it is strength, side is colour. So a blend of two voices
+ * visibly sits between their two pictures.
+ */
+function VoiceArt({
+  voice,
+  className,
+}: {
+  voice: { id: string; art?: string };
+  className?: string;
+}): JSX.Element {
+  const cells = voiceCells(voice);
   return (
     <svg
       viewBox={`0 0 ${ART_SIZE} ${ART_SIZE}`}
       aria-hidden
-      className={cn("shrink-0 rounded-lg bg-brand/[0.07]", className)}
+      // Without this the cells land on fractional device pixels and the whole
+      // map turns to mush — 144 antialiased edges in 48 px.
+      shapeRendering="crispEdges"
+      className={cn("shrink-0 rounded-lg bg-brand/[0.06]", className)}
     >
-      {cells.map((c, i) =>
-        c === 0 ? null : (
+      {cells.map((c, i) => {
+        const d = Math.abs(c - 8);
+        if (d <= 1) return null;
+        const cls =
+          c > 8
+            ? d <= 3
+              ? "fill-brand/40"
+              : "fill-brand"
+            : d <= 3
+              ? "fill-foreground/20"
+              : "fill-foreground/45";
+        return (
           <rect
             key={i}
             x={i % ART_SIZE}
             y={Math.floor(i / ART_SIZE)}
             width={1}
             height={1}
-            className={c === 2 ? "fill-brand" : "fill-foreground/25"}
+            className={cls}
           />
-        ),
-      )}
+        );
+      })}
     </svg>
+  );
+}
+
+/** Female / male, which is not decoration: a spoken Russian reply agrees with
+ * it («я сделал» / «я сделала»), and the app reads it off the voice id. */
+function GenderPick({
+  value,
+  onChange,
+}: {
+  value: "F" | "M";
+  onChange: (g: "F" | "M") => void;
+}): JSX.Element {
+  return (
+    <>
+      {(["F", "M"] as const).map((g) => (
+        <button
+          key={g}
+          type="button"
+          onClick={() => onChange(g)}
+          className={cn(
+            "rounded-md border px-2 py-1 text-[12px] transition-colors",
+            value === g
+              ? "border-brand/40 bg-brand/[0.08] text-foreground"
+              : "border-border text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {g === "F" ? "Female" : "Male"}
+        </button>
+      ))}
+    </>
   );
 }
 
@@ -85,6 +141,11 @@ export function VoiceSettings(): JSX.Element {
   const [speaking, setSpeaking] = useState(false);
   const [newName, setNewName] = useState("");
   const [newGender, setNewGender] = useState<"F" | "M">("F");
+  const [mixA, setMixA] = useState("F1");
+  const [mixB, setMixB] = useState("M2");
+  const [mixW, setMixW] = useState(50);
+  const [mixName, setMixName] = useState("");
+  const [mixGender, setMixGender] = useState<"F" | "M">("F");
   const audioRef = useRef<AudioBufferSourceNode | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
 
@@ -163,7 +224,48 @@ export function VoiceSettings(): JSX.Element {
       });
   };
 
-  const playTest = async (): Promise<void> => {
+  // The blend pickers can only offer what is installed, and that list is not
+  // known until the status arrives — a value outside it leaves the trigger
+  // blank, which is how this shipped the first time.
+  useEffect(() => {
+    const ids = (tts?.voices ?? []).filter((v) => v.installed).map((v) => v.id);
+    if (ids.length < 2) return;
+    setMixA((a) => (ids.includes(a) ? a : ids[0]));
+    setMixB((b) => (ids.includes(b) && b !== ids[0] ? b : ids[ids.length - 1]));
+  }, [tts]);
+
+  const mixParts = (): { id: string; weight: number }[] => [
+    { id: mixA, weight: 100 - mixW },
+    { id: mixB, weight: mixW },
+  ];
+
+  /** Hear the blend before it has a name: main writes it under a fixed
+   * unregistered id, so it is speakable and never appears in the picker. */
+  const playMix = async (): Promise<void> => {
+    setTtsError(null);
+    const r = await api()?.tts.previewMix({ parts: mixParts(), gender: mixGender });
+    if (!r?.ok || !r.id) {
+      setTtsError(r?.error ?? "Blend failed");
+      return;
+    }
+    await playTest(r.id);
+  };
+
+  const saveMix = (): void => {
+    setTtsError(null);
+    void api()
+      ?.tts.mixVoice({ parts: mixParts(), name: mixName, gender: mixGender })
+      .then((r) => {
+        if (r?.error) setTtsError(r.error);
+        if (r?.ok && r.id) {
+          setMixName("");
+          save("ttsVoice", r.id, setTtsVoice);
+        }
+        refreshTts();
+      });
+  };
+
+  const playTest = async (voice = ttsVoice): Promise<void> => {
     stopTest();
     setSpeaking(true);
     setTtsError(null);
@@ -175,7 +277,7 @@ export function VoiceSettings(): JSX.Element {
       const text = TEST_PHRASE[ttsLang === AUTO_LANG ? guess : ttsLang] ?? TEST_PHRASE.en;
       const r = await api()?.tts.speak({
         text,
-        voice: ttsVoice,
+        voice,
         lang: speechLangFor(text, ttsLang),
         steps: 8,
       });
@@ -203,6 +305,11 @@ export function VoiceSettings(): JSX.Element {
       if (!audioRef.current) setSpeaking(false);
     }
   };
+
+  // Only what is actually on disk can be blended: the maths reads the style
+  // files. A preset arrives the moment it is selected once.
+  const mixable = (tts?.voices ?? []).filter((v) => v.installed);
+  const enoughToMix = mixable.length >= 2;
 
   return (
     <div className="space-y-8">
@@ -399,7 +506,7 @@ export function VoiceSettings(): JSX.Element {
                     }}
                     className="flex min-w-0 flex-1 items-center gap-3 text-left"
                   >
-                    <VoiceArt id={v.id} className="size-10" />
+                    <VoiceArt voice={v} className="size-12" />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5">
                         <span className="text-[13px] font-medium">{v.name}</span>
@@ -438,14 +545,99 @@ export function VoiceSettings(): JSX.Element {
               ))}
             </div>
 
-            {/* A voice of your own. The file is the whole voice — the 398 MB
-                model above speaks with whichever style pair it is handed. */}
+            {/* Blending. A style is a point in a latent space and the average
+                of two points is another voice — the only route to a voice of
+                your own that is free, offline and needs no encoder. */}
             <div className="rounded-xl border border-border p-3">
-              <div className="text-sm font-medium">Your own voice</div>
+              <div className="text-sm font-medium">Blend a new voice</div>
               <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
-                Supertone's voice builder turns a minute of recorded audio into
-                one 0.3 MB JSON file. Import it here and it joins the list —
-                nothing else to install, nothing leaves this machine.
+                Two voices, mixed. The result is a voice that did not exist,
+                built out of files already on this machine.
+              </p>
+              {!enoughToMix && (
+                // Only the first voice comes with the model; the rest arrive
+                // when selected. Nothing to blend with one.
+                <p className="mt-2 text-[12px] text-muted-foreground/80">
+                  Pick a second voice from the list above first — each is a
+                  0.3 MB download, and a blend needs two.
+                </p>
+              )}
+              <div
+                className={cn(
+                  "mt-2.5 flex items-center gap-2",
+                  !enoughToMix && "pointer-events-none opacity-40",
+                )}
+              >
+                <Select
+                  ariaLabel="First voice"
+                  value={mixA}
+                  onChange={setMixA}
+                  className="w-28 shrink-0 justify-between"
+                  contentClassName="max-h-72"
+                  options={mixable.map((v) => ({ value: v.id, label: v.name }))}
+                />
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={mixW}
+                  aria-label="Blend"
+                  onChange={(e) => setMixW(Number(e.target.value))}
+                  className="h-1 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-border accent-brand [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand"
+                />
+                <Select
+                  ariaLabel="Second voice"
+                  value={mixB}
+                  onChange={setMixB}
+                  className="w-28 shrink-0 justify-between"
+                  contentClassName="max-h-72"
+                  options={mixable.map((v) => ({ value: v.id, label: v.name }))}
+                />
+              </div>
+              <div className="mt-1 text-center text-[11px] tabular-nums text-muted-foreground">
+                {100 - mixW}% / {mixW}%
+              </div>
+              <div
+                className={cn(
+                  "mt-2 flex items-center gap-1.5",
+                  !enoughToMix && "pointer-events-none opacity-40",
+                )}
+              >
+                <input
+                  value={mixName}
+                  onChange={(e) => setMixName(e.target.value)}
+                  placeholder="Name it"
+                  spellCheck={false}
+                  className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-link"
+                />
+                <GenderPick value={mixGender} onChange={setMixGender} />
+                <button
+                  type="button"
+                  onClick={() => (speaking ? stopTest() : void playMix())}
+                  className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[12px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                >
+                  {speaking ? <Square className="size-3.5" /> : <Play className="size-3.5" />}
+                  Listen
+                </button>
+                <button
+                  type="button"
+                  onClick={saveMix}
+                  disabled={!mixName.trim() || mixA === mixB}
+                  className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[12px] transition-colors hover:bg-black/[0.04] disabled:opacity-40 dark:hover:bg-white/[0.06]"
+                >
+                  <Blend className="size-3.5" />
+                  Save
+                </button>
+              </div>
+            </div>
+
+            {/* Importing. The file is the whole voice — the 398 MB model above
+                speaks with whichever style pair it is handed. */}
+            <div className="rounded-xl border border-border p-3">
+              <div className="text-sm font-medium">Import a voice file</div>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
+                Any Supertonic 3 style JSON — 0.3 MB, and it joins the list with
+                nothing else to install.
               </p>
               <div className="mt-2 flex items-center gap-1.5">
                 <input
@@ -455,23 +647,7 @@ export function VoiceSettings(): JSX.Element {
                   spellCheck={false}
                   className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none placeholder:text-muted-foreground/60 focus:border-link"
                 />
-                {/* The gender is part of the voice, not decoration: a spoken
-                    Russian reply agrees with it («я сделал» / «я сделала»). */}
-                {(["F", "M"] as const).map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setNewGender(g)}
-                    className={cn(
-                      "rounded-md border px-2 py-1 text-[12px] transition-colors",
-                      newGender === g
-                        ? "border-brand/40 bg-brand/[0.08] text-foreground"
-                        : "border-border text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {g === "F" ? "Female" : "Male"}
-                  </button>
-                ))}
+                <GenderPick value={newGender} onChange={setNewGender} />
                 <button
                   type="button"
                   onClick={importVoice}
@@ -482,18 +658,22 @@ export function VoiceSettings(): JSX.Element {
                   Import JSON
                 </button>
               </div>
-              <button
-                type="button"
-                onClick={() => void api()?.shell.openExternal(BUILDER_URL)}
-                className="mt-2 flex items-center gap-1 text-[12px] text-link hover:underline"
-              >
-                Open the voice builder
-                <ExternalLink className="size-3" />
-              </button>
-              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground/80">
-                Its own notice: sign-ups closed 23 July 2026 and the service
-                closes 31 August 2026. A JSON you already have keeps working
-                afterwards — the synthesis is here, not there.
+              {/* The honest state of the official route, August 2026. */}
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/80">
+                Supertone's own{" "}
+                <button
+                  type="button"
+                  onClick={() => void api()?.shell.openExternal(BUILDER_URL)}
+                  className="inline-flex items-center gap-0.5 text-link hover:underline"
+                >
+                  voice builder
+                  <ExternalLink className="size-2.5" />
+                </button>{" "}
+                turns a minute of your audio into one of these files, but it
+                charges $49 per voice and currently sells none ("Purchases
+                Unavailable"); it closes on 31 August 2026. You can listen there
+                and not download. A file you already have keeps working forever
+                — the synthesis is here, not there.
               </p>
             </div>
             <div className="flex items-center gap-2">
