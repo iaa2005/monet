@@ -62,19 +62,19 @@ export function PickCard({
         disabled && "opacity-50",
       )}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
       <button
         type="button"
         onClick={onClick}
         disabled={disabled || !onClick}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        className="flex min-w-0 flex-1 items-start gap-3 text-left"
       >
         {art ??
           (Icon && (
             <span
               aria-hidden
               className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-lg",
+                "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg",
                 // The icon carries the state, as in the capability cards on
                 // the Advanced tab: a chosen row is findable by eye.
                 selected ? "bg-brand/12 text-brand" : "bg-muted text-muted-foreground",
@@ -97,15 +97,15 @@ export function PickCard({
         </span>
       </button>
         {busy ? (
-          <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+          <Loader2 className="mt-1.5 size-4 shrink-0 animate-spin text-muted-foreground" />
         ) : downloading ? (
-          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+          <span className="mt-1 shrink-0 text-[11px] tabular-nums text-muted-foreground">
             {progress}%
           </span>
         ) : selected ? (
-          <Check className="size-4 shrink-0 text-brand" />
+          <Check className="mt-1.5 size-4 shrink-0 text-brand" />
         ) : needsDownload ? (
-          <Download className="size-3.5 shrink-0 text-muted-foreground/60" />
+          <Download className="mt-1.5 size-3.5 shrink-0 text-muted-foreground/60" />
         ) : null}
         {trailing}
       </div>

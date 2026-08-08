@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  Boxes,
   ChevronDown,
   ExternalLink,
   Eye,
@@ -36,6 +37,8 @@ import { OpenRouterBrowser } from "./OpenRouterBrowser";
 import { CatalogBrowser } from "./CatalogBrowser";
 import type { ORKeyInfo } from "@/types/electron";
 import { Select } from "@/components/ui/select";
+import { PickCard } from "@/components/settings/PickCard";
+import { SectionHeader } from "@/components/settings/SectionTitle";
 
 const KIND_LABELS: Record<ProviderKind, string> = {
   anthropic: "Anthropic",
@@ -866,12 +869,11 @@ export function ProviderSettings({
   return (
     <div className={cn("space-y-3", className)}>
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-semibold">Providers</h2>
-          <p className="text-[13px] text-muted-foreground">
-            Endpoints, keys and per-model parameters.
-          </p>
-        </div>
+        <SectionHeader
+          className="mb-0"
+          title="Providers"
+          description="Endpoints, keys and per-model parameters."
+        />
         <button
           type="button"
           onClick={() => setAdding(true)}
@@ -898,37 +900,31 @@ export function ProviderSettings({
         {providers.map((p) => {
           const current = activeModelOf(p);
           return (
-            <div
+            <PickCard
               key={p.id}
-              className="rounded-xl border border-border bg-card px-4 py-3"
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    "size-1.5 shrink-0 rounded-full",
-                    p.isActive ? "bg-green-text" : "bg-muted-foreground/30",
-                  )}
-                />
-                <span className="text-sm font-medium">{p.name}</span>
-                <span className="text-[11px] text-muted-foreground">
-                  {KIND_LABELS[p.kind]}
-                </span>
-                {!p.apiKey && (
-                  <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
-                    no key
+              icon={Boxes}
+              title={p.name}
+              badge={
+                <>
+                  <span className="text-[11px] text-muted-foreground">
+                    {KIND_LABELS[p.kind]}
                   </span>
-                )}
-                <span className="flex-1" />
-                {!p.isActive && (
-                  <button
-                    type="button"
-                    title="Make active"
-                    onClick={() => setActive(p.id)}
-                    className={ghostBtn}
-                  >
-                    <Power className="size-3.5" />
-                  </button>
-                )}
+                  {!p.apiKey && (
+                    <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                      no key
+                    </span>
+                  )}
+                </>
+              }
+              description={
+                <span className="block truncate font-mono text-[11px]">
+                  {p.baseURL}
+                </span>
+              }
+              selected={p.isActive}
+              onClick={p.isActive ? undefined : () => setActive(p.id)}
+              trailing={
+                <>
                 <button
                   type="button"
                   title="Edit"
@@ -949,12 +945,9 @@ export function ProviderSettings({
                 >
                   <Trash2 className="size-3.5" />
                 </button>
-              </div>
-
-              <div className="mt-0.5 truncate pl-3.5 font-mono text-[11px] text-muted-foreground">
-                {p.baseURL}
-              </div>
-
+                </>
+              }
+            >
               {p.kind === "openrouter" && p.apiKey && (
                 <CreditsWidget apiKey={p.apiKey} />
               )}
@@ -1016,7 +1009,7 @@ export function ProviderSettings({
                   })}
                 </div>
               )}
-            </div>
+            </PickCard>
           );
         })}
       </div>

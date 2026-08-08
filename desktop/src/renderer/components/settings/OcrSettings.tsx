@@ -26,6 +26,7 @@ import {
   SectionHeader,
   SectionTitle,
 } from "@/components/settings/SectionTitle";
+import { PickCard } from "@/components/settings/PickCard";
 
 type UiOcrModel = Awaited<ReturnType<NonNullable<ElectronAPI["ocr"]>["models"]>>[number];
 type OcrConfig = Awaited<ReturnType<NonNullable<ElectronAPI["ocr"]>["config"]>>;
@@ -115,82 +116,52 @@ export function OcrSettings(): React.JSX.Element {
           const busy = progress?.modelId === m.id;
           const chosen = cfg?.modelId === m.id;
           return (
-            <div
+            <PickCard
               key={m.id}
-              className={cn(
-                "rounded-lg border border-border bg-card px-3 py-2.5",
-                chosen && v.installed && "border-brand/40 bg-brand/[0.04]",
-              )}
-            >
-              <div className="flex items-center gap-2">
-                <FileScan
-                  className={cn(
-                    "size-4 shrink-0",
-                    chosen && v.installed ? "text-brand" : "text-muted-foreground",
-                  )}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium">{m.label}</span>
-                    {chosen && v.installed && (
-                      <span className="shrink-0 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] text-brand">
-                        in use
-                      </span>
-                    )}
-                  </div>
-                  <p className="truncate text-[12px] text-muted-foreground">
-                    {m.short} · {v.size}
-                    {m.secondsPerPage ? ` · ~${m.secondsPerPage}s a page` : ""}
-                  </p>
-                </div>
-
-                {busy ? (
+              icon={FileScan}
+              title={m.label}
+              badge={
+                chosen && v.installed ? (
+                  <span className="shrink-0 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] text-brand">
+                    in use
+                  </span>
+                ) : null
+              }
+              description={`${m.short} \u00b7 ${v.size}${
+                m.secondsPerPage ? ` \u00b7 ~${m.secondsPerPage}s a page` : ""
+              }`}
+              selected={chosen && v.installed}
+              needsDownload={!v.installed}
+              progress={busy ? (progress?.percent ?? 0) : null}
+              onClick={
+                v.installed && !chosen
+                  ? () => void patch({ modelId: m.id, dtype: v.dtype })
+                  : !v.installed && !busy
+                    ? () => void install(m.id, v.dtype)
+                    : undefined
+              }
+              trailing={
+                busy ? (
                   <button
                     type="button"
+                    title="Cancel the download"
                     onClick={() => void api()?.cancelInstall(m.id, v.dtype)}
-                    className="flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] transition-colors hover:bg-destructive/10 hover:text-destructive"
+                    className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-destructive"
                   >
-                    <X className="size-3" />
-                    {progress?.percent ?? 0}%
+                    <X className="size-3.5" />
                   </button>
-                ) : !v.installed ? (
-                  <button
-                    type="button"
-                    onClick={() => void install(m.id, v.dtype)}
-                    className="flex shrink-0 items-center gap-1 rounded-md bg-foreground px-2.5 py-1 text-[11px] font-medium text-background transition-opacity hover:opacity-90"
-                  >
-                    <Download className="size-3" />
-                    Download
-                  </button>
-                ) : !chosen ? (
-                  <button
-                    type="button"
-                    onClick={() => void patch({ modelId: m.id, dtype: v.dtype })}
-                    className="shrink-0 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
-                  >
-                    Use
-                  </button>
-                ) : (
+                ) : chosen && v.installed ? (
                   <button
                     type="button"
                     title="Delete the files"
                     onClick={() => void api()?.remove(m.id).then(() => load())}
-                    className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                    className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-destructive"
                   >
                     <Trash2 className="size-3.5" />
                   </button>
-                )}
-              </div>
-
-              {busy && progress && (
-                <div className="mt-2 h-1 overflow-hidden rounded-full bg-black/[0.07] dark:bg-white/[0.1]">
-                  <div
-                    className="h-full bg-brand transition-[width]"
-                    style={{ width: `${progress.percent}%` }}
-                  />
-                </div>
-              )}
-            </div>
+                ) : null
+              }
+            />
           );
         })}
       </div>
