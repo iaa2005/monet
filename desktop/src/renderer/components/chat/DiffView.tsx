@@ -176,7 +176,7 @@ export function DiffView({
         {(row.kind === "removed" ? row.oldNo : row.newNo) ?? " "}
       </span>
       <code
-        className="diff-hl min-w-0 flex-1 whitespace-pre-wrap break-words pr-3"
+        className="diff-hl diff-wrap min-w-0 flex-1 break-words pr-3"
       >
         {content(row, ri)}
       </code>

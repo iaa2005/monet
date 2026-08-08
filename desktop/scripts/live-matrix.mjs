@@ -1070,6 +1070,101 @@ scenario('clarify', null, async (api, ctx) => {
   }
 })
 
+// 15 ─ Actually run it: a page that compiles and throws.
+//
+// The fixture is a real project as far as the app is concerned — a
+// package.json with a `dev` script on a pinned port, and a server with no
+// dependencies to install. app.js is valid JavaScript that fails the moment
+// it runs, which is exactly the class a typecheck cannot see: the harness
+// has to START the thing to find it.
+scenario('smoke', null, async (api, ctx) => {
+  const cfg = join(ctx.dataDir, 'agent-features.json')
+  // Only this one: the reviewer would also want a turn, and the point here
+  // is which check finds the bug.
+  writeFileSync(cfg, JSON.stringify({ smoke: true, review: false, verify: false }), 'utf8')
+
+  const cwd = workspace({
+    'package.json': JSON.stringify(
+      { name: 'smoke-fixture', private: true, scripts: { dev: 'node server.js --port 5399' } },
+      null,
+      2,
+    ),
+    'server.js': [
+      "const http = require('http');",
+      "const { readFileSync, existsSync } = require('fs');",
+      "const { join, extname } = require('path');",
+      "const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };",
+      'http',
+      '  .createServer((req, res) => {',
+      "    const p = req.url === '/' ? '/index.html' : req.url.split('?')[0];",
+      '    const file = join(__dirname, p);',
+      '    if (!existsSync(file)) {',
+      '      res.writeHead(404);',
+      "      res.end('not found');",
+      '      return;',
+      '    }',
+      "    res.writeHead(200, { 'Content-Type': TYPES[extname(p)] || 'text/plain' });",
+      '    res.end(readFileSync(file));',
+      '  })',
+      "  .listen(5399, () => console.log('listening on port 5399'));",
+      '',
+    ].join('\n'),
+    'index.html': [
+      '<!doctype html>',
+      '<meta charset="utf-8">',
+      '<title>fixture</title>',
+      '<body>',
+      '  <h1 id="title">Fixture</h1>',
+      '  <p id="status">starting…</p>',
+      '  <script type="module" src="/app.js"></script>',
+      '</body>',
+      '',
+    ].join('\n'),
+    // Valid JavaScript. Throws the instant it runs: there is no #stats.
+    'app.js': [
+      "document.getElementById('stats').textContent = 'ready';",
+      '',
+    ].join('\n'),
+  })
+
+  try {
+    const t = await ask(api, {
+      message:
+        'Change the <h1> in index.html to say "Dashboard" instead of "Fixture". ' +
+        'Use the Edit tool. Reply with only: done',
+      cwd,
+      maxTurns: 12,
+      timeout: 420,
+    })
+    const harness = (t.steps ?? []).filter((s) => s.type === 'harness').map((s) => s.text)
+    say(`    harness said: ${harness.join(' / ') || '(nothing)'}`)
+
+    check('the asked-for change happened', (read(cwd, 'index.html') ?? '').includes('Dashboard'))
+    check(
+      'THE HARNESS STARTED THE APP',
+      harness.some((h) => /Starting the app/i.test(h)),
+      harness,
+    )
+    check(
+      'IT FOUND THE BUG A TYPECHECK CANNOT SEE',
+      harness.some((h) => /came up with \d+ problem/i.test(h)),
+      harness,
+    )
+    // The smoke prompt goes back as another turn, so the model saw it.
+    const said = (t.steps ?? []).filter((s) => s.type === 'text').map((s) => s.text ?? '')
+    check(
+      'and the model was given the failure to work on',
+      (t.steps ?? []).length > 2,
+      { steps: (t.steps ?? []).length },
+    )
+    say(`    app.js is now: ${JSON.stringify(read(cwd, 'app.js'))}`)
+    void said
+  } finally {
+    writeFileSync(cfg, JSON.stringify({ smoke: false }), 'utf8')
+    discard(cwd)
+  }
+})
+
 // ─── Runner ─────────────────────────────────────────────────────────────
 
 if (!existsSync(MAIN)) {

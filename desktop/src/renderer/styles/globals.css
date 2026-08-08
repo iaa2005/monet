@@ -527,6 +527,27 @@
 .diff-hl .token.url {
     color: var(--code-op, #0184bc);
 }
+/*
+ * A wrapped line should LOOK wrapped.
+ *
+ * Diff rows carry their number in a column of their own, so the parts of a
+ * long line that wrap start at exactly the same place a fresh line does —
+ * with an empty number cell beside them. Reported on a markdown table row
+ * in a narrow card: every fragment read as its own unnumbered line, and
+ * the row looked shredded rather than long.
+ *
+ * A hanging indent says it in the only place there is room to: the first
+ * visual line sits where it always did, everything carried over is stepped
+ * in. `break-spaces` rather than `pre-wrap` so a run of spaces breaks too —
+ * a markdown table pads its cells, and pre-wrap would push the whole
+ * padded cell to the next line and leave a gap the width of the card.
+ */
+.diff-wrap {
+    white-space: break-spaces;
+    text-indent: -2ch;
+    padding-left: 2ch;
+}
+
 .diff-hl .token.bold {
     font-weight: 600;
 }
