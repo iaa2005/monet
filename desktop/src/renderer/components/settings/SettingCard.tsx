@@ -38,32 +38,37 @@ export function SettingCard({
   children?: ReactNode;
 }): JSX.Element {
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-border p-3 transition-colors hover:border-foreground/20">
-      <span
-        aria-hidden
-        className={
-          // The icon carries the state, so an enabled setting is findable by
-          // eye in a long list.
-          on
-            ? "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand/12 text-brand"
-            : "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
-        }
-      >
-        <Icon className="size-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{title}</span>
-          {badge}
+    <div className="rounded-xl border border-border p-3 transition-colors hover:border-foreground/20">
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden
+          className={
+            // The icon carries the state, so an enabled setting is findable by
+            // eye in a long list.
+            on
+              ? "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand/12 text-brand"
+              : "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
+          }
+        >
+          <Icon className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">{title}</span>
+            {badge}
+          </div>
+          {description && (
+            <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
+              {description}
+            </p>
+          )}
         </div>
-        {description && (
-          <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
-            {description}
-          </p>
-        )}
-        {children}
+        {control && <div className="mt-0.5 shrink-0">{control}</div>}
       </div>
-      {control && <div className="mt-0.5 shrink-0">{control}</div>}
+      {/* FULL WIDTH, below the row — not tucked into the text column beside the
+          icon. A lessons preview or a picker inset by an icon's width reads as
+          a mistake, and the indent buys nothing. */}
+      {children && <div className="mt-2">{children}</div>}
     </div>
   );
 }

@@ -193,7 +193,7 @@ export function ObsidianSettings(): JSX.Element {
               }
               footer={
                 <>
-                <div className="flex items-center gap-5">
+                <div className="space-y-1.5">
                 <label className="flex cursor-pointer items-center gap-2 text-[13px]">
                   <Switch
                     checked={v.enabled}
@@ -212,10 +212,10 @@ export function ObsidianSettings(): JSX.Element {
                   Read-only
                 </label>
                 </div>
-                <label className="mt-1.5 flex items-center gap-2 text-[13px]">
-                <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="shrink-0 text-muted-foreground">
-                  Attachments →
+                <label className="mt-2 block text-[13px]">
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <Paperclip className="size-3.5 shrink-0" />
+                  Attachments folder
                 </span>
                 <input
                   type="text"
@@ -235,7 +235,7 @@ export function ObsidianSettings(): JSX.Element {
                   onKeyDown={(e) => {
                     if (e.key === "Enter") e.currentTarget.blur();
                   }}
-                  className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none focus:border-brand"
+                  className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1 font-mono text-[11px] outline-none focus:border-brand"
                 />
                 </label>
                 </>
