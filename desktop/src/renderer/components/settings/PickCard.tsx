@@ -1,0 +1,103 @@
+/**
+ * A choice you can see: the card the voice list uses, for everything that is a
+ * pick-one-of-several.
+ *
+ * The voice picker ended up the nicest surface in Settings — an icon tile, a
+ * name, one line of what it is, a tick when chosen and a download glyph when it
+ * is not here yet, the whole row ringed in brand when selected. Dictation
+ * engines, browser engines and providers were all the same kind of choice drawn
+ * three other ways: bare rows with a tick, radio-ish buttons, plain list items.
+ *
+ * One component, so they cannot drift again — and so "make it look like Voice"
+ * is a one-line change rather than a re-draw.
+ */
+
+import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import { Check, Download, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export function PickCard({
+  icon: Icon,
+  /** Anything square — the voice map, a logo — instead of an icon. */
+  art,
+  title,
+  badge,
+  description,
+  selected = false,
+  /** Shows the download glyph: here to be chosen, not here yet. */
+  needsDownload = false,
+  busy = false,
+  disabled = false,
+  onClick,
+  /** Trailing controls (a delete button, a size). Never the tick. */
+  trailing,
+  children,
+}: {
+  icon?: LucideIcon;
+  art?: ReactNode;
+  title: ReactNode;
+  badge?: ReactNode;
+  description?: ReactNode;
+  selected?: boolean;
+  needsDownload?: boolean;
+  busy?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+  trailing?: ReactNode;
+  children?: ReactNode;
+}): JSX.Element {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-xl border p-2 transition-colors",
+        selected
+          ? "border-brand/40 bg-brand/[0.06]"
+          : "border-border hover:border-foreground/20",
+        disabled && "opacity-50",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled || !onClick}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+      >
+        {art ??
+          (Icon && (
+            <span
+              aria-hidden
+              className={cn(
+                "flex size-9 shrink-0 items-center justify-center rounded-lg",
+                // The icon carries the state, as in the capability cards on
+                // the Advanced tab: a chosen row is findable by eye.
+                selected ? "bg-brand/12 text-brand" : "bg-muted text-muted-foreground",
+              )}
+            >
+              <Icon className="size-4" />
+            </span>
+          ))}
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span className="text-[13px] font-medium">{title}</span>
+            {badge}
+          </span>
+          {description && (
+            <span className="mt-0.5 block text-[12px] leading-relaxed text-muted-foreground">
+              {description}
+            </span>
+          )}
+          {children}
+        </span>
+      </button>
+      {busy ? (
+        <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+      ) : selected ? (
+        <Check className="size-4 shrink-0 text-brand" />
+      ) : needsDownload ? (
+        <Download className="size-3.5 shrink-0 text-muted-foreground/60" />
+      ) : null}
+      {trailing}
+    </div>
+  );
+}

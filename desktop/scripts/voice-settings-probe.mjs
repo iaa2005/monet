@@ -316,6 +316,7 @@ try {
   // part that did not change proves nothing. Two shots, two scroll positions.
   const base = resolve(process.env.VOICE_SHOT ?? join(tmpdir(), "voice-settings.png"));
   for (const [suffix, selector] of [
+    ["dictation", `h3`],
     ["cards", `svg[viewBox="0 0 12 12"]`],
     ["own", `input[placeholder="Name it"]`],
   ]) {

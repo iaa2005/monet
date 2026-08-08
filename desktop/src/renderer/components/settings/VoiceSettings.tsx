@@ -10,6 +10,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Check,
+  Cloud,
+  Cpu,
   Download,
   ExternalLink,
   Loader2,
@@ -22,6 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 import { SttModelPicker } from "@/components/chat/SttModelPicker";
+import { PickCard } from "@/components/settings/PickCard";
 import { VoiceCloner } from "@/components/settings/VoiceCloner";
 import type { ElectronAPI, TtsProgress, TtsStatus } from "@/types/electron";
 import { WHISPER_TIERS, DEFAULT_WHISPER } from "@shared/whisper-tier";
@@ -270,25 +273,40 @@ export function VoiceSettings(): JSX.Element {
           Speech to text for the mic button and Voice Mode. On-device engines
           need no key and keep audio on this machine.
         </p>
-        <div className="mb-3 flex flex-col gap-1">
+        {/* The same card as the voice list below: an icon that carries the
+            state, one line of what it is, a tick when chosen. These used to be
+            three bare rows with a tick floating in a 16 px gutter. */}
+        <div className="mb-3 flex flex-col gap-1.5">
           {(
             [
-              ["ondevice", "On-device — GigaAM (best for Russian)"],
-              ["local", "On-device — Whisper (WASM)"],
-              ["cloud", "Cloud — OpenAI-compatible API"],
+              [
+                "ondevice",
+                Cpu,
+                "On-device — GigaAM",
+                "Best Russian quality. Runs here, no key, nothing leaves the machine.",
+              ],
+              [
+                "local",
+                Cpu,
+                "On-device — Whisper",
+                "Multilingual, in the renderer via WASM. Smaller models, lighter machines.",
+              ],
+              [
+                "cloud",
+                Cloud,
+                "Cloud — OpenAI-compatible",
+                "Any endpoint that speaks the transcriptions API. Needs a key; audio is uploaded.",
+              ],
             ] as const
-          ).map(([id, label]) => (
-            <button
+          ).map(([id, icon, title, description]) => (
+            <PickCard
               key={id}
-              type="button"
+              icon={icon}
+              title={title}
+              description={description}
+              selected={engine === id}
               onClick={() => save("engine", id, setEngine)}
-              className="flex w-fit items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
-            >
-              <span className="flex w-4 justify-center">
-                {engine === id && <Check className="size-3.5 text-link" />}
-              </span>
-              {label}
-            </button>
+            />
           ))}
         </div>
 
