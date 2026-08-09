@@ -138,6 +138,7 @@ import {
   shouldCompact,
   compactMessages,
   compactionThreshold,
+  MAX_SUMMARY_FAILURES,
   estimateTokens,
 } from "./compaction.js";
 import {
@@ -528,6 +529,24 @@ export function resetConversation(sessionId: string): void {
  */
 const turnLedgers = new Map<string, Delta>();
 
+/**
+ * Consecutive failed summarisations, per chat.
+ *
+ * Reset by a success. At MAX_SUMMARY_FAILURES the summary is no longer attempted
+ * for this chat and the lossless pass carries it alone — see compaction.ts for
+ * what an unbounded retry costs.
+ */
+const summaryFailures = new Map<string, number>();
+
+function noteSummaryOutcome(sessionId: string, failed: boolean): void {
+  if (failed) summaryFailures.set(sessionId, (summaryFailures.get(sessionId) ?? 0) + 1);
+  else summaryFailures.delete(sessionId);
+}
+
+function summaryAllowed(sessionId: string): boolean {
+  return (summaryFailures.get(sessionId) ?? 0) < MAX_SUMMARY_FAILURES;
+}
+
 /** The folder this run is working in — the same source the end-of-turn
  * snapshot uses, so the window and the commit describe one folder. */
 let cwdForRun: (() => string | undefined) | null = null;
@@ -757,6 +776,7 @@ export async function compactSessionNow(
   const beforeLive = [...messages];
   const beforeSnapshot = messages.map((m) => ({ ...m }));
   const before = estimateTokens(messages.filter(isInContext));
+  let summaryFailed = false;
   const compacted = await compactMessages({
     messages,
     adapter,
@@ -782,7 +802,13 @@ export async function compactSessionNow(
     ),
     inContext: isInContext,
     carry: carryIdentity,
+    allowSummary: summaryAllowed(sessionId),
+    onSummaryError: (err) => {
+      summaryFailed = true;
+      console.error("[compact] summary failed:", err);
+    },
   });
+  noteSummaryOutcome(sessionId, summaryFailed);
   if (compacted !== messages) {
     messages.length = 0;
     messages.push(...compacted);
@@ -1816,6 +1842,7 @@ async function runAgentScoped(
       const beforeLive = [...messages];
       const beforeSnapshot = messages.map((m) => ({ ...m }));
       const beforeTokens = estimateTokens(live);
+      let autoSummaryFailed = false;
       const compacted = await compactMessages({
         messages,
         adapter,
@@ -1827,7 +1854,20 @@ async function runAgentScoped(
         threshold: aim,
         inContext: isInContext,
         carry: carryIdentity,
+        allowSummary: summaryAllowed(sessionId),
+        onSummaryError: (err) => {
+          autoSummaryFailed = true;
+          console.error('[compact] summary failed:', err);
+        },
       });
+      noteSummaryOutcome(sessionId, autoSummaryFailed);
+      if (autoSummaryFailed)
+        onEvent({
+          type: 'harness',
+          text: summaryAllowed(sessionId)
+            ? 'The summary failed — kept the lossless clearing and will try again'
+            : 'The summary failed three times — not asking again in this chat',
+        });
       if (compacted === messages) {
         // It had nothing to give at this size. Don't ask again until the
         // conversation has actually grown past the point where it failed —

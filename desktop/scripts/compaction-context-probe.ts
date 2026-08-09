@@ -286,6 +286,61 @@ const filler = (n: number): string => `Text about topic ${n}. ${'word '.repeat(2
   )
 }
 
+// ─── THE BREAKER: a refusal that repeats is not retried for ever ────────
+//
+// Summarising is a model call and it can fail. The lossless pass is kept either
+// way, so nothing is lost by giving up on the summary — while retrying it every
+// turn costs real money for a refusal that is not going to change. Upstream
+// measured that: 1,279 sessions with 50+ consecutive failures, ~250K wasted API
+// calls a day.
+
+{
+  const { compactMessages, MAX_SUMMARY_FAILURES } = await import(
+    '../src/main/agent/compaction.js'
+  )
+  const long: LLMMessage[] = [
+    { role: 'user', content: 'first' },
+    { role: 'assistant', content: 'A'.repeat(40_000) },
+    { role: 'user', content: 'second' },
+    { role: 'assistant', content: 'B'.repeat(40_000) },
+    { role: 'user', content: 'third' },
+    { role: 'assistant', content: 'C'.repeat(40_000) },
+  ]
+  let calls = 0
+  const failing = {
+    providerId: 'probe',
+    providerName: 'probe',
+    async stream(): Promise<void> {},
+    async complete(): Promise<LLMMessage> {
+      calls++
+      throw new Error('overloaded')
+    },
+  } as unknown as LLMAdapter
+
+  const base = {
+    messages: long,
+    adapter: failing,
+    model: 'm',
+    maxTokens: 8_000,
+    threshold: 100,
+  }
+  let seen: unknown = null
+  const out = await compactMessages({
+    ...base,
+    onSummaryError: (err) => {
+      seen = err
+    },
+  })
+  check('a failed summary still returns a usable conversation', Array.isArray(out))
+  check('and the caller is told, so it can count', seen instanceof Error, String(seen))
+  check('the attempt was actually made', calls === 1, calls)
+
+  calls = 0
+  await compactMessages({ ...base, allowSummary: false })
+  check('THE BREAKER SPENDS NO MODEL CALL AT ALL', calls === 0, calls)
+  check('three strikes, not one', MAX_SUMMARY_FAILURES === 3, MAX_SUMMARY_FAILURES)
+}
+
 // ─── FREE CLEARING: the cache window ────────────────────────────────────
 //
 // Clearing a tool result rewrites the prefix the server caches, so inside the

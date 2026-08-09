@@ -34,7 +34,29 @@ export interface CompactionBudget {
 }
 
 // Keep the summarization request itself from blowing the output budget.
+//
+// Upstream uses 20_000 (MAX_OUTPUT_TOKENS_FOR_SUMMARY). Ours stays at 8k, and
+// deliberately: a summary of a 187k-token conversation in 8k is 4% of it, which
+// is what a summary is for, and the guard below already rejects one that came out
+// bigger than the exchanges it replaces. Copying a number because it is theirs is
+// how the 0.7 threshold survived as long as it did.
 const SUMMARY_MAX_TOKENS = 8_000
+
+/**
+ * Consecutive failed summarisations before the attempt is abandoned.
+ *
+ * The lossless pass keeps running — it costs nothing and cannot fail. What stops
+ * is paying a model call to be refused again. Without a limit the retry is
+ * per-turn and unbounded, which upstream measured the cost of
+ * (services/compact/autoCompact.ts):
+ *
+ *     // BQ 2026-03-10: 1,279 sessions had 50+ consecutive failures (up to 3,272)
+ *     // in a single session, wasting ~250K API calls/day globally.
+ *
+ * The state lives with the caller, next to the rest of the per-session state, so
+ * this module stays pure: `allowSummary` in, `onSummaryError` out.
+ */
+export const MAX_SUMMARY_FAILURES = 3
 
 /** Rough token estimate (chars/4) across our message content shapes. */
 export function estimateTokens(messages: LLMMessage[]): number {
@@ -150,6 +172,15 @@ export async function compactMessages(opts: {
   /** User turns to keep verbatim after the summary. 0 = old behaviour. */
   keepRecentTurns?: number
   /**
+   * Whether to attempt the summary at all. False after MAX_SUMMARY_FAILURES
+   * consecutive failures for this chat: the lossless pass still runs, because it
+   * costs nothing and cannot fail, but a model call that has been refused three
+   * times running is not going to be answered on the fourth.
+   */
+  allowSummary?: boolean
+  /** Called when the summary attempt threw, so the caller can count. */
+  onSummaryError?: (err: unknown) => void
+  /**
    * Whether the model is still being sent this message.
    *
    * A prompt the user took out of context must not be summarised — a summary
@@ -173,6 +204,8 @@ export async function compactMessages(opts: {
     terseHint,
     threshold,
     keepRecentTurns = 2,
+    allowSummary = true,
+    onSummaryError,
     carry,
   } = opts
   const inContext = opts.inContext ?? ((): boolean => true)
@@ -212,6 +245,10 @@ export async function compactMessages(opts: {
   if (toSummarise.length < 2) return losslessOnly()
 
   try {
+    // Three refusals in a row for this chat and the attempt is abandoned; the
+    // lossless pass above has already run and is kept either way.
+    if (!allowSummary) return losslessOnly()
+
     const compactPrompt = terseHint
       ? `${getCompactPrompt()}\n\n${terseHint}`
       : getCompactPrompt()
@@ -250,8 +287,10 @@ export async function compactMessages(opts: {
     if (estimateTokens(compacted.filter(inContext)) >= estimateTokens(working))
       return losslessOnly()
     return compacted
-  } catch {
-    // Even when summarising fails, the lossless pass is still a win.
+  } catch (err) {
+    // Even when summarising fails, the lossless pass is still a win — but the
+    // caller has to hear about it, or the next turn pays for the same refusal.
+    onSummaryError?.(err)
     return losslessOnly()
   }
 }
