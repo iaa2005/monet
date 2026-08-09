@@ -84,9 +84,9 @@ import {
   extensionNote,
   loopNote,
   MAX_LOOP_STEERS,
+  reachableBudget,
   shouldSteerLoop,
   shouldWarnBudget,
-  stepsLeft,
   WRAP_UP_PROMPT,
 } from "./turn-budget.js";
 import { getProfilePrompt } from "../app/profile.js";
@@ -1671,6 +1671,10 @@ async function runAgentScoped(
   let budget = maxTurns;
   let extensionsUsed = 0;
   const callSignatures: string[] = [];
+  // Which budget the heads-up was already spent on. Latched per budget rather
+  // than per run: an extension gives the run a new true end, and it deserves
+  // one warning before that one too.
+  let warnedForBudget: number | null = null;
 
   // Loop steering: the same repetition evidence the budget consults, but
   // spoken while there is still time to act on it. See turn-budget.ts.
@@ -2251,14 +2255,27 @@ async function runAgentScoped(
 
     // The step budget exists whether or not the model knows about it, and
     // until now it did not: it spent forty turns as if they were free and
-    // got cut off mid-thought. One line, once, riding back with the tool
-    // results it is about to read.
-    if (isFeatureOn("budget") && shouldWarnBudget(turn, budget)) {
+    // got cut off mid-thought. One line, once per stretch, riding back with
+    // the tool results it is about to read — and measured against the budget
+    // the run can still REACH, not the one it happens to hold. Told at turn 30
+    // of 40 that it had ten steps, a productive run was being lied to by fifty
+    // and warned off new work while two thirds of its run remained.
+    const warnState = {
+      turnIndex: turn,
+      budget,
+      initialBudget: maxTurns,
+      extensionsUsed,
+      signatures: callSignatures,
+      warnedFor: warnedForBudget,
+    };
+    if (isFeatureOn("budget") && shouldWarnBudget(warnState)) {
+      const left = Math.max(0, reachableBudget(warnState) - (turn + 1));
+      warnedForBudget = budget;
       onEvent({
         type: "harness",
-        text: `${stepsLeft(turn, budget)} steps left — asked the model to start converging`,
+        text: `${left} steps left — asked the model to start converging`,
       });
-      appendUserText(messages, budgetWarning(stepsLeft(turn, budget)));
+      appendUserText(messages, budgetWarning(left));
     }
 
     persistTranscript(sessionId);

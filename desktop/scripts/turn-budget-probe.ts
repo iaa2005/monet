@@ -21,11 +21,13 @@ import {
   loopNote,
   MAX_EXTENSIONS,
   MAX_LOOP_STEERS,
+  reachableBudget,
   shouldSteerLoop,
   shouldWarnBudget,
   STEER_SPACING,
   stepsLeft,
   WARN_AT_FRACTION,
+  warnWithin,
   WRAP_UP_PROMPT,
 } from '../src/main/agent/turn-budget.js'
 
@@ -40,28 +42,150 @@ function check(name: string, cond: boolean, detail?: unknown): void {
 }
 
 // ─── When the heads-up fires ────────────────────────────────────────────
+//
+// The loop's own arithmetic, replayed: extension first, then the warning, in
+// the order index.ts does them. Simulated rather than asserted because what was
+// wrong before was the INTERACTION of the two — a run could be congratulated
+// for producing new work and told to stop exploring in the same message.
+
+const sig = (n: number) => callSignature('Edit', { file_path: `f${n}.ts` })
+const varied = (n: number) => [...Array(n).keys()].map(sig)
+const stuck = (n: number) =>
+  [...Array(n).keys()].map(() => callSignature('BrowserReadPage', {}))
+
+interface Beat {
+  turn: number
+  budget: number
+  extended: number
+  warnedLeft: number | null
+}
+
+/** `productive` decides what the run's recent calls look like at each turn. */
+function replay(
+  initial: number,
+  productive: (turn: number) => boolean,
+): Beat[] {
+  const beats: Beat[] = []
+  let budget = initial
+  let extensionsUsed = 0
+  let warnedFor: number | null = null
+  for (let turn = 0; turn < budget; turn++) {
+    const signatures = productive(turn) ? varied(12) : stuck(12)
+    let extended = 0
+    const extra = extensionFor({
+      turnsDone: turn + 1,
+      budget,
+      extensionsUsed,
+      signatures,
+    })
+    if (extra > 0) {
+      budget += extra
+      extensionsUsed++
+      extended = extra
+    }
+    const state = {
+      turnIndex: turn,
+      budget,
+      initialBudget: initial,
+      extensionsUsed,
+      signatures,
+      warnedFor,
+    }
+    let warnedLeft: number | null = null
+    if (shouldWarnBudget(state)) {
+      warnedLeft = Math.max(0, reachableBudget(state) - (turn + 1))
+      warnedFor = budget
+    }
+    if (extended || warnedLeft !== null)
+      beats.push({ turn, budget, extended, warnedLeft })
+  }
+  return beats
+}
 
 {
-  const fired = [...Array(40).keys()].filter((t) => shouldWarnBudget(t, 40))
-  check('exactly one warning in a 40-step run', fired.length === 1, fired)
-  check('at three quarters spent', fired[0] === 29, fired)
+  // THE CASE THIS EXISTS FOR. A run doing new work every turn must not be told
+  // to stop exploring while it still has fifty steps coming.
+  const beats = replay(40, () => true)
+  const warns = beats.filter((b) => b.warnedLeft !== null)
+  check('a productive run is warned exactly once', warns.length === 1, beats)
   check(
-    'and it says how many are left',
-    stepsLeft(fired[0]!, 40) === 10,
-    stepsLeft(fired[0]!, 40),
+    'and not at turn 30 of 40, which was the old bug',
+    warns[0]!.turn !== 29,
+    warns[0],
+  )
+  check(
+    'it lands ten steps before the run really ends (turn 69 of 80)',
+    warns[0]!.turn === 69 && warns[0]!.warnedLeft === 10,
+    warns[0],
+  )
+  check(
+    'both extensions are still granted',
+    beats.filter((b) => b.extended > 0).length === MAX_EXTENSIONS,
+    beats,
+  )
+  check(
+    'and no turn both extends the budget and warns about it',
+    !beats.some((b) => b.extended > 0 && b.warnedLeft !== null),
+    beats.filter((b) => b.extended > 0),
   )
 }
 
 {
-  const fired = [...Array(30).keys()].filter((t) => shouldWarnBudget(t, 30))
-  check('one warning in a routine run too', fired.length === 1, fired)
-  check('scaled to its own budget', stepsLeft(fired[0]!, 30) === 8, fired)
+  // Unchanged for the runs the warning was built for: no extension is coming,
+  // so three quarters IS the last stretch.
+  const beats = replay(40, () => false)
+  const warns = beats.filter((b) => b.warnedLeft !== null)
+  check('a stuck run is still warned once', warns.length === 1, beats)
+  check(
+    'still at three quarters, saying ten',
+    warns[0]!.turn === 29 && warns[0]!.warnedLeft === 10,
+    warns[0],
+  )
+  check('and earns no extension', !beats.some((b) => b.extended > 0), beats)
+}
+
+{
+  // Productive, then stalls: the extension is refused, so the true end arrives
+  // early and the heads-up has to arrive with it rather than never.
+  const beats = replay(40, (t) => t < 30)
+  const warns = beats.filter((b) => b.warnedLeft !== null)
+  check('a run that stalls late is still warned', warns.length === 1, beats)
+  check('within the last ten steps', warns[0]!.warnedLeft! <= 10, warns[0])
 }
 
 check('the fraction is late, not early', WARN_AT_FRACTION >= 0.7)
 check(
   'a budget too small to warn about does not warn',
-  [...Array(3).keys()].every((t) => !shouldWarnBudget(t, 3)),
+  !shouldWarnBudget({
+    turnIndex: 1,
+    budget: 3,
+    initialBudget: 3,
+    extensionsUsed: 0,
+    signatures: stuck(12),
+    warnedFor: null,
+  }),
+)
+check(
+  'the window is fixed to the budget the run started with',
+  warnWithin(40) === 10 && warnWithin(30) === 8 && warnWithin(4) === 2,
+  [warnWithin(40), warnWithin(30), warnWithin(4)],
+)
+check(
+  'reachable counts the extensions a productive run will earn',
+  reachableBudget({ budget: 40, extensionsUsed: 0, signatures: varied(12) }) ===
+    40 + MAX_EXTENSIONS * EXTENSION_TURNS,
+)
+check(
+  'and none for a run that is repeating itself',
+  reachableBudget({ budget: 40, extensionsUsed: 0, signatures: stuck(12) }) === 40,
+)
+check(
+  'nor once the extensions are spent',
+  reachableBudget({
+    budget: 80,
+    extensionsUsed: MAX_EXTENSIONS,
+    signatures: varied(12),
+  }) === 80,
 )
 check('steps left never goes negative', stepsLeft(50, 40) === 0)
 
@@ -95,10 +219,6 @@ check(
 )
 
 // ─── Earning more steps ─────────────────────────────────────────────────
-
-const sig = (n: number) => callSignature('Edit', { file_path: `f${n}.ts` })
-const varied = (n: number) => [...Array(n).keys()].map(sig)
-const stuck = (n: number) => [...Array(n).keys()].map(() => callSignature('BrowserReadPage', {}))
 
 check(
   'the same call with the same input is one signature',

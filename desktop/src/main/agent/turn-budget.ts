@@ -20,6 +20,29 @@
  *      cannot act any more; it can still say what happened. Silence becomes a
  *      handoff, which is the thing the user actually needed from those turns.
  *
+ * The heads-up was then wrong for two years' worth of the runs that deserved it
+ * most, and the probe missed it because it only ever tested a budget that never
+ * grew. Warning on `turn + 1 === floor(budget * 0.75)` against a budget that
+ * EXTENDS gives, for a run productive throughout:
+ *
+ *     turn 29  budget 40   warned "10 steps left, start converging"
+ *     turn 39  budget 60   extended +20
+ *     turn 44  budget 60   warned "15 steps left, start converging"
+ *     turn 59  budget 80   extended +20  AND warned "20 steps left"
+ *
+ * Three warnings, not the one this file promises; the first of them off by fifty
+ * steps; and the last arriving in the same message as "your budget was extended
+ * because this run is still producing new work". The extension consults evidence
+ * (`isProductive`) and the warning consulted none, so the run doing new work
+ * every turn was told to stop exploring on the same schedule as one going in
+ * circles. In a long honest investigation the decisive move is often a new line
+ * opened late — that is the run this was hurting.
+ *
+ * So the warning is now measured against what the run can REACH, extensions it
+ * is on course to earn included, and latched per budget rather than per run. A
+ * productive 40-step run is warned once, at turn 69 of 80, ten steps from its
+ * real end. A stuck one is warned at turn 29 of 40, exactly as before.
+ *
  * Pure: the arithmetic of "when to warn" is what a probe pins down, and the
  * words are worth having in one place where they can be read.
  */
@@ -49,20 +72,69 @@ export const DISTINCT_RATIO = 0.6;
 /** Warn once, when this fraction of the budget is gone. */
 export const WARN_AT_FRACTION = 0.75;
 
-/**
- * Whether THIS finished turn is the one that earns the heads-up.
- *
- * `turnIndex` is zero-based and counts the turn that just completed, so the
- * note rides back with its tool results and the model reads it before
- * spending the next step.
- */
-export function shouldWarnBudget(turnIndex: number, maxTurns: number): boolean {
-  if (maxTurns < 4) return false; // too small to be worth a warning
-  return turnIndex + 1 === Math.floor(maxTurns * WARN_AT_FRACTION);
-}
-
 export function stepsLeft(turnIndex: number, maxTurns: number): number {
   return Math.max(0, maxTurns - (turnIndex + 1));
+}
+
+/** How close to the end the heads-up rides, in steps. Fixed to the budget the
+ * run STARTED with, so extending the budget moves the warning later rather than
+ * widening the window it fires in. */
+export function warnWithin(initialBudget: number): number {
+  return Math.max(2, Math.round(initialBudget * (1 - WARN_AT_FRACTION)));
+}
+
+/**
+ * Steps the run can still reach: the budget it has, plus the extensions it is
+ * on course to earn.
+ *
+ * This is the correction to a warning that used to be measured against the
+ * wrong number. The extension is granted on EVIDENCE — `isProductive` — and the
+ * warning consulted none, so a run doing new work every turn was told "10 steps
+ * left" at turn 30 of 40 when the truth was fifty, and told not to open a new
+ * line of investigation while it had two thirds of its run ahead of it. The
+ * decisive move in a long honest investigation is often a new line opened late;
+ * forbidding it on a schedule that ignores whether the run is working is how a
+ * good run gets stopped one step before the answer.
+ */
+export function reachableBudget(state: {
+  budget: number;
+  extensionsUsed: number;
+  signatures: string[];
+}): number {
+  const spare = MAX_EXTENSIONS - state.extensionsUsed;
+  if (spare <= 0 || !isProductive(state.signatures)) return state.budget;
+  return state.budget + spare * EXTENSION_TURNS;
+}
+
+export interface WarnState {
+  /** Zero-based, the turn that just completed — so the note rides back with
+   * its tool results and is read before the next step is spent. */
+  turnIndex: number;
+  /** The budget as it stands, extensions included. */
+  budget: number;
+  /** What `maxTurns` was before any extension. */
+  initialBudget: number;
+  extensionsUsed: number;
+  signatures: string[];
+  /** The budget a warning has already been spent on, or null. Latched per
+   * budget, not per run: after an extension the run has a new true end, and it
+   * deserves one heads-up before that one too. */
+  warnedFor: number | null;
+}
+
+/**
+ * Whether THIS finished turn earns the heads-up.
+ *
+ * A threshold on what is REACHABLE rather than an equality on the current
+ * budget: reachability moves during a run (productivity flips, extensions get
+ * spent), and an equality test against a moving number either fires at the
+ * wrong moment or is skipped over entirely and never fires at all.
+ */
+export function shouldWarnBudget(state: WarnState): boolean {
+  if (state.budget < 4) return false; // too small to be worth a warning
+  if (state.warnedFor === state.budget) return false;
+  const left = reachableBudget(state) - (state.turnIndex + 1);
+  return left <= warnWithin(state.initialBudget);
 }
 
 /** The heads-up itself — short, because it is paid for out of the same budget. */
