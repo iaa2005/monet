@@ -106,10 +106,28 @@ interface Bundle {
     workspace?: string;
   };
   messages: ChatMessage[];
-  /** The durable model transcript (tool_use/tool_result blocks) + hidden flags,
-   * so an imported chat continues with the SAME context, not a text-only
-   * rebuild. Absent in v1 bundles / chats without a transcript. */
-  transcript?: { messages: LLMMessage[]; hidden: boolean[] };
+  /**
+   * The durable model transcript, so an imported chat continues with the SAME
+   * context rather than a text-only rebuild.
+   *
+   * All four columns, not two. `hidden` marks the user-role messages that are
+   * not prompts (a background report, a mid-run note, a compaction summary);
+   * `ids` is what threads a transcript turn to the bubble the chat draws for
+   * it; `inContext` is which turns the model may still read. The last two were
+   * being written into the bundle by accident — loadTranscriptWithMeta returns
+   * them and the whole object was spread in — and then dropped on import,
+   * because this type only ever declared two of them and applyBundle only ever
+   * passed two. An imported chat therefore arrived with no addressable prompts
+   * and with everything back in context, which since compaction started
+   * FOLDING rather than deleting means the summary and every turn it stands
+   * for both went to the model.
+   */
+  transcript?: {
+    messages: LLMMessage[];
+    hidden: boolean[];
+    ids?: (string | null)[];
+    inContext?: boolean[];
+  };
   artifacts?: BundleArtifact[];
   /** The Home sandbox work tree (subfolders preserved). */
   sandboxFiles?: BundleSandboxFile[];
@@ -349,6 +367,20 @@ export function buildBundle(
  * written into this install's artifact/sandbox folders and the attachment
  * paths remapped onto them.
  */
+/** The ids a context event names, translated into this install's. */
+function remapEventPayload(
+  payload: Record<string, unknown> | undefined,
+  remapId: (id: string | null | undefined) => string | null,
+): Record<string, unknown> {
+  const out = { ...(payload ?? {}) };
+  if (typeof out.headerId === "string") out.headerId = remapId(out.headerId);
+  if (Array.isArray(out.foldedIds))
+    out.foldedIds = (out.foldedIds as unknown[])
+      .map((id) => (typeof id === "string" ? remapId(id) : null))
+      .filter(Boolean);
+  return out;
+}
+
 export function applyBundle(bundle: Partial<Bundle>): SessionWithMessages | null {
   const store = getSessionStore();
   if (bundle.format !== BUNDLE_FORMAT || !Array.isArray(bundle.messages))
@@ -387,16 +419,38 @@ export function applyBundle(bundle: Partial<Bundle>): SessionWithMessages | null
     }
   }
 
-  const messages: ChatMessage[] = bundle.messages.map((m) => ({
-    ...m,
-    id: randomUUID(),
-    attachments: m.attachments?.map((att) => {
-      const p =
-        (att.name ? byPath.get(att.name) : undefined) ??
-        (att.name ? byName.get(basename(att.name)) : undefined);
-      return p ? { ...att, path: p } : { ...att, path: undefined };
-    }),
-  }));
+  // A message id is a global primary key, so an imported chat mints its own —
+  // and everything that NAMES one has to be brought along. The transcript
+  // tags its turns with the bubble id they belong to, and the compaction log
+  // names the turns a summary stands for; both are written in the exporting
+  // install's ids, and both are silently useless in this one unless they are
+  // translated. See remapId().
+  const newIdOf = new Map<string, string>();
+  const messages: ChatMessage[] = bundle.messages.map((m) => {
+    const id = randomUUID();
+    if (m.id) newIdOf.set(m.id, id);
+    return {
+      ...m,
+      id,
+      attachments: m.attachments?.map((att) => {
+        const p =
+          (att.name ? byPath.get(att.name) : undefined) ??
+          (att.name ? byName.get(basename(att.name)) : undefined);
+        return p ? { ...att, path: p } : { ...att, path: undefined };
+      }),
+    };
+  });
+
+  /**
+   * An id from the bundle, as this install spells it.
+   *
+   * Ids that name a display bubble are translated; ids the agent minted for a
+   * turn with no bubble of its own (a background delivery, a compaction
+   * summary) have no counterpart and travel unchanged — they only have to stay
+   * unique within the chat, and they do.
+   */
+  const remapId = (id: string | null | undefined): string | null =>
+    id ? (newIdOf.get(id) ?? id) : null;
 
   store.save({
     id: created.id,
@@ -425,20 +479,55 @@ export function applyBundle(bundle: Partial<Bundle>): SessionWithMessages | null
     bundle.transcript &&
     Array.isArray(bundle.transcript.messages) &&
     bundle.transcript.messages.length > 0
-  )
-    replaceTranscript(
-      created.id,
-      bundle.transcript.messages,
-      bundle.transcript.hidden,
-    );
+  ) {
+    const t = bundle.transcript;
+    replaceTranscript(created.id, t.messages, t.hidden, {
+      ids: t.messages.map((_m, i) => remapId(t.ids?.[i])),
+      // Absent means an older bundle, from before this travelled: everything
+      // in context is the honest reading of a transcript that never said
+      // otherwise.
+      inContext: t.messages.map((_m, i) => t.inContext?.[i] !== false),
+    });
+  }
 
-  // The state around the chat.
-  if (bundle.uiState) setUiState(created.id, bundle.uiState);
+  // The state around the chat — the desk included: which panels were open,
+  // which pages the browser held, which files were up in the viewer. Those
+  // files are the one part of a desk that does not travel by itself: a pane
+  // holds the path the file had on the exporting machine. An artifact's bytes
+  // ARE in the bundle and have just been written here under a new path, so
+  // the pane is pointed at that; a workspace file belongs to a project this
+  // bundle is deliberately not carrying, and is left alone to fail honestly.
+  if (bundle.uiState)
+    setUiState(created.id, {
+      ...bundle.uiState,
+      ...(bundle.uiState.viewerPanes
+        ? {
+            viewerPanes: bundle.uiState.viewerPanes.map((pane) => {
+              if (pane.file?.source !== "artifact" || !pane.file.path) return pane;
+              const stamped = basename(pane.file.path);
+              const name = /^\d+-(.+)$/.exec(stamped)?.[1] ?? stamped;
+              const here = byName.get(name) ?? byPath.get(name);
+              return here
+                ? { ...pane, file: { ...pane.file, path: here } }
+                : pane;
+            }),
+          }
+        : {}),
+    });
   if (bundle.goal) saveGoal(created.id, bundle.goal);
   if (bundle.contextEvents?.length)
     replaceContextEvents(
       created.id,
-      bundle.contextEvents.map((ev) => ({ ...ev, sessionId: created.id })),
+      bundle.contextEvents.map((ev) => ({
+        ...ev,
+        sessionId: created.id,
+        // A compaction records the summary it left and the turns that summary
+        // stands for, BY ID — that is the whole of an undo now, in place of
+        // the copy of the conversation this used to carry. Imported without
+        // translating them, "Undo" finds nothing to put back and does nothing,
+        // silently.
+        payload: remapEventPayload(ev.payload, remapId),
+      })),
     );
   for (const p of bundle.plans ?? [])
     if (p && Array.isArray(p.todos)) importPlan(p, created.id);

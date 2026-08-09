@@ -83,13 +83,27 @@ app.whenReady().then(async () => {
   });
   store.setPinned(src.id, true);
   store.markRoutineChat(src.id, "routine-7");
+  // A COMPACTED chat, written the way the agent writes one.
+  //
+  // Four model messages for two bubbles: the first exchange has been folded —
+  // it is still there, out of context — and a summary stands in front of it as
+  // a hidden turn (a user-role message the chat draws no prompt for). That is
+  // what a compaction leaves behind now, and it is the shape a bundle has to
+  // carry: the ids that tie turns to bubbles, and which turns the model may
+  // still read.
   replaceTranscript(
     src.id,
     [
       { role: "user", content: "make the panels draggable" },
       { role: "assistant", content: "done" },
+      { role: "user", content: "[summary of the earlier conversation]" },
+      { role: "user", content: "and now the dock" },
     ],
-    [false, false],
+    [false, false, true, false],
+    {
+      ids: ["m1", "t-assistant", "t-summary", "m2"],
+      inContext: [false, false, true, true],
+    },
   );
   setUiState(src.id, {
     dockLayout: { grid: { root: { type: "leaf", data: { views: ["files"] } } } },
@@ -105,7 +119,14 @@ app.whenReady().then(async () => {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
-  recordContextEvent(src.id, "compact", { beforeTokens: 100, afterTokens: 40 });
+  // And the log entry that makes it undoable: the summary it left, and the
+  // turns that summary stands for — by id, which is the whole of an undo now.
+  recordContextEvent(src.id, "compact", {
+    beforeTokens: 100,
+    afterTokens: 40,
+    headerId: "t-summary",
+    foldedIds: ["m1", "t-assistant"],
+  });
 
   // ── The round trip ──────────────────────────────────────────────────
   const bundle = buildBundle(src.id, {
@@ -145,8 +166,50 @@ app.whenReady().then(async () => {
     "an attachment keeps its origin (it renders on a chip)",
     out.messages[0].attachments?.[0]?.origin === "selection",
   );
+  // ── The transcript, all four columns of it ──────────────────────────
+  //
+  // It used to travel as messages + hidden. The other two — the id each turn
+  // is known by, and whether the model may still read it — were written into
+  // the bundle by accident and dropped on the way in, so an imported chat
+  // arrived with no prompt it could name and with EVERYTHING back in context.
+  // Since a compaction folds rather than deletes, that meant the summary and
+  // every turn it stands for both went to the model.
   const t = loadTranscriptWithMeta(out.id);
-  check("the model transcript comes with it", t.messages.length === 2, t.messages.length);
+  check("the model transcript comes with it", t.messages.length === 4, t.messages.length);
+  check(
+    "including the turns a summary folded — nothing was deleted",
+    t.messages.some((m) => m.content === "make the panels draggable"),
+    t.messages.map((m) => String(m.content).slice(0, 24)),
+  );
+  check(
+    "WHAT THE MODEL MAY READ SURVIVES THE TRIP",
+    JSON.stringify(t.inContext) === JSON.stringify([false, false, true, true]),
+    t.inContext,
+  );
+  check(
+    "…and so does which turns have no prompt bubble",
+    JSON.stringify(t.hidden) === JSON.stringify([false, false, true, false]),
+    t.hidden,
+  );
+  // The bubbles were re-minted (a message id is a global key), so a transcript
+  // id that NAMED one has to be re-minted with it or the thread is cut.
+  const newFirst = out.messages[0].id;
+  const newSecond = out.messages[1].id;
+  check(
+    "a turn still answers to the bubble it belongs to",
+    t.ids[0] === newFirst,
+    { transcript: t.ids[0], bubble: newFirst },
+  );
+  check(
+    "…including one the import re-minted further down",
+    t.ids[3] === newSecond,
+    { transcript: t.ids[3], bubble: newSecond },
+  );
+  check(
+    "a turn with no bubble keeps the id the agent gave it",
+    t.ids[2] === "t-summary",
+    t.ids[2],
+  );
 
   // ── The state around the chat ───────────────────────────────────────
   check("pinned survives", out.pinned === true, out.pinned);
@@ -169,6 +232,30 @@ app.whenReady().then(async () => {
     "with the entry itself intact (undo-compact reads type and payload)",
     events[0]?.type === "compact" && events[0]?.payload?.beforeTokens === 100,
     JSON.stringify(events[0]?.payload),
+  );
+  // UNDO STILL HAS SOMETHING TO POINT AT.
+  //
+  // The event names the summary and the turns it stands for by id. Imported
+  // without translating those into this install's ids, "Undo" looks them up,
+  // finds nothing, and does nothing — silently, which is the worst way for a
+  // button to fail.
+  check(
+    "the compaction still names the turns it folded, in THIS chat's ids",
+    JSON.stringify(events[0]?.payload?.foldedIds) ===
+      JSON.stringify([newFirst, "t-assistant"]),
+    JSON.stringify(events[0]?.payload?.foldedIds),
+  );
+  check(
+    "…and the summary it left",
+    events[0]?.payload?.headerId === "t-summary",
+    events[0]?.payload?.headerId,
+  );
+  check(
+    "every id the log names is one the transcript actually has",
+    [events[0]?.payload?.headerId, ...(events[0]?.payload?.foldedIds ?? [])].every(
+      (id) => t.ids.includes(id),
+    ),
+    { log: [events[0]?.payload?.headerId, ...(events[0]?.payload?.foldedIds ?? [])], transcript: t.ids },
   );
   check(
     "and the source's log is untouched by the import",
