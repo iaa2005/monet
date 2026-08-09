@@ -23,32 +23,38 @@ style → text encoder → flow matching → vocoder → waveform
        loss = 1 − cosine( WavLM-L4 statistics of it, of your recording )
 ```
 
-**Two losses, and the default changed.** The first version compared a single
-CAM++ speaker embedding — one 512-d vector per utterance, so one scalar of
-gradient. It reached 0.67 on a 19-second Russian recording in 12 minutes and the
-result was judged "so-so" by ear. The default is now **WavLM layer 4**: still
-low-level features (timbre and articulation rather than identity), so far more of
-what makes a voice that voice. `--loss speaker` keeps the old, lighter path
-(29 MB instead of 1.2 GB); `--loss both` adds them.
+**One loss, and a WavLM one that was tried and dropped.** The obvious upgrade —
+[kdrkdrkdr/supertonic.embed][embed] uses WavLM layer-4 features, which are still
+low-level and should carry more of a voice than an identity vector — does not
+survive the adaptation this tool needs. Their target's text is known, so they can
+compare features frame by frame; here the target says different words, so the
+features have to be pooled, and pooled layer-4 statistics turn out to encode
+"this is speech at this level" and almost nothing about who is speaking.
 
-Because the target and the candidate say *different words*, frames cannot be
-compared one to one — there is no alignment. What is compared is the per-channel
-mean and standard deviation of the layer's features, which is text-independent by
-construction and is the same device style transfer uses (AdaIN, Gram matrices).
+Measured on a 19-second Russian recording, scoring the ten presets:
 
-Both numbers are printed every few iterations, so a run is comparable with the
-old one either way.
+| objective | spread across the ten | male − female | winner |
+| --- | --- | --- | --- |
+| WavLM L4 statistics, raw | **0.007** | −0.001 | noise |
+| WavLM L4 statistics, centred on the presets' mean | 0.175 | +0.028 | M4 |
+| CAM++ speaker cosine | 0.181 | **+0.078** | M4 |
+
+Raw, it cannot tell a female voice from a male one — and a fifteen-minute run
+confirmed it: the WavLM number sat at 0.97 from the first iteration while the
+speaker similarity fell from 0.58 to 0.37. Centring rescues the spread (the same
+trick the voice map needed) and it then agrees with CAM++ on the winner, but it
+separates genders three times worse for 377 MB and twice the time per iteration.
+So: CAM++, and the preset scoring now prints the spread, which is the diagnostic
+that made this decision cost a minute instead of an evening.
+
+[embed]: https://github.com/kdrkdrkdr/supertonic.embed
 
 Every arrow is differentiable once the ONNX graphs are converted to PyTorch, so
 this is gradient descent on the voice itself rather than a search among the ten
 presets. (The app tried the search; blending presets pulls towards the *average*
 voice and a real person is nowhere near it.)
 
-The same idea, and better validated than this file, is
-[kdrkdrkdr/supertonic.embed](https://github.com/kdrkdrkdr/supertonic.embed) —
-it uses WavLM layer-4 features for the loss instead of a speaker embedding,
-which gives a denser gradient. If this program plateaus too low for you, that is
-the next thing to try. Also
+Also
 [Fawzan09/voice-builder-for-supertonic-3](https://github.com/Fawzan09/voice-builder-for-supertonic-3),
 which optimises against SpeechBrain's ECAPA-TDNN.
 
@@ -98,8 +104,6 @@ help; clean audio does.
 | `--minutes` | 20 | Longer runs get closer. |
 | `--lr` | 1e-3 | Lower if the similarity jumps around; higher rarely helps. |
 | `--anchor` | 0.02 | Pull towards the starting preset. Raise it if the voice starts sounding broken rather than different. |
-| `--loss` | wavlm | `speaker` for the 29 MB path, `both` to combine. |
-| `--wavlm` | microsoft/wavlm-large | A smaller WavLM if 1.2 GB is too much. |
 | `--steps` | 4 | Flow steps per pass. 8 is more faithful and twice as slow. |
 | `--init` | auto | Force a starting preset (`F1`…`M5`) instead of scoring all ten. |
 | `--device` | auto | `cuda`, `xpu`, or `cpu`. |
@@ -108,6 +112,7 @@ help; clean audio does.
 ## Requirements
 
 PyTorch (~2 GB), torchaudio, onnx, onnx2torch, onnxruntime, soundfile, numpy.
+No transformers: the WavLM route is gone.
 A GPU is optional. The 29 MB speaker model downloads on the first run.
 
 Nothing here talks to a server: the recording, the model and the optimisation

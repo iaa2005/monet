@@ -10,12 +10,9 @@ matches the recording you gave it:
 
     style -> text encoder -> flow matching -> vocoder -> waveform
                                                             |
-        loss = 1 - cosine( WavLM-L4 statistics of that, of your recording )
+        loss = 1 - cosine( CAM++(that waveform), CAM++(your recording) )
 
-WavLM's fourth layer is still low-level - timbre and articulation rather than
-identity - so it carries much more of what makes a voice that voice than a
-speaker embedding does. --loss speaker switches to the lighter CAM++ cosine
-(29 MB instead of 1.2 GB, and measurably weaker).
+A WavLM layer-4 objective was tried and dropped, with numbers: see the README.
 
 Every arrow is differentiable, so this is gradient descent on the voice itself,
 not a search among presets. It writes `<name>.json`, which Code Monet imports
@@ -214,42 +211,6 @@ def speaker_model(work: Path, device: torch.device) -> torch.nn.Module:
     return as_torch(path, device, work / "cache")
 
 
-# ── WavLM layer 4: what the voice sounds like, frame by frame ───────────
-#
-# A speaker embedding answers "who is this" in one 512-d vector, which is a
-# single scalar of gradient per utterance once you take the cosine. WavLM's
-# fourth layer is still low-level — timbre and articulation rather than
-# identity — so it carries far more of what makes a voice that voice. This is
-# the loss kdrkdrkdr/supertonic.embed uses, and it is why.
-#
-# The target and the candidate say DIFFERENT WORDS, so frames cannot be
-# compared one to one: there is no alignment to be had. What is compared
-# instead is the per-channel mean and standard deviation of the layer's
-# features — the same trick style transfer uses (AdaIN, Gram matrices). It is
-# text-independent by construction and still touches all 1024 channels.
-
-WAVLM_LAYER = 4
-
-
-def wavlm_model(model_id: str, device: torch.device) -> torch.nn.Module:
-    # Imported here, not at the top: a --loss speaker run needs no transformers
-    # and no 1.2 GB download.
-    from transformers import WavLMModel
-
-    print(f"loading {model_id} (~1.2 GB the first time)")
-    model = WavLMModel.from_pretrained(model_id).to(device).eval()
-    model.requires_grad_(False)  # only the waveform needs gradients
-    return model
-
-
-def wavlm_stats(wav16k: torch.Tensor, wavlm: torch.nn.Module) -> torch.Tensor:
-    """Layer-4 statistics for one clip: [1, 2048] (means then deviations)."""
-    x = wav16k.unsqueeze(0)
-    x = (x - x.mean()) / torch.sqrt(x.var() + 1e-7)  # what the extractor does
-    h = wavlm(x, output_hidden_states=True).hidden_states[WAVLM_LAYER]
-    return torch.cat([h.mean(dim=1), h.std(dim=1)], dim=-1)
-
-
 def fbank(wav16k: torch.Tensor) -> torch.Tensor:
     """80-dim kaldi fbank, mean-normalised — what WeSpeaker's CAM++ expects.
     Differentiable, which rules out the C++ feature extractors."""
@@ -361,9 +322,8 @@ class Supertonic:
 def target_embedding(
     path: Path,
     speaker: torch.nn.Module,
-    wavlm: torch.nn.Module | None,
     device: torch.device,
-) -> tuple[torch.Tensor, torch.Tensor | None]:
+) -> torch.Tensor:
     audio, rate = sf.read(str(path), dtype="float32", always_2d=True)
     mono = torch.tensor(audio.mean(axis=1), device=device)
     if mono.numel() < rate * 3:
@@ -373,22 +333,9 @@ def target_embedding(
     window = int(4.0 * rate)
     hop = max(1, (mono.numel() - window) // 5) if mono.numel() > window else 1
     embs = []
-    stats = []
-    at16k = mono if rate == 16000 else torchaudio.functional.resample(mono, rate, 16000)
-    for start in range(0, max(1, mono.numel() - window + 1), hop):
-        chunk = mono[start : start + window]
-        if chunk.numel() < rate:
-            break
-        with torch.no_grad():
-            embs.append(F.normalize(embed_waveform(chunk, rate, speaker), dim=-1))
-    if wavlm is not None:
-        with torch.no_grad():
-            # The whole clip at once: statistics over more speech are steadier
-            # than statistics over a four-second window.
-            stats.append(F.normalize(wavlm_stats(at16k, wavlm), dim=-1))
     stacked = torch.cat(embs, dim=0).mean(dim=0, keepdim=True)
     print(f"target from {mono.numel() / rate:.0f} s of audio, {len(embs)} windows")
-    return F.normalize(stacked, dim=-1), stats[0] if stats else None
+    return F.normalize(stacked, dim=-1)
 
 
 # ── Optimise ────────────────────────────────────────────────────────────
@@ -433,14 +380,6 @@ def main() -> None:
     )
     ap.add_argument("--init", default=None, help="preset to start from (F1…M5)")
     ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "xpu"])
-    ap.add_argument(
-        "--loss",
-        default="wavlm",
-        choices=["wavlm", "speaker", "both"],
-        help="what to optimise. wavlm = layer-4 feature statistics (denser, "
-        "needs a 1.2 GB model); speaker = one CAM++ cosine (29 MB, weaker)",
-    )
-    ap.add_argument("--wavlm", default="microsoft/wavlm-large", help="WavLM model id")
     args = ap.parse_args()
 
     widen_converter_registry()
@@ -466,22 +405,14 @@ def main() -> None:
         )
 
     speaker = speaker_model(work, device)
-    wavlm = wavlm_model(args.wavlm, device) if args.loss != "speaker" else None
-    target, target_stats = target_embedding(args.recording, speaker, wavlm, device)
+    target = target_embedding(args.recording, speaker, device)
     tts = Supertonic(models, device, work / "cache")
 
-    def measure(
-        wav: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        """Both numbers for one utterance: CAM++ cosine (the readable one) and
-        WavLM layer-4 statistics cosine (the one worth optimising)."""
+    def measure(wav: torch.Tensor) -> torch.Tensor:
+        """How like the recording this utterance sounds, 0…1."""
         wav16k = torchaudio.functional.resample(wav, tts.sample_rate, 16000)
         emb = F.normalize(speaker(fbank(wav16k)), dim=-1)
-        spk = (emb @ target.T).reshape(())
-        if wavlm is None or target_stats is None:
-            return spk, None
-        stats = F.normalize(wavlm_stats(wav16k, wavlm), dim=-1)
-        return spk, (stats @ target_stats.T).reshape(())
+        return (emb @ target.T).reshape(())
 
     # Start from the preset that already sounds nearest: gradient descent from
     # a plausible voice beats descent from noise, and it keeps the result on
@@ -508,20 +439,34 @@ def main() -> None:
     else:
         print("scoring the presets…")
         best, start = -2.0, presets[0]
+        scored: dict[str, float] = {}
         for path in presets:
             ttl, dp = style_of(path)
             with torch.no_grad():
                 wav = tts.speak(ttl, dp, texts[0], args.lang, args.steps)
-                spk, wl = measure(wav)
-            # Ranked by whatever is being optimised, so the descent starts from
-            # the best point in ITS own geometry, not another metric's.
-            score = float(wl if (args.loss == "wavlm" and wl is not None) else spk)
-            print(
-                f"  {path.stem}: speaker {float(spk):+.3f}"
-                + (f"  wavlm {float(wl):+.3f}" if wl is not None else "")
-            )
+                score = float(measure(wav))
+            scored[path.stem] = score
+            print(f"  {path.stem}: {score:+.3f}")
             if score > best:
                 best, start = score, path
+        # THE CHEAP DIAGNOSTIC. A metric that scores ten different voices within
+        # a hair of each other has no gradient to give, and finding that out
+        # after fifteen minutes of descent is finding it out too late: a
+        # WavLM-statistics objective tried here spanned 0.005 across these ten
+        # and rated female voices above male ones.
+        spread = max(scored.values()) - min(scored.values())
+        males = [v for k, v in scored.items() if k.startswith("M")]
+        females = [v for k, v in scored.items() if k.startswith("F")]
+        gap = sum(males) / len(males) - sum(females) / len(females)
+        print(
+            f"spread across the ten: {spread:.3f}"
+            f"  (male-female gap {gap:+.3f})"
+        )
+        if spread < 0.02:
+            sys.exit(
+                "the objective cannot tell these ten voices apart, so it cannot"
+                " fit yours either — check the recording (one speaker, no music)"
+            )
         print(f"starting from {start.stem} ({best:+.3f})")
 
     ttl0, dp0 = style_of(start)
@@ -545,20 +490,11 @@ def main() -> None:
         text = texts[it % len(texts)]
         opt.zero_grad(set_to_none=True)
         wav = tts.speak(style_ttl, style_dp, text, args.lang, args.steps)
-        spk, wl = measure(wav)
+        similarity = measure(wav)
         anchor = ((style_ttl - ttl0) ** 2).mean()
-        if args.loss == "speaker" or wl is None:
-            objective = 1.0 - spk
-        elif args.loss == "wavlm":
-            objective = 1.0 - wl
-        else:
-            objective = 2.0 - wl - spk
-        (objective + args.anchor * anchor).backward()
+        (1.0 - similarity + args.anchor * anchor).backward()
         opt.step()
-        # Both are reported; the one being optimised is what picks the winner.
-        spoken = float(spk.detach())
-        feature = float(wl.detach()) if wl is not None else spoken
-        score = spoken if args.loss == "speaker" else feature
+        score = float(similarity.detach())
         # Every pass draws new flow noise, so one number wobbles by ~0.03.
         # The smoothed value is what decides the winner; the raw one is only
         # there to show that something is happening.
@@ -569,9 +505,8 @@ def main() -> None:
         left = (deadline - time.time()) / 60
         if it % 5 == 0 or it < 5:
             print(
-                f"[{it:4d}] wavlm {feature:+.3f}  speaker {spoken:+.3f}  "
-                f"smoothed {smooth:+.3f}  best {best_score:+.3f}  "
-                f"{left:.1f} min left",
+                f"[{it:4d}] similarity {score:+.3f}  smoothed {smooth:+.3f}  "
+                f"best {best_score:+.3f}  {left:.1f} min left",
                 flush=True,
             )
 
@@ -593,7 +528,6 @@ def main() -> None:
                 "metadata": {
                     "source": "clone.py",
                     "from": args.recording.name,
-                    "loss": args.loss,
                     "similarity": round(best_score, 4),
                     "iterations": it,
                 },

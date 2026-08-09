@@ -73,24 +73,20 @@ check(
     /Range/.test(py) &&
     /st_size != SPEAKER_BYTES/.test(py),
 )
-// Switched on Sasha's verdict ("ну так себе") after the speaker-loss run: layer-4
-// features carry far more of a voice than one identity vector.
+// Tried and dropped, with numbers in the README: pooled WavLM layer-4
+// statistics scored ten different voices within 0.007 of each other. What
+// replaced that experiment is the DIAGNOSTIC — the preset scoring prints the
+// spread and refuses to descend when the objective cannot separate the ten.
 check(
-  'WAVLM LAYER 4 IS THE DEFAULT LOSS, with the lighter one still available',
-  /default="wavlm"/.test(py) &&
-    /hidden_states\[WAVLM_LAYER\]/.test(py) &&
-    /WAVLM_LAYER = 4/.test(py) &&
-    /"speaker", "both"/.test(py),
+  'ONE OBJECTIVE, and it reports whether it can discriminate at all',
+  /spread across the ten/.test(py) &&
+    /spread < 0\.02/.test(py) &&
+    !/--loss/.test(py) &&
+    !/wavlm_stats/.test(py),
 )
 check(
-  'statistics, not frames — the target says different words, so nothing aligns',
-  /h\.mean\(dim=1\), h\.std\(dim=1\)/.test(py),
-)
-// Found by a wiring probe: dp.grad came back None, because style_dp only feeds
-// the duration predictor and that answer becomes a sample count.
-check(
-  'AND THE RHYTHM TENSOR IS NOT PRETEND-OPTIMISED',
-  /Adam\(\[style_ttl\], lr=args\.lr\)/.test(py) && !/Adam\(\[style_ttl, style_dp\]/.test(py),
+  'the male-female gap is printed too — the tell that caught the bad loss',
+  /male-female gap/.test(py),
 )
 check(
   'the ONNX shims it needs are both there',
