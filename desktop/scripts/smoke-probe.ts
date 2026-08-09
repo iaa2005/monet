@@ -1290,6 +1290,36 @@ async function main() {
       'an id that points at nothing is refused, not thrown',
       setTurnContext(sid, 'no-such-id', false).ok === false,
     )
+
+    // A SEEDED PROMPT KEEPS THE CHAT'S OWN ID.
+    //
+    // The seed is how a chat written before the durable transcript existed gets
+    // a model-facing history at all, and it used to arrive as {role, content}
+    // with the bubble id dropped. The transcript then minted a fresh one, so the
+    // chat could never name that turn: "this prompt has no model-facing turn
+    // behind it" for ever, even after it had one. Reported from the app.
+    resetConversation(sid)
+    seedConversation(sid, [
+      { id: 'bubble-1', role: 'user', content: 'seeded question' },
+      { id: 'bubble-2', role: 'assistant', content: 'seeded answer' },
+    ])
+    const seeded = setTurnContext(sid, 'bubble-1', false)
+    check(
+      'a seeded prompt can be taken out of context by its bubble id',
+      seeded.ok && seeded.changed === 2,
+      seeded,
+    )
+    check(
+      '…and it really left the request',
+      messagesInContext(sid).length === 0,
+      messagesInContext(sid).length,
+    )
+    check(
+      '…and comes back',
+      setTurnContext(sid, 'bubble-1', true).changed === 2 &&
+        messagesInContext(sid).length === 2,
+    )
+    resetConversation(sid)
   }
 
   // ── Goal driver ────────────────────────────────────────────────────────

@@ -385,7 +385,7 @@ export interface ElectronAPI {
       message: string;
       /** The user bubble's id, tying this prompt to its transcript turn. */
       userMessageId?: string;
-      seed?: { role: "user" | "assistant"; content: string }[];
+      seed?: { id?: string; role: "user" | "assistant"; content: string }[];
       mode?: string;
       space?: string;
       effort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";

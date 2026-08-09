@@ -587,7 +587,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     const seed = (get().sessions[sessionId]?.messages ?? [])
       .filter((m) => m.role === "user" || m.role === "assistant")
       .filter((m) => m.content)
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+      .map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
     get().startStreaming();
     const mode =
       st.space === "home"
@@ -1092,7 +1092,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       const prior = msgs.slice(0, idx);
       const seed = prior
         .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
-        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+        .map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
       const keepUserTurns = prior.filter((m) => m.role === "user").length;
       const totalUserTurns = msgs.filter((m) => m.role === "user").length;
 
@@ -1293,7 +1293,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       if (!bridge) return;
       const seed = state.messages
         .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
-        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+        .map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
       get().startStreaming();
       // Home only understands approve/skip; elsewhere honour the saved mode.
       const mode =

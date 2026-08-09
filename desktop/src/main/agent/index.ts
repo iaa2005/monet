@@ -706,12 +706,25 @@ async function seedFromDisplayMessages(sessionId: string): Promise<void> {
  */
 export function seedConversation(
   sessionId: string,
-  priorText: { role: "user" | "assistant"; content: string }[],
+  priorText: { id?: string; role: "user" | "assistant"; content: string }[],
 ): void {
   if (conversations.has(sessionId)) return;
+  // The bubble's id comes with it, and that is the whole point of the `id`
+  // field. Without it these messages got fresh minted ids when the transcript
+  // was next written, so the chat could never name one of them again: every
+  // prompt from before the transcript store came back to life would have
+  // answered "this prompt has no model-facing turn behind it" for ever, even
+  // after it had one. One turn in an old chat now makes all of its prompts
+  // addressable, not just the new one.
   conversations.set(
     sessionId,
-    priorText.filter((m) => m.content).map((m) => ({ ...m })),
+    priorText
+      .filter((m) => m.content)
+      .map((m) => {
+        const msg: LLMMessage = { role: m.role, content: m.content };
+        if (m.id) messageIds.set(msg, m.id);
+        return msg;
+      }),
   );
 }
 

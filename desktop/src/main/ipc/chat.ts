@@ -59,8 +59,11 @@ interface ChatSendPayload {
   /** The id of the user bubble the renderer drew for this prompt — the one
    * thread between the chat's messages and the model's transcript. */
   userMessageId?: string;
-  /** Optional text-only history to seed a reopened session before the first send. */
-  seed?: { role: "user" | "assistant"; content: string }[];
+  /** Optional text-only history to seed a reopened session before the first
+   * send. `id` is the display bubble's — carried so a seeded prompt can still
+   * be taken out of context; without it the transcript mints a new one and the
+   * chat can never name that turn. */
+  seed?: { id?: string; role: "user" | "assistant"; content: string }[];
   /** Chat mode ("auto" | "plan" | "concise"). */
   mode?: string;
   attachments?: ChatAttachment[];
