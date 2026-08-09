@@ -176,6 +176,7 @@ const filler = (n: number): string => `Text about topic ${n}. ${'word '.repeat(2
   }
   // Long enough that the tool result falls outside the protected tail —
   // microCompact leaves the last few messages alone on purpose.
+  // (see also THE TRIGGER, at the end of this file)
   const messages = [
     say('user', 'read it'),
     toolUse,
@@ -234,6 +235,54 @@ const filler = (n: number): string => `Text about topic ${n}. ${'word '.repeat(2
   check(
     'a chat that is long only because of removed turns is not compacted',
     out === messages,
+  )
+}
+
+// ─── THE TRIGGER: room left, not a fraction filled ──────────────────────
+//
+// This was `inputBudget * 0.7`, which scales the waste with the window: on a
+// 200k input budget it compacted at 140k and left 60,000 tokens paid for and
+// never used. An absolute buffer is what the upstream CLI keeps
+// (AUTOCOMPACT_BUFFER_TOKENS = 13_000), and 13k is what one more turn needs —
+// a large tool result plus a reply. It does not grow because the window did.
+
+{
+  const { compactionThreshold, warningThreshold, AUTO_BUFFER_TOKENS, MANUAL_BUFFER_TOKENS } =
+    await import('../src/main/agent/compaction.js')
+
+  check(
+    'a 200k input budget triggers at 187k, not 140k',
+    compactionThreshold({ inputLimit: 200_000 }) === 200_000 - AUTO_BUFFER_TOKENS,
+    compactionThreshold({ inputLimit: 200_000 }),
+  )
+  check(
+    'THE BUFFER DOES NOT GROW WITH THE WINDOW',
+    1_000_000 - compactionThreshold({ inputLimit: 1_000_000 }) === AUTO_BUFFER_TOKENS &&
+      64_000 - compactionThreshold({ inputLimit: 64_000 }) === AUTO_BUFFER_TOKENS,
+    [compactionThreshold({ inputLimit: 1_000_000 }), compactionThreshold({ inputLimit: 64_000 })],
+  )
+  check(
+    'asked for by hand, it reclaims more',
+    compactionThreshold({ inputLimit: 200_000 }, 'manual') === 200_000 - MANUAL_BUFFER_TOKENS &&
+      MANUAL_BUFFER_TOKENS < AUTO_BUFFER_TOKENS,
+  )
+  check(
+    'a context limit reserves output space first',
+    compactionThreshold({ contextLimit: 100_000, outputReserve: 20_000 }) ===
+      80_000 - AUTO_BUFFER_TOKENS,
+    compactionThreshold({ contextLimit: 100_000, outputReserve: 20_000 }),
+  )
+  check(
+    'a window smaller than the buffer still gives a usable number',
+    compactionThreshold({ inputLimit: 8_000 }) === 4_000,
+    compactionThreshold({ inputLimit: 8_000 }),
+  )
+  check(
+    'the warning comes before the trigger, never after',
+    warningThreshold({ inputLimit: 200_000 }) <
+      compactionThreshold({ inputLimit: 200_000 }) &&
+      warningThreshold({ inputLimit: 200_000 }) > 0,
+    warningThreshold({ inputLimit: 200_000 }),
   )
 }
 

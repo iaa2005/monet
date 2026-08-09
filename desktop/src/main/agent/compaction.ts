@@ -63,36 +63,60 @@ export function shouldCompact(
   return messages.length >= 4 && estimateTokens(messages) > threshold
 }
 
-/** Compaction trigger for a model's input budget.
+/**
+ * How much room to leave, rather than what fraction to fill.
  *
- * The numeric form is kept for callers that already pass a resolved input
- * budget. The object form preserves the distinction between max input tokens
- * and total context length, reserving output space only for the latter.
+ * This was `Math.floor(inputBudget * 0.7)`, and a percentage is the wrong shape:
+ * it scales the waste with the window. On a 200k input budget it compacted at
+ * 140k and left 60,000 tokens permanently unused — a third of what was paid for.
+ * The upstream CLI keeps an absolute buffer instead
+ * (services/compact/autoCompact.ts):
+ *
+ *     AUTOCOMPACT_BUFFER_TOKENS      = 13_000
+ *     MANUAL_COMPACT_BUFFER_TOKENS   =  3_000
+ *     WARNING_THRESHOLD_BUFFER_TOKENS = 20_000
+ *
+ * 13k is what one more turn needs: a large tool result plus a reply. It does not
+ * get bigger because the window did.
+ *
+ * Manual compaction gets a smaller buffer because it was asked for — the point is
+ * to reclaim room now, not to leave headroom for a turn that may not come.
  */
+export const AUTO_BUFFER_TOKENS = 13_000
+export const MANUAL_BUFFER_TOKENS = 3_000
+export const WARNING_BUFFER_TOKENS = 20_000
+
 export function compactionThreshold(
   budget?: number | CompactionBudget,
+  kind: 'auto' | 'manual' = 'auto',
 ): number {
   if (EXPLICIT_THRESHOLD != null) return EXPLICIT_THRESHOLD
+  const buffer = kind === 'manual' ? MANUAL_BUFFER_TOKENS : AUTO_BUFFER_TOKENS
+  const input = inputBudgetOf(budget)
+  if (input == null) return DEFAULT_THRESHOLD
+  // A window smaller than the buffer is not a reason to return a negative
+  // threshold — halve it and let the model deal with a tight turn.
+  return input > buffer ? input - buffer : Math.floor(input / 2)
+}
 
-  if (typeof budget === 'number') {
-    return validLimit(budget)
-      ? Math.floor(budget * 0.7)
-      : DEFAULT_THRESHOLD
-  }
+/** Where the meter should start warning: one buffer earlier than the trigger. */
+export function warningThreshold(budget?: number | CompactionBudget): number {
+  const t = compactionThreshold(budget, 'auto')
+  return Math.max(1, t - WARNING_BUFFER_TOKENS)
+}
 
-  if (!budget) return DEFAULT_THRESHOLD
-  if (validLimit(budget.inputLimit))
-    return Math.floor(budget.inputLimit * 0.7)
-
+/** The provider's usable input budget, or null when it exposes neither limit. */
+function inputBudgetOf(budget?: number | CompactionBudget): number | null {
+  if (typeof budget === 'number') return validLimit(budget) ? budget : null
+  if (!budget) return null
+  if (validLimit(budget.inputLimit)) return budget.inputLimit
   if (validLimit(budget.contextLimit)) {
     const reserve = validLimit(budget.outputReserve)
       ? Math.min(budget.outputReserve, budget.contextLimit)
       : Math.min(DEFAULT_OUTPUT_RESERVE, budget.contextLimit)
-    const inputBudget = Math.max(1, budget.contextLimit - reserve)
-    return Math.floor(inputBudget * 0.7)
+    return Math.max(1, budget.contextLimit - reserve)
   }
-
-  return DEFAULT_THRESHOLD
+  return null
 }
 
 function validLimit(value: number | undefined): value is number {

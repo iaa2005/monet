@@ -763,6 +763,21 @@ export async function compactSessionNow(
     // Asked for by hand, but the rules are the same: a prompt the user took
     // out of context is not summarised back in, and a "compaction" that made
     // the context bigger is not applied.
+    //
+    // The threshold is passed so pass 1 can stop early: clearing old tool output
+    // is lossless and free, and if that alone gets under the line there is no
+    // reason to pay for a summary. Without it the manual path always summarised.
+    // A smaller buffer than the automatic one — this was asked for, so the point
+    // is to reclaim room now rather than to leave headroom for a turn that may
+    // never come.
+    threshold: compactionThreshold(
+      {
+        inputLimit: provider.inputLimit,
+        contextLimit: provider.contextLimit,
+        outputReserve: provider.maxTokens || 16000,
+      },
+      "manual",
+    ),
     inContext: isInContext,
     carry: carryIdentity,
   });

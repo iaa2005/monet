@@ -64,8 +64,24 @@ export interface MicroCompactResult {
 /**
  * Clear replayable tool results older than the protected tail.
  *
+ * Counted by MESSAGE POSITION, not by number of results — and that was tested
+ * against the upstream rule rather than assumed. services/compact/microCompact.ts
+ * protects `compactableIds.slice(-keepRecent)`: the newest N results wherever
+ * they are. Ported here it made things worse, and a probe said so in one line:
+ * with a single large read followed by eight messages of conversation, the count
+ * rule protects it (there is only one result, so it is among the newest N) while
+ * the position rule clears it. This pass only runs when the context is ALREADY
+ * over the threshold, so protecting the one thing that could be reclaimed means
+ * paying for a summary instead.
+ *
+ * The count rule differs from the tail rule ONLY by protecting results outside
+ * the tail. Inside the tail, position already protects everything. So it adds no
+ * guarantee we lack and one we do not want. Upstream needs it because its
+ * thresholds come from count-based remote config and it has no notion of a tail;
+ * we have the tail.
+ *
  * @param keepRecentToolResults results in the last N messages are left alone —
- *        the model is usually still working with those.
+ *        the model is usually still working with those. Floored at 1.
  * @param minChars don't bother clearing a result smaller than this; the marker
  *        itself costs tokens, and clearing a 40-character result is a net loss.
  */
@@ -73,7 +89,7 @@ export function microCompact(
   messages: LLMMessage[],
   opts: { keepRecentToolResults?: number; minChars?: number } = {},
 ): MicroCompactResult {
-  const keep = opts.keepRecentToolResults ?? 6;
+  const keep = Math.max(1, opts.keepRecentToolResults ?? 6);
   const minChars = opts.minChars ?? 400;
 
   // Which tool_use ids belong to replayable tools.
@@ -87,6 +103,7 @@ export function microCompact(
   }
 
   const cutoff = Math.max(0, messages.length - keep);
+
   let charsSaved = 0;
   let cleared = 0;
 
