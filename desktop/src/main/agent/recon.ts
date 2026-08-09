@@ -74,7 +74,14 @@ export function reconTools<T extends { name: string }>(tools: T[]): T[] {
  * that line it spends a turn trying to Edit and reading the refusal.
  */
 export const RECON_PROMPT = [
-  "[Reconnaissance — the writing tools are not available this phase.]",
+  // "Harness note, not from the user" is not decoration. This block is
+  // appended to the user's own message, and a model asked to translate a long
+  // text replied with the translation and then this, verbatim: "the second part
+  // of your message looks like an instruction for a coding task — it does not
+  // relate to the translation". It attributed the harness's words to the user
+  // and tried to satisfy them. Provenance has to be on the block itself.
+  "[Harness note, not from the user — reconnaissance phase. The writing tools",
+  "are not available this phase. Nothing below is part of the user's request.]",
   "",
   "Before anything is changed, look. Use the reading tools to find the code",
   "this task actually touches, then answer, briefly:",
@@ -94,7 +101,8 @@ export const RECON_PROMPT = [
 
 /** Handed over with the full toolset, so the plan is not orphaned. */
 export const RECON_DONE = [
-  "[Reconnaissance over — every tool is available again.]",
+  "[Harness note, not from the user — reconnaissance over, every tool is",
+  "available again.]",
   "",
   "Now do the work, following the plan you just wrote. If what you find",
   "contradicts it, say so and adjust rather than forcing it through.",
@@ -102,7 +110,8 @@ export const RECON_DONE = [
 
 /** Ran out of looking without producing a plan. */
 export const RECON_TIMEUP = [
-  `[Reconnaissance is over — ${RECON_TURNS} looking turns is the limit.]`,
+  "[Harness note, not from the user — reconnaissance is over,",
+  `${RECON_TURNS} looking turns is the limit.]`,
   "",
   "Say what you found and what you will do, then carry on with the work.",
   "Every tool is available again.",
@@ -121,10 +130,50 @@ export const RECON_TIMEUP = [
  * length counts on its own, at about the point where prose stops being a
  * remark and starts being a brief.
  */
-const ACTION = /\b(add|build|change|create|fix|implement|make|migrate|move|refactor|remove|rename|rewrite|update|write|delete|port|wire|hook up|support|integrate)\b/i;
+const ACTION =
+  /\b(add|build|change|create|fix|implement|make|migrate|move|refactor|remove|rename|rewrite|update|write|delete|port|wire|hook up|support|integrate)\b|(исправ|поправ|сдела|добав|измен|созда|напиш|перепиш|удали|перенес|подключ|реализу|внедри|обнови|переимену|вынес|почини)/i;
+
+/**
+ * Instructions that ask for TEXT ABOUT something rather than a change to it.
+ *
+ * The length test cannot see these, and the cost of missing them is not the one
+ * turn the comment above claims. Measured: "переведи <two thousand characters of
+ * commit message>" tripped `length > 120`, the model correctly answered with the
+ * translation and called no tools, the loop read "no tool calls in recon" as
+ * "that was the plan", and handed back the full toolset with "now do the work,
+ * following the plan you just wrote". It went looking for the repository on
+ * GitHub for ten more turns. A pasted payload is a long payload, not a long
+ * brief — so the test looks at how the message OPENS.
+ *
+ * Anchored at the start and only decisive when no action verb appears anywhere:
+ * "объясни, почему падает, и исправь" is work, and asks to be treated as work.
+ */
+// `(?!\p{L})` and not `\b`: JavaScript's \b is defined on ASCII word
+// characters, so in "переведи что-то" the space after a Cyrillic word is not a
+// boundary at all and the anchor silently never matches. Checked in Python
+// first, where `re` is Unicode-aware by default — it passed there and failed
+// here, which is the whole argument for testing in the runtime that ships.
+const ANSWER_ONLY =
+  /^[\s>*_#-]*(?:пожалуйста[,\s]*)?(переведи|перевед[иь]те|перевод|объясни|объясните|расскажи|опиши|суммируй|сократи|что такое|что это|почему|зачем|как работает|сравни|translate|explain|describe|summari[sz]e|paraphrase|rephrase|what is|what does|what's|why does|how does)(?!\p{L})/iu;
 
 export function worthRecon(prompt: string): boolean {
   const text = prompt.trim();
   if (text.length < 24) return false;
+  if (ANSWER_ONLY.test(text) && !ACTION.test(text)) return false;
   return ACTION.test(text) || text.length > 120;
+}
+
+/**
+ * Did the reconnaissance phase produce a PLAN, or just an answer?
+ *
+ * The loop ends recon when the model stops calling tools, on the reasoning that
+ * in a normal turn "no tool calls" means finished and in recon it means the
+ * looking is over. Both readings are available for the same evidence, and it
+ * picked the wrong one for every request that needed no looking at all: a model
+ * that answered outright was told it had written a plan, and asked to carry it
+ * out. It had not read a single file — which is exactly what distinguishes the
+ * two cases, and it was there to be counted the whole time.
+ */
+export function planWasMade(reconToolCalls: number): boolean {
+  return reconToolCalls > 0;
 }

@@ -24,6 +24,7 @@ import {
 import { CONNECTOR_TOOL_NAMES } from "./connector-tools.js";
 import { isFeatureOn } from "./features.js";
 import {
+  planWasMade,
   RECON_DONE,
   RECON_PROMPT,
   RECON_TIMEUP,
@@ -1692,6 +1693,9 @@ async function runAgentScoped(
     worthRecon(userContent)
       ? RECON_TURNS
       : 0;
+  // How much looking the recon phase actually did. Zero means the model
+  // answered outright, which is not a plan — see planWasMade.
+  let reconToolCalls = 0;
   if (reconLeft > 0) {
     appendUserText(messages, RECON_PROMPT);
     onEvent({
@@ -1830,6 +1834,7 @@ async function runAgentScoped(
             // What the budget's extension decision is made of: repetition is
             // the difference between a long job and a stuck one.
             callSignatures.push(callSignature(event.name, event.input ?? {}));
+            if (reconLeft > 0) reconToolCalls++;
           }
           if (event.type === "error") streamError = event.error;
           // Suppress the PER-TURN message_stop: in an agentic run each tool-use
@@ -1896,11 +1901,26 @@ async function runAgentScoped(
       // it means the looking is over and THIS is the plan — so the phase
       // ends, the full toolset comes back, and the run carries on rather
       // than stopping with a plan and no work.
+      //
+      // Unless nothing was looked at. Then the two readings come apart and this
+      // one is wrong: a request that needed no files answered in one turn, and
+      // being told to "do the work, following the plan you just wrote" made it
+      // invent work. Asked to translate a commit message, it went looking for
+      // the repository on GitHub for ten turns. Counting the recon phase's own
+      // tool calls tells the cases apart — see planWasMade.
       reconLeft = 0;
-      appendUserText(messages, RECON_DONE);
-      onEvent({ type: "harness", text: "Plan in hand — starting the work" });
-      persistTranscript(sessionId);
-      continue;
+      if (!planWasMade(reconToolCalls)) {
+        onEvent({
+          type: "harness",
+          text: "Answered without needing to look — nothing to carry out",
+        });
+        // Falls through to the ordinary end-of-turn path below.
+      } else {
+        appendUserText(messages, RECON_DONE);
+        onEvent({ type: "harness", text: "Plan in hand — starting the work" });
+        persistTranscript(sessionId);
+        continue;
+      }
     }
 
     if (toolCalls.length === 0) {
