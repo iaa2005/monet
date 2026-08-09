@@ -603,10 +603,14 @@ def main() -> None:
         print(
             f"\nStill climbing when the time ran out: {at_quarter:+.3f} at three "
             f"quarters, {best_score:+.3f} at the end. Continue from here —\n"
-            f"  python clone.py {args.recording} --init-json {out.name} --minutes 60\n"
-            f"which is how a +0.673 run became +0.886. Above about +0.87 the "
-            f"measurement stops meaning much:\nthe same style spoken twice only "
-            f"scores +0.92 against itself."
+            f"  python clone.py {args.recording} --init-json {out.name} "
+            f"--minutes 60 --draws {args.draws}\n"
+            f"which is how +0.673 became +0.886, and then +0.894. Keep --draws the "
+            f"same or the number\nchanges scale under you.\n\n"
+            f"Read it against the metric's own floor, which moves with --draws: the "
+            f"same style\nspoken twice scores +0.937 against itself at one draw and "
+            f"+0.975 at four. Within\nabout 0.05 of that, what is left is the "
+            f"sampler's noise and not the voice."
         )
 
 

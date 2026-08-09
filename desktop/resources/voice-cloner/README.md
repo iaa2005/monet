@@ -256,17 +256,34 @@ three flow-noise seeds that nothing in the run had ever spoken:
 | the fitted encoder's one matrix multiply | +0.1783 | +0.1607 |
 | the best of 400 voices across the whole span | +0.3815 | — |
 | `clone.py`, 12 minutes | +0.6677 | +0.6683 |
-| `clone.py`, 45 minutes more from that style | **+0.8860** | **+0.8675** |
+| `clone.py`, 45 minutes more from that style | +0.8860 | +0.8675 |
+| `clone.py`, one hour more again, 4 draws | **+0.8944** | **+0.8838** |
 | — for scale: a synthetic voice to its nearest synthetic neighbour | +0.9547 | |
 | — for scale: two synthetic voices at random | +0.5061 | |
-| — for scale: the same style spoken twice, different flow noise | +0.92 | |
+| — **the ceiling: this style against itself, spoken twice** | **+0.9365** | |
 
-**+0.868 on a real voice, verified on sentences it never saw** (+0.817, +0.807,
-+0.815 individually — a spread of 0.01, so there is no text-fitting in it). That is
-94% of the model's own reproducibility, and it took no new method: the earlier
-+0.667 was the end of a twelve-minute budget, not the end of the descent.
+**+0.884 on a real voice, verified on sentences it never saw** (+0.809, +0.871,
++0.830 individually — so there is no text-fitting in it) against a ceiling of
++0.9365, which is what the *same style* scores against itself when the sampler
+draws different noise. That is 94% of the metric's own reproducibility, and it took
+no new method: the +0.667 everyone stopped at was the end of a twelve-minute
+budget, not the end of the descent.
 
-Run it long. `--minutes 60` is a reasonable default for a voice you care about.
+Run it long. `--minutes 60`, and continue with `--init-json` while it is still
+climbing — 12 min gave +0.667, 45 more gave +0.886, an hour more gave +0.894.
+
+**Stop about there.** That last hour is worth +0.016, which is inside the noise of
+any small sample: one rendering wobbles by ±0.03, and on two particular sentences
+the *earlier* style scored better (+0.837 against +0.811) while over five it scored
+worse. Distinguishing +0.87 from +0.89 takes more renderings than it takes to hear
+the difference, which is the point at which the metric hands over to your ears.
+
+**One trap.** That ceiling moves with `--draws`, because averaging removes noise
+that pushes every cosine down. Measured on the same style: it scores +0.9365
+against itself at one draw and +0.9752 at four, and the recording scores +0.8813
+and +0.9247. So `clone.py` printing +0.934 at four draws is *not* better than +0.89
+at one — it is the same voice on a different scale. The style file records which was
+used, and the continuation command it prints repeats the flag.
 
 **Keep the anchor on.** That 45-minute run was `--anchor 0`, and past iteration
 ~700 it came apart: the smoothed score fell from +0.857 to +0.699 by iteration
