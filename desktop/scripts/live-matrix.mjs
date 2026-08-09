@@ -1178,6 +1178,113 @@ scenario('smoke', null, async (api, ctx) => {
   }
 })
 
+// 12b ─ What the reconnaissance TRIGGER is worth, in a language it does not
+// speak.
+//
+// `worthRecon` is a keyword template: English action verbs, Russian stems, a
+// length test. Turkish "düzelt" is in none of them, so the phase that exists to
+// stop a model writing into a file it has not read is simply absent — and the
+// same request in English gets it. Whether that costs anything is not a question
+// the regex can be asked. It is a question about what the model does.
+//
+// So the checks are not about the template. They are the invariant the template
+// is a means to: nothing is written before it is read. If that holds in Turkish
+// with no phase at all, the phase is doing less than it claims.
+//
+// The feature is written into the data dir first, because it is defaultOn:false
+// and the first version of this scenario forgot: every check passed with recon
+// switched off, including "a translation starts no reconnaissance phase". A
+// check that cannot tell a working fix from a disabled feature is not a check,
+// which is why the fired/not-fired assertions below are stated in both
+// directions.
+scenario('recon_trigger', null, async (api, ctx) => {
+  writeFileSync(
+    join(ctx.dataDir, 'agent-features.json'),
+    JSON.stringify({ recon: true }),
+    'utf8',
+  )
+  const BUG = [
+    'export function firstLine(messages) {',
+    '  // Crashes when the chat is empty: messages[0] is undefined.',
+    '  return messages[0].text.split("\\n")[0]',
+    '}',
+    '',
+  ].join('\n')
+
+  const firstIndex = (steps, names) =>
+    steps.findIndex((s) => s.type === 'tool' && names.includes(s.name))
+  const READERS = ['Read', 'Grep', 'Glob', 'LspHover', 'LspDefinition', 'SandboxRead']
+  const WRITERS = ['Edit', 'MultiEdit', 'Write', 'SandboxWrite', 'ApplyPatch']
+  const reconFired = (steps) =>
+    steps.some((s) => s.type === 'harness' && /Reconnaissance/i.test(s.text ?? ''))
+  const tools = (steps) =>
+    steps.filter((s) => s.type === 'tool').map((s) => s.name)
+
+  // ── 1. The message that started all this: an instruction in one language
+  // and two thousand characters of payload in another.
+  const t = await ask(api, {
+    cwd: workspace({ 'chat.js': BUG }),
+    maxTurns: 12,
+    message:
+      'переведи "Start converging" was told three times, and first at turn 30 of 80\n\n' +
+      'The step budget extends: a run whose recent tool calls keep differing earns\n' +
+      '+20 turns twice over, to 80. The heads-up did not know that. It fired on\n' +
+      'turn + 1 === floor(budget * 0.75) against whatever budget was current, so a\n' +
+      'run productive from start to finish was warned three times, the first of them\n' +
+      'off by fifty steps, and the last in the same message that congratulated it.\n' +
+      'The asymmetry is the bug: extending consults evidence, warning consulted none.',
+  })
+  say(`      recon fired: ${reconFired(t.steps)}   tools: ${JSON.stringify(tools(t.steps))}`)
+  check(
+    'a translation starts no reconnaissance phase (with the feature ON)',
+    !reconFired(t.steps),
+    tools(t.steps),
+  )
+  check(
+    'and the run ends when the answer is given, without inventing work',
+    t.toolCalls === 0,
+    tools(t.steps),
+  )
+  check(
+    'nothing told it a plan was in hand',
+    !t.steps.some((s) => s.type === 'harness' && /plan in hand/i.test(s.text ?? '')),
+    t.steps.filter((s) => s.type === 'harness').map((s) => s.text),
+  )
+
+  // ── 2 and 3. The SAME task, once in English and once in Turkish. The
+  // template fires for one and not the other; the invariant must hold for both.
+  for (const [lang, message, expectPhase] of [
+    ['English', 'chat.js crashes when the chat is empty. Fix it.', true],
+    ['Turkish', 'chat.js boş sohbet açılırken çöküyor. Düzelt.', false],
+  ]) {
+    const r = await ask(api, {
+      cwd: workspace({ 'chat.js': BUG }),
+      maxTurns: 14,
+      message,
+    })
+    const read = firstIndex(r.steps, READERS)
+    const wrote = firstIndex(r.steps, WRITERS)
+    say(
+      `      ${lang}: recon fired ${reconFired(r.steps)}   ` +
+        `first read at ${read}, first write at ${wrote}   ${JSON.stringify(tools(r.steps))}`,
+    )
+    // Stated in both directions on purpose. "English fires" is what proves the
+    // feature was on at all; "Turkish does not" is the defect, recorded as the
+    // fact it is rather than left for the next person to rediscover.
+    check(
+      `${lang}: the trigger ${expectPhase ? 'fires' : 'does NOT fire — a word list cannot read Turkish'}`,
+      reconFired(r.steps) === expectPhase,
+      { fired: reconFired(r.steps), want: expectPhase },
+    )
+    check(
+      `${lang}: it does not write into a file it has not read`,
+      wrote === -1 || (read !== -1 && read < wrote),
+      { read, wrote, tools: tools(r.steps) },
+    )
+    check(`${lang}: and it actually did the work`, wrote !== -1, tools(r.steps))
+  }
+})
+
 // ─── Runner ─────────────────────────────────────────────────────────────
 
 if (!existsSync(MAIN)) {
