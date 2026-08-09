@@ -78,7 +78,7 @@ export const FEATURES: FeatureSpec[] = [
     id: "recon",
     name: "Look before you write",
     description:
-      "The first turn of a task runs with the writing tools taken away — it can read, search and grep, and its answer is a plan. A model that cannot write cannot start coding before it has looked. Costs one extra turn per task.",
+      "Nothing happens until the model tries to change a file without having read anything. That one call is refused, once per run, and the phase opens: reading tools only, and its answer is a plan. A model that reads first never notices this exists — it costs nothing until it is needed.",
     icon: "Telescope",
     group: "Before the work",
     defaultOn: false,
@@ -88,7 +88,7 @@ export const FEATURES: FeatureSpec[] = [
     id: "clarify",
     name: "Ask when it is ambiguous",
     description:
-      "Before the first edit, a fresh context reads the request alone and answers: clear, or these questions first. If it says ambiguous, the harness asks — the model never has to decide to interrupt. One short model call per task.",
+      "On the first message of a chat, a fresh context reads the request alone and answers: clear, or these questions first. If it says ambiguous, the harness asks — the model never has to decide to interrupt. Nothing filters the request before the reader sees it, so it works the same in any language. One short model call per chat.",
     icon: "MessageCircleQuestion",
     group: "Before the work",
     defaultOn: false,
@@ -158,7 +158,7 @@ export const FEATURES: FeatureSpec[] = [
     id: "budget",
     name: "Land the plane",
     description:
-      "Near the step limit the model is told how many are left so it converges instead of opening a new thread, and after the last one it gets a turn with no tools — it can no longer act, but it can still say what happened.",
+      "Ten steps before the run's real end — extensions it is on course to earn included — the model is told how many are left, so it converges instead of opening a new thread. After the last step it gets a turn with no tools: it can no longer act, but it can still say what happened.",
     icon: "PlaneLanding",
     group: "Recovery",
     defaultOn: true,

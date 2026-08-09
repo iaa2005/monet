@@ -10,6 +10,36 @@ window from overflowing. When the harness overrides the model you see a slim
 grey line in the transcript — an extra turn you did not ask for is always
 explained.
 
+## Every switch on one screen
+
+*Settings → Advanced → How the agent works.* What fires it, on what evidence,
+what it costs when it was not needed. **No row keys off the words in your
+request** — that was tried and it served English and nothing else.
+
+| Switch | Fires when | Cost when unnecessary |
+| --- | --- | --- |
+| **Method** · on | always — 8 lines in the system prompt | ~200 tokens per turn |
+| **Working discipline** · on | always — the prohibitions, as imperatives | ~200 tokens per turn |
+| **Look before you write** · off | the model tries to change a file having read nothing. That call is refused once per run and the read-only phase opens | nothing — a model that reads first never sees it |
+| **Ask when it is ambiguous** · off | first message of a chat. A fresh context reads it and answers CLEAR or two questions | one short model call per chat |
+| **Run the project's checks** · on | a turn edited files. Failure text becomes the next prompt, ≤3 attempts | the time the checks take |
+| **Actually run it** · off | a turn edited files — starts the app, collects console and network errors | a dev-server start |
+| **A second reader** · off | a turn edited files — a sub-agent reads the diff with no shared reasoning | one model call per editing turn |
+| **Judge the completion claim** · on | the model says it finished | one short model call |
+| **Interface standards** · off | always, when the turn touches UI | tokens in the prompt |
+| **Nudge an empty reply** · on | a reply with no text and no tool call. ≤2 per run, never twice running | one turn |
+| **Land the plane** · on | 10 steps before the run's real end, extensions included. Then one tool-less turn to hand over | one turn at the end |
+| **Learn from failures** · on | overnight, per workspace — failures distilled into lessons | one model call a night |
+| **Notes for the next run** · on | a goal finishes or blocks | nothing |
+
+Three switches spend a whole model call — *Ask when it is ambiguous*, *A second
+reader*, *Judge the completion claim*. Each of those is a **side agent with its
+own context**, and whether it shares the run's context is the design decision,
+not an accident: a reader that judges the run's *claims* must not have read the
+run's narration, or it inherits its mistakes; a reader that judges your *intent*
+needs the conversation, which is why ambiguity is only ever read on the first
+message.
+
 ## The step budget
 
 Every message gets a fixed number of tool-calling turns. The interesting
@@ -22,9 +52,13 @@ part is that the budget **moves, on evidence**:
   counts as repeating itself.
 - At the wall, a run still doing new things earns **+20** turns — at most
   **twice**. A repeating run earns nothing. The ceiling is therefore hard.
-- At **75 %** of the budget the model gets one line — "N steps left, start
-  converging" — because a model that was never told about the limit spends
-  its steps as if they were free.
+- **10** steps before the run's *real* end the model gets one line — "N steps
+  left, start converging" — because a model that was never told about the
+  limit spends its steps as if they were free. "Real" end means the budget
+  plus the extensions it is on course to earn: measured against the current
+  budget instead, a productive run was told "10 left" at turn 30 of 80, warned
+  three times over, and once in the same message that had just congratulated
+  it for producing new work.
 - When the steps run out mid-task, the run gets **one final turn with the
   tools removed**: it cannot act, but it can hand the work over — what is
   done, what is broken, the single next step. Forty turns of findings no
@@ -89,9 +123,11 @@ moment it happens:
 
 - "The model answered with nothing — nudged it to continue (1/2)"
 - "Going in circles — X ran N× with identical input; asked the model to change approach"
-- "12 steps left — asked the model to start converging"
+- "Asked it to read before writing (Edit with nothing read yet)"
+- "10 steps left — asked the model to start converging"
 - "Step budget extended by 20 — the run is still producing new work"
 - "Out of steps — asked the model for a handoff summary"
+- "Reading the request for anything ambiguous"
 
 These lines are display-only. They are never sent to the model and never
 exported as part of the conversation.
