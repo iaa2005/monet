@@ -383,9 +383,9 @@ export interface ElectronAPI {
     send: (payload: {
       sessionId?: string;
       message: string;
-      /** The user bubble's id, tying this prompt to its transcript turn. */
+      /** The user bubble's id, tying this prompt to its transcript turn.
+       * Every send path must pass it, or the turn cannot be named afterwards. */
       userMessageId?: string;
-      seed?: { id?: string; role: "user" | "assistant"; content: string }[];
       mode?: string;
       space?: string;
       effort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -430,19 +430,20 @@ export interface ElectronAPI {
       messageId: string,
       inContext: boolean,
     ) => Promise<{ ok: boolean; changed: number }>;
-    undoableTurns: (sessionId: string) => Promise<number>;
     reset: (sessionId?: string) => Promise<{ ok: boolean }>;
     forkTranscript: (
       fromSessionId: string,
       toSessionId: string,
       keepUserTurns?: number,
       totalUserTurns?: number,
-    ) => Promise<{ fidelity: "full" | "text" }>;
+    ) => Promise<{ ok: boolean; removed: number; error?: string }>;
+    /** Answers ok:false rather than clearing when the display and the
+     * transcript disagree about how many prompts exist. */
     rewindTranscript: (
       sessionId: string,
       keepUserTurns: number,
       totalUserTurns?: number,
-    ) => Promise<{ fidelity: "full" | "text"; removed: number }>;
+    ) => Promise<{ ok: boolean; removed: number; error?: string }>;
     compact: (sessionId?: string) => Promise<{
       ok: boolean;
       before?: number;
@@ -453,7 +454,8 @@ export interface ElectronAPI {
     contextEvents: (sessionId?: string) => Promise<
       {
         id: string;
-        type: "compact" | "rewind" | "command";
+        seq: number;
+        type: "compact" | "rewind";
         at: string;
         manual: boolean;
         beforeTokens: number | null;

@@ -17,7 +17,7 @@ import { randomUUID } from "node:crypto";
 import { getSessionDb } from "./store.js";
 import type { LLMMessage } from "../llm/adapter.js";
 
-export type ContextEventType = "compact" | "rewind" | "command";
+export type ContextEventType = "compact" | "rewind";
 
 export interface ContextEvent {
   id: string;
@@ -29,34 +29,86 @@ export interface ContextEvent {
   payload: Record<string, unknown>;
 }
 
+/**
+ * One schema, declared once.
+ *
+ * This used to be a CREATE plus three ALTER TABLEs guarded by a PRAGMA, and
+ * the shape of that is what broke it: an index over `msg_id` was declared in
+ * the same batch as the table, so on any database that predated the column the
+ * whole batch died with "no such column: msg_id" — BEFORE the ALTER that would
+ * have added it. `ready` stayed false, every later call re-ran the same failing
+ * batch, and the catches below swallowed all of it. The result was no durable
+ * transcript and no context events, for every chat, for weeks.
+ *
+ * The app is not released, so there is no installed base to carry and no
+ * reason to keep a second way for this table to come into existence. A
+ * database written by an older build simply predates the transcript store —
+ * that chat starts its model history fresh, which is what it was doing anyway.
+ */
+/** Columns this file's statements require. */
+const TRANSCRIPT_COLUMNS = [
+  "session_id",
+  "seq",
+  "role",
+  "content",
+  "hidden",
+  "msg_id",
+  "in_context",
+];
+
+/**
+ * A table of the wrong shape is replaced, not patched.
+ *
+ * `CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists
+ * with fewer columns, and the very next statement — an index over one of the
+ * missing ones — then takes the whole batch down. That is the failure this
+ * store spent weeks in. So the shape is CHECKED, once, and a table that does
+ * not match is dropped: the chats in it lose their model history and start
+ * again, which is a cost only a pre-release app can pay, and the alternative
+ * is a migration ladder that grows a rung every time a column is added.
+ */
+function dropIfStale(d: ReturnType<typeof getSessionDb>): void {
+  const cols = (
+    d.prepare("PRAGMA table_info(transcript)").all() as { name: string }[]
+  ).map((c) => c.name);
+  if (cols.length === 0) return; // no table yet — nothing to check
+  const missing = TRANSCRIPT_COLUMNS.filter((c) => !cols.includes(c));
+  if (missing.length === 0) return;
+  console.warn(
+    `[transcript] table is missing ${missing.join(", ")} — rebuilding it; ` +
+      `chats written by that build start their model history fresh`,
+  );
+  d.exec("DROP TABLE transcript");
+}
+
 let ready = false;
 function db(): ReturnType<typeof getSessionDb> {
   const d = getSessionDb();
   if (!ready) {
+    dropIfStale(d);
     d.exec(`
       CREATE TABLE IF NOT EXISTS transcript (
         session_id TEXT NOT NULL,
         seq INTEGER NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
+        -- A user-role message that is not a PROMPT: a background report, a
+        -- mid-run note, a compaction summary. The chat shows no prompt bubble
+        -- for these, so Rewind must not count them as user turns.
         hidden INTEGER NOT NULL DEFAULT 0,
-        -- Stable across saves, and the same id the display side uses where
-        -- the two describe the same message. See the migration below.
+        -- Stable across saves, and the same id the display side uses where the
+        -- two describe the same message. Identity is what lets "the model
+        -- cannot read this" be a property of a message rather than a range
+        -- derived by replaying every past compaction — and a property can be
+        -- reversed, which a truncation cannot.
         msg_id TEXT,
         -- 0 once something took it out of the model's context (a compaction,
-        -- an undone prompt, a prompt removed by hand). The row stays.
+        -- a prompt removed by hand). The row stays.
         in_context INTEGER NOT NULL DEFAULT 1,
         PRIMARY KEY (session_id, seq)
       );
-      -- The index on msg_id is created AFTER the migrations below, not here.
-      -- Here it referenced a column that only exists on a database created by
-      -- this version, so on every upgraded one the whole batch died with
-      -- "no such column: msg_id" — before the ALTER TABLE that would have
-      -- added it. The ready flag stayed false, so every later call re-ran the
-      -- same failing batch, and replaceTranscript's catch swallowed it all: no
-      -- durable transcript, no context events, for any session, indefinitely.
-      -- Reproduced on a real 15-session database.
       CREATE INDEX IF NOT EXISTS idx_transcript_session ON transcript(session_id);
+      CREATE INDEX IF NOT EXISTS idx_transcript_msgid ON transcript(session_id, msg_id);
       CREATE TABLE IF NOT EXISTS context_events (
         id TEXT PRIMARY KEY,
         session_id TEXT NOT NULL,
@@ -67,38 +119,6 @@ function db(): ReturnType<typeof getSessionDb> {
       );
       CREATE INDEX IF NOT EXISTS idx_ctxevents_session ON context_events(session_id);
     `);
-    // Upgrade a transcript table created before the `hidden` column (marks
-    // no-display-bubble turns like background-delivery so rewind counts align).
-    const cols = d.prepare("PRAGMA table_info(transcript)").all() as {
-      name: string;
-    }[];
-    if (!cols.some((c) => c.name === "hidden"))
-      d.exec("ALTER TABLE transcript ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0");
-    // A STABLE IDENTITY for a model message, and whether the model can still
-    // read it.
-    //
-    // This table was keyed by position alone — (session_id, seq) — and every
-    // save deleted the session's rows and re-inserted them renumbered. So a
-    // message had no identity, the display side (which does have ids) could
-    // only be related to it by COUNTING user turns, and because this side
-    // also gets truncated by compaction and undo, the chat had to
-    // reconstruct "what is still in context" by replaying the arithmetic of
-    // every past operation.
-    //
-    // With an id and a flag, all of that becomes a lookup: out-of-context is
-    // a property of a message rather than a range to be derived, and it is
-    // reversible, which a truncation is not.
-    if (!cols.some((c) => c.name === "msg_id"))
-      d.exec("ALTER TABLE transcript ADD COLUMN msg_id TEXT");
-    if (!cols.some((c) => c.name === "in_context"))
-      d.exec(
-        "ALTER TABLE transcript ADD COLUMN in_context INTEGER NOT NULL DEFAULT 1",
-      );
-    // Now that the column is certain to exist. An index on a column added by a
-    // migration cannot be declared alongside the table that predates it.
-    d.exec(
-      "CREATE INDEX IF NOT EXISTS idx_transcript_msgid ON transcript(session_id, msg_id)",
-    );
     ready = true;
   }
   return d;
@@ -106,12 +126,9 @@ function db(): ReturnType<typeof getSessionDb> {
 
 // ─── Transcript ─────────────────────────────────────────────────────────────
 
-export function loadTranscript(sessionId: string): LLMMessage[] {
-  return loadTranscriptWithMeta(sessionId).messages;
-}
-
-/** Load the transcript plus each message's `hidden` flag (turns with no display
- * bubble, e.g. background-delivery), so the in-memory tagging can be restored. */
+/** Load the transcript plus each message's `hidden` flag (turns with no prompt
+ * bubble — background delivery, a mid-run note, a compaction summary), its id
+ * and its context flag, so the in-memory tagging can be restored. */
 export function loadTranscriptWithMeta(sessionId: string): {
   messages: LLMMessage[];
   hidden: boolean[];
@@ -167,17 +184,6 @@ export function lastAssistantAt(sessionId: string): number | null {
   } catch (err) {
     complainOnce("lastAssistantAt", err);
     return null;
-  }
-}
-
-export function hasTranscript(sessionId: string): boolean {
-  try {
-    const row = db()
-      .prepare("SELECT 1 FROM transcript WHERE session_id = ? LIMIT 1")
-      .get(sessionId);
-    return !!row;
-  } catch {
-    return false;
   }
 }
 
@@ -323,6 +329,64 @@ export function replaceContextEvents(
   }
 }
 
+/** A context event without its payload — everything a list needs to draw. */
+export interface ContextEventSummary {
+  id: string;
+  seq: number;
+  type: ContextEventType;
+  at: string;
+  manual: boolean;
+  beforeTokens: number | null;
+  afterTokens: number | null;
+}
+
+/**
+ * The event log as a LIST, with the payloads left in the database.
+ *
+ * Every reader of this log wanted six scalars and got the whole payload
+ * parsed for them. That was cheap while a payload was six scalars; it stopped
+ * being cheap when compaction started storing what it had folded, and the
+ * meter refetches this list every time the conversation grows. json_extract
+ * pulls out the fields SQLite can read without handing a megabyte to
+ * JSON.parse.
+ */
+export function listContextEventSummaries(
+  sessionId: string,
+): ContextEventSummary[] {
+  try {
+    const rows = db()
+      .prepare(
+        `SELECT id, seq, type, at,
+                json_extract(payload, '$.manual')       AS manual,
+                json_extract(payload, '$.beforeTokens') AS beforeTokens,
+                json_extract(payload, '$.afterTokens')  AS afterTokens
+           FROM context_events
+          WHERE session_id = ?
+          ORDER BY seq ASC`,
+      )
+      .all(sessionId) as {
+      id: string;
+      seq: number;
+      type: string;
+      at: string;
+      manual: number | null;
+      beforeTokens: number | null;
+      afterTokens: number | null;
+    }[];
+    return rows.map((r) => ({
+      id: r.id,
+      seq: r.seq,
+      type: r.type as ContextEventType,
+      at: r.at,
+      manual: r.manual === 1,
+      beforeTokens: r.beforeTokens,
+      afterTokens: r.afterTokens,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export function listContextEvents(sessionId: string): ContextEvent[] {
   try {
     const rows = db()
@@ -350,11 +414,39 @@ export function listContextEvents(sessionId: string): ContextEvent[] {
   }
 }
 
+/** One event, by id — asked of the database rather than of a list of all of
+ * them, which is what this was doing. */
 export function getContextEvent(
   sessionId: string,
   eventId: string,
 ): ContextEvent | null {
-  return listContextEvents(sessionId).find((e) => e.id === eventId) ?? null;
+  try {
+    const r = db()
+      .prepare(
+        "SELECT id, session_id, seq, type, at, payload FROM context_events WHERE session_id = ? AND id = ?",
+      )
+      .get(sessionId, eventId) as
+      | {
+          id: string;
+          session_id: string;
+          seq: number;
+          type: string;
+          at: string;
+          payload: string;
+        }
+      | undefined;
+    if (!r) return null;
+    return {
+      id: r.id,
+      sessionId: r.session_id,
+      seq: r.seq,
+      type: r.type as ContextEventType,
+      at: r.at,
+      payload: JSON.parse(r.payload) as Record<string, unknown>,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Drop every context event at or after `seq` (e.g. after undoing a compaction,

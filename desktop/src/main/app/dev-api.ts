@@ -25,7 +25,7 @@ import { app } from "electron";
 import { getDataDir } from "../data-dir.js";
 import { getSessionStore } from "../session/store.js";
 import {
-  listContextEvents,
+  listContextEventSummaries,
   loadTranscriptWithMeta,
 } from "../session/transcript.js";
 import {
@@ -274,14 +274,7 @@ function contextReport(sessionId: string): unknown {
       inContext: inContext.filter(Boolean).length,
       ids: ids.filter(Boolean).length,
     },
-    events: listContextEvents(sessionId).map((e) => ({
-      id: e.id,
-      type: e.type,
-      manual: e.payload.manual,
-      undo: e.payload.undo,
-      beforeTokens: e.payload.beforeTokens,
-      afterTokens: e.payload.afterTokens,
-    })),
+    events: listContextEventSummaries(sessionId),
   };
 }
 
@@ -359,7 +352,7 @@ export function initDevApi(): void {
           };
           const eventId =
             b.eventId ??
-            listContextEvents(id)
+            listContextEventSummaries(id)
               .filter((e) => e.type === "compact")
               .pop()?.id;
           if (!eventId) {

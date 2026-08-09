@@ -17,6 +17,7 @@ import {
 } from "fs";
 import { join } from "path";
 import { getDataSubdir } from "../data-dir.js";
+import { sessionSlug } from "../agent/checkpoint-store.js";
 import {
   MAX_STREAM_CHARS,
   SANDBOX_TIMEOUT_MS,
@@ -25,8 +26,7 @@ import {
 } from "./types.js";
 
 function sessionDir(sessionId: string): string {
-  const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_") || "session";
-  const dir = join(getDataSubdir("sandboxes"), safe);
+  const dir = join(getDataSubdir("sandboxes"), sessionSlug(sessionId));
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   return dir;
 }

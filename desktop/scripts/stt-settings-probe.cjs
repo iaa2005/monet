@@ -42,10 +42,21 @@ app.whenReady().then(() => {
   );
 
   // ── 1. Defaults, before anything is written ─────────────────────────
+  //
+  // The default model is READ here rather than written down below, because
+  // this file is not the place that decides it. It was written down — as
+  // "Xenova/whisper-base" — and when every model the app downloads moved to
+  // one account the literal stayed behind, so the probe failed on a default
+  // that was correct. A check that has to be edited whenever a default moves
+  // is checking the wrong thing: what matters is that a field nobody touched
+  // still holds whatever the default IS.
+  let freshLocalModel;
   {
     const s = store.getSttSettings();
     check("a fresh install reads defaults, not undefined", s.engine === "local", s.engine);
     check("with no key and no endpoint", s.key === "" && s.endpoint === "", JSON.stringify(s));
+    freshLocalModel = s.localModel;
+    check("and names a local model to fall back on", !!freshLocalModel, freshLocalModel);
   }
 
   // ── 2. A patch saves without erasing its neighbours ─────────────────
@@ -62,8 +73,8 @@ app.whenReady().then(() => {
     check("and the key round-trips exactly", s.key === KEY, s.key);
     check(
       "untouched fields keep their defaults",
-      s.localModel === "Xenova/whisper-base",
-      s.localModel,
+      s.localModel === freshLocalModel,
+      { now: s.localModel, fresh: freshLocalModel },
     );
   }
 

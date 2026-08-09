@@ -10,8 +10,6 @@ import { isUntitled, cleanTitle, TITLE_PLACEHOLDER } from "../session/auto-title
 import {
   runAgent,
   resetConversation,
-  seedConversation,
-  messagesInContext,
   ensureTranscriptLoaded,
   compactSessionNow,
   undoCompaction,
@@ -19,7 +17,6 @@ import {
   rewindTranscriptToUserTurn,
   estimateSessionTokens,
   computeContextBreakdown,
-  undoableTurnCount,
   lastTurnTokens,
   lastRunEditedFiles,
 } from "../agent/index.js";
@@ -56,14 +53,17 @@ interface ChatAttachment {
 interface ChatSendPayload {
   sessionId?: string;
   message: string;
-  /** The id of the user bubble the renderer drew for this prompt — the one
-   * thread between the chat's messages and the model's transcript. */
+  /**
+   * The id of the user bubble the renderer drew for this prompt.
+   *
+   * The one thread between the chat's messages and the model's transcript, and
+   * REQUIRED in practice: without it the transcript mints its own id, no
+   * bubble matches it, and every affordance that names a turn — take this
+   * prompt out of context, put it back — answers "this prompt has no
+   * model-facing turn behind it". Which is what the main send path did, for
+   * every message, because it never sent this.
+   */
   userMessageId?: string;
-  /** Optional text-only history to seed a reopened session before the first
-   * send. `id` is the display bubble's — carried so a seeded prompt can still
-   * be taken out of context; without it the transcript mints a new one and the
-   * chat can never name that turn. */
-  seed?: { id?: string; role: "user" | "assistant"; content: string }[];
   /** Chat mode ("auto" | "plan" | "concise"). */
   mode?: string;
   attachments?: ChatAttachment[];
@@ -397,34 +397,11 @@ export function registerChatIPC(): void {
     // saved the chat with a provisional title taken from this very message,
     // and nothing downstream could still tell a fresh chat from a named one.
     const wasUntitled = isUntitled(getSessionStore().get(sessionId)?.title);
-    // Prefer the durable full-fidelity transcript (tool blocks included); the
-    // renderer's text-only `seed` is only a fallback for chats that have none
-    // (seedConversation is a no-op once the transcript is loaded).
+    // The durable transcript is the only history there is. There used to be a
+    // second one — a text-only rebuild the renderer made from the visible
+    // bubbles — and it existed to paper over a transcript store that had been
+    // dead for weeks. See ensureTranscriptLoaded().
     await ensureTranscriptLoaded(sessionId);
-    if (payload.seed && payload.seed.length > 0) {
-      // SAY when this happens, rather than removing it.
-      //
-      // The plan was to delete this fallback: a chat of 234 messages whose model
-      // context was a 3.4k text-only rebuild is a lie, and the lie is what made
-      // /compact look broken. But the lie was the METER, and that is fixed — the
-      // gauge now reads the transcript, so a chat continuing on a text-only
-      // reconstruction shows its real, small size. Deleting the seed after that
-      // buys no honesty and costs the ability to continue every chat written
-      // before the transcript store came back to life.
-      //
-      // What was actually missing is this line. The tool output is gone from the
-      // model's view either way; the difference is whether anyone is told.
-      const before = messagesInContext(sessionId).length;
-      seedConversation(sessionId, payload.seed);
-      if (messagesInContext(sessionId).length > before)
-        win.webContents.send("chat:token", {
-          sessionId,
-          event: {
-            type: "harness",
-            text: `Continuing from the visible conversation only — this chat has no stored model history, so tool output from earlier turns is not in context`,
-          },
-        });
-    }
 
     // Continuing a chat is what clears the mark it wears for having failed.
     // Here rather than on the first token: the user pressed send, so the
@@ -438,10 +415,9 @@ export function registerChatIPC(): void {
 
     // Resolve this session's working directory from the per-session column
     // (set at create time, updated by the workspace picker on every folder
-    // change), which is authoritative. Fall back to the global for legacy
-    // sessions that predate the workspace column. This avoids the race where
-    // the renderer's fire-and-forget workspace:set on session-open hasn't
-    // landed yet.
+    // change), which is authoritative — the global is only for a chat that
+    // does not exist as a row yet. This avoids the race where the renderer's
+    // fire-and-forget workspace:set on session-open hasn't landed yet.
     const sessionRow = getSessionStore().get(sessionId);
     // Home never sees the Code workspace: its run's cwd IS the chat's sandbox.
     // The global path used to leak into the prompt's env block here, and the
@@ -772,13 +748,6 @@ export function registerChatIPC(): void {
     },
   );
 
-  // Drop the last N prompts from the model's context. Files are untouched —
-  // that is the checkpoint rewind, a different question.
-
-  ipcMain.handle("chat:undoableTurns", async (_e, sessionId?: string) =>
-    undoableTurnCount(sessionId || "default"),
-  );
-
   // Which prompts the model can still read, and the switch for one of them.
   // The chat draws this directly — no arithmetic over past events.
   ipcMain.handle("chat:turnContext", async (_e, sessionId?: string) => {
@@ -864,25 +833,13 @@ export function registerChatIPC(): void {
   });
 
   // Context-change history (compactions, rewinds) for a session — powers the
-  // "rewind through compact" affordance.
+  // "rewind through compact" affordance. The payloads stay in the database:
+  // this is refetched every time the conversation grows.
   ipcMain.handle("chat:contextEvents", async (_e, sessionId?: string) => {
-    const { listContextEvents } = await import("../session/transcript.js");
-    // Strip the heavy before/after snapshots — the UI only needs the summary.
-    return listContextEvents(sessionId || "default").map((ev) => ({
-      id: ev.id,
-      type: ev.type,
-      at: ev.at,
-      manual: ev.payload.manual === true,
-      beforeTokens: (ev.payload.beforeTokens as number) ?? null,
-      afterTokens: (ev.payload.afterTokens as number) ?? null,
-      // What the chat needs to draw the line the model reads from: turn
-      // counts either side of the event, and how many turns earlier
-      // compactions had already taken off the front. See lib/context-map.ts.
-      undo: ev.payload.undo === true,
-      userTurnsBefore: (ev.payload.userTurnsBefore as number) ?? null,
-      userTurnsAfter: (ev.payload.userTurnsAfter as number) ?? null,
-      headOffset: (ev.payload.headOffset as number) ?? null,
-    }));
+    const { listContextEventSummaries } = await import(
+      "../session/transcript.js"
+    );
+    return listContextEventSummaries(sessionId || "default");
   });
 
   // Undo a compaction: restore the pre-compaction context ("rewind through

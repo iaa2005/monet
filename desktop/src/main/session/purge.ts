@@ -21,13 +21,9 @@ import { getDataSubdir } from "../data-dir.js";
 import { getSessionDb } from "./store.js";
 import { clearTranscript } from "./transcript.js";
 import { clearUiState } from "./ui-state.js";
+import { sessionSlug } from "../agent/checkpoint-store.js";
 import { clearGoal, dropGoalCache } from "../agent/goal/store.js";
 import { clearSessionEngine } from "../sandbox/config.js";
-
-/** The directory-name form of a session id (same rule the writers use). */
-function safeName(sessionId: string): string {
-  return sessionId.replace(/[^a-zA-Z0-9_-]/g, "_") || "session";
-}
 
 function rmDir(path: string): void {
   try {
@@ -41,9 +37,17 @@ function rmDir(path: string): void {
 }
 
 /**
+/**
  * Forget one chat's data — everything except its `sessions` row, which the
  * caller owns (deleting a chat removes it; closing an incognito chat never
  * had one).
+ *
+ * What the agent holds IN MEMORY for a chat — its model history, its token
+ * usage, its file ledgers — is not freed here, deliberately: this module is
+ * about durable stores, and importing the agent to reach a WeakMap would drag
+ * the whole tool pipeline into a function that deletes rows. The lifecycle
+ * owners do it — `sessions:delete` calls forgetSession(), and incognito's
+ * close calls resetConversation().
  */
 export function purgeSessionData(sessionId: string): void {
   if (!sessionId) return;
@@ -67,7 +71,7 @@ export function purgeSessionData(sessionId: string): void {
   dropGoalCache(sessionId);
   clearSessionEngine(sessionId);
 
-  const safe = safeName(sessionId);
+  const safe = sessionSlug(sessionId);
   for (const root of ["artifacts", "sandboxes", "checkpoints"])
     rmDir(join(getDataSubdir(root), safe));
 }

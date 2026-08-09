@@ -73,7 +73,14 @@ export function coldCache(
   return now - lastAssistantAt > ttlMinutes * 60_000;
 }
 
-/** Rough token estimate for one block's payload. */
+/**
+ * Rough size of one block's payload, in BYTES on the wire.
+ *
+ * Deliberately not the same measure as estimateTokens(): this decides whether
+ * clearing a result is worth the marker it costs, so a megabyte of base64 is a
+ * megabyte. What that megabyte costs in TOKENS is a different number (an image
+ * is a flat ~500 whatever its size), and compaction.ts counts it that way.
+ */
 function blockChars(block: LLMContentBlock): number {
   if (block.type === "tool_result") {
     if (typeof block.content === "string") return block.content.length;

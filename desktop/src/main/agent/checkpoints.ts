@@ -13,8 +13,9 @@
  * exactly those files. Everything else in the folder is left alone,
  * including whatever the person at the keyboard has been editing while
  * the model worked, which `reset --hard` used to destroy without a word.
- * A chat from before the ledgers falls back to git's own diff between the
- * two checkpoints: still far narrower than a reset.
+ * A turn whose ledger is missing is refused rather than approximated: git
+ * can say which paths differ between two commits but not whose change each
+ * was, and guessing that wrong reverts the user's own work.
  */
 
 import { spawn } from "child_process";
@@ -32,12 +33,12 @@ import {
 import {
   DEFAULT_EXCLUDES,
   needsPackConfig,
-  shadowSlug,
+  sessionSlug,
   withPackConfig,
 } from "./checkpoint-store.js";
 
 export function shadowDir(sessionId: string): string {
-  return join(getDataSubdir("checkpoints"), shadowSlug(sessionId));
+  return join(getDataSubdir("checkpoints"), sessionSlug(sessionId));
 }
 
 // The pattern list lives in checkpoint-excludes.ts — dependency-free, so a probe
@@ -93,10 +94,28 @@ function git(
         "commit.gpgsign=false",
         "-c",
         "core.autocrlf=false",
+        // PATHS, VERBATIM.
+        //
+        // git's default is to render any path with a byte over 0x7f as a
+        // quoted string full of octal escapes. Three readers here compare
+        // paths to each other, and they did not agree on the spelling:
+        // `ls-files` kept the quotes, `status --porcelain` had them stripped
+        // by the parser below. So a file with a Russian name never matched
+        // itself, which meant the rewind could not tell that the USER had
+        // edited it — the one thing withoutUserEdits() exists to prevent —
+        // and `checkout -- <path>` was handed a name no filesystem has, so it
+        // silently restored nothing.
+        "-c",
+        "core.quotePath=false",
         ...args,
       ],
       { cwd: workspace, windowsHide: true },
     );
+    // Decoded as text by the stream, not by concatenating Buffers: a
+    // multi-byte character split across two chunks becomes two replacement
+    // characters, and now that paths arrive unescaped that is a real path.
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
     let stdout = "";
     let stderr = "";
     let done = false;
@@ -448,61 +467,29 @@ export function loadLedger(sessionId: string, sha: string): unknown | null {
 }
 
 /**
- * The files that changed between a checkpoint and now, from git itself.
- *
- * The fallback for a turn recorded before ledgers existed — and a good
- * one: git knows exactly which paths differ between two commits. What it
- * cannot know is WHOSE change each was, which is the ledger's whole
- * contribution. So this is used when the ledger is missing, and it is
- * still far narrower than the reset it replaces: a file that did not
- * change between the two checkpoints is never written.
- *
- * Direction matters. `A` means the file appeared after the checkpoint, so
- * going back DELETES it; `D` means it was deleted, so going back writes
- * it. Getting that backwards deletes the user's files instead of the
- * turn's.
- */
-async function deltaFromGit(
-  workspace: string,
-  gitDir: string,
-  sha: string,
-): Promise<Delta | null> {
-  const res = await git(
-    workspace,
-    gitDir,
-    ["diff", "--name-status", sha, "HEAD"],
-    30_000,
-  );
-  if (res.code !== 0) return null;
-  const delta: Delta = { added: [], modified: [], removed: [] };
-  for (const line of res.stdout.split("\n")) {
-    const tab = line.indexOf("\t");
-    if (tab < 0) continue;
-    const status = line.slice(0, tab).trim()[0];
-    const path = line.slice(tab + 1).trim();
-    if (!path) continue;
-    if (status === "A") delta.added.push(path);
-    else if (status === "D") delta.removed.push(path);
-    else delta.modified.push(path);
-  }
-  return delta;
-}
-
-/**
  * What the user has changed since the last snapshot.
  *
  * Everything committed to the shadow store happened during a turn; what
  * is dirty in the working tree RIGHT NOW happened after the last one, so
  * it is theirs. A rewind must not write over it — that edit exists
  * nowhere else, while the turn's version is safe in a commit.
+ *
+ * Porcelain v1 is `XY <path>`, and for a rename `XY <old> -> <new>`. BOTH
+ * names are the user's: the old one because a rewind writing it back would
+ * resurrect a file they renamed away, the new one because it holds their
+ * content.
  */
 async function dirtyNow(workspace: string, gitDir: string): Promise<string[]> {
   const res = await git(workspace, gitDir, ["status", "--porcelain"], 30_000);
   if (res.code !== 0) return [];
   const paths: string[] = [];
   for (const line of res.stdout.split("\n")) {
-    const path = line.slice(3).trim();
-    if (path) paths.push(path.replace(/^"|"$/g, ""));
+    const entry = line.slice(3).trim();
+    if (!entry) continue;
+    for (const part of entry.split(" -> ")) {
+      const path = part.trim();
+      if (path) paths.push(path);
+    }
   }
   return paths;
 }
@@ -559,23 +546,22 @@ export async function rewindWorkspace(
     : [];
 
   let plan: Delta = EMPTY_DELTA;
-  let precise = shas.length > 0;
   for (const commit of shas) {
     const stored = loadLedger(sessionId, commit) as Delta | null;
-    if (!stored) {
-      precise = false;
-      break;
-    }
+    // Every checkpoint gets a ledger, always, even when the turn changed
+    // nothing — see the snapshot at the end of the agent loop. A missing one
+    // means the store is damaged, and the honest answer is to say so. It used
+    // to fall back to `git diff <sha> HEAD`, which names the right paths but
+    // cannot say WHOSE change each was; run over turns whose ledgers were
+    // simply absent, that reverted files the user had made themselves.
+    if (!stored)
+      return {
+        ok: false,
+        error:
+          "One of the turns being undone has no record of what it changed, " +
+          "so there is no way to put back its files without touching yours.",
+      };
     plan = foldDelta(plan, stored);
-  }
-  if (!precise) {
-    // A turn recorded before ledgers existed. git still knows which paths
-    // differ between the two checkpoints — narrower than a reset by a
-    // long way, just without knowing whose change each was.
-    const derived = await deltaFromGit(workspace, gitDir, sha);
-    if (!derived)
-      return { ok: false, error: "Could not work out what this turn changed." };
-    plan = derived;
   }
 
   // Anything dirty right now was changed after the last snapshot, so it is

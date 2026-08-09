@@ -24,6 +24,10 @@ function check(name: string, cond: boolean, detail?: unknown): void {
 
 interface SentPayload {
   message: string;
+  /** The bubble this prompt was drawn as. Without it the transcript mints its
+   * own id, nothing matches, and the turn can never be named again. */
+  userMessageId?: string;
+  mode?: string;
   attachments?: {
     name: string;
     kind: string;
@@ -31,6 +35,10 @@ interface SentPayload {
     dataBase64?: string;
   }[];
 }
+
+/** What rewindTranscript was asked to cut to, so the probe can check the
+ * COUNT — a mid-run note is not a prompt and must not move it. */
+const cuts: { keep: number; total: number }[] = [];
 
 const sent: SentPayload[] = [];
 const DISK: Record<string, { text?: string; base64?: string }> = {
@@ -44,7 +52,10 @@ const bridge = {
       sent.push(p);
       return { ok: true };
     },
-    rewindTranscript: async () => ({ fidelity: "full" as const, removed: 2 }),
+    rewindTranscript: async (_id: string, keep: number, total?: number) => {
+      cuts.push({ keep, total: total ?? -1 });
+      return { ok: true as const, removed: 2 };
+    },
   },
   artifacts: {
     readText: async (path: string) =>
@@ -123,6 +134,21 @@ check(
 check("exactly one send went out", sent.length === 1, sent.length);
 const payload = sent[0];
 check("the send carried the text", payload.message === "summarise these");
+// THE THREAD BETWEEN THE TWO SIDES.
+//
+// The transcript tags its user turn with this id, and every affordance that
+// names a turn later — take this prompt out of context, put it back — is a
+// lookup by it. A send without it produces a turn nothing can point at.
+check(
+  "the send named the bubble it was drawn as",
+  payload.userMessageId === after[0].id,
+  { sent: payload.userMessageId, bubble: after[0].id },
+);
+// A retry is a send, and it runs under the mode the picker is showing.
+// Omitting it does not mean "keep the mode": main reads absent as "default"
+// AND writes that back as the session's live mode, so Retry used to drop a
+// chat out of accept-edits without saying so.
+check("the send carried a permission mode", typeof payload.mode === "string", payload.mode);
 check(
   "the send carried all 3 attachments",
   payload.attachments?.length === 3,
@@ -165,5 +191,47 @@ check(
   { message: sent[0]?.message, n: sent[0]?.attachments?.length },
 );
 
+// ─── A MID-RUN NOTE IS NOT A PROMPT ────────────────────────────────────
+//
+// Ctrl+S hands text to a turn already running. The chat draws it as a user
+// message — it is the user's words — but it starts no turn: it rides along
+// with the tool results of the turn it interrupted. Counted as a prompt, the
+// chat's count drifts one ahead of the transcript's, and since that count is
+// what a rewind cuts BY, every later Rewind and Retry in the chat hit the
+// mismatch and refused. Permanently, and with no way to tell why.
+{
+  useChatStore.getState().finishStreaming();
+  useChatStore.getState().clearMessages();
+  cuts.length = 0;
+  sent.length = 0;
+
+  const first = useChatStore.getState().addUserMessage("do the thing");
+  useChatStore.getState().startStreaming();
+  useChatStore
+    .getState()
+    .handleLLMEvent("s1", { type: "user_message", content: "wait — use v2", injected: true });
+  useChatStore
+    .getState()
+    .handleLLMEvent("s1", { type: "text_delta", text: "done" });
+  useChatStore.getState().finishStreaming();
+
+  // (Streamed text is buffered and flushed on a timer, so the assistant
+  // bubble is not here yet — the note is what this case is about.)
+  const msgs = useChatStore.getState().messages;
+  check(
+    "the note is on screen, as the user's own message",
+    msgs[1]?.role === "user" && msgs[1]?.content === "wait — use v2",
+    msgs.map((m) => `${m.role}${m.injected ? "(injected)" : ""}`),
+  );
+  check("…and it is marked as said mid-run", msgs[1]?.injected === true);
+
+  await useChatStore.getState().resendFrom(first.id);
+  check(
+    "THE NOTE DOES NOT COUNT AS A PROMPT",
+    cuts.length === 1 && cuts[0].keep === 0 && cuts[0].total === 1,
+    cuts[0],
+  );
+}
+
 console.log(failures === 0 ? "\nALL RETRY CHECKS PASSED" : `\n${failures} FAILED`);
-process.exit(failures === 0 ? 1 - 1 : 1);
+process.exit(failures === 0 ? 0 : 1);

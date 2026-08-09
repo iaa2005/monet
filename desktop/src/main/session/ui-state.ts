@@ -23,10 +23,6 @@ export interface SessionUiState {
    * the current panel set on restore, never trusted raw.
    */
   dockLayout?: unknown;
-  /** Legacy desk (pre-dock builds): which single tab was up. Read, not written. */
-  rightTab?: string | null;
-  /** Legacy: whether the terminal drawer was open. Read, not written. */
-  terminalOpen?: boolean;
   /** The Browser panel's pages, in order. */
   browserTabs?: { url: string }[];
   /** Open files, one dock card each (the renderer's viewerStore). */

@@ -33,6 +33,51 @@ function generateId(): string {
   return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
 }
 
+/**
+ * How many PROMPTS a chat has — the unit Rewind and Edit cut by.
+ *
+ * Not every user-role message is a prompt. A note handed to a turn already
+ * running (Ctrl+S) is drawn as one and is not one: it rides along inside the
+ * turn it interrupted and starts nothing. Counting it made this number one
+ * larger than the transcript's own count of user turns, and from then on
+ * every rewind in that chat hit the mismatch and refused.
+ */
+function countPrompts(msgs: ChatMessage[]): number {
+  return msgs.filter((m) => m.role === "user" && !m.injected).length;
+}
+
+/** The permission mode a send should run under. Home only knows approve/skip,
+ * so a Code-only mode saved in prefs degrades to manual approval there. */
+function permissionModeFor(space: string): string {
+  if (space === "home") return "default";
+  return localStorage.getItem("permission-mode") ?? "default";
+}
+
+/**
+ * Do the chat and the model's transcript agree about how many prompts exist?
+ *
+ * Asked BEFORE anything is undone, because a rewind is three separate
+ * mutations — the folder, the transcript, the screen — and there is no order
+ * of those three in which a refusal partway through leaves the user somewhere
+ * they asked to be. So the disagreement is found first, and nothing moves.
+ *
+ * An empty transcript is not a disagreement: it means this chat has no model
+ * history at all (nothing has been sent in it yet), and a file rewind is still
+ * a perfectly good thing to do.
+ */
+async function promptsAgree(
+  sessionId: string,
+  msgs: ChatMessage[],
+): Promise<boolean> {
+  const turns = await electron()?.chat.turnContext(sessionId);
+  if (!turns || turns.length === 0) return true;
+  return turns.length === countPrompts(msgs);
+}
+
+const TURN_COUNT_DRIFT =
+  "The chat and the model's transcript disagree about how many prompts this " +
+  "conversation has, so there is no safe place to cut. Nothing was changed.";
+
 /** What chat.send wants for each attachment (raw content, not display meta). */
 type SendAttachment = NonNullable<
   Parameters<NonNullable<ElectronAPI["chat"]>["send"]>[0]["attachments"]
@@ -323,9 +368,10 @@ export interface ChatStore {
   sessionsVersion: number;
   /**
    * Bumped when the model's CONTEXT changed without the transcript changing —
-   * an undone prompt, a manual compaction. The chat draws a map of what the
-   * model can still read (lib/context-map.ts) and would otherwise keep the
-   * old one: dropping a prompt adds no message to react to.
+   * a prompt taken out by hand, a manual compaction. The chat re-reads which
+   * prompts are still being sent (ChatView's refreshContext) and would
+   * otherwise keep the old answer: dropping a prompt adds no message to
+   * react to.
    */
   contextVersion: number;
   /** Bumped when the effective working directory changes (e.g. a chat with
@@ -584,15 +630,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
     // Send via the same path as chat:send.
     const bridge = electron();
     if (!bridge) return;
-    const seed = (get().sessions[sessionId]?.messages ?? [])
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .filter((m) => m.content)
-      .map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
     get().startStreaming();
-    const mode =
-      st.space === "home"
-        ? "default"
-        : localStorage.getItem("permission-mode") ?? "default";
+    const mode = permissionModeFor(st.space);
     // Files queued with the message ride along now; the payload is spent.
     const attachments = queuedPayloads.get(msg.id);
     queuedPayloads.delete(msg.id);
@@ -600,7 +639,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
       await bridge.chat.send({
         sessionId,
         message: msg.content,
-        seed,
+        // The queued bubble already exists and already has an id — the turn
+        // it starts has to carry it, or this prompt is the one prompt in the
+        // chat that cannot be taken out of context afterwards.
+        userMessageId: msg.id,
         mode,
         space: st.space,
         attachments,
@@ -733,6 +775,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
             role: "user" as const,
             content: event.content,
             timestamp: Date.now(),
+            // Said INTO a running turn, not sent as a prompt. Carried on the
+            // message so countPrompts can skip it — see the note there.
+            ...(event.injected ? { injected: true as const } : {}),
             ...(matched?.attachments ? { attachments: matched.attachments } : {}),
           },
         ];
@@ -1085,16 +1130,22 @@ export const useChatStore = create<ChatStore>((set, get) => {
       const carried = msgs[idx].attachments;
       if (!text && !carried?.length) return;
 
-      // Truncate the renderer to the history strictly BEFORE the target user
-      // message; the main-process durable transcript is truncated to the same
-      // point (keeping tool blocks) so the resend continues with full fidelity.
-      // `seed` is the text fallback for chats with no durable transcript.
+      // Cut the model's transcript FIRST, and only truncate the display if it
+      // agreed. The other order was the dangerous one: the chat threw away the
+      // messages, then asked, and a refusal left the two halves describing
+      // different conversations with no way back to the one that was on screen.
+      // (No files are involved here, so there is nothing else to sequence.)
       const prior = msgs.slice(0, idx);
-      const seed = prior
-        .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
-        .map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
-      const keepUserTurns = prior.filter((m) => m.role === "user").length;
-      const totalUserTurns = msgs.filter((m) => m.role === "user").length;
+      const bridge = electron();
+      const cut = await bridge?.chat.rewindTranscript(
+        sessionId,
+        countPrompts(prior),
+        countPrompts(msgs),
+      );
+      if (cut && !cut.ok) {
+        mutate(sessionId, (p) => ({ ...p, error: cut.error ?? "Retry failed." }));
+        return;
+      }
 
       mutate(sessionId, (p) => ({
         ...p,
@@ -1102,12 +1153,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
         isStreaming: false,
         error: null,
       }));
-      const bridge = electron();
-      await bridge?.chat.rewindTranscript(
-        sessionId,
-        keepUserTurns,
-        totalUserTurns,
-      );
       // Re-read the files BEFORE the turn starts: if a read fails we still
       // send, but the note about it has to be in the payload from the start.
       const attachments = carried?.length
@@ -1125,7 +1170,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
         // The transcript tags its user turn with this, so the chat can
         // later point at exactly this turn — see setTurnContext.
         userMessageId: bubble.id,
-        seed,
+        // A resend is a send, and it runs under the mode the picker is
+        // showing. Omitting it did not mean "keep the current mode": main
+        // reads it as "default" AND writes that back as the session's live
+        // mode, so pressing Retry silently dropped a chat out of accept-edits.
+        mode: permissionModeFor(state.space),
         space: state.space,
         effort,
         attachments,
@@ -1141,6 +1190,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
       if (idx < 0) return;
 
       const bridge = electron();
+      // Asked before anything moves — see promptsAgree.
+      if (!(await promptsAgree(sessionId, msgs))) {
+        mutate(sessionId, (p) => ({ ...p, error: TURN_COUNT_DRIFT }));
+        return;
+      }
+
       const sha = msgs[idx].checkpointSha;
       if (sha) {
         const r = await bridge?.checkpoints.rewind(sessionId, sha);
@@ -1152,22 +1207,24 @@ export const useChatStore = create<ChatStore>((set, get) => {
           return;
         }
       }
-      // Truncate to and including this message; truncate the durable transcript
-      // to the same user-turn count so the next send continues from here.
+      // Truncate to and including this message; cut the durable transcript to
+      // the same prompt count so the next send continues from here.
       const kept = msgs.slice(0, idx + 1);
-      const keepUserTurns = kept.filter((m) => m.role === "user").length;
-      const totalUserTurns = msgs.filter((m) => m.role === "user").length;
+      const cut = await bridge?.chat.rewindTranscript(
+        sessionId,
+        countPrompts(kept),
+        countPrompts(msgs),
+      );
+      if (cut && !cut.ok) {
+        mutate(sessionId, (p) => ({ ...p, error: cut.error ?? "Rewind failed." }));
+        return;
+      }
       mutate(sessionId, (p) => ({
         ...p,
         messages: kept,
         isStreaming: false,
         error: null,
       }));
-      await bridge?.chat.rewindTranscript(
-        sessionId,
-        keepUserTurns,
-        totalUserTurns,
-      );
       // Write the truncation down NOW. A send would persist it as a side
       // effect, but a rewind is complete without one — leave the DB unsaved
       // and reopening the chat brings back everything just removed, which
@@ -1238,6 +1295,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
       if (idx < 0 || msgs[idx].role !== "user") return;
       const bridge = electron();
 
+      // Asked before anything moves — see promptsAgree.
+      if (!(await promptsAgree(sessionId, msgs))) {
+        mutate(sessionId, (p) => ({ ...p, error: TURN_COUNT_DRIFT }));
+        return;
+      }
+
       // Restore files to the checkpoint from BEFORE this turn — the most recent
       // assistant checkpoint before this user message (undefined if it's the
       // first turn, which has no prior snapshot: then we only truncate + edit).
@@ -1259,23 +1322,26 @@ export const useChatStore = create<ChatStore>((set, get) => {
         }
       }
 
-      // Truncate to BEFORE this user message, truncate the durable transcript
-      // to the same user-turn count (tool blocks kept) so the next send
-      // continues with full fidelity, and drop the prompt into the composer.
+      // Cut the durable transcript to BEFORE this prompt (tool blocks kept)
+      // so the next send continues with full fidelity, then the screen, then
+      // the prompt goes into the composer.
       const prior = msgs.slice(0, idx);
-      const keepUserTurns = prior.filter((m) => m.role === "user").length;
-      const totalUserTurns = msgs.filter((m) => m.role === "user").length;
+      const cut = await bridge?.chat.rewindTranscript(
+        sessionId,
+        countPrompts(prior),
+        countPrompts(msgs),
+      );
+      if (cut && !cut.ok) {
+        mutate(sessionId, (p) => ({ ...p, error: cut.error ?? "Rewind failed." }));
+        return;
+      }
+
       mutate(sessionId, (p) => ({
         ...p,
         messages: prior,
         isStreaming: false,
         error: null,
       }));
-      await bridge?.chat.rewindTranscript(
-        sessionId,
-        keepUserTurns,
-        totalUserTurns,
-      );
       // Same as rewindTo: the truncation is real only once it is in the DB.
       // This path drops the prompt into the composer, and deciding not to
       // resend it is a legitimate way to use it — the rewind must hold anyway.
@@ -1291,23 +1357,16 @@ export const useChatStore = create<ChatStore>((set, get) => {
       if (!sessionId || state.isStreaming) return;
       const bridge = electron();
       if (!bridge) return;
-      const seed = state.messages
-        .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
-        .map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
       get().startStreaming();
-      // Home only understands approve/skip; elsewhere honour the saved mode.
-      const mode =
-        state.space === "home"
-          ? "default"
-          : localStorage.getItem("permission-mode") ?? "default";
+      const mode = permissionModeFor(state.space);
       try {
         // Empty message: the main process folds the queued background report(s)
         // into this turn, so the model responds to the result with no visible
-        // user bubble.
+        // user bubble. No userMessageId for the same reason — there is no
+        // bubble to tie the turn to, and main marks it a hidden turn.
         await bridge.chat.send({
           sessionId,
           message: "",
-          seed,
           mode,
           space: state.space,
         });

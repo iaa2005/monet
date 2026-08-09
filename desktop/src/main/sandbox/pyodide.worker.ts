@@ -7,7 +7,7 @@
  * electron imports so it can run (and be tested) under plain Node.
  *
  * Protocol:
- *   in : { type:"run", id, code, memDir, artifactsDir, cacheDir }
+ *   in : { type:"run", id, code, memDir, workDir, cacheDir }
  *        { type:"mirror", memDir, name, bytes: ArrayBuffer }
  *   out: { type:"result", id, ok, stdout, stderr, error?,
  *          files: { name, bytes: ArrayBuffer }[] }   (bytes transferred)
@@ -47,8 +47,6 @@ interface RunMsg {
   /** Real per-chat working TREE on the host (subfolders preserved) — seeded in
    * recursively and produced files written back out here. */
   workDir: string;
-  /** Legacy flat artifacts dir (fallback seed for pre-subdir chats). */
-  artifactsDir: string;
   /** Host dir for the Pyodide package cache. */
   cacheDir: string;
 }
@@ -199,15 +197,18 @@ function ensureMemDirs(py: Py, memPath: string): void {
   );
 }
 
-/** Seed the in-memory tree from the host: the real work tree first (recursive,
- * subfolders preserved), then the legacy flat artifacts dir as a fallback for
- * files saved before subdir support. Never overwrites a file already in memory. */
-function seedFromDisk(
-  py: Py,
-  workDir: string,
-  artifactsDir: string,
-  memDir: string,
-): void {
+/**
+ * Seed the in-memory tree from the chat's real work folder, recursively,
+ * subfolders preserved. Never overwrites a file already in memory.
+ *
+ * One source. There was a second — the flat artifacts folder, seeded by
+ * newest-per-name — for chats written before this walked subdirectories. It
+ * also quietly poured every file ever attached to the chat into the Python
+ * sandbox's root, which is not what anyone asked for: an attachment that
+ * belongs in the sandbox is copied there when it is sent (see
+ * copyBufferIntoSandbox), and this walk finds it in place.
+ */
+function seedFromDisk(py: Py, workDir: string, memDir: string): void {
   const put = (rel: string, full: string): void => {
     const target = `${memDir}/${rel}`;
     try {
@@ -225,7 +226,6 @@ function seedFromDisk(
     }
   };
 
-  // 1) Real work tree (recursive).
   const walkHost = (dir: string): void => {
     let entries: string[];
     try {
@@ -246,22 +246,6 @@ function seedFromDisk(
     }
   };
   walkHost(workDir);
-
-  // 2) Legacy flat artifacts (newest-per-name), only names not already seeded.
-  try {
-    const newest = new Map<string, { ts: number; full: string }>();
-    for (const f of readdirSync(artifactsDir)) {
-      const m = /^(\d+)-(.+)$/.exec(f);
-      const name = m ? m[2] : f;
-      const ts = m ? Number(m[1]) : 0;
-      const cur = newest.get(name);
-      if (!cur || ts > cur.ts)
-        newest.set(name, { ts, full: join(artifactsDir, f) });
-    }
-    for (const [name, { full }] of newest) put(name, full);
-  } catch {
-    /* best-effort */
-  }
 }
 
 async function run(msg: RunMsg): Promise<void> {
@@ -294,7 +278,7 @@ async function run(msg: RunMsg): Promise<void> {
       "os.environ.setdefault('MPLBACKEND', 'Agg')",
     ].join("\n"),
   );
-  seedFromDisk(py, msg.workDir, msg.artifactsDir, msg.memDir);
+  seedFromDisk(py, msg.workDir, msg.memDir);
 
   const before = snapshotDir(py, msg.memDir);
 

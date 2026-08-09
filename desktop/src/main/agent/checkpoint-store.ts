@@ -13,11 +13,13 @@ import { DOT_DIR, DOT_DIR_PROD } from "@shared/brand.js";
 /**
  * A session id as a directory name.
  *
- * The only copy: `sessions:delete` needs the same answer to remove a chat's
- * store, and two independent copies of this regex would eventually disagree —
- * deleting nothing, or deleting somebody else's.
+ * THE only copy. A chat owns three directories — its checkpoints, its
+ * sandbox, its artifacts — and deleting the chat has to find all three. There
+ * were five copies of this regex, one beside each writer and one beside the
+ * delete, and copies of a naming rule are how a delete comes to remove
+ * nothing, or to remove somebody else's folder.
  */
-export function shadowSlug(sessionId: string): string {
+export function sessionSlug(sessionId: string): string {
   return sessionId.replace(/[^a-zA-Z0-9_-]/g, "_") || "session";
 }
 

@@ -162,7 +162,22 @@ function getDb(): ReturnType<typeof Database> {
         message_count INTEGER DEFAULT 0,
         space TEXT NOT NULL DEFAULT 'code',
         archived INTEGER NOT NULL DEFAULT 0,
-        pinned INTEGER NOT NULL DEFAULT 0
+        pinned INTEGER NOT NULL DEFAULT 0,
+        -- Each chat remembers its own folder.
+        workspace TEXT,
+        -- Which routine produced this chat. Provenance belongs on the chat: it
+        -- used to be derived from the run history, so deleting a routine
+        -- dropped its chats into Recents as if they had been typed by hand.
+        routine_id TEXT,
+        -- Why a chat stopped, when it stopped badly, and how the last turn
+        -- ended in the provider's own word. In the DB rather than in renderer
+        -- memory because the case that matters is the chat that failed while
+        -- the user was elsewhere, and after a restart the renderer knows
+        -- nothing about it. A turn that comes back empty writes nothing
+        -- anywhere else, so without the second one "the model gave up" and
+        -- "the model finished" look identical.
+        last_error TEXT,
+        last_stop_reason TEXT
       );
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
@@ -171,62 +186,37 @@ function getDb(): ReturnType<typeof Database> {
         content TEXT NOT NULL,
         timestamp INTEGER NOT NULL,
         tool_call TEXT,
+        -- Attachment metadata (JSON array of {name,mediaType,kind,path}).
+        attachments TEXT,
+        -- Reasoning text and the turn's checkpoint sha used to live only in
+        -- the renderer: reopening a chat threw every thinking block away, and
+        -- "Rewind to here" silently degraded to a conversation-only rewind
+        -- because the sha it needs was gone.
+        reasoning TEXT,
+        checkpoint_sha TEXT,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
     `);
-    // Migrate older DBs that predate the space column (default existing chats
-    // to the Code space, since that's where they were created).
-    const cols = db.prepare("PRAGMA table_info(sessions)").all() as {
-      name: string;
-    }[];
-    const has = (n: string): boolean => cols.some((c) => c.name === n);
-    if (!has("space"))
-      db.exec(
-        "ALTER TABLE sessions ADD COLUMN space TEXT NOT NULL DEFAULT 'code'",
+    // A database written before a column existed gets it added.
+    //
+    // Every column is DECLARED above — a fresh install runs none of this — and
+    // what is left is one generic reconciliation instead of a ladder of
+    // hand-written ALTERs, one per column, each with the comment explaining
+    // its own history. This table holds the chats themselves, which is why it
+    // is reconciled rather than rebuilt the way the transcript store is.
+    for (const [table, columns] of [
+      ["sessions", { workspace: "TEXT", routine_id: "TEXT", last_error: "TEXT", last_stop_reason: "TEXT" }],
+      ["messages", { attachments: "TEXT", reasoning: "TEXT", checkpoint_sha: "TEXT" }],
+    ] as [string, Record<string, string>][]) {
+      const present = new Set(
+        (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
+          .map((c) => c.name),
       );
-    if (!has("archived"))
-      db.exec(
-        "ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
-      );
-    if (!has("pinned"))
-      db.exec(
-        "ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
-      );
-    // Per-chat working directory: each session remembers its own folder.
-    if (!has("workspace"))
-      db.exec("ALTER TABLE sessions ADD COLUMN workspace TEXT");
-    // Which routine produced this chat. Provenance belongs on the chat: it used
-    // to be derived from the run history, so deleting a routine dropped its
-    // chats into Recents as if they'd been typed by hand.
-    if (!has("routine_id"))
-      db.exec("ALTER TABLE sessions ADD COLUMN routine_id TEXT");
-    // Why a chat stopped, when it stopped badly. In the DB rather than in the
-    // renderer's memory because the case that matters is the chat that failed
-    // while the user was elsewhere — and after a restart the renderer knows
-    // nothing about it.
-    if (!has("last_error"))
-      db.exec("ALTER TABLE sessions ADD COLUMN last_error TEXT");
-    // How the last turn ended, in the provider's own word. A turn that comes
-    // back empty writes nothing anywhere else, so without this the only
-    // record of "the model gave up" is that the chat stops — indistinguishable
-    // from a chat that finished.
-    if (!has("last_stop_reason"))
-      db.exec("ALTER TABLE sessions ADD COLUMN last_stop_reason TEXT");
-    // Attachment metadata on messages (JSON array of {name,mediaType,kind}).
-    const msgCols = db.prepare("PRAGMA table_info(messages)").all() as {
-      name: string;
-    }[];
-    if (!msgCols.some((c) => c.name === "attachments"))
-      db.exec("ALTER TABLE messages ADD COLUMN attachments TEXT");
-    // Reasoning text and the turn's checkpoint sha used to live only in the
-    // renderer: reopening a chat threw every thinking block away, and "Rewind
-    // to here" silently degraded to a conversation-only rewind because the sha
-    // it needs was gone.
-    if (!msgCols.some((c) => c.name === "reasoning"))
-      db.exec("ALTER TABLE messages ADD COLUMN reasoning TEXT");
-    if (!msgCols.some((c) => c.name === "checkpoint_sha"))
-      db.exec("ALTER TABLE messages ADD COLUMN checkpoint_sha TEXT");
+      for (const [name, type] of Object.entries(columns))
+        if (!present.has(name))
+          db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+    }
   }
   return db;
 }

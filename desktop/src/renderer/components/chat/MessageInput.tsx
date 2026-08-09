@@ -1129,19 +1129,6 @@ export function MessageInput({
 
     if (pinVoiceAnchor && sessionId) store.setVoiceSession(sessionId);
 
-    // Seed and display target THE chat this message belongs to. A voice send
-    // aimed at its own chat used to seed from and draw into whatever chat was
-    // on screen — the bubble landed in a stranger's transcript.
-    const targetMsgs =
-      (sessionId && store.sessions[sessionId]?.messages) ||
-      (sessionId === store.currentSessionId || !sessionId ? store.messages : []);
-    const seed = targetMsgs
-      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
-      .map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      }));
-
     // Show what was attached on the user bubble (image thumbnails come from
     // the already-encoded base64; other kinds render as chips).
     // A crop the browser tool made is marked as such: the model still gets the
@@ -1184,7 +1171,16 @@ export function MessageInput({
         }),
       );
     }
-    addUserMessage(text, displayAttachments, sessionId);
+    // The bubble, and its id — which has to travel with the send.
+    //
+    // It did not, and this is the main way messages are sent, so the effect
+    // was that essentially no prompt in the app could be taken out of the
+    // model's context: the transcript minted its own id for the turn, no
+    // bubble carried that id, and the button answered "this prompt has no
+    // model-facing turn behind it" for every message anyone had ever typed.
+    // The one path that did pass it was edit-and-resend, which is why the
+    // feature looked like it worked.
+    const bubble = addUserMessage(text, displayAttachments, sessionId);
     startStreaming(sessionId);
 
     try {
@@ -1217,7 +1213,7 @@ export function MessageInput({
       await bridge.chat.send({
         sessionId,
         message: text,
-        seed,
+        userMessageId: bubble.id,
         mode: effectiveMode,
         space: store.space,
         effort: activeModel?.supportsEffort ? (effort ?? undefined) : undefined,

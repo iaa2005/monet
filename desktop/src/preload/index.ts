@@ -40,9 +40,9 @@ const electronAPI = {
     send: (payload: {
       sessionId?: string;
       message: string;
-      /** The user bubble's id, tying this prompt to its transcript turn. */
+      /** The user bubble's id, tying this prompt to its transcript turn.
+       * Every send path must pass it — see ChatSendPayload in ipc/chat.ts. */
       userMessageId?: string;
-      seed?: { id?: string; role: "user" | "assistant"; content: string }[];
       mode?: string;
       space?: string;
       effort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -82,7 +82,6 @@ const electronAPI = {
       space?: string,
     ): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:inject", sessionId, text, attachments, space),
-    /** Drop the last N prompts from the model's context (files untouched). */
     /** Which prompts the model can still read — drawn directly, not derived. */
     turnContext: (
       sessionId: string,
@@ -95,8 +94,6 @@ const electronAPI = {
       inContext: boolean,
     ): Promise<{ ok: boolean; changed: number }> =>
       ipcRenderer.invoke("chat:setTurnContext", sessionId, messageId, inContext),
-    undoableTurns: (sessionId: string): Promise<number> =>
-      ipcRenderer.invoke("chat:undoableTurns", sessionId),
     reset: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:reset", sessionId),
     /** Copy the full-fidelity transcript into a fork's session. */
@@ -105,7 +102,7 @@ const electronAPI = {
       toSessionId: string,
       keepUserTurns?: number,
       totalUserTurns?: number,
-    ): Promise<{ fidelity: "full" | "text" }> =>
+    ): Promise<{ ok: boolean; removed: number; error?: string }> =>
       ipcRenderer.invoke(
         "chat:forkTranscript",
         fromSessionId,
@@ -113,11 +110,14 @@ const electronAPI = {
         keepUserTurns,
         totalUserTurns,
       ),
+    /** Cut the model's transcript back to `keepUserTurns` prompts. Answers
+     * ok:false rather than clearing when the counts disagree — the caller must
+     * not truncate its own display until this has said yes. */
     rewindTranscript: (
       sessionId: string,
       keepUserTurns: number,
       totalUserTurns?: number,
-    ): Promise<{ fidelity: "full" | "text"; removed: number }> =>
+    ): Promise<{ ok: boolean; removed: number; error?: string }> =>
       ipcRenderer.invoke(
         "chat:rewindTranscript",
         sessionId,
@@ -135,7 +135,8 @@ const electronAPI = {
     ): Promise<
       {
         id: string;
-        type: "compact" | "rewind" | "command";
+        seq: number;
+        type: "compact" | "rewind";
         at: string;
         manual: boolean;
         beforeTokens: number | null;

@@ -640,16 +640,29 @@ async function main() {
     typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
   check(
     'compaction summarises the old part',
-    typeof compacted[0].content === 'string' &&
-      compacted[0].content.includes('Condensed summary of the prior turns'),
-    `len=${compacted.length}`,
+    !!compacted.header &&
+      typeof compacted.header.content === 'string' &&
+      compacted.header.content.includes('Condensed summary of the prior turns'),
+    `folded=${compacted.folded.length}`,
   )
   check(
     'compaction keeps the recent turns VERBATIM',
-    compacted.some(m => asText(m).includes('KEEP-ME-VERBATIM last request')) &&
-      compacted.some(m => asText(m).includes('KEEP-ME-TOO the reply')),
+    compacted.messages.some(m => asText(m).includes('KEEP-ME-VERBATIM last request')) &&
+      compacted.messages.some(m => asText(m).includes('KEEP-ME-TOO the reply')),
   )
-  check('compaction still shrinks the history', compacted.length < tailMarked.length)
+  // Nothing is deleted: the summary stands in front of the turns it replaces
+  // and the caller takes THOSE out of context. That is what makes a compaction
+  // undoable without storing a copy of the conversation — see undoCompaction.
+  check(
+    'compaction names what the summary stands for, and deletes nothing',
+    compacted.folded.length > 0 &&
+      tailMarked.every(m => compacted.messages.includes(m)),
+    { folded: compacted.folded.length, kept: compacted.messages.length },
+  )
+  check(
+    'what it stands for does not include the verbatim tail',
+    !compacted.folded.some(m => asText(m).includes('KEEP-ME-VERBATIM')),
+  )
 
   // 8b. Micro-compaction — lossless pass over replayable tool output.
   const withTools: LLMMessage[] = [
@@ -714,7 +727,9 @@ async function main() {
   })
   check(
     'compaction skips the model call when clearing alone fits',
-    summaryCalls === 0 && fitsAfterMicro.length === withTools.length,
+    summaryCalls === 0 &&
+      fitsAfterMicro.header === null &&
+      fitsAfterMicro.messages.length === withTools.length,
     `calls=${summaryCalls}`,
   )
 
@@ -1212,115 +1227,21 @@ async function main() {
     }
   }
 
-  // ── Context undo ───────────────────────────────────────────────────────
-  // Taking a prompt out of the model's context WITHOUT reverting files. Lives
-  // here rather than in a renderer probe because it operates on the agent's real
-  // conversation state, which needs the vendor runtime.
+  // ── Context: which prompts the model still reads ───────────────────────
   //
-  // There used to be an `undoPrompts(sid, n)` beside this — a loop calling
-  // setTurnContext on the last n turns, i.e. the same operation with a second
-  // name and a second button in the UI. It is gone; these checks moved onto what
-  // it was looping over, because every property they pin belongs there.
-  {
-    const {
-      seedConversation,
-      undoableTurnCount,
-      turnContextState,
-      setTurnContext,
-      messagesInContext,
-      resetConversation,
-    } = await import('../src/main/agent/index.js')
-    const sid = 'undo-probe'
-    resetConversation(sid)
-    seedConversation(sid, [
-      { role: 'user', content: 'first question' },
-      { role: 'assistant', content: 'first answer' },
-      { role: 'user', content: 'second question' },
-      { role: 'assistant', content: 'second answer' },
-      { role: 'user', content: 'third question' },
-      { role: 'assistant', content: 'third answer' },
-    ])
-
-    check('it counts the prompts in context', (await undoableTurnCount(sid)) === 3)
-
-    /** The last turn still being sent — what the removed bulk call chose. */
-    const lastLive = (): string | null => {
-      const live = turnContextState(sid).filter((t) => t.inContext)
-      return live.length ? live[live.length - 1].id : null
-    }
-
-    const one = setTurnContext(sid, lastLive()!, false)
-    check('taking one out reports what it changed', one.ok && one.changed === 2, one)
-    check('two prompts are still being sent', (await undoableTurnCount(sid)) === 2)
-    // Marked, not truncated — that is what makes it reversible and what lets
-    // the chat go on showing a prompt it has stopped sending.
-    check(
-      'nothing was deleted to achieve it',
-      turnContextState(sid).length === 3,
-      turnContextState(sid),
-    )
-    check(
-      'and the dropped turn really is out of the request',
-      messagesInContext(sid).length === 4,
-      messagesInContext(sid).length,
-    )
-
-    setTurnContext(sid, lastLive()!, false)
-    setTurnContext(sid, lastLive()!, false)
-    check('no prompt is left in context', (await undoableTurnCount(sid)) === 0)
-    check('but all three are still on record', turnContextState(sid).length === 3)
-    check('and nothing at all is sent', messagesInContext(sid).length === 0)
-
-    // A turn already out cannot be taken out again — the count must not go
-    // negative or wrap, which is what the bulk call clamped for.
-    const again = setTurnContext(sid, turnContextState(sid)[0].id, false)
-    check('taking out what is already out changes nothing', again.ok && again.changed === 0, again)
-
-    // …and every one of them can come back.
-    for (const t of turnContextState(sid)) setTurnContext(sid, t.id, true)
-    check('all three can be put back', (await undoableTurnCount(sid)) === 3)
-    check(
-      '…and the model is sent the whole conversation again',
-      messagesInContext(sid).length === 6,
-      String(messagesInContext(sid).length),
-    )
-
-    resetConversation(sid)
-    check(
-      'an id that points at nothing is refused, not thrown',
-      setTurnContext(sid, 'no-such-id', false).ok === false,
-    )
-
-    // A SEEDED PROMPT KEEPS THE CHAT'S OWN ID.
-    //
-    // The seed is how a chat written before the durable transcript existed gets
-    // a model-facing history at all, and it used to arrive as {role, content}
-    // with the bubble id dropped. The transcript then minted a fresh one, so the
-    // chat could never name that turn: "this prompt has no model-facing turn
-    // behind it" for ever, even after it had one. Reported from the app.
-    resetConversation(sid)
-    seedConversation(sid, [
-      { id: 'bubble-1', role: 'user', content: 'seeded question' },
-      { id: 'bubble-2', role: 'assistant', content: 'seeded answer' },
-    ])
-    const seeded = setTurnContext(sid, 'bubble-1', false)
-    check(
-      'a seeded prompt can be taken out of context by its bubble id',
-      seeded.ok && seeded.changed === 2,
-      seeded,
-    )
-    check(
-      '…and it really left the request',
-      messagesInContext(sid).length === 0,
-      messagesInContext(sid).length,
-    )
-    check(
-      '…and comes back',
-      setTurnContext(sid, 'bubble-1', true).changed === 2 &&
-        messagesInContext(sid).length === 2,
-    )
-    resetConversation(sid)
-  }
+  // The checks that used to live here drove the agent's conversation map
+  // through `seedConversation`, a back door that existed for one reason: the
+  // renderer sent a text-only rebuild of every chat on every send, and the
+  // agent had to accept it. That path is gone (see ensureTranscriptLoaded),
+  // and with it the only way to put messages into a conversation from outside
+  // a real run.
+  //
+  // What it was pinning is pinned where it can still be exercised:
+  //   - the arithmetic of "which messages does a prompt own" — turn-context-probe
+  //   - identity and the context flag across a save — transcript-identity-probe
+  //   - a compaction taking prompts out instead of deleting them —
+  //     compaction-context-probe
+  //   - the prompt COUNT the chat cuts by, notes included — retry-probe
 
   // ── Goal driver ────────────────────────────────────────────────────────
   // The driver is the loop that keeps taking turns on its own, so every test

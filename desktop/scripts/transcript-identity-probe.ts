@@ -11,9 +11,8 @@
  * this replaces.
  *
  * What has to hold: an id survives a rewrite, the context flag survives a
- * rewrite, and a transcript written by an older build — every row with a
- * null id — still loads and still counts as in context. That last one is
- * the migration, and it is the one that would strand somebody's chats.
+ * rewrite, and a table of the WRONG SHAPE does not take the store down with
+ * it — that last one is the failure this file exists for.
  *
  *   npm run smoke:transcriptid
  */
@@ -44,7 +43,7 @@ const { getSessionDb } = await import('../src/main/session/store.js')
 type Msg = { role: 'user' | 'assistant'; content: string }
 const said = (role: Msg['role'], content: string): Msg => ({ role, content })
 
-// ─── A DATABASE FROM AN OLDER BUILD ─────────────────────────────────────
+// ─── A TABLE OF THE WRONG SHAPE ─────────────────────────────────────────
 //
 // MUST BE FIRST: the store's schema work runs once, on the first call, so a
 // probe that touches it earlier can never see this path — which is exactly how
@@ -54,13 +53,19 @@ const said = (role: Msg['role'], content: string): Msg => ({ role, content })
 // The real failure, found on a 15-session database: the msg_id index was
 // declared in the same exec batch as CREATE TABLE IF NOT EXISTS, so on a table
 // created before that column existed the batch died with "no such column:
-// msg_id" — before the ALTER TABLE that adds it. The ready flag stayed false,
-// every later call re-ran the same failing batch, and the catches turned it
-// into silence: no durable transcript and no context events for ANY chat, and
-// /compact doing nothing because there was nothing to compact.
+// msg_id". The ready flag stayed false, every later call re-ran the same
+// failing batch, and the catches turned it into silence: no durable transcript
+// and no context events for ANY chat, and /compact doing nothing because there
+// was nothing to compact.
+//
+// It was answered with an ALTER TABLE per column, a ladder that grows a rung
+// every time the shape changes and only ever gets exercised on somebody else's
+// database. The shape is CHECKED instead, and a table that does not match is
+// dropped: those chats lose their model history, which is a cost only a
+// pre-release app can pay, and the store comes up working either way.
 
 {
-  // The five columns the old build wrote, created before transcript.ts opens.
+  // The five columns an older build wrote, created before transcript.ts opens.
   getSessionDb().exec(`
     CREATE TABLE IF NOT EXISTS transcript (
       session_id TEXT NOT NULL,
@@ -71,25 +76,30 @@ const said = (role: Msg['role'], content: string): Msg => ({ role, content })
       PRIMARY KEY (session_id, seq)
     );
   `)
+  getSessionDb()
+    .prepare(
+      'INSERT INTO transcript (session_id, seq, role, content, hidden) VALUES (?, ?, ?, ?, 0)',
+    )
+    .run('stale', 0, 'user', JSON.stringify('from the old shape'))
   const before = (
     getSessionDb().prepare('PRAGMA table_info(transcript)').all() as {
       name: string
     }[]
   ).map((c) => c.name)
   check(
-    'the legacy table really is missing the columns',
+    'the stale table really is missing the columns',
     !before.includes('msg_id') && !before.includes('in_context'),
     before,
   )
 
-  replaceTranscript('legacy', [said('user', 'kept')] as never, [false], {
-    ids: ['m-legacy'],
+  replaceTranscript('fresh', [said('user', 'kept')] as never, [false], {
+    ids: ['m-1'],
     inContext: [true],
   })
-  const back = loadTranscriptWithMeta('legacy')
+  const back = loadTranscriptWithMeta('fresh')
   check(
-    'A TRANSCRIPT STILL WRITES ON A DATABASE FROM AN OLDER BUILD',
-    back.messages.length === 1 && back.ids[0] === 'm-legacy',
+    'A TRANSCRIPT STILL WRITES ON A DATABASE OF THE WRONG SHAPE',
+    back.messages.length === 1 && back.ids[0] === 'm-1',
     { messages: back.messages.length, ids: back.ids },
   )
   const after = (
@@ -98,9 +108,14 @@ const said = (role: Msg['role'], content: string): Msg => ({ role, content })
     }[]
   ).map((c) => c.name)
   check(
-    '…because the migration ran instead of dying on its own index',
+    '…because the table was rebuilt instead of dying on its own index',
     after.includes('msg_id') && after.includes('in_context'),
     after,
+  )
+  check(
+    '…and the rows of the old shape went with it, rather than half-loading',
+    loadTranscriptWithMeta('stale').messages.length === 0,
+    loadTranscriptWithMeta('stale').messages.length,
   )
 }
 
@@ -139,21 +154,24 @@ const said = (role: Msg['role'], content: string): Msg => ({ role, content })
   check('…with its id intact', back.ids.join() === 'm-1,m-2', back.ids)
 }
 
-// ─── A transcript from an older build ───────────────────────────────────
+// ─── A row written without an id ────────────────────────────────────────
+//
+// Not a legacy shape — the table has the column; something wrote a row without
+// filling it in. It must load, and it must count as IN context, because the
+// absence of a flag is not the same as being taken out of one.
 
 {
-  // Exactly what the previous schema wrote: no id, no flag.
   const d = getSessionDb()
-  d.prepare('DELETE FROM transcript WHERE session_id = ?').run('old')
+  d.prepare('DELETE FROM transcript WHERE session_id = ?').run('bare')
   d.prepare(
     'INSERT INTO transcript (session_id, seq, role, content, hidden) VALUES (?, ?, ?, ?, ?)',
-  ).run('old', 0, 'user', JSON.stringify('hello'), 0)
+  ).run('bare', 0, 'user', JSON.stringify('hello'), 0)
 
-  const back = loadTranscriptWithMeta('old')
-  check('an old transcript still loads', back.messages.length === 1)
-  check('its rows have no id yet', back.ids[0] === null, back.ids)
+  const back = loadTranscriptWithMeta('bare')
+  check('a row with no id still loads', back.messages.length === 1)
+  check('…and says so rather than inventing one', back.ids[0] === null, back.ids)
   check(
-    '…and count as IN context, which is what they were',
+    '…and counts as IN context, which is the safe reading',
     back.inContext[0] === true,
     back.inContext,
   )

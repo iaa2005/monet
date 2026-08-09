@@ -14,7 +14,8 @@ import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
 import { purgeSessionData } from "../session/purge.js";
 import { getDataSubdir } from "../data-dir.js";
-import { shadowSlug } from "../agent/checkpoint-store.js";
+import { sessionSlug } from "../agent/checkpoint-store.js";
+import { forgetSession } from "../agent/index.js";
 
 async function generateSessionTitle(
   session: SessionWithMessages,
@@ -89,10 +90,14 @@ export function registerSessionsIPC(): void {
   );
 
   ipcMain.handle("sessions:delete", (_e, id: string): boolean => {
-    // Everything the chat owns — DB rows in both stores, its three
+    // Everything the chat owns on DISK — DB rows in both stores, its three
     // directories, its desk, its goal, its engine override — lives in ONE
     // function, so a store added later has a single place to register.
     purgeSessionData(id);
+    // …and what the agent was holding in memory for it. Nothing emptied
+    // these, so a deleted chat freed its rows and its folders and kept the
+    // expensive part — the whole conversation — for the life of the process.
+    forgetSession(id);
     return store.delete(id);
   });
 

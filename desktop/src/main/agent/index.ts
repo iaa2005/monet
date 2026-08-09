@@ -99,7 +99,7 @@ import {
   CAVEMAN_COMPACT_HINT,
   withCavemanReminder,
 } from "./caveman.js";
-import { turnRange } from "./turn-context.js";
+import { resultsOutOfPlace, turnRange } from "./turn-context.js";
 import { anyWriters, WRITERS } from "./writers.js";
 import {
   changedIn,
@@ -114,7 +114,6 @@ import { getToolSearchConfig } from "./toolsearch-config.js";
 import {
   loadTranscriptWithMeta,
   lastAssistantAt,
-  listContextEvents,
   replaceTranscript,
   clearTranscript,
   recordContextEvent,
@@ -140,6 +139,7 @@ import {
   compactionThreshold,
   MAX_SUMMARY_FAILURES,
   estimateTokens,
+  type CompactionResult,
 } from "./compaction.js";
 import {
   drainInjections,
@@ -511,11 +511,34 @@ const conversations = new Map<string, LLMMessage[]>();
  * (New session, or a rewind/edit that rebuilds the history from a truncation). */
 export function resetConversation(sessionId: string): void {
   conversations.delete(sessionId);
-  compactionFloor.delete(sessionId);
+  forgetSessionState(sessionId);
   clearTranscript(sessionId);
   dropSessionContext(sessionId);
   clearSessionGrants(sessionId);
   clearRevealedTools(sessionId);
+}
+
+/**
+ * Drop everything this module remembers ABOUT a chat, keeping the chat.
+ *
+ * Every one of these is derived from a conversation that no longer exists, and
+ * every one of them is a per-session Map that nothing else empties: a chat
+ * deleted from the sidebar used to leave its whole history, its usage, its
+ * ledgers and its failure counters resident for the life of the process. See
+ * forgetSession(), which the delete path calls.
+ */
+function forgetSessionState(sessionId: string): void {
+  compactionFloor.delete(sessionId);
+  summaryFailures.delete(sessionId);
+  lastUsageBySession.delete(sessionId);
+  editedFilesBySession.delete(sessionId);
+  turnLedgers.delete(sessionId);
+}
+
+/** The chat is gone — forget it entirely, history included. */
+export function forgetSession(sessionId: string): void {
+  conversations.delete(sessionId);
+  forgetSessionState(sessionId);
 }
 
 /**
@@ -576,12 +599,22 @@ async function turnFolder(
   return getCwdForRun();
 }
 
-/** Transcript user-turn messages with NO display bubble — background-delivery
- * turns (deliverBackgroundResults sends an empty message that only carries a
- * finished sub-agent's report). Tracked by object identity so compaction and
- * truncation "forget" them for free; persisted via the transcript `hidden`
- * column so the tagging survives a reopen. Excluding them keeps the rewind
- * user-turn count aligned with the visible user bubbles. */
+/**
+ * Transcript user-role messages that are not PROMPTS.
+ *
+ * Three kinds, and they have one thing in common — the chat shows no prompt
+ * bubble for them, so counting them as user turns drifts the transcript's
+ * count away from the display's, and Rewind cuts by that count:
+ *
+ *   - background delivery (an empty message carrying a finished sub-agent's
+ *     report — deliverBackgroundResults);
+ *   - a mid-run note the user typed into a turn already in flight, when it
+ *     arrives too late to ride with tool results;
+ *   - the summary a compaction leaves behind.
+ *
+ * Tracked by object identity, and persisted via the transcript `hidden`
+ * column so the tagging survives a reopen.
+ */
 const hiddenTurns = new WeakSet<LLMMessage>();
 
 /**
@@ -658,74 +691,29 @@ function persistTranscript(sessionId: string): void {
 /**
  * Populate the in-memory history from the durable transcript when a reopened
  * chat isn't loaded this process — full fidelity (tool blocks included). No-op
- * once loaded. Deliberately does NOT reconstruct from the display messages: a
- * cleared transcript (after a rewind/reset) must fall through to the renderer's
- * explicitly-truncated `seed`, not the possibly-stale display rows.
+ * once loaded.
+ *
+ * This is the ONLY way a chat's model history comes back. There used to be a
+ * second one: the renderer would send a text-only rebuild of the conversation
+ * made from the visible bubbles, and the model would carry on from that. It
+ * existed because the transcript store had been dead for weeks behind a
+ * swallowed schema error, and it hid the damage — a 234-message chat
+ * continuing on a 3.4k text reconstruction, with every tool call and result
+ * silently absent, and nothing on screen saying so. With one source there is
+ * one behaviour: a chat either has its history or it visibly starts fresh.
  */
 export async function ensureTranscriptLoaded(sessionId: string): Promise<void> {
   if (conversations.has(sessionId)) return;
   const { messages, hidden, ids, inContext } = loadTranscriptWithMeta(sessionId);
   if (messages.length > 0) {
     conversations.set(sessionId, messages);
-    let missingIds = false;
     messages.forEach((m, i) => {
       if (hidden[i]) hiddenTurns.add(m);
       const id = ids[i];
       if (id) messageIds.set(m, id);
-      else missingIds = true;
       if (inContext[i] === false) outOfContext.add(m);
     });
-    // A chat written before messages had ids gets them now, once, and is
-    // then on the same footing as every other chat. No second code path
-    // for "old transcripts" — there is only one kind.
-    if (missingIds) persistTranscript(sessionId);
   }
-}
-
-/** Text-only rebuild from the persisted display messages — for /compact on a
- * reopened chat that has neither in-process history nor a durable transcript
- * (old, un-migrated). Not used on the send path (which has the seed). */
-async function seedFromDisplayMessages(sessionId: string): Promise<void> {
-  if (conversations.has(sessionId)) return;
-  try {
-    const { getSessionStore } = await import("../session/store.js");
-    const s = getSessionStore().get(sessionId);
-    if (!s) return;
-    const prior = s.messages
-      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content)
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
-    if (prior.length > 0) conversations.set(sessionId, prior);
-  } catch {
-    /* best-effort */
-  }
-}
-
-/**
- * Seed a session's history from previously persisted display messages so a
- * reopened chat can continue (text-only reconstruction of past turns).
- */
-export function seedConversation(
-  sessionId: string,
-  priorText: { id?: string; role: "user" | "assistant"; content: string }[],
-): void {
-  if (conversations.has(sessionId)) return;
-  // The bubble's id comes with it, and that is the whole point of the `id`
-  // field. Without it these messages got fresh minted ids when the transcript
-  // was next written, so the chat could never name one of them again: every
-  // prompt from before the transcript store came back to life would have
-  // answered "this prompt has no model-facing turn behind it" for ever, even
-  // after it had one. One turn in an old chat now makes all of its prompts
-  // addressable, not just the new one.
-  conversations.set(
-    sessionId,
-    priorText
-      .filter((m) => m.content)
-      .map((m) => {
-        const msg: LLMMessage = { role: m.role, content: m.content };
-        if (m.id) messageIds.set(msg, m.id);
-        return msg;
-      }),
-  );
 }
 
 /**
@@ -741,21 +729,32 @@ export function seedConversation(
 const compactionFloor = new Map<string, number>();
 
 /**
- * The ids and context flags of a message list, as plain arrays.
+ * Take the result of a compaction and make it the session's history.
  *
- * A compaction event stores the pre-compaction history so it can be undone,
- * and it stores it as DATA — copies, with none of the identity the live
- * messages carry in WeakMaps. Undoing without these gives every message a
- * fresh id and puts the whole lot back in context, including prompts the
- * user had taken out before compacting.
+ * The summary does not DELETE the turns it stands for — it takes them out of
+ * context, which is the same flag a prompt the user removed by hand carries.
+ * That is what makes the event log small (an undo is two lists of ids, not a
+ * copy of the conversation), what lets the chat go on marking those prompts
+ * as unreadable, and what keeps the visible user-turn count still — a moving
+ * count is what used to send every later Rewind down the text-only path.
+ *
+ * The summary itself is a HIDDEN turn: it is a user message, so without this
+ * it would count as one more prompt than the chat has bubbles for, which is
+ * the very drift the rest of this is avoiding.
  */
-function snapshotIdentity(msgs: LLMMessage[]): {
-  beforeIds: string[];
-  beforeInContext: boolean[];
-} {
+function applyCompaction(
+  messages: LLMMessage[],
+  result: CompactionResult,
+): { headerId: string | null; foldedIds: string[] } {
+  if (result.messages !== messages) {
+    messages.length = 0;
+    messages.push(...result.messages);
+  }
+  for (const m of result.folded) setInContext(m, false);
+  if (result.header) hiddenTurns.add(result.header);
   return {
-    beforeIds: msgs.map((m) => transcriptId(m)),
-    beforeInContext: msgs.map((m) => isInContext(m)),
+    headerId: result.header ? transcriptId(result.header) : null,
+    foldedIds: result.folded.map((m) => transcriptId(m)),
   };
 }
 
@@ -776,21 +775,16 @@ function noteCompactionFloor(sessionId: string, tokens: number): void {
 export async function compactSessionNow(
   sessionId: string,
 ): Promise<{ before: number; after: number } | null> {
-  // Reopened chat with no in-process history yet — load the durable transcript,
-  // then (old chats only) fall back to a text-only rebuild from display rows.
+  // Reopened chat with no in-process history yet — load the durable transcript.
   await ensureTranscriptLoaded(sessionId);
-  if (!conversations.has(sessionId)) await seedFromDisplayMessages(sessionId);
   const messages = conversations.get(sessionId);
   if (!messages || messages.length < 2) return null;
   const provider = getProviderManager().getActive();
   if (!provider) return null;
   const adapter = createAdapter(provider);
-  // The live objects, for their ids and flags; the copies, for the content.
-  const beforeLive = [...messages];
-  const beforeSnapshot = messages.map((m) => ({ ...m }));
   const before = estimateTokens(messages.filter(isInContext));
   let summaryFailed = false;
-  const compacted = await compactMessages({
+  const result = await compactMessages({
     messages,
     adapter,
     model: provider.model,
@@ -822,26 +816,22 @@ export async function compactSessionNow(
     },
   });
   noteSummaryOutcome(sessionId, summaryFailed);
-  if (compacted !== messages) {
-    messages.length = 0;
-    messages.push(...compacted);
-  }
+  const { headerId, foldedIds } = applyCompaction(messages, result);
   const after = estimateTokens(messages.filter(isInContext));
-  // Record the compaction so it can be undone ("rewind through compact"):
-  // the BEFORE snapshot restores the pre-compaction context.
+  // Record it so it can be undone ("rewind through compact"). Two lists of
+  // ids: what to drop, and what to put back in context. This used to be a
+  // full copy of the conversation on both sides of the event — over a
+  // megabyte apiece on a chat big enough to compact, kept for ever, and
+  // re-parsed by every reader of the log.
   if (after < before)
     recordContextEvent(sessionId, "compact", {
       manual: true,
       beforeTokens: before,
       afterTokens: after,
-      // Where the context now starts, in turns — see contextHeadOffset.
-      userTurnsBefore: countUserTurns(beforeSnapshot),
-      userTurnsAfter: countUserTurns(messages),
-      headOffset: contextHeadOffset(sessionId),
-      before: beforeSnapshot,
-      ...snapshotIdentity(beforeLive),
-      after: messages.map((m) => ({ ...m })),
+      headerId,
+      foldedIds,
     });
+  else if (result.messages === messages) noteCompactionFloor(sessionId, before);
   persistTranscript(sessionId);
   return { before, after };
 }
@@ -927,39 +917,52 @@ function isEmptyUserContent(content: string | LLMContentBlock[]): boolean {
 }
 
 /**
- * Full-fidelity rewind: truncate the durable transcript to the first
- * `keepUserTurns` user turns — keeping their assistant/tool continuations
- * (tool_use/tool_result blocks intact), instead of the old reset + reseed-as-
- * text. A chat with no durable transcript (old, un-migrated) falls back to a
- * clear so the renderer's already-truncated text `seed` applies on the next
- * send. Returns which fidelity was used.
+ * What a transcript operation can answer with.
+ *
+ * `ok: false` is a REFUSAL, not a fallback. Both of these used to answer a
+ * disagreement about how many user turns exist by clearing the transcript and
+ * letting the chat rebuild a text-only version of itself from its bubbles —
+ * silently throwing away every tool call and result in the conversation. The
+ * disagreement is a bug when it happens, and the caller has to be able to say
+ * so rather than lose the history to it.
  */
+export interface TranscriptOpResult {
+  ok: boolean;
+  removed: number;
+  error?: string;
+}
+
+/** Why the two sides can disagree, said once. */
+const TURN_COUNT_DRIFT =
+  "The chat and the model's transcript disagree about how many prompts this " +
+  "conversation has, so there is no safe place to cut. Nothing was changed.";
+
 /**
  * Copy a session's full-fidelity transcript into a NEW session.
  *
  * This is what makes a fork a real fork. The renderer already copied the
  * display messages, but those are the text-only surface; without this the
- * forked chat re-seeds the model from bubbles, and every tool call and result
- * from the original — the context that made the conversation worth branching —
- * is gone. Claude Code forks by rewriting the transcript under a new id; same
+ * forked chat has no model history at all — every tool call and result from
+ * the original, the context that made the conversation worth branching, is
+ * gone. Claude Code forks by rewriting the transcript under a new id; same
  * move here.
  *
  * Read from the DB, not from the in-memory conversation: the DB carries the
- * hidden flags (background-delivery turns), and forking is only offered while
- * the session is idle, so the DB is current.
+ * hidden flags (background-delivery turns, compaction summaries), and forking
+ * is only offered while the session is idle, so the DB is current.
  *
- * `keepUserTurns` cuts at a user-turn boundary for "branch from here"; the
- * same divergence check as rewind applies — a compacted transcript's turn
- * indexes cannot be trusted, so the fork falls back to text fidelity.
+ * `keepUserTurns` cuts at a user-turn boundary for "branch from here".
  */
 export async function forkTranscriptToSession(
   fromSessionId: string,
   toSessionId: string,
   keepUserTurns?: number,
   totalUserTurns?: number,
-): Promise<{ fidelity: "full" | "text" }> {
-  const { messages, hidden } = loadTranscriptWithMeta(fromSessionId);
-  if (messages.length === 0) return { fidelity: "text" };
+): Promise<TranscriptOpResult> {
+  const { messages, hidden, ids, inContext } =
+    loadTranscriptWithMeta(fromSessionId);
+  if (messages.length === 0)
+    return { ok: false, removed: 0, error: "This chat has no model history yet." };
 
   const hiddenSet = new Set(messages.filter((_m, i) => hidden[i]));
   const isBoundary = (m: LLMMessage): boolean => {
@@ -972,7 +975,7 @@ export async function forkTranscriptToSession(
   if (keepUserTurns != null) {
     const boundaries = messages.filter(isBoundary).length;
     if (totalUserTurns != null && boundaries !== totalUserTurns)
-      return { fidelity: "text" };
+      return { ok: false, removed: 0, error: TURN_COUNT_DRIFT };
     let seen = 0;
     for (let i = 0; i < messages.length; i++) {
       if (isBoundary(messages[i])) {
@@ -985,8 +988,14 @@ export async function forkTranscriptToSession(
     }
   }
 
+  // Ids and context flags come along: a forked chat whose prompts had been
+  // taken out of context must still have them out, and must still be able to
+  // name them.
   const copy = messages.slice(0, cut);
-  replaceTranscript(toSessionId, copy, hidden.slice(0, cut));
+  replaceTranscript(toSessionId, copy, hidden.slice(0, cut), {
+    ids: ids.slice(0, cut),
+    inContext: inContext.slice(0, cut),
+  });
 
   // The checkpoints come too. The copied messages carry checkpointSha values
   // that name commits in the ORIGINAL chat's shadow repo — without the repo,
@@ -1006,28 +1015,29 @@ export async function forkTranscriptToSession(
       err instanceof Error ? err.message : err,
     );
   }
-  return { fidelity: "full" };
+  return { ok: true, removed: 0 };
 }
 
+/**
+ * Truncate the durable transcript to the first `keepUserTurns` user turns,
+ * keeping their assistant/tool continuations intact.
+ *
+ * Refuses rather than clearing when the counts disagree — see
+ * TranscriptOpResult. The caller must not truncate its own display until this
+ * has said yes.
+ */
 export async function rewindTranscriptToUserTurn(
   sessionId: string,
   keepUserTurns: number,
   totalUserTurns?: number,
-): Promise<{ fidelity: "full" | "text"; removed: number }> {
+): Promise<TranscriptOpResult> {
   await ensureTranscriptLoaded(sessionId);
   const msgs = conversations.get(sessionId);
-  if (!msgs || msgs.length === 0) {
-    resetConversation(sessionId);
-    return { fidelity: "text", removed: 0 };
-  }
+  if (!msgs || msgs.length === 0)
+    return { ok: false, removed: 0, error: "This chat has no model history yet." };
   const boundaries = msgs.filter(isUserTurnBoundary).length;
-  // If the transcript's visible user turns don't match the display's, it has
-  // diverged (a compaction folded turns into a summary), so the turn INDEX
-  // can't be trusted — fall back to the safe clear + renderer text seed.
-  if (totalUserTurns != null && boundaries !== totalUserTurns) {
-    resetConversation(sessionId);
-    return { fidelity: "text", removed: 0 };
-  }
+  if (totalUserTurns != null && boundaries !== totalUserTurns)
+    return { ok: false, removed: 0, error: TURN_COUNT_DRIFT };
   let seen = 0;
   let cut = msgs.length;
   for (let i = 0; i < msgs.length; i++) {
@@ -1043,66 +1053,30 @@ export async function rewindTranscriptToUserTurn(
   msgs.length = cut; // truncate in place — keeps the conversations Map ref
   persistTranscript(sessionId);
   if (removed > 0)
-    recordContextEvent(sessionId, "rewind", {
-      keepUserTurns,
-      removed,
-      // The TRANSCRIPT's own count, not the display's: the map is drawn in
-      // context turns and translated by headOffset.
-      userTurnsBefore: boundaries,
-      userTurnsAfter: keepUserTurns,
-      headOffset: contextHeadOffset(sessionId),
-    });
+    recordContextEvent(sessionId, "rewind", { keepUserTurns, removed });
   // Discarded turns leave stale derived state.
   lastUsageBySession.delete(sessionId);
+  compactionFloor.delete(sessionId);
+  summaryFailures.delete(sessionId);
   dropSessionContext(sessionId);
   clearRevealedTools(sessionId);
-  return { fidelity: "full", removed };
+  return { ok: true, removed };
 }
 
 /**
- * How many prompts can still be taken back.
+ * Undo a compaction: drop the summary, put back what it stood for.
  *
- * The ones still being SENT: a prompt already out of context cannot be
- * removed a second time, and counting it made the meter offer to undo
- * something that was already undone. Loads the transcript first so a chat
- * reopened this process answers from its own history rather than from
- * nothing.
- */
-export async function undoableTurnCount(sessionId: string): Promise<number> {
-  await ensureTranscriptLoaded(sessionId);
-  return turnContextState(sessionId).filter((t) => t.inContext).length;
-}
-
-/** User turns in a message list — the unit the context map is drawn in. */
-function countUserTurns(msgs: LLMMessage[]): number {
-  return msgs.filter(isUserTurnBoundary).length;
-}
-
-/**
- * How many user turns this chat has already lost off the FRONT of its
- * context, summed over every compaction so far.
+ * There is no snapshot to restore from and there does not need to be. The
+ * turns the summary replaced were never deleted — they are in the transcript,
+ * out of context, exactly where they were. So the undo is: take the summary
+ * out, put those turns back in, forget this event and everything after it.
  *
- * The transcript renumbers itself after a compaction — turn 1 of the context
- * is no longer turn 1 of the conversation — while the chat on screen keeps
- * every message it ever showed. This offset is what translates between them,
- * and it is why each event records the count it saw: with it, the renderer
- * can say exactly which messages the model can no longer read.
+ * What it does NOT put back is tool output the lossless pass cleared. That is
+ * true of the free clearing at the start of a cold run too, and it is what the
+ * marker in its place says: call the tool again. Storing a copy of the whole
+ * conversation to be able to restore output the model can re-obtain in one
+ * call was over a megabyte per compaction, kept for ever.
  */
-function contextHeadOffset(sessionId: string): number {
-  try {
-    return listContextEvents(sessionId)
-      .filter((e) => e.type === "compact")
-      .reduce((n, e) => {
-        const before = Number(e.payload.userTurnsBefore ?? 0);
-        const after = Number(e.payload.userTurnsAfter ?? 0);
-        return n + Math.max(0, before - after);
-      }, 0);
-  } catch {
-    return 0;
-  }
-}
-
-
 export async function undoCompaction(
   sessionId: string,
   eventId: string,
@@ -1110,28 +1084,32 @@ export async function undoCompaction(
   const { getContextEvent, dropContextEventsFrom } = await import(
     "../session/transcript.js"
   );
+  await ensureTranscriptLoaded(sessionId);
+  const messages = conversations.get(sessionId);
+  if (!messages) return null;
   const ev = getContextEvent(sessionId, eventId);
   if (!ev || ev.type !== "compact") return null;
-  const before = ev.payload.before as LLMMessage[] | undefined;
-  if (!Array.isArray(before) || before.length === 0) return null;
-  // The snapshot is plain data — copies, with none of the WeakMap/WeakSet
-  // identity the live messages carry. Restored bare, every message would
-  // come back with a fresh id (the chat could no longer point at its turn)
-  // and IN context, which would put back prompts the user had removed
-  // before the compaction. The event carries both alongside.
-  const ids = ev.payload.beforeIds as (string | null)[] | undefined;
-  const flags = ev.payload.beforeInContext as boolean[] | undefined;
-  const restored = before.map((m, i) => {
-    const copy = { ...m };
-    const id = ids?.[i];
-    if (id) messageIds.set(copy, id);
-    if (flags && flags[i] === false) outOfContext.add(copy);
-    return copy;
-  });
-  conversations.set(sessionId, restored);
+
+  const headerId = ev.payload.headerId as string | null | undefined;
+  const foldedIds = new Set(
+    Array.isArray(ev.payload.foldedIds)
+      ? (ev.payload.foldedIds as string[])
+      : [],
+  );
+  if (!headerId && foldedIds.size === 0) return null;
+
+  const kept = messages.filter((m) => transcriptId(m) !== headerId);
+  for (const m of kept)
+    if (foldedIds.has(transcriptId(m))) setInContext(m, true);
+  messages.length = 0;
+  messages.push(...kept);
+
+  // The chat is bigger again, so the size at which compacting stopped being
+  // worth it no longer describes it.
+  compactionFloor.delete(sessionId);
   persistTranscript(sessionId);
   dropContextEventsFrom(sessionId, ev.seq);
-  return { restored: estimateTokens(before) };
+  return { restored: estimateSessionTokens(sessionId) };
 }
 
 /** Rough input-token estimate of what a session would SEND — everything the
@@ -1711,8 +1689,27 @@ async function runAgentScoped(
   // How much looking the recon phase actually did. Zero means the model
   // answered outright, which is not a plan — see planWasMade.
   let reconToolCalls = 0;
-  /** Reads this run has done, and whether the one-shot guard is spent. */
-  let readsThisRun = 0;
+  /**
+   * Reads the model can still SEE, and whether the one-shot guard is spent.
+   *
+   * Counted over the conversation, not over this run. It was per-run, and that
+   * made the guard fire on the most ordinary exchange there is: the model
+   * explains what it will change, the user says "yes, do it", and the first
+   * thing the new run does is a write — with the file it read two minutes ago
+   * still in its context. The call was refused and six read-only turns opened
+   * to rediscover what was already on screen.
+   *
+   * Anything out of context does not count: if the turn that did the reading
+   * is no longer being sent, the model cannot see it either.
+   */
+  let readsThisRun = messages.some(
+    (m) =>
+      isInContext(m) &&
+      Array.isArray(m.content) &&
+      m.content.some((b) => b.type === "tool_use" && !WRITERS.has(b.name)),
+  )
+    ? 1
+    : 0;
   let lookFirstSpent = false;
   /** Set by the guard, acted on after the batch — a harness line between a
    * tool_use and its tool_result is a 400 from every provider. */
@@ -1788,11 +1785,9 @@ async function runAgentScoped(
     // those very prompts back into it.
     const live = messages.filter(isInContext);
     if (shouldCompact(live, aim) && worthCompacting(sessionId, live)) {
-      const beforeLive = [...messages];
-      const beforeSnapshot = messages.map((m) => ({ ...m }));
       const beforeTokens = estimateTokens(live);
       let autoSummaryFailed = false;
-      const compacted = await compactMessages({
+      const result = await compactMessages({
         messages,
         adapter,
         model: runModel,
@@ -1817,29 +1812,23 @@ async function runAgentScoped(
             ? 'The summary failed — kept the lossless clearing and will try again'
             : 'The summary failed three times — not asking again in this chat',
         });
-      if (compacted === messages) {
+      if (result.messages === messages) {
         // It had nothing to give at this size. Don't ask again until the
         // conversation has actually grown past the point where it failed —
         // otherwise every turn from here spends a summarisation call.
         noteCompactionFloor(sessionId, beforeTokens);
       } else {
-        messages.length = 0;
-        messages.push(...compacted);
-        // Log the auto-compaction with a BEFORE snapshot so it can be undone
-        // (rewind through compact → restore the pre-compaction context).
+        const { headerId, foldedIds } = applyCompaction(messages, result);
+        // Undoing it needs the two lists of ids, nothing more: what the
+        // summary is, and what it stands for. See undoCompaction().
         recordContextEvent(sessionId, "compact", {
           manual: false,
           beforeTokens,
           // Both numbers describe the same thing — what the model is sent —
           // so "did it shrink?" is a question the event can be asked.
           afterTokens: estimateTokens(messages.filter(isInContext)),
-          // Where the context now starts, in turns — see contextHeadOffset.
-          userTurnsBefore: countUserTurns(beforeSnapshot),
-          userTurnsAfter: countUserTurns(messages),
-          headOffset: contextHeadOffset(sessionId),
-          before: beforeSnapshot,
-          ...snapshotIdentity(beforeLive),
-          after: messages.map((m) => ({ ...m })),
+          headerId,
+          foldedIds,
         });
         persistTranscript(sessionId);
       }
@@ -1867,6 +1856,22 @@ async function runAgentScoped(
     // assistant `tool_use` without its `tool_result` is a request the API
     // refuses outright.
     const turnMessages = withCavemanReminder(messages.filter(isInContext), cave);
+    // THE INVARIANT, CHECKED RATHER THAN HOPED FOR.
+    //
+    // A tool_use must be answered by the message immediately after it, or the
+    // request is refused outright — and the refusal names a call id, which
+    // says nothing about what put the transcript in that state. Every rule in
+    // this file that places a harness line, takes a turn out of context or
+    // ends a run early exists to keep this true; that they all do was checked
+    // by probes and by nothing at run time, so the one path that got it wrong
+    // (Stop, between two batches of tools) shipped and broke the NEXT message
+    // in the chat. One pass over the array per turn is nothing next to that.
+    const misplaced = resultsOutOfPlace(turnMessages);
+    if (misplaced.length > 0)
+      console.error(
+        `[agent] transcript is malformed for ${sessionId}: ${misplaced.length} tool call(s) ` +
+          `with no result immediately after — ${misplaced.slice(0, 3).join(", ")}`,
+      );
     // While reconnaissance lasts, the model is handed a toolset in which
     // starting to code is not an available action.
     const turnTools = reconLeft > 0 ? reconTools(tools) : tools;
@@ -1993,12 +1998,19 @@ async function runAgentScoped(
       if (lateNotes.length > 0) {
         const text = formatInjection(lateNotes);
         const media = injectionBlocks(lateNotes);
-        messages.push({
+        const note: LLMMessage = {
           role: "user",
           content: media.length ? [{ type: "text", text }, ...media] : text,
-        });
-        for (const note of lateNotes)
-          onEvent({ type: "user_message", content: note.text });
+        };
+        messages.push(note);
+        // Not a PROMPT, even though it is the only thing in its message: the
+        // chat draws these as mid-run notes and does not count them, so the
+        // transcript must not count this as a user turn either. The two counts
+        // are what Rewind cuts by, and one drifting from the other is what
+        // used to send every later rewind down the lossy path.
+        hiddenTurns.add(note);
+        for (const n of lateNotes)
+          onEvent({ type: "user_message", content: n.text, injected: true });
         persistTranscript(sessionId);
         continue;
       }
@@ -2265,18 +2277,32 @@ async function runAgentScoped(
       }
     }
     results.push(...batchRun.results);
-    if (batchRun.aborted) {
-      onEvent({ type: "error", error: "Aborted" });
-      onEvent({ type: "message_stop", stop_reason: "abort" });
-      return;
-    }
+
+    // EVERY call gets a result, including the ones Stop cancelled.
+    //
+    // runBatches checks the abort flag BETWEEN batches, so a stopped turn can
+    // come back having run the first batch and none of the rest. Returning
+    // here — which is what this did — left the assistant message with its
+    // tool_use blocks and no answer to them, and the transcript is what the
+    // NEXT message is built on: every provider refuses it outright ("tool_use
+    // ids were found without tool_result blocks immediately after"). Pressing
+    // Stop broke the chat, one message later, with an error that named
+    // nothing to do with stopping.
+    const answered = new Set(results.map((r) => r.tool_use_id));
+    for (const tc of toolCalls)
+      if (!answered.has(tc.id))
+        results.push({
+          tool_use_id: tc.id,
+          content: "Stopped by the user before this call ran.",
+          is_error: true,
+        });
 
     // Anything the user typed while these tools ran. It rides along with the
     // results because that user message is the only legal slot for text
     // between an assistant's tool_use blocks and its next step.
-    const injected = drainInjections(sessionId);
+    const injected = batchRun.aborted ? [] : drainInjections(sessionId);
     for (const note of injected)
-      onEvent({ type: "user_message", content: note.text });
+      onEvent({ type: "user_message", content: note.text, injected: true });
 
     messages.push({
       role: "user",
@@ -2300,6 +2326,14 @@ async function runAgentScoped(
         is_error: r.is_error,
       })),
     });
+    if (batchRun.aborted) {
+      // The transcript is closed and written down BEFORE returning — that is
+      // the whole point of the block above.
+      persistTranscript(sessionId);
+      onEvent({ type: "error", error: "Aborted" });
+      onEvent({ type: "message_stop", stop_reason: "abort" });
+      return;
+    }
     if (injected.length > 0) {
       const last = messages[messages.length - 1]!;
       if (Array.isArray(last.content))
@@ -2420,7 +2454,12 @@ async function runAgentScoped(
         {
           model: runModel,
           system: systemPrompt,
-          messages,
+          // The same filter every other request in this file goes through.
+          // This one did not have it — it sent the raw array — so the handoff
+          // turn was the one place where a prompt the user had explicitly
+          // taken out of context went to the model anyway. It is also the
+          // largest request of the run, arriving when the window is fullest.
+          messages: messages.filter(isInContext),
           // No tools: a model that still believes it can act will spend this
           // turn on a call nobody will answer, and end in the same silence.
           tools: [],

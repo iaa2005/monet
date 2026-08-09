@@ -93,7 +93,14 @@ export type LLMEvent =
   // Extended-thinking / reasoning tokens. Display-only — the agent loop
   // forwards these to the UI but never adds them to the model context.
   | { type: "reasoning_delta"; text: string }
-  | { type: "user_message"; content: string }
+  | {
+      type: "user_message";
+      content: string;
+      /** Handed to a turn already in flight (Ctrl+S) rather than sent as a
+       * prompt. The chat draws it as a user message but must not count it as
+       * one — see ChatMessage.injected in the renderer's types. */
+      injected?: boolean;
+    }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | {
       type: "message_stop";

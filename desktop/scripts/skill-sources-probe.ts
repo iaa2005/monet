@@ -21,7 +21,7 @@
 
 import {
   DEFAULT_SOURCES,
-  migrateStoredSources,
+  readStoredSources,
   parseStoredSource,
   toStored,
   withBuiltins,
@@ -151,16 +151,16 @@ const BUILTIN = "iaa2005/monet-directory/skills";
   // to the built-ins rather than to something invented.
   check(
     "the pre-Directory key is ignored",
-    migrateStoredSources({ source: "anthropics/skills" } as never).length === 0,
-    JSON.stringify(migrateStoredSources({ source: "anthropics/skills" } as never)),
+    readStoredSources({ source: "anthropics/skills" } as never).length === 0,
+    JSON.stringify(readStoredSources({ source: "anthropics/skills" } as never)),
   );
   check(
     "even for a source somebody might have typed",
-    migrateStoredSources({ source: "obra/superpowers" } as never).length === 0,
+    readStoredSources({ source: "obra/superpowers" } as never).length === 0,
   );
-  check("a list is read as it stands", migrateStoredSources({ sources: ["a/b"] }).length === 1);
-  check("an empty config yields nothing", migrateStoredSources({}).length === 0);
-  check("and junk in `sources` yields nothing", migrateStoredSources({ sources: "a/b" }).length === 0);
+  check("a list is read as it stands", readStoredSources({ sources: ["a/b"] }).length === 1);
+  check("an empty config yields nothing", readStoredSources({}).length === 0);
+  check("and junk in `sources` yields nothing", readStoredSources({ sources: "a/b" }).length === 0);
   // Nothing was outlawed — the repo is still perfectly addable, and removable.
   const readded = parseStoredSource("anthropics/skills");
   check("the repo can still be added by hand", readded?.id === "anthropics/skills");

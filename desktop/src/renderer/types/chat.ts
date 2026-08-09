@@ -39,6 +39,19 @@ export interface ChatMessage {
   /** Code Rewind: workspace snapshot taken after this (assistant) turn. Stored
    * too — the sha is what a rewind rolls back to. */
   checkpointSha?: string
+  /**
+   * Said to a turn that was already running (Ctrl+S), not sent as a prompt.
+   *
+   * It looks like a user message and it is one, but it does NOT start a turn:
+   * the text rides along with the tool results of the turn it interrupted,
+   * because that is the only slot where user text is legal between a tool call
+   * and its answer. So it must not be COUNTED as a prompt — `countPrompts`
+   * skips it. It was counted, and the effect was quiet and permanent: the
+   * chat's prompt count and the transcript's user-turn count drifted apart by
+   * one, and from then on every Rewind and every edit-and-resend in that chat
+   * saw the mismatch and refused.
+   */
+  injected?: boolean
 }
 
 /** Live state of a sub-agent launched via the Task tool, shown as a nested
@@ -66,7 +79,12 @@ export interface ToolCall {
 export type LLMEvent =
   | { type: 'text_delta'; text: string }
   | { type: 'reasoning_delta'; text: string }
-  | { type: 'user_message'; content: string }
+  | {
+      type: 'user_message'
+      content: string
+      /** Said mid-run rather than sent as a prompt — see ChatMessage.injected. */
+      injected?: boolean
+    }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
   | { type: 'message_stop'; stop_reason: string; usage?: { input_tokens: number; output_tokens: number } }
   | { type: 'error'; error: string }

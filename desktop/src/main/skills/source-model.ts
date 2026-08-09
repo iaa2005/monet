@@ -101,18 +101,17 @@ export const BUILTIN_IDS = new Set([
 /**
  * The source rows in a stored config.
  *
- * One shape only. There WAS a migration here for the pre-Directory
- * `{ "source": "owner/repo" }` config, and it is gone: the app is not released,
- * so there is no installed base to carry, and the migration was actively wrong —
- * it resurrected `anthropics/skills` (this app's own default in the first version
- * of the skill store) as a chip the user had never added and could not explain.
+ * One shape only, and the name says so now — it was `migrateStoredSources`,
+ * left over from a migration that had already been deleted. There WAS one, for
+ * the pre-Directory `{ "source": "owner/repo" }` config, and removing it was
+ * right twice over: the app is not released, so there is no installed base to
+ * carry, and the migration was actively wrong — it resurrected
+ * `anthropics/skills` as a chip the user had never added and could not explain.
  *
- * A config the app cannot read falls back to the built-in sources, which is the
+ * A config this cannot read falls back to the built-in sources, which is the
  * right answer for a shape nobody should still have.
  */
-export function migrateStoredSources(j: {
-  sources?: unknown;
-}): StoredSource[] {
+export function readStoredSources(j: { sources?: unknown }): StoredSource[] {
   return Array.isArray(j.sources) ? (j.sources as StoredSource[]) : [];
 }
 

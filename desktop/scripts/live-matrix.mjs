@@ -490,10 +490,21 @@ scenario('auto_compact', 2500, async (api) => {
   check('THE FACT SURVIVES THE SUMMARY', has(t4.text, 'ZEBRA-77'), t4.text)
 
   const after = await api.get(`/context/${s}`)
+  // A compaction MARKS what it folded; it does not delete it. That is what
+  // makes it undoable without storing a copy of the conversation, what lets
+  // the chat grey out the prompts the model can no longer read, and — the one
+  // that used to bite silently — what keeps the number of prompts still. When
+  // compaction removed turns, the chat's count and the transcript's drifted
+  // apart, and from then on every Rewind in that chat saw the mismatch.
   check(
-    'nothing was quietly dropped from context by compacting',
-    after.stored.inContext === after.stored.messages,
+    'compacting marked what it folded rather than deleting it',
+    after.stored.inContext < after.stored.messages,
     after.stored,
+  )
+  check(
+    'THE CHAT KEPT EVERY PROMPT IT EVER HAD — compacting no longer renumbers it',
+    after.turns.some((t) => t.id === t1.userMessageId),
+    { want: t1.userMessageId, got: after.turns.map((t) => t.id) },
   )
   check('and every turn still has an id to address it by', after.turns.length > 0 && after.turns.every((t) => t.id), after.turns)
   discard(cwd)
@@ -564,17 +575,19 @@ scenario('compact_undo', 2500, async (api) => {
   })
   check('…and the model knows it again', has(t6.text, 'SIGMA-9'), t6.text)
 
-  // "Rewind through compact": the pre-compaction history comes back — and it
-  // is stored as plain data, so without its ids and flags travelling with it
-  // every restored message returns with a new id and IN context, quietly
-  // undoing the user's removal along with the compaction.
+  // "Rewind through compact": the summary goes, and the turns it stood for
+  // come back into the context. There is no snapshot behind this — nothing was
+  // ever deleted, so undoing is a flag flipped back. Which means the number
+  // that has to grow is what the model is SENT; `allTokens` counts the removed
+  // turns too and was already large before the undo, so it cannot see this.
+  const beforeUndo = await api.get(`/context/${s}`)
   await api.post(`/context/${s}`, { messageId: t1.userMessageId, inContext: false })
   const un = await api.post(`/uncompact/${s}`, {})
   check('the compaction can be undone', !!un.restored, un.restored)
   check(
-    'the restored history is bigger than the summary was',
-    un.context.allTokens > 2000,
-    un.context.allTokens,
+    'THE MODEL IS SENT MORE THAN THE SUMMARY AGAIN',
+    un.context.inContextTokens > beforeUndo.inContextTokens,
+    { after: un.context.inContextTokens, before: beforeUndo.inContextTokens },
   )
   check(
     'THE REMOVED PROMPT IS STILL REMOVED AFTER UNDOING THE COMPACTION',
@@ -677,7 +690,13 @@ scenario('edit_retry', null, async (api) => {
     totalUserTurns: before.turns.length,
   })
 
-  check('the transcript is cut with full fidelity', cut.fidelity === 'full', cut)
+  // `ok` rather than a fidelity: the cut either happens or it is REFUSED.
+  // There used to be a "text" fidelity, which meant the transcript had been
+  // cleared and the chat would rebuild a text-only version of itself from its
+  // bubbles — every tool call and result silently gone. A disagreement about
+  // how many prompts exist now stops the operation instead of costing the
+  // history.
+  check('the transcript is cut, not refused', cut.ok === true, cut)
   check('…to one turn', cut.context.turns.length === 1, cut.context.turns)
   check('the file that turn wrote is gone', read(cwd, 'draft.txt') === null, read(cwd, 'draft.txt'))
   check(
@@ -794,6 +813,20 @@ scenario('rewind_after_compact', 2500, async (api) => {
     'and so does the one nobody touched',
     read(cwd, 'keep.txt') === 'nobody touches this\n',
   )
+
+  // …and the OTHER half of "rewind to here", which a compaction used to take
+  // away silently. Compaction removed the turns it folded, so the chat and the
+  // transcript stopped agreeing about how many prompts existed, and every cut
+  // from then on was refused — answered by clearing the transcript and letting
+  // the chat rebuild a text-only version of itself from its bubbles. Folding
+  // by flag keeps the count still, so the cut is a cut again.
+  const nowCtx = await api.get(`/context/${s}`)
+  const cut = await api.post(`/truncate/${s}`, {
+    keepUserTurns: 1,
+    totalUserTurns: nowCtx.turns.length,
+  })
+  check('A TRANSCRIPT CUT STILL WORKS ACROSS A COMPACTION', cut.ok === true, cut)
+  check('…and cut to where it was asked to', cut.context.turns.length === 1, cut.context.turns)
   discard(cwd)
 })
 

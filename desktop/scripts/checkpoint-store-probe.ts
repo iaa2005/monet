@@ -20,7 +20,7 @@ import { dirname, join } from "path";
 import {
   DEFAULT_EXCLUDES,
   needsPackConfig,
-  shadowSlug,
+  sessionSlug,
   withPackConfig,
 } from "../src/main/agent/checkpoint-store";
 
@@ -112,15 +112,15 @@ const ignored = (rel: string): boolean => {
   // One copy, because `sessions:delete` must arrive at the same name to remove a
   // chat's store. Two copies that disagree delete nothing — or somebody else's.
   const uuid = "fb7dfa5d-61d0-4483-b9d0-61015fd03035";
-  check("a uuid passes through", shadowSlug(uuid) === uuid);
+  check("a uuid passes through", sessionSlug(uuid) === uuid);
   check(
     "a separator cannot escape the folder",
-    !shadowSlug("../../etc/passwd").includes("/"),
-    shadowSlug("../../etc/passwd"),
+    !sessionSlug("../../etc/passwd").includes("/"),
+    sessionSlug("../../etc/passwd"),
   );
-  check("nor a backslash", !shadowSlug("a\\b").includes("\\"));
-  check("an empty id still names something", shadowSlug("") === "session");
-  check("punctuation alone does too", shadowSlug("///") === "___", shadowSlug("///"));
+  check("nor a backslash", !sessionSlug("a\\b").includes("\\"));
+  check("an empty id still names something", sessionSlug("") === "session");
+  check("punctuation alone does too", sessionSlug("///") === "___", sessionSlug("///"));
 }
 
 // ── 7. Does git actually start packing? ───────────────────────────────

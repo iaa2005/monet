@@ -176,6 +176,55 @@ function AttachmentChips({
  * the state BEFORE this turn and drops the prompt back into the composer to edit
  * and resend. Previews how much the revert would undo (files, +ins/-del) on
  * hover. */
+/**
+ * Take this ONE prompt out of what the model reads — its reply and its tool
+ * calls go with it — or put it back.
+ *
+ * Nothing is deleted: the turn stays on screen, fainter, and the same button
+ * restores it. It touches no files, which is why it belongs in BOTH spaces.
+ * It used to live inside Home's Edit/Retry row, and inherited that row's
+ * `home` gate by sitting in it — so in Code, where a long session is exactly
+ * where you want to drop a wrong turn out of the context you are paying for,
+ * there was no way to do it at all.
+ *
+ * One definition, two looks: Code's action row is labelled ("Rewind to here",
+ * "Branch") and Home's is a strip of icons, so the button matches whichever
+ * row it is standing in rather than being pasted into both.
+ */
+function ContextToggle({
+  messageId,
+  dropped,
+  onToggle,
+  labelled = false,
+}: {
+  messageId: string;
+  /** The model can no longer read this turn. */
+  dropped: boolean;
+  onToggle: (messageId: string) => void | Promise<void>;
+  labelled?: boolean;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      title={
+        dropped
+          ? "Put this prompt back into the model's context"
+          : "Remove this prompt (and its reply) from the model's context — nothing is deleted, and files are untouched"
+      }
+      onClick={() => void onToggle(messageId)}
+      className={cn(
+        "text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]",
+        labelled
+          ? "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px]"
+          : "rounded-md p-1",
+      )}
+    >
+      {dropped ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
+      {labelled && (dropped ? "Back into context" : "Remove from context")}
+    </button>
+  );
+}
+
 function RewindControl({
   messageId,
   bare = false,
@@ -382,9 +431,14 @@ const MessageRow = memo(
     }
 
     const isUser = msg.role === "user";
+    // A note said INTO a running turn is the user's words — it is drawn as
+    // their message — but it is not a PROMPT: it started no turn, so there is
+    // no turn to edit, to retry, or to take out of context. The actions are
+    // withheld rather than left there to fail.
+    const isPrompt = isUser && !msg.injected;
     // Edit/Retry rewind the conversation, so only offer them in Home (Code gets
     // filesystem-aware Rewind) and never mid-stream.
-    const canAct = isUser && home && !isStreaming;
+    const canAct = isPrompt && home && !isStreaming;
     // A pasted document collapses; a paragraph does not. The threshold is in
     // CHARACTERS, not rendered height, so the decision is stable before
     // layout and identical on every re-render.
@@ -508,35 +562,23 @@ const MessageRow = memo(
                   >
                     <RotateCcw className="size-3" />
                   </button>
-                  {/* Take this ONE prompt out of what the model reads — its
-                      reply and tool calls go with it. Nothing is deleted:
-                      the turn stays on screen, fainter, and the button puts
-                      it back. */}
                   {onToggleContext && (
-                    <button
-                      type="button"
-                      title={
-                        droppedFromContext
-                          ? "Put this prompt back into the model's context"
-                          : "Remove this prompt (and its reply) from the model's context — nothing is deleted, and files are untouched"
-                      }
-                      onClick={() => void onToggleContext(msg.id)}
-                      className="rounded-md p-1 text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
-                    >
-                      {droppedFromContext ? (
-                        <Eye className="size-3" />
-                      ) : (
-                        <EyeOff className="size-3" />
-                      )}
-                    </button>
+                    <ContextToggle
+                      messageId={msg.id}
+                      dropped={droppedFromContext === true}
+                      onToggle={onToggleContext}
+                    />
                   )}
                 </div>
               )}
               {/* Code: filesystem-aware rewind lives under the user message —
                   revert the workspace to before this turn and edit the prompt.
                   Branch is its non-destructive sibling: same cut point, but as
-                  a NEW chat, with this history and the original untouched. */}
-              {!home && !isStreaming && (
+                  a NEW chat, with this history and the original untouched.
+                  Both of those move files or make chats; taking a prompt out
+                  of the context does neither, and it belongs here for the
+                  same reason it belongs in Home. */}
+              {!home && !isStreaming && isPrompt && (
                 <div className="mt-0.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                   <RewindControl messageId={msg.id} bare />
                   <button
@@ -548,6 +590,14 @@ const MessageRow = memo(
                     <GitFork className="size-3" />
                     Branch
                   </button>
+                  {onToggleContext && (
+                    <ContextToggle
+                      messageId={msg.id}
+                      dropped={droppedFromContext === true}
+                      onToggle={onToggleContext}
+                      labelled
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -578,7 +628,25 @@ const MessageRow = memo(
       </Message>
     );
   },
-  (prev, next) => prev.msg === next.msg && prev.mode === next.mode,
+  // THE CONTEXT PROPS BELONG IN HERE.
+  //
+  // They were not, and a message object never changes when a prompt is taken
+  // out of context — nothing about the MESSAGE changed, only whether the model
+  // is still sent it. So this comparator said "identical" and the row kept
+  // rendering its old props. The row still went faint, because that class is
+  // applied by the parent outside this memo, and everything inside it did not
+  // move: the icon stayed EyeOff, and the click handler kept the closure it was
+  // built with — one that had captured an `outOfContext` set from before the
+  // press. Pressing it a second time therefore recomputed `dropped` as false
+  // and asked to REMOVE the prompt again.
+  //
+  // Which is exactly what it looked like from the outside: taking a prompt out
+  // worked, putting it back did nothing, for ever.
+  (prev, next) =>
+    prev.msg === next.msg &&
+    prev.mode === next.mode &&
+    prev.droppedFromContext === next.droppedFromContext &&
+    prev.onToggleContext === next.onToggleContext,
 );
 
 type GroupedItem =
@@ -1116,13 +1184,27 @@ export function ChatView({
    * carries the answer per message, so the chat asks for it.
    */
   const [outOfContext, setOutOfContext] = useState<Set<string>>(new Set());
+  /**
+   * The same set, for the CALLBACK to read rather than close over.
+   *
+   * This decides which DIRECTION the toggle goes — it is the difference
+   * between "take it out" and "put it back" — so a closure one press behind
+   * does not mislead by a frame, it inverts the button. Reading a ref also
+   * keeps the callback's identity stable, so a toggle re-renders the row that
+   * changed instead of every row in the chat.
+   */
+  const outOfContextRef = useRef(outOfContext);
+  const applyContext = useCallback((next: Set<string>) => {
+    outOfContextRef.current = next;
+    setOutOfContext(next);
+  }, []);
   const refreshContext = useCallback(async () => {
     if (!sessionId) return;
     const turns = await api()?.chat.turnContext(sessionId);
-    setOutOfContext(
+    applyContext(
       new Set((turns ?? []).filter((t) => !t.inContext).map((t) => t.id)),
     );
-  }, [sessionId]);
+  }, [sessionId, applyContext]);
   useEffect(() => {
     void refreshContext();
   }, [refreshContext, ctxVersion, isStreaming]);
@@ -1130,14 +1212,13 @@ export function ChatView({
   const toggleTurnContext = useCallback(
     async (messageId: string) => {
       if (!sessionId) return;
-      const dropped = outOfContext.has(messageId);
+      const dropped = outOfContextRef.current.has(messageId);
       const r = await api()?.chat.setTurnContext(sessionId, messageId, dropped);
       // A prompt with no transcript turn behind it cannot be taken out of a
-      // context it was never in — and until now this returned silently, which
-      // is indistinguishable from a broken button. It WAS broken, for every
-      // chat: the transcript store had been dead since a schema mistake, so
-      // there was never a turn to point at. Saying so costs one line and turns
-      // "nothing happens" into something a person can act on.
+      // context it was never in. This used to be the answer for EVERY prompt
+      // in the app — the send path never told the transcript which bubble its
+      // turn belonged to, so no id ever matched. It is now the answer only for
+      // a chat whose history predates the transcript store.
       if (r && !r.ok) {
         useChatStore
           .getState()
@@ -1149,7 +1230,8 @@ export function ChatView({
       }
       await refreshContext();
     },
-    [sessionId, outOfContext, refreshContext],
+    // Deliberately NOT `outOfContext` — see outOfContextRef.
+    [sessionId, refreshContext],
   );
 
   /**
@@ -1161,7 +1243,10 @@ export function ChatView({
     const out = new Set<number>();
     let dropping = false;
     messages.forEach((m, i) => {
-      if (m.role === "user") dropping = outOfContext.has(m.id);
+      // A mid-run note belongs to the turn it interrupted, so it inherits
+      // that turn's state instead of resetting it — it is not a prompt and
+      // starts nothing.
+      if (m.role === "user" && !m.injected) dropping = outOfContext.has(m.id);
       if (dropping) out.add(i);
     });
     return out;
@@ -1405,7 +1490,7 @@ export function ChatView({
                     const i = windowStart + j;
                     const copyBtn = copyTargets.get(i);
                     // Where this item sits relative to what the model can
-                    // still read — see lib/context-map.ts.
+                    // still read — see droppedRows above.
                     const msgIdx = indexOfItem(item);
                     const outOfCtx = msgIdx >= 0 && droppedRows.has(msgIdx);
                     // No dividers any more: a dropped turn is simply
@@ -1463,7 +1548,9 @@ export function ChatView({
                             (item as ChatMessage).id,
                           )}
                           onToggleContext={
-                            isStreaming ? undefined : toggleTurnContext
+                            isStreaming || (item as ChatMessage).injected
+                              ? undefined
+                              : toggleTurnContext
                           }
                         />
                       </MessageScrollerItem>

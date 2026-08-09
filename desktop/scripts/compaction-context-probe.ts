@@ -58,18 +58,24 @@ const say = (role: 'user' | 'assistant', text: string): LLMMessage => ({
   content: text,
 })
 
+interface Result {
+  messages: LLMMessage[]
+  folded: LLMMessage[]
+  header: LLMMessage | null
+}
+
 const run = (
   messages: LLMMessage[],
   adapter: LLMAdapter,
   extra: Record<string, unknown> = {},
-): Promise<LLMMessage[]> =>
+): Promise<Result> =>
   compactMessages({
     messages,
     adapter,
     model: 'probe',
     maxTokens: 4000,
     ...extra,
-  })
+  }) as Promise<Result>
 
 // A summary long enough to be a real saving against the history below.
 const LONG_SUMMARY = `The conversation covered several topics. ${'Detail. '.repeat(30)}`
@@ -103,29 +109,63 @@ const filler = (n: number): string => `Text about topic ${n}. ${'word '.repeat(2
   )
   check(
     'the summary does not contain it either',
-    !JSON.stringify(out).includes('SIGMA-9') ||
-      out.includes(secret),
+    !JSON.stringify(out.header).includes('SIGMA-9'),
     'the word may only appear as the original message',
   )
   check(
     'the removed messages are still there, as the SAME objects',
-    out.includes(secret) && out.includes(ack),
-    { secret: out.indexOf(secret), ack: out.indexOf(ack) },
+    out.messages.includes(secret) && out.messages.includes(ack),
+    { secret: out.messages.indexOf(secret), ack: out.messages.indexOf(ack) },
   )
   check(
     '…and still first, where the user can see them',
-    out.indexOf(secret) === 0 && out.indexOf(ack) === 1,
-    out.map((m) => (m === secret ? 'secret' : m === ack ? 'ack' : '·')),
-  )
-  check(
-    'the history did shrink',
-    estimateTokens(out) < estimateTokens(messages),
-    { after: estimateTokens(out), before: estimateTokens(messages) },
+    out.messages.indexOf(secret) === 0 && out.messages.indexOf(ack) === 1,
+    out.messages.map((m) => (m === secret ? 'secret' : m === ack ? 'ack' : '·')),
   )
   check(
     'and the last exchange survived verbatim',
-    out.some((m) => m.content === 'done'),
-    out.map((m) => String(m.content).slice(0, 20)),
+    out.messages.some((m) => m.content === 'done'),
+    out.messages.map((m) => String(m.content).slice(0, 20)),
+  )
+
+  // NOTHING IS DELETED — that is what an undo is made of.
+  //
+  // The summary replaces turns by standing in FRONT of them, not by removing
+  // them: they stay in the array and the caller takes them out of context.
+  // Deleting them meant a compaction could only be undone from a stored copy
+  // of the whole conversation (over a megabyte, kept for ever), the chat could
+  // no longer mark those prompts as unreadable, and the prompt COUNT moved —
+  // which sent every later Rewind down the lossy path.
+  check(
+    'every message that went in comes back out',
+    messages.every((m) => out.messages.includes(m)),
+    { in: messages.length, out: out.messages.length },
+  )
+  check(
+    'the summary is a message, and it is new',
+    !!out.header && out.messages.includes(out.header),
+  )
+  check(
+    'what it stands for is named, so it can be put back',
+    out.folded.length > 0 && out.folded.every((m) => messages.includes(m)),
+    out.folded.length,
+  )
+  check(
+    'the removed prompt is NOT among what it stands for',
+    !out.folded.includes(secret) && !out.folded.includes(ack),
+  )
+
+  // What the model would now be SENT: the summary plus what was not folded.
+  const sent = out.messages.filter(
+    (m) => !removed.has(m) && !out.folded.includes(m),
+  )
+  check(
+    'THE CONTEXT DID SHRINK',
+    estimateTokens(sent) < estimateTokens(messages.filter((m) => !removed.has(m))),
+    {
+      after: estimateTokens(sent),
+      before: estimateTokens(messages.filter((m) => !removed.has(m))),
+    },
   )
 }
 
@@ -145,8 +185,8 @@ const filler = (n: number): string => `Text about topic ${n}. ${'word '.repeat(2
   const out = await run(messages, fakeAdapter(LONG_SUMMARY.repeat(4)))
   check(
     'a summary bigger than the conversation is refused',
-    out === messages,
-    { returned: out.length, same: out === messages },
+    out.messages === messages && out.header === null && out.folded.length === 0,
+    { returned: out.messages.length, same: out.messages === messages },
   )
   check(
     '…and the conversation is untouched',
@@ -202,12 +242,12 @@ const filler = (n: number): string => `Text about topic ${n}. ${'word '.repeat(2
   )
   check(
     '…and handed over the original so its id can follow it',
-    carried[0]?.[1] !== undefined && out.includes(carried[0][1]),
+    carried[0]?.[1] !== undefined && out.messages.includes(carried[0][1]),
   )
   check(
     'nothing was summarised — the lossless pass was enough',
-    out.length === messages.length,
-    { after: out.length, before: messages.length },
+    out.header === null && out.messages.length === messages.length,
+    { after: out.messages.length, before: messages.length },
   )
 }
 
@@ -216,7 +256,7 @@ const filler = (n: number): string => `Text about topic ${n}. ${'word '.repeat(2
 {
   const messages = [say('user', 'a'), say('assistant', 'b'), say('user', 'c')]
   const out = await run(messages, fakeAdapter(LONG_SUMMARY))
-  check('three messages are left alone', out === messages)
+  check('three messages are left alone', out.messages === messages)
 }
 
 {
@@ -234,7 +274,64 @@ const filler = (n: number): string => `Text about topic ${n}. ${'word '.repeat(2
   })
   check(
     'a chat that is long only because of removed turns is not compacted',
-    out === messages,
+    out.messages === messages,
+  )
+}
+
+// ─── A SCREENSHOT IS NOT FREE ───────────────────────────────────────────
+//
+// A tool_result whose content is a LIST of blocks — `[text, image]`, which is
+// what Computer Use and the browser tools return — counted as ZERO here while
+// micro-compaction counted it in full. A run driving a browser piles up
+// megabytes of base64 in exactly that shape, so the estimate said the context
+// was empty: no compaction, a meter reading near nothing, and eventually a
+// request refused on length with nothing anywhere having warned about it.
+//
+// The other direction is just as wrong: an image is billed by its dimensions,
+// so counting its base64 would call one screenshot a quarter of a million
+// tokens. It is a flat estimate, like a top-level image block.
+
+{
+  const shot = (bytes: number): LLMMessage => ({
+    role: 'user',
+    content: [
+      {
+        type: 'tool_result',
+        tool_use_id: 'call-shot',
+        content: [
+          { type: 'text', text: 'took a screenshot' },
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/png', data: 'A'.repeat(bytes) },
+          },
+        ],
+      },
+    ],
+  })
+
+  check(
+    'a screenshot in a tool result is not worth zero',
+    estimateTokens([shot(1_000_000)]) > 100,
+    estimateTokens([shot(1_000_000)]),
+  )
+  check(
+    '…and not worth its base64 either',
+    estimateTokens([shot(1_000_000)]) < 2_000,
+    estimateTokens([shot(1_000_000)]),
+  )
+  check(
+    'its size on the wire does not change the estimate',
+    estimateTokens([shot(1_000)]) === estimateTokens([shot(1_000_000)]),
+    [estimateTokens([shot(1_000)]), estimateTokens([shot(1_000_000)])],
+  )
+  check(
+    'a plain string tool result still counts its own length',
+    estimateTokens([
+      {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 'c', content: 'x'.repeat(4_000) }],
+      },
+    ]) === 1_000,
   )
 }
 
@@ -331,7 +428,10 @@ const filler = (n: number): string => `Text about topic ${n}. ${'word '.repeat(2
       seen = err
     },
   })
-  check('a failed summary still returns a usable conversation', Array.isArray(out))
+  check(
+    'a failed summary still returns a usable conversation',
+    Array.isArray(out.messages),
+  )
   check('and the caller is told, so it can count', seen instanceof Error, String(seen))
   check('the attempt was actually made', calls === 1, calls)
 

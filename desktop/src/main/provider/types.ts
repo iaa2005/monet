@@ -4,8 +4,14 @@
  * A provider (endpoint + API key) can host SEVERAL models, each with its own
  * parameters — context length, max input/output tokens, temperature, and an
  * optional per-model Base URL override. The rest of the app never deals with
- * the hierarchy: resolveProvider() flattens the active model into the legacy
- * single-model fields (model / maxTokens / temperature / contextLimit).
+ * the hierarchy: resolveProvider() answers with the ACTIVE model's parameters
+ * already in place (model / maxTokens / temperature / contextLimit), so a
+ * request is built from one flat object.
+ *
+ * Those flat fields are a resolved view, not a compatibility shim for old
+ * configs — resolveProvider also infers modalities and effort support, and
+ * every LLM client reads them. Getting rid of them means teaching ~55 call
+ * sites about `activeModel`, which is a refactor of its own.
  */
 
 export type ProviderKind = 'anthropic' | 'deepseek' | 'openai' | 'openrouter'
@@ -168,9 +174,8 @@ export interface LLMProvider {
   activeModelId?: string
 
   // ── Effective values (resolved from the active model) ──────────────────
-  // Kept as the single-model view the rest of the app consumes. Stored
-  // configs from before the models[] era carry them directly; loadProviders
-  // migrates those into models[].
+  // The flat view every request is built from. Filled by resolveProvider();
+  // see the note at the top of this file.
   model: string
   maxTokens: number
   temperature?: number
@@ -191,7 +196,7 @@ export interface LLMProvider {
 
 export type LLMProviderInput = Omit<LLMProvider, 'id' | 'createdAt' | 'updatedAt'>
 
-/** Flatten the active model's parameters into the legacy single-model view. */
+/** The provider with its ACTIVE model's parameters resolved into place. */
 export function resolveProvider(p: LLMProvider): LLMProvider {
   const m =
     p.models?.find((x) => x.id === p.activeModelId) ?? p.models?.[0]

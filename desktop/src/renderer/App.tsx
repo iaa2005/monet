@@ -550,19 +550,11 @@ export default function App(): JSX.Element {
           useDockStore.getState().openPanel("browser");
         else useDockStore.getState().closePanel("browser");
       } else {
-        // A desk saved by a pre-dock build: one tab and maybe a terminal.
-        const open: DockPanelId[] = [];
-        const tab = saved?.rightTab as RightTab;
-        if (
-          tab === "files" ||
-          tab === "artifacts" ||
-          tab === "tasks" ||
-          tab === "changes" ||
-          tab === "browser"
-        )
-          open.push(tab);
-        if (saved?.terminalOpen) open.push("terminal");
-        dock.applyDesk(open.length > 0 ? { kind: "open", open } : null);
+        // No saved desk: a clean one. There used to be a second branch here
+        // reconstructing a pre-dock build's single right-hand tab; the dock
+        // layout has been the only thing written for long enough that the
+        // reader outlived every file it could read.
+        dock.applyDesk(null);
       }
     });
     return () => {

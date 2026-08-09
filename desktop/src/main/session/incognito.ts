@@ -17,10 +17,6 @@ import { resetConversation } from "../agent/index.js";
 import { wipePyodideSession } from "../sandbox/pyodide-engine.js";
 import { purgeSessionData } from "./purge.js";
 
-function safeName(sessionId: string): string {
-  return sessionId.replace(/[^a-zA-Z0-9_-]/g, "_") || "session";
-}
-
 function rmDir(path: string): void {
   try {
     if (existsSync(path)) rmSync(path, { recursive: true, force: true });

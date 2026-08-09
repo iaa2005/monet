@@ -14,9 +14,9 @@
  *   - a file edited by the user AFTER the last snapshot is theirs, and is
  *     left alone and named.
  *
- * And when the ledgers are missing — a chat from before they existed —
- * git's own diff between the two checkpoints stands in. Narrower than a
- * reset by a long way, just without knowing whose change each was.
+ * And when a ledger is missing the rewind REFUSES, because git can say
+ * which paths differ between two commits but not whose change each was,
+ * and guessing that wrong reverts the user's own work.
  *
  *   npm run smoke:rewindledger
  */
@@ -158,26 +158,93 @@ await turn(() => {
   )
 }
 
-// ─── A chat from before ledgers existed ─────────────────────────────────
+// ─── A CHECKPOINT WITH NO LEDGER IS REFUSED, NOT GUESSED ────────────────
+//
+// Every checkpoint gets a ledger, always, even when the turn changed nothing
+// — so a missing one means the store is damaged, not that the chat is old.
+//
+// It used to fall back to `git diff <sha> HEAD`, which names the right paths
+// and cannot say WHOSE change each was. That is the entire contribution of a
+// ledger, and without it the fallback reverts files the USER made between
+// turns: `keep.ts` below was written outside any turn, and the fallback put
+// it back to a version the user had deliberately changed. A refusal costs one
+// rewind; guessing costs their work.
 
 {
   const mark = await snapshotWorkspace(S, work)
-  put('legacy.ts', 'made without a ledger\n')
+  put('unledgered.ts', 'made by a turn that recorded nothing\n')
   put('keep.ts', 'still nobody touches this\n')
   const after = await snapshotWorkspace(S, work)
   check('two more checkpoints exist', !!mark && !!after)
-  // No saveLedger call at all — exactly what an older chat looks like.
+  // No saveLedger call at all — a damaged store.
 
   const r = await rewindWorkspace(S, work, mark!)
-  check('a rewind without ledgers still works', r.ok, r)
+  check('a rewind across a checkpoint with no ledger REFUSES', !r.ok, r)
   check(
-    'git supplies the file list: the new file is gone',
-    read('legacy.ts') === null,
+    '…and says why, rather than doing something narrower than it claims',
+    /no record of what it changed/.test(r.error ?? ''),
+    r.error,
   )
   check(
-    'and the file it did change is back',
-    read('keep.ts') === 'nobody touches this\n',
+    '…and nothing was touched: the turn\'s file is still there',
+    read('unledgered.ts') === 'made by a turn that recorded nothing\n',
+    read('unledgered.ts'),
+  )
+  check(
+    "…and so is the edit that was NOT a turn's",
+    read('keep.ts') === 'still nobody touches this\n',
     read('keep.ts'),
+  )
+}
+
+// ─── A FILE WITH A RUSSIAN NAME IS THE SAME FILE EVERY TIME ─────────────
+//
+// git renders any path with a byte over 0x7f as a quoted string of octal
+// escapes — "\320\272\320\276\320\264.ts" for код.ts — unless told not to.
+// Three readers here compare paths to each other and they did not agree on
+// the spelling: `ls-files` kept the quotes, `status --porcelain` had them
+// stripped by the parser. So such a file never matched itself, which meant a
+// rewind could not tell that the USER had edited it, and `checkout -- <path>`
+// was handed a name no filesystem has and silently restored nothing.
+
+{
+  const RU = 'исходники/код.ts'
+  put(RU, 'v0\n')
+  const mark = await snapshotWorkspace(S, work)
+  saveLedger(S, mark!, EMPTY_DELTA)
+  const sha = await turn(() => put(RU, 'v1 by the turn\n'))
+  check('a checkpoint after the turn exists', !!sha)
+
+  const r = await rewindWorkspace(S, work, mark!)
+  check('the rewind reports success', r.ok, r)
+  check(
+    'A CYRILLIC PATH IS ACTUALLY RESTORED',
+    read(RU) === 'v0\n',
+    read(RU),
+  )
+  check('…and it says it restored something', (r.restored ?? 0) > 0, r)
+}
+
+{
+  // …and the other half: the user's own edit to such a file is protected.
+  const RU = 'исходники/моё.ts'
+  put(RU, 'v0\n')
+  const mark = await snapshotWorkspace(S, work)
+  saveLedger(S, mark!, EMPTY_DELTA)
+  await turn(() => put(RU, 'by the turn\n'))
+  // The user edits it after the snapshot — theirs, and it exists nowhere else.
+  put(RU, 'mine, unsaved anywhere else\n')
+
+  const r = await rewindWorkspace(S, work, mark!)
+  check(
+    "A CYRILLIC PATH THE USER EDITED IS NOT OVERWRITTEN",
+    read(RU) === 'mine, unsaved anywhere else\n',
+    read(RU),
+  )
+  check(
+    '…and is named as skipped rather than silently left',
+    (r.skipped ?? []).some((p) => p.includes('моё')),
+    r.skipped,
   )
 }
 

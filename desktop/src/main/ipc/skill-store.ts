@@ -22,7 +22,7 @@ import {
 import {
   BUILTIN_IDS,
   DEFAULT_SOURCES,
-  migrateStoredSources,
+  readStoredSources,
   normalizeSource,
   parseStoredSource,
   toStored,
@@ -238,7 +238,7 @@ function getSources(): SkillSource[] {
     const j = JSON.parse(readFileSync(configFile(), "utf-8")) as {
       sources?: unknown;
     };
-    const parsed = migrateStoredSources(j)
+    const parsed = readStoredSources(j)
       .map((x) => parseStoredSource(x))
       .filter((x): x is SkillSource => x !== null);
     const seen = new Set<string>();

@@ -42,6 +42,8 @@ const truncations: {
   totalUserTurns?: number;
 }[] = [];
 let rewindOk = true;
+/** Make the transcript claim one prompt the chat does not have. */
+let ghostPrompt = false;
 
 const bridge = {
   checkpoints: {
@@ -60,7 +62,19 @@ const bridge = {
       totalUserTurns?: number,
     ) => {
       truncations.push({ sessionId, keepUserTurns, totalUserTurns });
-      return { fidelity: "full" as const, removed: 2 };
+      return { ok: true as const, removed: 2 };
+    },
+    // What the transcript says its prompts are. The rewind asks this BEFORE
+    // touching anything, so a disagreement costs nothing instead of leaving
+    // the folder in one turn's state and the conversation in another's.
+    // In the normal case the two sides agree, which is what `ghostPrompt`
+    // exists to break.
+    turnContext: async () => {
+      const mine = useChatStore
+        .getState()
+        .messages.filter((m) => m.role === "user" && !m.injected)
+        .map((m) => ({ id: m.id, inContext: true }));
+      return ghostPrompt ? [{ id: "ghost", inContext: true }, ...mine] : mine;
     },
     send: async () => ({ ok: true }),
   },
@@ -273,6 +287,41 @@ const third = turn("and a benchmark", "sha-after-3");
     truncations,
   );
   useChatStore.getState().finishStreaming();
+}
+
+// ─── A DISAGREEMENT COSTS NOTHING, INSTEAD OF COSTING THE HISTORY ───────
+//
+// The two sides count prompts independently, and when they disagree there is
+// no safe place to cut. This used to answer by CLEARING the transcript and
+// letting the chat rebuild a text-only version of itself from its bubbles —
+// every tool call and result in the conversation gone, silently. It is asked
+// first now, and a disagreement stops the whole operation before the folder,
+// the transcript or the screen has moved.
+{
+  rewinds.length = 0;
+  truncations.length = 0;
+  useChatStore.getState().setCurrentSessionId("s3");
+  const only = turn("one prompt", "sha-s3", "s3");
+  // The transcript believes there is one more. Nothing may be undone.
+  ghostPrompt = true;
+  const before = useChatStore.getState().messages.length;
+
+  await useChatStore.getState().rewindAndEdit(only);
+  check(
+    "NOTHING IS UNDONE WHEN THE TWO SIDES DISAGREE",
+    rewinds.length === 0 && truncations.length === 0,
+    { rewinds, truncations },
+  );
+  check(
+    "…and the screen is left exactly as it was",
+    useChatStore.getState().messages.length === before,
+    { now: useChatStore.getState().messages.length, was: before },
+  );
+  check(
+    "…and it says so rather than doing something else",
+    /disagree/.test(useChatStore.getState().error ?? ""),
+    useChatStore.getState().error,
+  );
 }
 
 console.log(

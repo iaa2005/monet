@@ -25,7 +25,7 @@
  * safeStorage), not in localStorage. localStorage is keyed by origin, and the
  * dev renderer's origin carries the vite port — which moves when the port is
  * taken, so the whole panel came up blank and read as "my API key resets
- * every launch". The old localStorage values are migrated once, then dropped.
+ * every launch".
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -42,17 +42,6 @@ import { WHISPER_TIERS, DEFAULT_WHISPER } from "@shared/whisper-tier";
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
-
-/** Legacy localStorage keys — read once at startup, then removed. */
-const LEGACY_KEYS = {
-  deviceId: "mic-device-id",
-  engine: "stt-engine",
-  endpoint: "stt-endpoint",
-  key: "stt-key",
-  model: "stt-model",
-  localModel: "stt-local-model",
-  language: "stt-language",
-} as const;
 
 const LOCAL_MODELS = WHISPER_TIERS;
 
@@ -207,32 +196,12 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
   const [nativeModel, setNativeModel] = useState<string>("gigaam-v3-rnnt-punct");
   const [language, setLanguage] = useState<string>("");
 
-  // Load from main, migrating anything the old localStorage build left behind.
+  // One source: main's data dir. The localStorage values an earlier build
+  // wrote were copied over on first load and that copying is gone with them.
   useEffect(() => {
     let gone = false;
     void (async () => {
-      const legacy: Record<string, string> = {};
-      for (const [field, lsKey] of Object.entries(LEGACY_KEYS)) {
-        const v = localStorage.getItem(lsKey);
-        if (v) legacy[field] = v;
-      }
-      let saved = await api()?.stt.getSettings();
-      if (saved && Object.keys(legacy).length > 0) {
-        // Only fill blanks: whatever is already in the data dir wins, so a
-        // second window cannot resurrect stale values over newer ones.
-        // `saved` is a typed SttSettings; the legacy keys are its own field
-        // names, so the lookup goes through the type rather than around it.
-        const current = saved as Record<keyof typeof LEGACY_KEYS, string>;
-        const patch = Object.fromEntries(
-          Object.entries(legacy).filter(
-            ([k]) => !current[k as keyof typeof LEGACY_KEYS],
-          ),
-        );
-        if (Object.keys(patch).length > 0)
-          saved = await api()?.stt.setSettings(patch);
-        for (const lsKey of Object.values(LEGACY_KEYS))
-          localStorage.removeItem(lsKey);
-      }
+      const saved = await api()?.stt.getSettings();
       if (gone || !saved) return;
       setDeviceId(saved.deviceId);
       setEngine(saved.engine);
@@ -647,9 +616,15 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
 
   /** Optimistic in the UI, durable in main. */
   const saveSetting = (
-    // Every settings field, not just the ones the localStorage build had —
-    // `nativeModel` postdates that migration and has no legacy key.
-    field: keyof typeof LEGACY_KEYS | "nativeModel",
+    field:
+      | "deviceId"
+      | "engine"
+      | "endpoint"
+      | "key"
+      | "model"
+      | "localModel"
+      | "nativeModel"
+      | "language",
     value: string,
     set: (v: string) => void,
   ): void => {

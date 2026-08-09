@@ -17,6 +17,7 @@ import {
 } from "fs";
 import { join, basename, resolve } from "path";
 import { getDataDir, getDataSubdir } from "../data-dir.js";
+import { sessionSlug } from "../agent/checkpoint-store.js";
 
 function artifactsRoot(): string {
   const dir = getDataSubdir("artifacts");
@@ -25,8 +26,7 @@ function artifactsRoot(): string {
 }
 
 export function artifactSessionDir(sessionId: string): string {
-  const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_") || "session";
-  const dir = join(artifactsRoot(), safe);
+  const dir = join(artifactsRoot(), sessionSlug(sessionId));
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   return dir;
 }

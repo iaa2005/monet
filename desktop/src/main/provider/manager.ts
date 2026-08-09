@@ -39,7 +39,7 @@ function loadProviders(): LLMProvider[] {
   if (!existsSync(path)) return []
   try {
     const raw = JSON.parse(readFileSync(path, 'utf-8'))
-    return raw.map((p: LLMProvider) => migrateModels({
+    return raw.map((p: LLMProvider) => withModelList({
       ...p,
       apiKey: decrypt(p.apiKey),
     }))
@@ -48,9 +48,17 @@ function loadProviders(): LLMProvider[] {
   }
 }
 
-/** Pre-models[] configs stored one flat model per provider — lift those
- * fields into a single models[] entry so the UI always has a list. */
-function migrateModels(p: LLMProvider): LLMProvider {
+/**
+ * Guarantee a provider has a models[] and a valid active id.
+ *
+ * Not a migration, though it was called one: `add()` runs it too, because a
+ * provider can be created from a single model (that is what the "add a
+ * provider" form collects) and everything downstream expects a list with one
+ * entry selected. The second job is the one a name like "migrate" hid — an
+ * activeModelId pointing at a model that has since been deleted is repaired
+ * here, and that happens to live configs, not old ones.
+ */
+function withModelList(p: LLMProvider): LLMProvider {
   if (p.models && p.models.length > 0) {
     if (!p.activeModelId || !p.models.some(m => m.id === p.activeModelId)) {
       p.activeModelId = p.models[0].id
@@ -100,21 +108,6 @@ export class ProviderManager {
         updatedAt: now,
       }))
       saveProviders(this.providers)
-    } else if (!this.providers.some(p => p.kind === 'openrouter')) {
-      // Migration: OpenRouter preset postdates existing installs — append it
-      // once so the entry shows up ready for an API key.
-      const preset = PRESET_PROVIDERS.find(p => p.kind === 'openrouter')
-      if (preset) {
-        const now = new Date().toISOString()
-        this.providers.push({
-          ...preset,
-          isActive: false,
-          id: randomUUID(),
-          createdAt: now,
-          updatedAt: now,
-        })
-        saveProviders(this.providers)
-      }
     }
   }
 
@@ -134,9 +127,9 @@ export class ProviderManager {
     return this.providers.find(p => p.id === id)
   }
 
-  /** The active provider with its active model FLATTENED into the legacy
-   * single-model fields (model/maxTokens/temperature/contextLimit/baseURL).
-   * Everything that talks to the LLM consumes this resolved view. */
+  /** The active provider with its active model resolved into the flat request
+   * fields (model/maxTokens/temperature/contextLimit/baseURL). Everything that
+   * talks to the LLM consumes this view — see resolveProvider. */
   getActive(): LLMProvider | undefined {
     const p = this.providers.find(p => p.isActive)
     return p ? resolveProvider(p) : undefined
@@ -144,7 +137,7 @@ export class ProviderManager {
 
   add(input: LLMProviderInput): LLMProvider {
     const now = new Date().toISOString()
-    const provider: LLMProvider = migrateModels({
+    const provider: LLMProvider = withModelList({
       ...input,
       id: randomUUID(),
       createdAt: now,
@@ -159,7 +152,7 @@ export class ProviderManager {
     const idx = this.providers.findIndex(p => p.id === id)
     if (idx === -1) return null
 
-    this.providers[idx] = migrateModels({
+    this.providers[idx] = withModelList({
       ...this.providers[idx],
       ...input,
       updatedAt: new Date().toISOString(),

@@ -110,8 +110,16 @@ const { WHISPER_TIERS } = await import('../src/shared/whisper-tier.js')
     // too: it is a path, and left in it reads as owner "api", repo
     // "models", which is how this first reported the downloader itself as
     // a foreign dependency.
+    //
+    // Spaces and datasets go entirely. This rule is about where a MODEL comes
+    // from — everything the app downloads must come from one account — and a
+    // Space is a demo page nothing is fetched from. It was reporting a comment
+    // in tts-langs.ts that CITES the demo the language list was taken from,
+    // which is provenance worth keeping, not a dependency worth breaking. It
+    // read the URL's path prefix as the account name, too: owner "spaces".
     const text = readFileSync(file, 'utf-8')
       .replace(/\$\{[^}]*\}/g, HOLE)
+      .replace(/huggingface\.co\/(?:spaces|datasets)\/[\w.-]+\/[\w.-]+/g, 'hf-demo')
       .replace(/huggingface\.co\/api\/models\//g, 'huggingface.co/')
     for (const m of text.matchAll(hubPath)) {
       const owner = m[1]
