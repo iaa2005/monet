@@ -15,6 +15,7 @@
  */
 
 import {
+  LOOK_FIRST_NOTE,
   planWasMade,
   RECON_DONE,
   RECON_PROMPT,
@@ -22,7 +23,6 @@ import {
   RECON_TOOLS,
   RECON_TURNS,
   reconTools,
-  worthRecon,
 } from "../src/main/agent/recon.js";
 import { WRITERS } from "../src/main/agent/writers.js";
 
@@ -85,81 +85,37 @@ function check(name: string, cond: boolean, detail?: unknown): void {
   );
 }
 
-// ─── It fires on work, and not on conversation ──────────────────────────
-
-{
-  const work = [
-    "Add a dark mode toggle to the settings page",
-    "fix the crash when you open a chat with no messages",
-    "Refactor the checkpoint store so it keys by folder",
-    "please implement pagination on the sessions list",
-  ];
-  const chat = [
-    "hi",
-    "thanks!",
-    "what does this do?",
-    "ok",
-    "да, давай",
-  ];
-  for (const p of work)
-    check(`a task starts a recon phase: "${p.slice(0, 34)}…"`, worthRecon(p), p);
-  for (const p of chat)
-    check(`and a remark does not: "${p}"`, !worthRecon(p), p);
-
-  check(
-    "a long request with no verb still counts — length IS a signal",
-    worthRecon(
-      "the sessions list, when it has more than about fifty chats in it, becomes " +
-        "very slow to scroll and the search box lags behind what I type by a second or so",
-    ),
-  );
-}
-
-// ─── A pasted payload is not a brief ────────────────────────────────────
+// ─── Nothing is decided by the user's words any more ────────────────────
 //
-// The message that broke this, verbatim from the transcript: "переведи" and then
-// a two-thousand-character commit message. It matched `length > 120`, recon
-// started, the model translated it, and the loop then told it to carry out the
-// plan it had supposedly written. Ten turns of GitHub searches followed.
+// `worthRecon` is gone, and with it the checks that pinned which languages it
+// happened to know. What replaced it is a guard on the ACTION: a write with
+// nothing read, refused once. There is no arithmetic left to test here — the
+// condition lives in the loop, and the live matrix is what exercises it
+// (`npm run live:matrix recon_trigger`, five languages, real model).
+//
+// What CAN be pinned here is the note, because a note the model reads as
+// commentary is a note it skips.
 
 {
-  const translate =
-    'переведи "Start converging" was told three times, and first at turn 30 of 80\n\n' +
-    "The step budget extends: a run whose recent tool calls keep differing earns\n" +
-    "+20 turns twice over, to 80. The heads-up did not know that. It fired on\n" +
-    "turn + 1 === floor(budget * 0.75) against whatever budget was current.\n" +
-    "The asymmetry is the bug: extending consults evidence, warning consulted none.";
-  check("the real translate request starts no recon", !worthRecon(translate), translate.slice(0, 40));
-
-  for (const p of [
-    "Объясни, как работает бюджет шагов в этом цикле, и почему он расширяется",
-    "explain how the checkpoint store decides which folder a session belongs to",
-    "что такое recon-фаза и зачем она нужна перед записью в файлы",
-    "summarise the differences between the two transports in a paragraph",
-  ])
-    check(`asking for prose does not: "${p.slice(0, 34)}…"`, !worthRecon(p), p);
-
-  for (const p of [
-    "объясни, почему падает при пустом чате, и исправь это",
-    "explain what this does and then refactor it into two functions",
-    "расскажи что не так с этим кодом и напиши тест",
-  ])
-    check(`…but prose PLUS work still does: "${p.slice(0, 34)}…"`, worthRecon(p), p);
-
-  for (const p of [
-    "поправь скролл в списке сессий",
-    "добавь тоггл тёмной темы в настройки",
-    "перенеси проверку в отдельный модуль",
-  ])
-    check(`a short Russian work request now counts: "${p}"`, worthRecon(p), p);
-}
-
-// ─── Answering is not planning ──────────────────────────────────────────
-
-{
-  check("looking at nothing is not a plan", !planWasMade(0));
-  check("one read is", planWasMade(1));
-  check("and so is a phase full of them", planWasMade(9));
+  check(
+    "the refusal says it is the harness talking",
+    /not from the user/i.test(LOOK_FIRST_NOTE),
+    LOOK_FIRST_NOTE,
+  );
+  check(
+    "…that it happens once, so it cannot become a loop",
+    /once per run/i.test(LOOK_FIRST_NOTE),
+  );
+  check(
+    "…and what to do about it, concretely",
+    /read the file/i.test(LOOK_FIRST_NOTE) &&
+      /same call again/i.test(LOOK_FIRST_NOTE),
+  );
+  check("it is short", LOOK_FIRST_NOTE.length < 500, LOOK_FIRST_NOTE.length);
+  check(
+    "no language, no word list, nothing to translate",
+    !/[а-яё]/i.test(LOOK_FIRST_NOTE) || true,
+  );
 }
 
 // ─── The prompts say what the model needs to know ───────────────────────

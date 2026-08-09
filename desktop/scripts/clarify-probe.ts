@@ -13,11 +13,11 @@
  *   npm run smoke:clarify
  */
 
+import { readFileSync } from "node:fs";
 import {
   answersNote,
   clarifyPrompt,
   parseClarify,
-  worthClarifying,
   MAX_QUESTIONS,
 } from "../src/main/verify/clarify.js";
 
@@ -109,13 +109,25 @@ function check(name: string, cond: boolean, detail?: unknown): void {
 // ─── When not to bother at all ──────────────────────────────────────────
 
 {
-  for (const p of ["hi", "thanks", "ok", "what is this?", "да"])
-    check(`a remark is not a brief: "${p}"`, !worthClarifying(p));
-  for (const p of [
-    "Add a dark mode toggle to the settings page",
-    "refactor the session store so it keys by folder",
-  ])
-    check(`a task is: "${p.slice(0, 34)}…"`, worthClarifying(p));
+  // Nothing is decided here any more — the gate is gone, the reader model reads
+  // the request, and a model reads any language. What CAN be pinned is that no
+  // module-level rule crept back in: three did, in one morning, each one a
+  // different way of asking which language the user writes.
+  const src = readFileSync(
+    new URL("../src/main/verify/clarify.ts", import.meta.url),
+    "utf8",
+  );
+  check(
+    "NO GATE DECIDES FROM THE USER'S WORDS",
+    !/export function worth/.test(src),
+    src.slice(src.indexOf("export function worth"), 200),
+  );
+  // And nothing more. A first draft of this also grepped the file for word
+  // alternations and length comparisons, and caught `options.length < 2` in the
+  // parser — an honest check on how many options the READER's answer offered,
+  // nothing to do with the user's prose. Grepping a file for a shape is the same
+  // mistake one level up. What stops a heuristic creeping back is the live
+  // five-language matrix, not a regex over source.
 }
 
 // ─── What the answers become ────────────────────────────────────────────

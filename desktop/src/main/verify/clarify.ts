@@ -114,19 +114,31 @@ export function answersNote(
   ].join("\n");
 }
 
-/**
- * Is this request worth a reader's call at all?
+/*
+ * There is no `worthClarifying` any more, and that is the whole change.
  *
- * The same shape as recon's test, and for the same reason: a greeting, a
- * one-word follow-up or a question about the code is not a brief, and
- * putting a dialog in front of one is how a feature gets switched off. A
- * follow-up inside an existing conversation is excluded by the caller —
- * ambiguity there is resolved by everything already said.
+ * It began as an English verb list, which decided nothing except whose language
+ * got served. Measured live against DeepSeek, one ambiguous brief written five
+ * ways — "add a limit to the list in list.js":
+ *
+ *     en  34 chars  read for ambiguity   31.5s
+ *     ru  37        skipped              28.3s
+ *     tr  39        skipped              10.2s
+ *     de  47        skipped              10.2s
+ *     zh  19        skipped              10.2s
+ *
+ * Replacing the verbs with `length >= 24` served four of the five: Chinese says
+ * it in 19 characters where German needs 47, so a character threshold is a
+ * template keyed to how dense a script is. Replacing THAT with "does the request
+ * name a file or a path" worked, and was still a third rule to maintain.
+ *
+ * None of them were needed. The caller already runs this on the FIRST prompt of a
+ * code-space session only, so the gate was protecting against one thing: a
+ * session that opens with "hi". That costs one model call, once, and the reader
+ * answers CLEAR. Everything else it decided, it decided wrongly and by language.
+ *
+ * What is left is a model reading the request, which needs no list because it
+ * reads any language. The Chinese run above asked the clarifying question itself,
+ * unprompted, in the language it was addressed in — 上限值你想设多少? — which is
+ * the standard the heuristics were being held to and never met.
  */
-const ACTION = /\b(add|build|change|create|fix|implement|make|migrate|move|refactor|remove|rename|rewrite|update|write|delete|port|wire|support|integrate)\b/i;
-
-export function worthClarifying(prompt: string): boolean {
-  const text = prompt.trim();
-  if (text.length < 24) return false;
-  return ACTION.test(text) || text.length > 120;
-}

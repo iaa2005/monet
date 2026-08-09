@@ -168,9 +168,10 @@ export async function clarifyBeforeTurn(opts: {
   if (!firstPrompt || space === "home") return "";
   try {
     const { isFeatureOn } = await import("../agent/features.js");
-    const { answersNote, clarifyPrompt, parseClarify, worthClarifying } =
-      await import("./clarify.js");
-    if (!isFeatureOn("clarify") || !worthClarifying(message)) return "";
+    const { answersNote, clarifyPrompt, parseClarify } = await import(
+      "./clarify.js"
+    );
+    if (!isFeatureOn("clarify")) return "";
 
     const { getProviderManager } = await import("../provider/manager.js");
     const { createAdapter } = await import("../llm/adapter.js");

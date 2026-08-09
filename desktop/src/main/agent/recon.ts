@@ -118,50 +118,47 @@ export const RECON_TIMEUP = [
 ].join("\n");
 
 /**
- * Is a reconnaissance phase worth running for this prompt?
+ * Nothing here predicts anything from the user's words any more.
  *
- * A greeting, a thank-you or "what does this function do" is not a task,
- * and putting a planning phase in front of it is how a feature earns a
- * reputation for being in the way. The test is deliberately crude — a
- * prompt long enough to be a request for work, or one that names an action
- * — because the cost of a false positive is one read-only turn and the
- * cost of a false negative is the thing this exists to prevent. A bug
- * report often names no action at all — it describes what HAPPENS — so
- * length counts on its own, at about the point where prose stops being a
- * remark and starts being a brief.
+ * There used to be `worthRecon`: English action verbs, a few Russian stems, and
+ * a length test. Measured live against DeepSeek with one brief written five ways
+ * — "add a limit to the list in list.js" — it produced three levels of service:
+ *
+ *     en  34 chars  phase ran        31.5s, 8 tools
+ *     ru  37        phase ran        28.3s, 8 tools   (a stem added that morning)
+ *     tr  39        nothing          10.2s, 4 tools
+ *     de  47        nothing          10.2s, 4 tools
+ *     zh  19        nothing          10.2s, 4 tools
+ *
+ * Same task, same file, same fix, and the three languages nobody had typed into
+ * the regex finished it in a third of the time. Before that, the same heuristic
+ * fired on "переведи <two thousand characters>" because the payload tripped the
+ * length test, and the loop then told the model to carry out the plan it had
+ * supposedly written; it searched GitHub for ten turns.
+ *
+ * The condition the phase exists for needs no language: a write is about to
+ * happen and nothing has been read. That is observable at the moment of the
+ * call — see LOOK_FIRST_NOTE and the guard in the loop — and in every live run
+ * measured so far it would not have fired once, because a read preceded every
+ * write. Which is the point: the phase now costs nothing until it is needed.
  */
-const ACTION =
-  /\b(add|build|change|create|fix|implement|make|migrate|move|refactor|remove|rename|rewrite|update|write|delete|port|wire|hook up|support|integrate)\b|(исправ|поправ|сдела|добав|измен|созда|напиш|перепиш|удали|перенес|подключ|реализу|внедри|обнови|переимену|вынес|почини)/i;
 
 /**
- * Instructions that ask for TEXT ABOUT something rather than a change to it.
+ * What a blind write is answered with, and what opens the phase.
  *
- * The length test cannot see these, and the cost of missing them is not the one
- * turn the comment above claims. Measured: "переведи <two thousand characters of
- * commit message>" tripped `length > 120`, the model correctly answered with the
- * translation and called no tools, the loop read "no tool calls in recon" as
- * "that was the plan", and handed back the full toolset with "now do the work,
- * following the plan you just wrote". It went looking for the repository on
- * GitHub for ten more turns. A pasted payload is a long payload, not a long
- * brief — so the test looks at how the message OPENS.
- *
- * Anchored at the start and only decisive when no action verb appears anywhere:
- * "объясни, почему падает, и исправь" is work, and asks to be treated as work.
+ * Refused as an error on purpose: a note attached to a successful result reads as
+ * commentary and gets skipped, while a failed call is something that has to be
+ * dealt with. Once per run — a guard that can fire twice is a guard that can
+ * become a loop.
  */
-// `(?!\p{L})` and not `\b`: JavaScript's \b is defined on ASCII word
-// characters, so in "переведи что-то" the space after a Cyrillic word is not a
-// boundary at all and the anchor silently never matches. Checked in Python
-// first, where `re` is Unicode-aware by default — it passed there and failed
-// here, which is the whole argument for testing in the runtime that ships.
-const ANSWER_ONLY =
-  /^[\s>*_#-]*(?:пожалуйста[,\s]*)?(переведи|перевед[иь]те|перевод|объясни|объясните|расскажи|опиши|суммируй|сократи|что такое|что это|почему|зачем|как работает|сравни|translate|explain|describe|summari[sz]e|paraphrase|rephrase|what is|what does|what's|why does|how does)(?!\p{L})/iu;
-
-export function worthRecon(prompt: string): boolean {
-  const text = prompt.trim();
-  if (text.length < 24) return false;
-  if (ANSWER_ONLY.test(text) && !ACTION.test(text)) return false;
-  return ACTION.test(text) || text.length > 120;
-}
+export const LOOK_FIRST_NOTE = [
+  "[Harness note, not from the user — refused once per run, and only this once.]",
+  "",
+  "This is the first thing this run does to the folder, and nothing has been read",
+  "yet. Read the file you are about to change, then make the same call again.",
+  "Writing into a file whose current contents you have not seen is how a run",
+  "spends twenty turns undoing its own first guess.",
+].join("\n");
 
 /**
  * Did the reconnaissance phase produce a PLAN, or just an answer?

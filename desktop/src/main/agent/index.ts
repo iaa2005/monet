@@ -24,13 +24,13 @@ import {
 import { CONNECTOR_TOOL_NAMES } from "./connector-tools.js";
 import { isFeatureOn } from "./features.js";
 import {
+  LOOK_FIRST_NOTE,
   planWasMade,
   RECON_DONE,
   RECON_PROMPT,
   RECON_TIMEUP,
   RECON_TURNS,
   reconTools,
-  worthRecon,
 } from "./recon.js";
 import { connectorServerNames } from "../mcp/manager.js";
 import { getService } from "../connectors/services/registry.js";
@@ -100,7 +100,7 @@ import {
   withCavemanReminder,
 } from "./caveman.js";
 import { turnRange } from "./turn-context.js";
-import { anyWriters } from "./writers.js";
+import { anyWriters, WRITERS } from "./writers.js";
 import {
   changedIn,
   foldDelta,
@@ -1686,16 +1686,19 @@ async function runAgentScoped(
   // so the model cannot start coding before it has looked. Ends when it
   // stops calling tools — which is the plan — or when the looking budget
   // runs out. See recon.ts; the prompt rides in with the user's own.
-  let reconLeft =
-    isFeatureOn("recon") &&
-    !hiddenTurn &&
-    typeof userContent === "string" &&
-    worthRecon(userContent)
-      ? RECON_TURNS
-      : 0;
+  // Not predicted from the prompt any anymore: the phase opens when a write is
+  // attempted with nothing read, which is the condition it was always about and
+  // is the same condition in every language. See recon.ts.
+  let reconLeft = 0;
   // How much looking the recon phase actually did. Zero means the model
   // answered outright, which is not a plan — see planWasMade.
   let reconToolCalls = 0;
+  /** Reads this run has done, and whether the one-shot guard is spent. */
+  let readsThisRun = 0;
+  let lookFirstSpent = false;
+  /** Set by the guard, acted on after the batch — a harness line between a
+   * tool_use and its tool_result is a 400 from every provider. */
+  let openReconAfterBatch = false;
   if (reconLeft > 0) {
     appendUserText(messages, RECON_PROMPT);
     onEvent({
@@ -2046,6 +2049,39 @@ async function runAgentScoped(
       name: string;
       input: Record<string, unknown>;
     }): Promise<(typeof results)[number]> => {
+      // LOOK BEFORE YOU WRITE, decided on the action instead of on the words.
+      //
+      // This used to be predicted from the prompt by `worthRecon`: English
+      // action verbs, some Russian stems, a length test. Measured live against
+      // DeepSeek with one brief written five ways, it produced three levels of
+      // service — English got the phase, Russian got it for a stem typed in an
+      // hour earlier, Turkish, German and Chinese got nothing and finished the
+      // same work in a third of the time. A trigger that fires by vocabulary is
+      // not deciding whether a task needs looking at.
+      //
+      // The condition the phase actually cares about needs no language at all:
+      // a write is about to happen and nothing has been read. That is visible
+      // here, exactly once per run, and in every live run so far it would not
+      // have fired — a read preceded every write.
+      if (
+        isFeatureOn("recon") &&
+        !lookFirstSpent &&
+        readsThisRun === 0 &&
+        WRITERS.has(tc.name)
+      ) {
+        lookFirstSpent = true;
+        openReconAfterBatch = true;
+        onEvent({
+          type: "harness",
+          text: `Asked it to read before writing (${tc.name} with nothing read yet)`,
+        });
+        return {
+          tool_use_id: tc.id,
+          content: LOOK_FIRST_NOTE,
+          is_error: true,
+        };
+      }
+      if (!WRITERS.has(tc.name)) readsThisRun++;
       onEvent({
         type: "tool_result",
         toolUseID: tc.id,
@@ -2263,6 +2299,15 @@ async function runAgentScoped(
         text: `Step budget extended by ${extra} (to ${budget}) — the run is still producing new work`,
       });
       appendUserText(messages, extensionNote(extra, budget));
+    }
+
+    // A write was refused for want of a read. The phase opens now, with the
+    // results in place — the same reason RECON_TIMEUP waits until here.
+    if (openReconAfterBatch) {
+      openReconAfterBatch = false;
+      reconLeft = RECON_TURNS;
+      appendUserText(messages, RECON_PROMPT);
+      onEvent({ type: "harness", text: "Reconnaissance — reading before writing" });
     }
 
     // Out of looking turns. Said HERE, where the last message is the tool
