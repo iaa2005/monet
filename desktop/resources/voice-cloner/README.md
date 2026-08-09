@@ -85,7 +85,8 @@ draws the optimiser saw, and on ones it never did.
 | `span`, 10 weights, 8 min | +0.4819 | +0.5092 |
 | `lm`, full Jacobian, 4 iterations, 25 min | +0.6802 | +0.6368 |
 | `adam` with the flow noise **fixed**, 700 iterations, 25 min | +0.9087 | +0.6725 |
-| `adam` with the flow noise **fresh** — `clone.py`'s own method | +0.7136 | **+0.7004** |
+| `adam` with the flow noise **fresh** — `clone.py`'s old method | +0.7136 | +0.7004 |
+| `adam`, fresh noise, **4 draws averaged per step** | +0.7489 | **+0.7105** |
 
 The bottom two rows are why the held-out column exists, and they are the result of
 the whole exercise. Fixing the flow noise makes the objective exactly reproducible
@@ -95,13 +96,27 @@ looks worse the whole way — it plateaus at +0.71 and visibly wanders, +0.714,
 +0.617, +0.636, +0.682 on consecutive checks — and ends up better where it counts,
 with a held-out gap of 0.013 against 0.236.
 
-So `clone.py`'s original design wins, and every method built to beat it lost:
-+0.700 for plain descent against +0.673, +0.637 and +0.509. That is worth writing
-down precisely because it is not what any of the reasoning predicted.
+So `clone.py`'s original design beat every method built to replace it: +0.700
+against +0.673, +0.637 and +0.509. Worth writing down precisely because it is not
+what any of the reasoning predicted.
 
-`--draws k` averages k fresh draws per step: unbiased like fresh noise, with k
-times less variance, which is what the wandering suggests is now the limit. It has
-not been run. No number is claimed for it.
+**The one improvement that survived contact was the smallest.** `--draws 4`
+averages four fresh renderings per step: unbiased like fresh noise, with the
+variance divided by two. The honest scores are +0.7105 against +0.7004, which on
+its own is inside the noise of a single pair of runs. The reason it is now the
+default is the shape of the two curves:
+
+| minutes in | 1 draw | 4 draws |
+| --- | --- | --- |
+| ~4 | +0.562 | +0.614 |
+| ~14 | +0.714 | +0.725 |
+| ~25 (end) | +0.682, best still +0.714 | **+0.749, still climbing** |
+
+One draw reaches its plateau at fourteen minutes and spends the remaining eleven
+wandering — +0.714, +0.617, +0.636, +0.682 on consecutive checks, which is the
+gradient chasing a different objective every step. Four draws never wobbles and
+had not finished climbing when the budget ran out. Whether 2 or 8 is better than 4
+has not been measured.
 
 Note also that the held-out ceiling is **+0.9153, not 1.0**: even the exact answer
 loses 0.085 to an unseen noise draw and nothing at all to unseen sentences
@@ -321,6 +336,7 @@ help; clean audio does.
 | `--minutes` | 20 | Longer runs get closer. |
 | `--lr` | 1e-3 | Lower if the similarity jumps around; higher rarely helps. |
 | `--anchor` | 0.02 | Pull towards the starting preset. Raise it if the voice starts sounding broken rather than different. |
+| `--draws` | 4 | Renderings averaged per step. 1 is four times faster per step and wanders once it nears its plateau; see the two curves above. |
 | `--steps` | 4 | Flow steps per pass. **Leave it.** A style fitted at 4 steps and rendered at 8 scores *lower* — +0.812 against +0.836, measured — because the step count is part of what it was fitted to. 2 steps is a different speaker outright (cos 0.47 to the same style at 4). |
 | `--init` | auto | Force a starting preset (`F1`…`M5`) instead of scoring all ten. |
 | `--device` | auto | `cuda`, `xpu`, or `cpu`. |

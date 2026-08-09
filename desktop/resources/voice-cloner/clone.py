@@ -370,6 +370,18 @@ def main() -> None:
     ap.add_argument("--minutes", type=float, default=20.0, help="time budget")
     ap.add_argument("--steps", type=int, default=4, help="flow steps per pass")
     ap.add_argument(
+        "--draws",
+        type=int,
+        default=4,
+        help="renderings averaged per step. Four costs four times a step and "
+        "removes the wobble: on a benchmark with a known answer, one draw "
+        "plateaued at 0.71 after fourteen minutes and then wandered for eleven "
+        "more, while four was still climbing at the buzzer (0.725 to 0.749 over "
+        "the last eleven). The honest scores were 0.7105 against 0.7004, which "
+        "on its own is inside the noise — the trajectory is the reason for this "
+        "default, not that 0.010",
+    )
+    ap.add_argument(
         "--lr",
         type=float,
         default=1e-3,
@@ -425,6 +437,26 @@ def main() -> None:
         emb = F.normalize(speaker(fbank(wav16k)), dim=-1)
         return (emb @ target.T).reshape(())
 
+    def say_and_measure(
+        ttl: torch.Tensor, dp: torch.Tensor, text: str, draws: int
+    ) -> torch.Tensor:
+        """Speak the line `draws` times and score the AVERAGE of the embeddings.
+
+        The flow sampler draws fresh noise per utterance, so one rendering is a
+        noisy view of the voice: the same style spoken twice scores only 0.92
+        against itself. Averaging k of them divides that noise by root k without
+        ever fixing a draw — fixing them was tried, and drove the score to +0.909
+        while the honest number stayed at +0.673."""
+        if draws <= 1:
+            return measure(tts.speak(ttl, dp, text, args.lang, args.steps))
+        embs = []
+        for _ in range(draws):
+            wav = tts.speak(ttl, dp, text, args.lang, args.steps)
+            wav16k = torchaudio.functional.resample(wav, tts.sample_rate, 16000)
+            embs.append(F.normalize(speaker(fbank(wav16k)), dim=-1))
+        emb = F.normalize(torch.cat(embs).mean(dim=0, keepdim=True), dim=-1)
+        return (emb @ target.T).reshape(())
+
     # Start from the preset that already sounds nearest: gradient descent from
     # a plausible voice beats descent from noise, and it keeps the result on
     # the manifold the model was trained on.
@@ -457,8 +489,10 @@ def main() -> None:
         for path in presets:
             ttl, dp = style_of(path)
             with torch.no_grad():
-                wav = tts.speak(ttl, dp, texts[0], args.lang, args.steps)
-                score = float(measure(wav))
+                # Averaged like the loss is: a single rendering wobbles by ±0.03,
+                # which is a third of the whole spread across these ten and quite
+                # enough to crown the wrong preset.
+                score = float(say_and_measure(ttl, dp, texts[0], args.draws))
             scored[path.stem] = score
             print(f"  {path.stem}: {score:+.3f}")
             if score > best:
@@ -511,8 +545,7 @@ def main() -> None:
         it += 1
         text = texts[it % len(texts)]
         opt.zero_grad(set_to_none=True)
-        wav = tts.speak(style_ttl, style_dp, text, args.lang, args.steps)
-        similarity = measure(wav)
+        similarity = say_and_measure(style_ttl, style_dp, text, args.draws)
         anchor = ((style_ttl - ttl0) ** 2).mean()
         (1.0 - similarity + args.anchor * anchor).backward()
         opt.step()
