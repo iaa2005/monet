@@ -38,6 +38,41 @@ const REPLAYABLE_TOOLS = new Set([
 
 export const CLEARED_MARKER = "[Old tool result cleared to save context — call the tool again if you need it]";
 
+/**
+ * The server's prompt-cache TTL. After this long, clearing costs nothing.
+ *
+ * Clearing a tool result rewrites the prefix every later request is cached
+ * against, so INSIDE the window it throws that cache away and the next turn
+ * re-reads the whole conversation at full price. That is why this pass has only
+ * ever run at the threshold, when there was no choice.
+ *
+ * Outside the window the cache has expired on its own and there is nothing left
+ * to break — so the same clearing is free, and doing it THEN is pure profit: the
+ * context shrinks before it reaches the threshold, which is where the expensive,
+ * lossy summarising pass lives. The upstream CLI takes the same reading and picks
+ * the same number (services/compact/timeBasedMCConfig.ts):
+ *
+ *     gapThresholdMinutes: 60
+ *     // 60 is the safe choice: the server's 1h cache TTL is guaranteed expired
+ */
+export const CACHE_TTL_MINUTES = 60;
+
+/**
+ * Has the cache for this conversation certainly expired?
+ *
+ * `null` means the model has never answered here, so there is no cache and
+ * nothing worth clearing — false, not true, because "free" is not the same as
+ * "worth doing".
+ */
+export function coldCache(
+  lastAssistantAt: number | null,
+  now: number,
+  ttlMinutes = CACHE_TTL_MINUTES,
+): boolean {
+  if (lastAssistantAt == null) return false;
+  return now - lastAssistantAt > ttlMinutes * 60_000;
+}
+
 /** Rough token estimate for one block's payload. */
 function blockChars(block: LLMContentBlock): number {
   if (block.type === "tool_result") {

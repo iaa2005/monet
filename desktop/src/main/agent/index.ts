@@ -113,11 +113,13 @@ import { browserDirective } from "./browser-directive.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import {
   loadTranscriptWithMeta,
+  lastAssistantAt,
   listContextEvents,
   replaceTranscript,
   clearTranscript,
   recordContextEvent,
 } from "../session/transcript.js";
+import { coldCache, microCompact } from "./microcompact.js";
 import type { AskUserFn } from "../ipc/ask-user.js";
 import type { AskPlanApprovalFn } from "../ipc/plan.js";
 import { resolveModel } from "../provider/routing.js";
@@ -1740,12 +1742,37 @@ async function runAgentScoped(
   /** Set by the guard, acted on after the batch — a harness line between a
    * tool_use and its tool_result is a 400 from every provider. */
   let openReconAfterBatch = false;
-  if (reconLeft > 0) {
-    appendUserText(messages, RECON_PROMPT);
-    onEvent({
-      type: "harness",
-      text: "Reconnaissance — reading before writing",
-    });
+  // FREE CLEARING, once, before the first request.
+  //
+  // Micro-compaction has only ever run at the threshold, because clearing a tool
+  // result rewrites the prefix the server caches and throws that cache away. But
+  // the cache expires by itself after an hour — and after that the same clearing
+  // costs nothing, because there is no longer anything to break. A chat picked up
+  // the next morning is the common case, and it is exactly the case where the
+  // context can be shrunk for free, well before it reaches the point where the
+  // expensive summarising pass takes over. See coldCache().
+  if (coldCache(lastAssistantAt(sessionId), Date.now())) {
+    const live = messages.filter(isInContext);
+    const cold = microCompact(live);
+    if (cold.cleared > 0) {
+      let at = 0;
+      for (let i = 0; i < messages.length; i++) {
+        if (!isInContext(messages[i])) continue;
+        if (cold.messages[at] !== live[at]) {
+          carryIdentity(messages[i], cold.messages[at]);
+          messages[i] = cold.messages[at];
+        }
+        at++;
+      }
+      persistTranscript(sessionId);
+      onEvent({
+        type: "harness",
+        text:
+          `Cleared ${cold.cleared} old tool result${cold.cleared === 1 ? "" : "s"} ` +
+          `(~${Math.round(cold.charsSaved / 4 / 100) / 10}k tokens) — this chat's ` +
+          `cache had expired, so it was free`,
+      });
+    }
   }
 
   for (let turn = 0; turn < budget; turn++) {

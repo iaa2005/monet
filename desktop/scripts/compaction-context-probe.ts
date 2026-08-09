@@ -286,6 +286,42 @@ const filler = (n: number): string => `Text about topic ${n}. ${'word '.repeat(2
   )
 }
 
+// ─── FREE CLEARING: the cache window ────────────────────────────────────
+//
+// Clearing a tool result rewrites the prefix the server caches, so inside the
+// cache's lifetime it costs the whole conversation at full price on the next
+// turn. That is why this only ever ran at the threshold. After an hour the cache
+// has expired by itself, there is nothing left to break, and the same clearing
+// is free — which is the moment to do it, long before the lossy summarising pass
+// becomes necessary.
+
+{
+  const { coldCache, CACHE_TTL_MINUTES } = await import(
+    '../src/main/agent/microcompact.js'
+  )
+  const now = 1_700_000_000_000
+  const minutes = (n: number): number => now - n * 60_000
+
+  check('a chat the model has never answered in: nothing to clear', !coldCache(null, now))
+  check('half an hour ago: the cache is live, clearing would cost', !coldCache(minutes(30), now))
+  check('an hour and a minute ago: FREE', coldCache(minutes(61), now))
+  check(
+    'exactly the TTL is not past it',
+    !coldCache(minutes(CACHE_TTL_MINUTES), now),
+    CACHE_TTL_MINUTES,
+  )
+  check('yesterday: free', coldCache(minutes(60 * 20), now))
+  check(
+    'the window is the cache TTL, not a guess',
+    CACHE_TTL_MINUTES === 60,
+    CACHE_TTL_MINUTES,
+  )
+  check(
+    'a shorter TTL can be asked for',
+    coldCache(minutes(10), now, 5) && !coldCache(minutes(4), now, 5),
+  )
+}
+
 console.log(
   failures
     ? `\n${failures} FAILED`

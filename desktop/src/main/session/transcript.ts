@@ -149,6 +149,27 @@ export function loadTranscriptWithMeta(sessionId: string): {
   }
 }
 
+/**
+ * When this chat last heard from the model, in epoch ms, or null if never.
+ *
+ * Read from the display rows because that is where timestamps live — the
+ * transcript is ordered but not dated. It answers one question: is the server's
+ * prompt cache for this conversation still warm? See coldCache().
+ */
+export function lastAssistantAt(sessionId: string): number | null {
+  try {
+    const row = db()
+      .prepare(
+        "SELECT MAX(timestamp) AS at FROM messages WHERE session_id = ? AND role = 'assistant'",
+      )
+      .get(sessionId) as { at: number | null } | undefined;
+    return row?.at ?? null;
+  } catch (err) {
+    complainOnce("lastAssistantAt", err);
+    return null;
+  }
+}
+
 export function hasTranscript(sessionId: string): boolean {
   try {
     const row = db()
