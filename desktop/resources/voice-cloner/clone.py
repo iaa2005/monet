@@ -408,12 +408,14 @@ def main() -> None:
     widen_converter_registry()
 
     if args.device == "auto":
-        if torch.cuda.is_available():
-            dev = "cuda"
-        elif hasattr(torch, "xpu") and torch.xpu.is_available():
-            dev = "xpu"
-        else:
-            dev = "cpu"
+        # NOT xpu, even when there is one. Measured on these graphs: 2.81 s per
+        # utterance on an Intel XPU against 0.96 s on the CPU of the same
+        # machine — three times slower, because this is hundreds of tiny
+        # operations and every one pays a launch. `auto` used to pick it, which
+        # silently turned a sixty-minute budget into twenty minutes of work.
+        # `--device xpu` still honours the request; it just is not chosen for
+        # anybody.
+        dev = "cuda" if torch.cuda.is_available() else "cpu"
     else:
         dev = args.device
     device = torch.device(dev)
@@ -502,19 +504,37 @@ def main() -> None:
         # after fifteen minutes of descent is finding it out too late: a
         # WavLM-statistics objective tried here spanned 0.005 across these ten
         # and rated female voices above male ones.
-        spread = max(scored.values()) - min(scored.values())
+        # "The ten" was an assumption, and it ended a sixty-minute run in its
+        # first minute with ZeroDivisionError. A model folder does not have to
+        # carry all ten voices — the app downloads the one that was selected, so
+        # a fresh install can hold exactly F1.json, and then `males` is empty.
         males = [v for k, v in scored.items() if k.startswith("M")]
         females = [v for k, v in scored.items() if k.startswith("F")]
-        gap = sum(males) / len(males) - sum(females) / len(females)
-        print(
-            f"spread across the ten: {spread:.3f}"
-            f"  (male-female gap {gap:+.3f})"
-        )
-        if spread < 0.02:
-            sys.exit(
-                "the objective cannot tell these ten voices apart, so it cannot"
-                " fit yours either — check the recording (one speaker, no music)"
+        if len(scored) < 2:
+            # Nothing to choose between and no spread to read. The diagnostic
+            # exists to catch a metric that cannot tell voices apart; with one
+            # voice it cannot answer that either way, and pretending otherwise
+            # would either abort a good run or bless a bad one.
+            print(
+                f"only one preset in {models.name} — no spread to measure."
+                " Install more voices in the app if you want the best starting"
+                " point picked for you."
             )
+        else:
+            spread = max(scored.values()) - min(scored.values())
+            gap = (
+                f"  (male-female gap "
+                f"{sum(males) / len(males) - sum(females) / len(females):+.3f})"
+                if males and females
+                else ""
+            )
+            print(f"spread across the {len(scored)}: {spread:.3f}{gap}")
+            if spread < 0.02:
+                sys.exit(
+                    f"the objective cannot tell these {len(scored)} voices apart,"
+                    " so it cannot fit yours either — check the recording"
+                    " (one speaker, no music)"
+                )
         print(f"starting from {start.stem} ({best:+.3f})")
 
     ttl0, dp0 = style_of(start)

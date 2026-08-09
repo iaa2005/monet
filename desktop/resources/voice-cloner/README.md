@@ -372,8 +372,8 @@ help; clean audio does.
 | `--draws` | 4 | Renderings averaged per step. 1 is four times faster per step and wanders once it nears its plateau; see the two curves above. **The printed similarity depends on this** — averaging removes noise that was pushing the cosine down, so one style scores +0.875 at one draw and +0.898 at four. Compare runs only at the same setting; the JSON records which was used. |
 | `--steps` | 4 | Flow steps per pass. **Leave it.** A style fitted at 4 steps and rendered at 8 scores *lower* — +0.812 against +0.836, measured — because the step count is part of what it was fitted to. 2 steps is a different speaker outright (cos 0.47 to the same style at 4). |
 | `--init` | auto | Force a starting preset (`F1`…`M5`) instead of scoring all ten. |
-| `--device` | auto | `cuda`, `xpu`, or `cpu`. |
-| `--models` | the app's | Path to `tts-models/supertonic-3` if this folder is not inside the data dir. |
+| `--device` | auto | `auto` is CUDA if there is one, else **CPU**. `xpu` is honoured when you name it and is not chosen for you: measured 2.81 s per utterance against 0.96 s on the same machine's CPU, so `auto` picking it turned a 60-minute budget into 20 minutes of work. |
+| `--models` | the app's | The folder needs the four `.onnx` files and at least one `F*/M*.json` voice. With only one — a fresh install downloads just the selected voice — there is nothing to pick a starting point from, and the run says so and starts from it. Point this at a folder with all ten if you want the best start chosen. |
 
 ## Requirements
 
