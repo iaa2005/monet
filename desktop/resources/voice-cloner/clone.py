@@ -584,6 +584,13 @@ def main() -> None:
                     "source": "clone.py",
                     "from": args.recording.name,
                     "similarity": round(best_score, 4),
+                    # The similarity above is the training objective, and it
+                    # depends on this: averaging more renderings removes noise
+                    # that was pushing the cosine DOWN, so the same style scores
+                    # +0.875 at one draw and +0.898 at four. Two runs are only
+                    # comparable at the same setting. Recorded, so a later run
+                    # cannot quietly look better than an earlier one.
+                    "draws": args.draws,
                     "iterations": it,
                 },
             }
