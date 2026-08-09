@@ -494,12 +494,20 @@ def main() -> None:
     style_dp = dp0.clone()
     opt = torch.optim.Adam([style_ttl], lr=args.lr)
 
-    deadline = time.time() + args.minutes * 60
+    started = time.time()
+    deadline = started + args.minutes * 60
     it = 0
     smooth = 0.0
     best_score = -2.0
     best_state = (ttl0.clone(), dp0.clone())
+    # Where the score stood three quarters of the way in. If it kept climbing
+    # after that, the run ended on the budget rather than on the method, and
+    # saying so is worth more than any flag: a 12-minute run that reached 0.673
+    # was continued for 45 minutes more and reached 0.886.
+    quarter_mark, at_quarter = started + args.minutes * 45, None
     while time.time() < deadline:
+        if at_quarter is None and time.time() > quarter_mark:
+            at_quarter = best_score
         it += 1
         text = texts[it % len(texts)]
         opt.zero_grad(set_to_none=True)
@@ -551,6 +559,15 @@ def main() -> None:
     )
     print(f"\nwrote {out}  (similarity {best_score:+.3f}, {it} iterations)")
     print("Import it: Code Monet → Settings → Voice → Import a voice file")
+    if at_quarter is not None and best_score - at_quarter > 0.01:
+        print(
+            f"\nStill climbing when the time ran out: {at_quarter:+.3f} at three "
+            f"quarters, {best_score:+.3f} at the end. Continue from here —\n"
+            f"  python clone.py {args.recording} --init-json {out.name} --minutes 60\n"
+            f"which is how a +0.673 run became +0.886. Above about +0.87 the "
+            f"measurement stops meaning much:\nthe same style spoken twice only "
+            f"scores +0.92 against itself."
+        )
 
 
 if __name__ == "__main__":

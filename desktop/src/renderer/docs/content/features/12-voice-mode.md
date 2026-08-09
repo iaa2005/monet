@@ -76,7 +76,7 @@ reason is structural — blending styles pulls the result towards the AVERAGE
 voice, and a particular person is nowhere near the average. Both the blender
 and the search are gone rather than left in to disappoint.
 
-### Clone it from a recording (free, offline, twenty minutes)
+### Clone it from a recording (free, offline, an hour)
 
 **Settings → Voice → Clone your voice.** Record 8–40 seconds of anything, press
 *Prepare the project*, and the app writes a small Python program into
@@ -84,7 +84,7 @@ and the search are gone rather than left in to disappoint.
 
 ```bash
 pip install -r requirements.txt
-python clone.py voice.wav --name Sasha --minutes 20
+python clone.py voice.wav --name Sasha --minutes 60
 ```
 
 It optimises the style tensor itself:
@@ -92,12 +92,20 @@ It optimises the style tensor itself:
 ```
 style → text encoder → flow matching → vocoder → waveform
                                                     ↓
-       loss = 1 − cosine( WavLM-L4 statistics of it, of your recording )
+            loss = 1 − cosine( CAM++(it), CAM++(your recording) )
 ```
 
 Every arrow is differentiable once the ONNX graphs are converted to PyTorch, so
 this is gradient descent on the voice rather than a search among presets. It
 prints a similarity as it goes; import the JSON it writes.
+
+**Give it the hour.** Measured on a 19-second Russian recording: the best of the
+ten presets scored 0.267, twelve minutes of descent reached 0.673, and continuing
+that for forty-five minutes more reached **0.886** — verified at 0.868 on
+sentences the run had never spoken. For scale, the same style spoken twice scores
+0.92 against itself, so past about 0.87 the number stops being able to tell you
+anything and your ears take over. The program says so itself when it ends while
+still climbing, and prints the command to continue from where it stopped.
 
 **Which loss.** The first version compared one CAM++ speaker embedding — 512
 numbers per utterance, so a single scalar of gradient after the cosine. On a real

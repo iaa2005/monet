@@ -324,7 +324,14 @@ def solve_adam(
     deadline = time.time() + minutes * 60
     best = (-2.0, ttl0.clone())
     pool = training_pool(seeds)
-    print(f"adam: {len(pool)} noise draws in the pool" + (" (ignored: --fresh-noise)" if fresh_noise else ""))
+    print(
+        f"adam: {max(1, draws)} draw(s) averaged per step, "
+        + (
+            "fresh noise every step"
+            if fresh_noise
+            else f"{len(pool)} fixed draws in the pool"
+        )
+    )
     it = 0
     while time.time() < deadline:
         it += 1

@@ -113,8 +113,13 @@ export function prepareCloner(p: {
     ok: true,
     dir,
     command:
+      // Sixty, not twenty. Measured on a 19-second recording: twelve minutes of
+      // descent reached a speaker similarity of 0.673 and was still climbing,
+      // and continuing it for forty-five more reached 0.886 — against 0.92 for
+      // the same style spoken twice, which is the metric's own noise. Twenty
+      // minutes hands back half the voice the model can manage.
       `python clone.py voice.wav --name "${stem}" --lang ${p.lang} ` +
-      `--minutes 20 --models "${models}"`,
+      `--minutes 60 --models "${models}"`,
     seconds: p.samples.length / p.sampleRate,
   };
 }

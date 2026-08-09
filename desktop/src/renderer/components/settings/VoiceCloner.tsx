@@ -199,8 +199,7 @@ export function VoiceCloner({
           <p className="text-[12px] text-muted-foreground">
             Ready in <span className="text-foreground">{ready.dir}</span>. Install
             once (<code className="text-foreground">pip install -r requirements.txt</code>),
-            then run — about twenty minutes, and Ctrl-C keeps the best voice so
-            far:
+            then run — an hour on a CPU, and Ctrl-C keeps the best voice so far:
           </p>
           <div className="flex items-center gap-1.5">
             <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-black/[0.03] px-2 py-1 text-[11px] dark:bg-white/[0.04]">
