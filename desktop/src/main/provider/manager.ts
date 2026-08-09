@@ -9,10 +9,10 @@ import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'node:crypto'
 import { safeStorage } from 'electron'
-import type { LLMProvider, LLMProviderInput } from './types.js'
+import type { ActiveModel, LLMProvider, LLMProviderInput } from './types.js'
 import { PRESET_PROVIDERS } from './types.js'
 import { getDataSubdir } from '../data-dir.js'
-import { resolveProvider, inferEffortSupport } from './types.js'
+import { resolveModelOn, inferEffortSupport } from './types.js'
 
 function getStoragePath(): string {
   return join(getDataSubdir('providers'), 'providers.json')
@@ -39,7 +39,7 @@ function loadProviders(): LLMProvider[] {
   if (!existsSync(path)) return []
   try {
     const raw = JSON.parse(readFileSync(path, 'utf-8'))
-    return raw.map((p: LLMProvider) => withModelList({
+    return raw.map((p: LLMProvider) => withActiveModel({
       ...p,
       apiKey: decrypt(p.apiKey),
     }))
@@ -49,36 +49,17 @@ function loadProviders(): LLMProvider[] {
 }
 
 /**
- * Guarantee a provider has a models[] and a valid active id.
+ * Point `activeModelId` at a model that exists.
  *
- * Not a migration, though it was called one: `add()` runs it too, because a
- * provider can be created from a single model (that is what the "add a
- * provider" form collects) and everything downstream expects a list with one
- * entry selected. The second job is the one a name like "migrate" hid — an
- * activeModelId pointing at a model that has since been deleted is repaired
- * here, and that happens to live configs, not old ones.
+ * An id left over from a model that has since been deleted selects nothing,
+ * and every reader then silently falls back to models[0] — which is a
+ * different model from the one the user last chose, and nothing says so. This
+ * repairs the record instead, once, wherever it is read or written.
  */
-function withModelList(p: LLMProvider): LLMProvider {
-  if (p.models && p.models.length > 0) {
-    if (!p.activeModelId || !p.models.some(m => m.id === p.activeModelId)) {
-      p.activeModelId = p.models[0].id
-    }
-    return p
-  }
-  const id = randomUUID()
-  return {
-    ...p,
-    models: [
-      {
-        id,
-        name: p.model || 'model',
-        contextLength: p.contextLimit,
-        maxOutputTokens: p.maxTokens,
-        temperature: p.temperature,
-      },
-    ],
-    activeModelId: id,
-  }
+function withActiveModel(p: LLMProvider): LLMProvider {
+  if (!p.activeModelId || !p.models?.some(m => m.id === p.activeModelId))
+    p.activeModelId = p.models?.[0]?.id
+  return p
 }
 
 function saveProviders(providers: LLMProvider[]): void {
@@ -127,17 +108,22 @@ export class ProviderManager {
     return this.providers.find(p => p.id === id)
   }
 
-  /** The active provider with its active model resolved into the flat request
-   * fields (model/maxTokens/temperature/contextLimit/baseURL). Everything that
-   * talks to the LLM consumes this view — see resolveProvider. */
-  getActive(): LLMProvider | undefined {
-    const p = this.providers.find(p => p.isActive)
-    return p ? resolveProvider(p) : undefined
+  /** The provider record marked active — the stored one, models[] and all. */
+  getActiveProvider(): LLMProvider | undefined {
+    return this.providers.find(p => p.isActive)
+  }
+
+  /** The active provider's active model, request-ready. Everything that talks
+   * to an LLM consumes THIS, and it is a different type from the record it
+   * came out of — see ActiveModel. */
+  getActive(): ActiveModel | undefined {
+    const p = this.getActiveProvider()
+    return p ? (resolveModelOn(p) ?? undefined) : undefined
   }
 
   add(input: LLMProviderInput): LLMProvider {
     const now = new Date().toISOString()
-    const provider: LLMProvider = withModelList({
+    const provider: LLMProvider = withActiveModel({
       ...input,
       id: randomUUID(),
       createdAt: now,
@@ -152,7 +138,7 @@ export class ProviderManager {
     const idx = this.providers.findIndex(p => p.id === id)
     if (idx === -1) return null
 
-    this.providers[idx] = withModelList({
+    this.providers[idx] = withActiveModel({
       ...this.providers[idx],
       ...input,
       updatedAt: new Date().toISOString(),

@@ -12,6 +12,7 @@
  */
 
 import { getProviderManager } from "../provider/manager.js";
+import { resolveModelOn } from "../provider/types.js";
 import { createAdapter } from "../llm/adapter.js";
 import type { LLMContentBlock, LLMMessage } from "../llm/adapter.js";
 import type { AgentDefinition } from "./agent-defs.js";
@@ -66,15 +67,19 @@ export function runSubAgent(opts: SubAgentOptions): Promise<string> {
 async function runSubAgentWithCwd(opts: SubAgentOptions): Promise<string> {
   const { prompt, def, signal, emit, cwd } = opts;
 
-  const provider = getProviderManager().getActive();
-  if (!provider) return "Sub-agent error: no active provider configured.";
-  const adapter = createAdapter(provider);
-
   // The definition may override the model — but only if it still exists on the
   // active provider. A removed/renamed model falls back to the chat's model.
-  const known =
-    def?.model && provider.models?.some((m) => m.name === def.model);
+  //
+  // Resolved WITH that override, not just renamed to it. Swapping the name
+  // while keeping the chat model's numbers is how a sub-agent pinned to a
+  // small model got the big one's max_tokens, and the reverse.
+  const stored = getProviderManager().getActiveProvider();
+  if (!stored) return "Sub-agent error: no active provider configured.";
+  const known = def?.model && stored.models?.some((m) => m.name === def.model);
   const model = known ? (def!.model as string) : opts.model;
+  const provider = resolveModelOn(stored, model);
+  if (!provider) return "Sub-agent error: the active provider has no models.";
+  const adapter = createAdapter(provider);
 
   // Restricted toolset: always drop Task/Agent so a child can't spawn its own
   // children (no unbounded nesting). The definition may further narrow it via

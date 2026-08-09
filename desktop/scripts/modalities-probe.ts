@@ -1,9 +1,9 @@
 /**
- * Checks the modality inference and, more importantly, that resolveProvider
+ * Checks the modality inference and, more importantly, that resolveModelOn
  * uses it.
  *
  * The bug being pinned down: only the OpenRouter browser ever filled
- * `modalities` in. Every hand-added model was `{ id, name }`, resolveProvider
+ * `modalities` in. Every hand-added model was `{ id, name }`, resolveModelOn
  * defaulted it to `['text']`, and chat.ts then diverted attached images to
  * stashUnsupported() — no error, just a model answering about a picture it was
  * never shown.
@@ -15,7 +15,7 @@
 
 import {
   inferModalities,
-  resolveProvider,
+  resolveModelOn,
   type LLMProvider,
   type Modality,
   type ProviderKind,
@@ -97,7 +97,7 @@ check(
   !has('openai', 'internal-preview-x', 'image'),
 )
 
-// ─── resolveProvider actually uses it ───────────────────────────────────
+// ─── resolveModelOn actually uses it ────────────────────────────────────
 
 const base = {
   id: 'p1',
@@ -105,49 +105,105 @@ const base = {
   kind: 'openai' as ProviderKind,
   baseURL: 'https://my-gateway.internal/v1',
   apiKey: 'k',
-  maxTokens: 8000,
-  contextLimit: 128_000,
+  isActive: false,
   createdAt: '',
   updatedAt: '',
 }
 
 // The exact shape the "Add model" button creates: id + name, nothing else.
-const handAdded = resolveProvider({
+const handAdded = resolveModelOn({
   ...base,
-  model: 'gpt-4o',
   activeModelId: 'm1',
   models: [{ id: 'm1', name: 'gpt-4o' }],
-} as unknown as LLMProvider)
+} as unknown as LLMProvider)!
 check(
   'a hand-added gpt-4o resolves WITH image support',
   handAdded.modalities?.includes('image') === true,
   handAdded.modalities,
 )
 
-const explicitText = resolveProvider({
+const explicitText = resolveModelOn({
   ...base,
-  model: 'gpt-4o',
   activeModelId: 'm1',
   models: [{ id: 'm1', name: 'gpt-4o', modalities: ['text'] as Modality[] }],
-} as unknown as LLMProvider)
+} as unknown as LLMProvider)!
 check(
   'an explicit modality list still wins over the guess',
   explicitText.modalities?.length === 1 && explicitText.modalities[0] === 'text',
   explicitText.modalities,
 )
 
-const textModel = resolveProvider({
+const textModel = resolveModelOn({
   ...base,
   kind: 'deepseek',
-  model: 'deepseek-chat',
   activeModelId: 'm1',
   models: [{ id: 'm1', name: 'deepseek-chat' }],
-} as unknown as LLMProvider)
+} as unknown as LLMProvider)!
 check(
   'a text-only model is not given vision',
   textModel.modalities?.includes('image') === false,
   textModel.modalities,
 )
+
+// ─── A NAMED MODEL BRINGS ITS OWN NUMBERS ───────────────────────────────
+//
+// Naming a model is what a routine's pin and the background routing do, and
+// it used to change only the NAME. The rest — context window, output cap,
+// effort support — came off the provider record's flat fields, which the
+// provider form writes from models[0]. So a routine pinned to the big model
+// on a provider whose first model is small compacted at the small one's
+// threshold and had its replies cut at the small one's cap, and nothing
+// anywhere said so: a stored provider and a resolved one were the same type.
+
+{
+  const twoModels = {
+    ...base,
+    activeModelId: 'small',
+    models: [
+      { id: 'small', name: 'tiny-1', contextLength: 8_000, maxOutputTokens: 1_000 },
+      { id: 'big', name: 'huge-1', contextLength: 1_000_000, maxOutputTokens: 32_000 },
+    ],
+  } as unknown as LLMProvider
+
+  const active = resolveModelOn(twoModels)!
+  check(
+    'with no name asked for, the ACTIVE model answers',
+    active.model === 'tiny-1' && active.contextLimit === 8_000,
+    { model: active.model, ctx: active.contextLimit },
+  )
+
+  const named = resolveModelOn(twoModels, 'huge-1')!
+  check(
+    'NAMING A MODEL BRINGS ITS CONTEXT WINDOW, not the first one on the list',
+    named.contextLimit === 1_000_000,
+    named.contextLimit,
+  )
+  check(
+    '…and its output cap',
+    named.maxTokens === 32_000,
+    named.maxTokens,
+  )
+
+  // A provider can serve models this app was never told about. The name the
+  // caller asked for is still sent — refusing would break a working setup —
+  // carrying the active model's parameters, which is the best guess there is.
+  const unknown = resolveModelOn(twoModels, 'not-configured-here')!
+  check(
+    'a model the app does not know is still sent by name',
+    unknown.model === 'not-configured-here',
+    unknown.model,
+  )
+  check(
+    '…with the active model’s numbers rather than nothing',
+    unknown.contextLimit === 8_000,
+    unknown.contextLimit,
+  )
+
+  check(
+    'a provider with no models at all resolves to nothing, loudly',
+    resolveModelOn({ ...base, models: [] } as unknown as LLMProvider) === null,
+  )
+}
 
 console.log(failures === 0 ? '\nALL MODALITY CHECKS PASSED' : `\n${failures} FAILED`)
 process.exit(failures === 0 ? 0 : 1)

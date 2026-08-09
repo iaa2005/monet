@@ -3,15 +3,13 @@
  *
  * A provider (endpoint + API key) can host SEVERAL models, each with its own
  * parameters — context length, max input/output tokens, temperature, and an
- * optional per-model Base URL override. The rest of the app never deals with
- * the hierarchy: resolveProvider() answers with the ACTIVE model's parameters
- * already in place (model / maxTokens / temperature / contextLimit), so a
- * request is built from one flat object.
+ * optional per-model Base URL override.
  *
- * Those flat fields are a resolved view, not a compatibility shim for old
- * configs — resolveProvider also infers modalities and effort support, and
- * every LLM client reads them. Getting rid of them means teaching ~55 call
- * sites about `activeModel`, which is a refactor of its own.
+ * Two types, not one. `LLMProvider` is what is STORED: an endpoint, a key, and
+ * a list of models. `ActiveModel` is what a REQUEST is built from: one of
+ * those models, with its parameters already in place. resolveModelOn() is the
+ * only way from the first to the second, so "which model's context window is
+ * this?" has an answer the compiler can check.
  */
 
 export type ProviderKind = 'anthropic' | 'deepseek' | 'openai' | 'openrouter'
@@ -173,41 +171,87 @@ export interface LLMProvider {
   /** Which model is in use (falls back to the first). */
   activeModelId?: string
 
-  // ── Effective values (resolved from the active model) ──────────────────
-  // The flat view every request is built from. Filled by resolveProvider();
-  // see the note at the top of this file.
-  model: string
-  maxTokens: number
-  temperature?: number
-  /** Context window size in tokens. */
-  contextLimit: number
-  /** Input-token budget (resolved from maxInputTokens; used by compaction). */
-  inputLimit?: number
-  /** Input modalities of the active model (resolved). */
-  modalities?: Modality[]
-  /** Whether the active model exposes a reasoning-effort knob (resolved). */
-  supportsEffort?: boolean
-  /** OpenRouter: provider routing for the active model (resolved). */
-  routing?: OpenRouterRouting
-
   createdAt: string
   updatedAt: string
 }
 
 export type LLMProviderInput = Omit<LLMProvider, 'id' | 'createdAt' | 'updatedAt'>
 
-/** The provider with its ACTIVE model's parameters resolved into place. */
-export function resolveProvider(p: LLMProvider): LLMProvider {
-  const m =
+/**
+ * A provider and ONE of its models, resolved into the flat shape a request is
+ * built from.
+ *
+ * A SEPARATE TYPE, and that is the whole point. These fields used to live on
+ * LLMProvider itself, filled in by resolveProvider() on the way out of
+ * getActive() — so a stored provider and a resolved one were the same type,
+ * and nothing stopped anyone reading `provider.maxTokens` off a record that
+ * had never been resolved. Two places did:
+ *
+ *   - the model pickers in Settings and Routines read `p.model` off
+ *     providers.list(), which does not resolve, so they were showing whatever
+ *     flat copy the form last wrote rather than the active model;
+ *   - resolveModel(), which routines and background work go through, took
+ *     `mgr.get(id)` and used ITS flat fields. The form writes those from
+ *     models[0], so a routine pinned to a provider ran with the FIRST model's
+ *     context window and output cap however the model was overridden — the
+ *     compaction threshold and max_tokens of a model it was not using.
+ *
+ * With two types the compiler answers that: a stored provider has no
+ * `maxTokens` to read.
+ */
+export interface ActiveModel {
+  /** The PROVIDER's id and name — a request is attributed to the provider. */
+  id: string
+  name: string
+  kind: ProviderKind
+  apiKey: string
+  baseURL: string
+  /** The model name as the API expects it. */
+  model: string
+  maxTokens: number
+  temperature?: number
+  /** Context window size in tokens. */
+  contextLimit: number
+  /** Input-token budget (from maxInputTokens; used by compaction). */
+  inputLimit?: number
+  /** Input modalities of this model. */
+  modalities?: Modality[]
+  /** Whether this model exposes a reasoning-effort knob. */
+  supportsEffort?: boolean
+  /** OpenRouter: provider routing for this model. */
+  routing?: OpenRouterRouting
+}
+
+/**
+ * Resolve one of a provider's models into a request-ready shape.
+ *
+ * `modelName` picks a specific one — what a routine's pin or the background
+ * routing asks for. A name that is not among the configured models is still
+ * SENT (the user asked for it, and a provider may serve models this app was
+ * never told about), carrying the active model's parameters, which are the
+ * best guess available. Without a name, the active model.
+ */
+export function resolveModelOn(
+  p: LLMProvider,
+  modelName?: string,
+): ActiveModel | null {
+  const active =
     p.models?.find((x) => x.id === p.activeModelId) ?? p.models?.[0]
-  if (!m) return p
+  const named = modelName
+    ? p.models?.find((x) => x.name === modelName)
+    : undefined
+  const m = named ?? active
+  if (!m) return null
   return {
-    ...p,
+    id: p.id,
+    name: p.name,
+    kind: p.kind,
+    apiKey: p.apiKey,
     baseURL: m.baseURL?.trim() || p.baseURL,
-    model: m.name,
-    maxTokens: m.maxOutputTokens ?? p.maxTokens ?? 16000,
-    temperature: m.temperature ?? p.temperature,
-    contextLimit: m.contextLength ?? p.contextLimit ?? 200_000,
+    model: modelName || m.name,
+    maxTokens: m.maxOutputTokens ?? 16000,
+    temperature: m.temperature,
+    contextLimit: m.contextLength ?? 200_000,
     inputLimit: m.maxInputTokens,
     // Fall back to what the model id implies, not to text-only: a
     // hand-added vision model used to have its images silently diverted.
@@ -229,21 +273,27 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
     kind: 'openai',
     baseURL: 'http://localhost:11434/v1',
     apiKey: '',
-    model: 'qwen2.5:7b',
     isActive: false,
-    maxTokens: 4096,
-    contextLimit: 32_768,
-    models: [],
+    // Spelled out like every other preset. It used to be `models: []` beside a
+    // flat model name, and the manager lifted one into the other on load —
+    // which is the indirection this file no longer has, so the entry is here.
+    models: [
+      {
+        id: 'preset-local-qwen',
+        name: 'qwen2.5:7b',
+        label: 'Qwen 2.5 7B',
+        contextLength: 32_768,
+        maxOutputTokens: 4096,
+      },
+    ],
+    activeModelId: 'preset-local-qwen',
   },
   {
     name: 'Anthropic',
     kind: 'anthropic',
     baseURL: 'https://api.anthropic.com',
     apiKey: '',
-    model: 'claude-sonnet-4-20250514',
     isActive: true,
-    maxTokens: 16000,
-    contextLimit: 200_000,
     models: [
       {
         id: 'preset-claude-sonnet-4',
@@ -261,10 +311,7 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
     kind: 'deepseek',
     baseURL: 'https://api.deepseek.com/anthropic',
     apiKey: '',
-    model: 'deepseek-v4-pro',
     isActive: false,
-    maxTokens: 16000,
-    contextLimit: 1_000_000,
     models: [
       {
         id: 'preset-deepseek-v4-pro',
@@ -284,10 +331,7 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
     apiKey: '',
     // The auto-router picks a model per request; add concrete model ids
     // (e.g. anthropic/claude-sonnet-4) in Settings for agentic tool use.
-    model: 'openrouter/auto',
     isActive: false,
-    maxTokens: 16000,
-    contextLimit: 200_000,
     models: [
       {
         id: 'preset-openrouter-auto',
@@ -305,10 +349,7 @@ export const PRESET_PROVIDERS: LLMProviderInput[] = [
     kind: 'openai',
     baseURL: 'http://localhost:8080/v1',
     apiKey: '',
-    model: 'local-model',
     isActive: false,
-    maxTokens: 16000,
-    contextLimit: 128_000,
     models: [
       {
         id: 'preset-local-model',

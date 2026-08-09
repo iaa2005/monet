@@ -513,8 +513,15 @@ function RoutineDetail({
           list.map((p) => ({
             id: p.id,
             name: p.name,
-            model: p.model,
-            models: (p.models ?? []).map((m: { name: string; label?: string }) => ({
+            // The provider's own default, for the "Default (…)" option — see
+            // the same derivation in AdvancedSettings. Read off a flat field,
+            // it named whatever the provider form last wrote rather than the
+            // model a routine pinned to this provider would actually get.
+            model:
+              p.models?.find((m) => m.id === p.activeModelId)?.name ??
+              p.models?.[0]?.name ??
+              "",
+            models: (p.models ?? []).map((m) => ({
               name: m.name,
               label: m.label,
             })),

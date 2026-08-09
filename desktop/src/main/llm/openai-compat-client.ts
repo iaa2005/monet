@@ -11,7 +11,7 @@
  */
 
 import { APP_NAME } from "@shared/brand.js";
-import type { LLMProvider } from "../provider/types.js";
+import type { ActiveModel } from "../provider/types.js";
 import type {
   LLMAdapter,
   LLMEvent,
@@ -170,7 +170,7 @@ export class OpenAICompatClient implements LLMAdapter {
   private apiKey: string;
   private isOpenRouter: boolean;
 
-  constructor(provider: LLMProvider) {
+  constructor(provider: ActiveModel) {
     this.providerId = provider.id;
     this.providerName = provider.name;
     this.baseURL = provider.baseURL.replace(/\/+$/, "");

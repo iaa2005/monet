@@ -71,11 +71,18 @@ interface ProviderModelEntry {
   hidden?: boolean;
 }
 
+/**
+ * A provider AS STORED — a list of models and which one is selected.
+ *
+ * It used to carry a flat `model` and `contextLimit` beside the list, and this
+ * component read them whenever the list looked empty. Both were fictions:
+ * providers:list does not resolve anything, so those fields held whatever the
+ * provider form last wrote, and a stored provider always has a models[] to
+ * read instead. Gone from the record entirely now — see ActiveModel.
+ */
 interface Provider {
   id: string;
   name: string;
-  model?: string;
-  contextLimit?: number;
   models?: ProviderModelEntry[];
   activeModelId?: string;
 }
@@ -479,14 +486,9 @@ export function MessageInput({
   const activeProvider = providers.find((p) => p.id === activeId);
   const activeModel = activeProvider ? activeModelOf(activeProvider) : undefined;
   const modelLabel =
-    activeModel?.label ||
-    activeModel?.name ||
-    activeProvider?.model ||
-    activeProvider?.name ||
-    "Model";
+    activeModel?.label || activeModel?.name || activeProvider?.name || "Model";
   // Context meter budget comes from the ACTIVE MODEL's context length.
-  const ctxWindow =
-    activeModel?.contextLength ?? activeProvider?.contextLimit ?? 200000;
+  const ctxWindow = activeModel?.contextLength ?? 200000;
   const usedTokens = usage ? usage.input_tokens + usage.output_tokens : 0;
   const ctxPct = Math.min(100, Math.round((usedTokens / ctxWindow) * 100));
 
@@ -1737,12 +1739,12 @@ export function MessageInput({
                     </div>
                   )}
                   {providers.map((p) => {
-                    const models: ProviderModelEntry[] = p.models?.length
-                      ? p.models
-                      : p.model
-                        ? [{ id: "__flat", name: p.model }]
-                        : [];
-                    const visible = models.filter(
+                    // A provider with no models is a provider with nothing to
+                    // pick, and it is skipped below. There used to be a third
+                    // possibility here — one synthesised from a flat `model`
+                    // field under the id "__flat" — for a shape that cannot
+                    // occur: every stored provider has a models[].
+                    const visible = (p.models ?? []).filter(
                       (m) => showHiddenModels || !m.hidden,
                     );
                     if (visible.length === 0) return null;

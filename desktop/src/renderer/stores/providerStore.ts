@@ -44,6 +44,17 @@ export interface ProviderModel {
   };
 }
 
+/**
+ * A provider AS STORED — the renderer's copy of main's record.
+ *
+ * It used to carry a flat model/maxTokens/contextLimit as well, described here
+ * as "main resolves the active model into these". Main resolves them onto a
+ * DIFFERENT type now (ActiveModel), which is the point: providers:list hands
+ * back stored records and never resolved anything, so every reader of those
+ * fields in the renderer was reading a copy the provider form had written —
+ * not the model the provider would use. The model picker labelled the wrong
+ * default with it, twice.
+ */
 export interface LLMProvider {
   id: string;
   name: string;
@@ -53,11 +64,6 @@ export interface LLMProvider {
   isActive: boolean;
   models: ProviderModel[];
   activeModelId?: string;
-  // Legacy single-model view (main resolves the active model into these).
-  model: string;
-  maxTokens: number;
-  temperature?: number;
-  contextLimit: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,5 +1,5 @@
 import type { OpenRouterRouting } from "../provider/types.js";
-import type { EffortLevel, LLMProvider } from "../provider/types.js";
+import type { ActiveModel, EffortLevel } from "../provider/types.js";
 import { AnthropicClient } from "./anthropic-client.js";
 import { OpenAICompatClient } from "./openai-compat-client.js";
 
@@ -205,7 +205,7 @@ export interface LLMAdapter {
   complete(request: LLMRequest, signal?: AbortSignal): Promise<LLMMessage>;
 }
 
-export function createAdapter(provider: LLMProvider): LLMAdapter {
+export function createAdapter(provider: ActiveModel): LLMAdapter {
   switch (provider.kind) {
     case "anthropic":
     case "deepseek":

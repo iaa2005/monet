@@ -152,8 +152,17 @@ export function AdvancedSettings(): JSX.Element {
           list.map((p) => ({
             id: p.id,
             name: p.name,
-            model: p.model,
-            models: (p.models ?? []).map((m: { name: string; label?: string }) => ({
+            // The provider's own default, for the "Default (…)" option —
+            // derived from which model is selected, because that is where the
+            // answer lives. It used to read a flat `model` field off the
+            // stored record, and providers:list does not resolve one: the
+            // label showed whatever the form last wrote there, not the model
+            // this provider would actually use.
+            model:
+              p.models?.find((m) => m.id === p.activeModelId)?.name ??
+              p.models?.[0]?.name ??
+              "",
+            models: (p.models ?? []).map((m) => ({
               name: m.name,
               label: m.label,
             })),

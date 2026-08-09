@@ -170,20 +170,16 @@ function ProviderModal({
     }
   };
 
-  const [models, setModels] = useState<ProviderModel[]>(() => {
-    if (provider?.models?.length) return provider.models.map((m) => ({ ...m }));
-    if (provider)
-      return [
-        {
-          id: newModelId(),
-          name: provider.model,
-          contextLength: provider.contextLimit,
-          maxOutputTokens: provider.maxTokens,
-          temperature: provider.temperature,
-        },
-      ];
-    return [{ id: newModelId(), name: "" }];
-  });
+  // Editing a provider starts from its models; adding one starts from a blank
+  // row. There was a third branch — build a row out of the record's flat
+  // `model`/`contextLimit`/`maxTokens` — for a stored provider with no
+  // models[], which is a shape that no longer exists (and whose flat fields
+  // were only ever a copy this form itself wrote back).
+  const [models, setModels] = useState<ProviderModel[]>(() =>
+    provider?.models?.length
+      ? provider.models.map((m) => ({ ...m }))
+      : [{ id: newModelId(), name: "" }],
+  );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
@@ -204,7 +200,6 @@ function ProviderModal({
       return;
     }
     const activeId = clean[0].id;
-    const active = clean[0];
 
     setSaving(true);
     setError("");
@@ -216,12 +211,6 @@ function ProviderModal({
       isActive: provider?.isActive ?? false,
       models: clean,
       activeModelId: activeId,
-      // Legacy single-model view — main resolves from models[], but keep
-      // these coherent for anything reading the raw record.
-      model: active.name,
-      maxTokens: active.maxOutputTokens ?? 16000,
-      contextLimit: active.contextLength ?? 200_000,
-      temperature: active.temperature,
     };
     try {
       if (isEdit) await update(provider!.id, input);

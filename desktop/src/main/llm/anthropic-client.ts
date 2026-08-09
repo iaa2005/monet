@@ -5,7 +5,7 @@
  * Handles SSE streaming for Anthropic and DeepSeek (Anthropic-compatible).
  */
 
-import type { EffortLevel, LLMProvider } from "../provider/types.js";
+import type { ActiveModel, EffortLevel } from "../provider/types.js";
 import type {
   LLMAdapter,
   LLMContentBlock,
@@ -107,7 +107,7 @@ export class AnthropicClient implements LLMAdapter {
   private baseURL: string;
   private apiKey: string;
 
-  constructor(provider: LLMProvider) {
+  constructor(provider: ActiveModel) {
     this.providerId = provider.id;
     this.providerName = provider.name;
     this.baseURL = provider.baseURL.replace(/\/+$/, "");

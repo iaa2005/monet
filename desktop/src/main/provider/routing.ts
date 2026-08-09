@@ -16,8 +16,9 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getDataDir } from "../data-dir.js";
+import { resolveModelOn } from "./types.js";
 import { getProviderManager } from "./manager.js";
-import type { LLMProvider } from "./types.js";
+import type { ActiveModel } from "./types.js";
 
 export interface ModelRouting {
   /** Provider id for background work. Empty = use the active provider. */
@@ -53,7 +54,8 @@ export function setModelRouting(patch: Partial<ModelRouting>): ModelRouting {
 }
 
 export interface ResolvedModel {
-  provider: LLMProvider;
+  /** Provider AND model, resolved together — see ActiveModel. */
+  provider: ActiveModel;
   model: string;
 }
 
@@ -65,27 +67,36 @@ export interface ResolvedModel {
  * background work silently not running at all is a bug the user can't see.
  */
 export function resolveBackgroundModel(): ResolvedModel | null {
-  const mgr = getProviderManager();
-  const routing = getModelRouting();
-  if (routing.backgroundProviderId) {
-    const p = mgr.get(routing.backgroundProviderId);
-    if (p) return { provider: p, model: routing.backgroundModel || p.model };
-  }
-  const active = mgr.getActive();
-  return active ? { provider: active, model: active.model } : null;
+  return resolveModel(
+    getModelRouting().backgroundProviderId,
+    getModelRouting().backgroundModel,
+  );
 }
 
-/** A named model on a named provider, for callers that pick explicitly
- * (a routine that pins its own model). Falls back the same way. */
+/**
+ * A named model on a named provider, for callers that pick explicitly (a
+ * routine that pins its own model, or background work routed elsewhere).
+ * Falls back to the active provider when the named one is gone.
+ *
+ * RESOLVED, model and all. This used to hand back `mgr.get(id)` — the stored
+ * record — and take the model NAME from its flat `model` field while leaving
+ * every other number on it untouched. Those numbers are written by the
+ * provider form from models[0], so a routine pinned to a provider ran with
+ * the first model's context window and output cap whatever model it was
+ * actually using: the compaction threshold and max_tokens of something else.
+ * Nothing said so, because the two were the same type.
+ */
 export function resolveModel(
   providerId?: string,
   model?: string,
 ): ResolvedModel | null {
   const mgr = getProviderManager();
-  if (providerId) {
-    const p = mgr.get(providerId);
-    if (p) return { provider: p, model: model || p.model };
-  }
-  const active = mgr.getActive();
-  return active ? { provider: active, model: model || active.model } : null;
+  const pinned = providerId ? mgr.get(providerId) : undefined;
+  const resolved = pinned
+    ? resolveModelOn(pinned, model)
+    : (() => {
+        const p = mgr.getActiveProvider();
+        return p ? resolveModelOn(p, model) : null;
+      })();
+  return resolved ? { provider: resolved, model: resolved.model } : null;
 }

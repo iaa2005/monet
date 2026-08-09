@@ -131,9 +131,28 @@ if (anyProvider) {
     `${routed?.provider.name}/${routed?.model}`,
   );
   setModelRouting({ backgroundProviderId: anyProvider.id, backgroundModel: "" });
+  // "That provider's own default" is its ACTIVE model, read off the record the
+  // same way the app reads it. This used to compare against a flat `model`
+  // field on the stored provider — a copy the provider form wrote from
+  // models[0], which is not the same thing as the selected model and is not
+  // what a background run would get.
+  const ownDefault =
+    anyProvider.models?.find((m) => m.id === anyProvider.activeModelId)?.name ??
+    anyProvider.models?.[0]?.name;
   check(
     "an empty model falls back to that provider's own default",
-    resolveBackgroundModel()?.model === anyProvider.model,
+    !!ownDefault && resolveBackgroundModel()?.model === ownDefault,
+    { got: resolveBackgroundModel()?.model, want: ownDefault },
+  );
+  // …and it is resolved, not just named: the numbers a background run is
+  // built with come from that model, not from whatever sat on the record.
+  const routedDefault = resolveBackgroundModel();
+  check(
+    "…carrying that model's own context window",
+    routedDefault?.provider.contextLimit ===
+      (anyProvider.models?.find((m) => m.id === anyProvider.activeModelId)
+        ?.contextLength ?? anyProvider.models?.[0]?.contextLength),
+    routedDefault?.provider.contextLimit,
   );
 }
 setModelRouting({ backgroundProviderId: "", backgroundModel: "" });
