@@ -94,11 +94,45 @@ async function attach(PORT) {
         return {
           ws,
           eval: async (expr) => {
-            const r = await send("Runtime.evaluate", {
-              expression: expr,
-              returnByValue: true,
-              awaitPromise: true,
-            });
+            // A NAVIGATION IS NOT AN ANSWER.
+            //
+            // The app reloads its renderer once while it is starting, and an
+            // evaluate in flight across that reload comes back
+            // "Execution context was destroyed" — no value, no exception, just
+            // -32000. Every caller here turns that into "{}", which reads as
+            // "the screen rendered nothing", so this probe spent its life
+            // intermittently accusing the onboarding screen of not opening its
+            // picker. Driving the same screen by hand always worked, which is
+            // the tell.
+            //
+            // The context comes back; waiting for it is the whole fix.
+            let r;
+            for (let attempt = 0; attempt < 5; attempt++) {
+              r = await send("Runtime.evaluate", {
+                expression: expr,
+                returnByValue: true,
+                awaitPromise: true,
+              });
+              if (r.error?.message !== "Execution context was destroyed.") break;
+              await sleep(500);
+            }
+            // An evaluate that did not produce a value returns undefined, and
+            // every caller here falls back to "{}" — which then reads as "the
+            // app rendered nothing", an answer about the app rather than about
+            // the probe. There are two ways to get there and they mean
+            // different things: the expression threw (a page that navigated
+            // out from under it), or the protocol itself refused the call.
+            // Both were silent, and it took a hand-patched copy of this file
+            // to find out which. Say it.
+            if (r.error)
+              console.log(`      (CDP refused the call: ${JSON.stringify(r.error).slice(0, 200)})`);
+            else if (r.result?.exceptionDetails)
+              console.log(
+                `      (evaluate threw: ${String(
+                  r.result.exceptionDetails.exception?.description ??
+                    r.result.exceptionDetails.text,
+                ).slice(0, 200)})`,
+              );
             return r.result?.result?.value;
           },
         };
@@ -265,7 +299,14 @@ const fresh = mkdtempSync(join(tmpdir(), "first-run-fresh-"));
         hit: hit ? hit.tagName + '.' + String(hit.className).slice(0, 40) : null,
       });
     })()`);
-    const seen = JSON.parse(r ?? "{}");
+    // `r` is undefined when the evaluate never returned a value — the page
+    // was still settling and the context went out from under it. Naming that
+    // separately matters: reported as an empty object it looked like the
+    // picker had failed to open, and this check was read as a broken UI for
+    // as long as it took to go and drive the screen by hand, where it worked.
+    const seen = r === undefined
+      ? { error: "the page never answered — see the evaluate note above" }
+      : JSON.parse(r);
     check("the work picker opens on the setup screen", seen.menuOpen === true, JSON.stringify(seen));
     check(
       "AND ITS MENU IS IN FRONT, not behind the screen that opened it",

@@ -126,8 +126,18 @@ app.whenReady().then(async () => {
     if (btn) btn.click();
   })()`);
   await new Promise((r) => setTimeout(r, 1200));
+  // BY ACCESSIBLE NAME, not by `title`.
+  //
+  // The panel buttons in the title bar stopped carrying a `title` attribute
+  // when tooltips became a component (they render a Hint and an aria-label
+  // instead), and this selector went on looking for one. It found nothing,
+  // the very first check failed, and the probe returns early on that check —
+  // so every assertion below about the panel itself has been unreachable ever
+  // since, silently. A selector that can go stale without anything failing
+  // loudly is worse than no selector; aria-label is the accessible name, which
+  // is what a test should be asking for anyway.
   const opened = await js(`(() => {
-    const btn = document.querySelector('button[title="Changes"]');
+    const btn = document.querySelector('button[aria-label="Changes"]');
     if (!btn) return false;
     btn.click();
     return true;

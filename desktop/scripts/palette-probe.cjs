@@ -100,7 +100,12 @@ app.whenReady().then(async () => {
   await new Promise((r) => setTimeout(r, 3000));
 
   const js = (code) => win.webContents.executeJavaScript(code, true);
-  await js(`document.querySelector('button[title="Files"]').click()`);
+  // By accessible name: the title-bar buttons render a Hint and an aria-label,
+  // not a `title` attribute. This looked one up by `title`, got null, and threw
+  // — which in an async probe means nothing after it runs and the only sign is
+  // the watchdog firing two minutes later with "the probe itself did not
+  // finish". See the same fix in changes-panel-probe.cjs.
+  await js(`document.querySelector('button[aria-label="Files"]').click()`);
   await new Promise((r) => setTimeout(r, 1200));
 
   const p = await js(`(() => {
@@ -268,10 +273,18 @@ app.whenReady().then(async () => {
 
   // ── The accent, and how sharp the corners are ──────────────────────
   //
-  // One orange carries links, focus rings and the mark; one --radius drives
-  // every corner in the app. Both are single tokens, which is exactly why
-  // they are worth measuring: a change here lands everywhere at once, and a
-  // link that fails contrast fails on every screen.
+  // ONE hue carries links, focus rings and the mark; one --radius drives every
+  // corner in the app. Both are single tokens, which is exactly why they are
+  // worth measuring: a change here lands everywhere at once, and a link that
+  // fails contrast fails on every screen.
+  //
+  // --brand-hue is read rather than written down. This file used to name the
+  // colour — "links are orange" — and the app was deliberately taken from
+  // orange to blue; the check went on demanding the old one. Which is the
+  // very mistake the change was about: "The brand is one number now" exists
+  // because the colour had been written in more places than one, and only one
+  // of them was called the brand. A probe that keeps its own copy is one more
+  // of those places.
   const accent = await js(`(() => {
     const root = getComputedStyle(document.documentElement);
     const probe = document.createElement('div');
@@ -282,6 +295,7 @@ app.whenReady().then(async () => {
     const out = {
       link: cs.color,
       brand: cs.backgroundColor,
+      brandHue: Number(root.getPropertyValue('--brand-hue').trim()),
       radius: root.getPropertyValue('--radius').trim(),
       roundedMd: cs.borderTopLeftRadius,
     };
@@ -303,12 +317,16 @@ app.whenReady().then(async () => {
   };
 
   check(
-    "links are orange, not blue",
-    (() => {
-      const h = hue(accent.link);
-      return h !== null && h >= 10 && h <= 40;
-    })(),
-    `${accent.link} (hue ${Math.round(hue(accent.link) ?? -1)}°)`,
+    "the brand is one number, and it is a real one",
+    Number.isFinite(accent.brandHue) &&
+      accent.brandHue >= 0 &&
+      accent.brandHue < 360,
+    `--brand-hue ${accent.brandHue}`,
+  );
+  check(
+    "LINKS ARE PAINTED WITH IT, not with a colour of their own",
+    Math.abs((hue(accent.link) ?? -999) - accent.brandHue) < 12,
+    `${accent.link} (hue ${Math.round(hue(accent.link) ?? -1)}°) vs --brand-hue ${accent.brandHue}`,
   );
   check(
     "the mark shares that hue",
