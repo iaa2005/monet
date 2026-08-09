@@ -27,12 +27,12 @@ stepping a distance equal to the gap between the two voices gives:
     a random direction, same length        0.43 -> 0.477
 
 The gradient earns nothing beyond a very short step and then goes backwards.
-Style space is 12800-dimensional, the speaker embedding is 192, and the map
+Style space is 12800-dimensional, the speaker embedding is 512, and the map
 between them is so badly conditioned that steepest descent spends its budget on
 directions that change nothing audible.
 
 What this does instead. One backward pass per output coordinate gives the whole
-Jacobian d(embedding)/d(style) — 192 rows, 2.6 minutes, measured — and then the
+Jacobian d(embedding)/d(style) — 512 rows, seven minutes, measured — and then the
 step is the Levenberg-Marquardt solution
 
     dstyle = J^T (J J^T + lambda I)^-1 (target - current)
@@ -212,13 +212,16 @@ def jacobian(
 ) -> torch.Tensor:
     """d(embedding)/d(style), one backward pass per output coordinate.
 
-    A micro-benchmark said 0.8 s per row, so all 192 should cost 2.6 minutes. In
-    the real loop it is 5 to 9: holding one graph across 192 backward passes
-    grows the process to 2.7 GB and every row after the first pays for it. Four
-    iterations was all a 25-minute budget bought.
+    A micro-benchmark said 0.8 s per row, and the loop takes 5 to 9 minutes,
+    which is exactly right: WeSpeaker's CAM++ emits **512** numbers, not the 192
+    that 3D-Speaker's CAM++ does, and nobody checked. 512 x 0.8 s is seven
+    minutes. The first version of this comment blamed memory pressure, which was
+    a story invented to cover an arithmetic error — the benchmark was fine.
 
-    Hence `P`: an orthonormal [rows, 192] projection. Differentiating P·e instead
-    of e costs `rows` passes rather than 192 and still inverts the conditioning
+    Four iterations was all a 25-minute budget bought.
+
+    Hence `P`: an orthonormal [rows, 512] projection. Differentiating P·e instead
+    of e costs `rows` passes rather than 512 and still inverts the conditioning
     inside that subspace — a randomised block Gauss-Newton, with a fresh
     subspace each iteration so no direction is permanently ignored."""
     flat = e.reshape(-1)
@@ -272,7 +275,7 @@ def solve_span(
                 cols.append(
                     ((voice.say(style(bump), dp, VIEWS, lang) - e) / eps).reshape(-1)
                 )
-            J = torch.stack(cols)  # [10, 192]
+            J = torch.stack(cols)  # [10, 512]
             r = (target - e).reshape(-1)
             G = (J @ J.T).double()
             eye = torch.eye(len(PRESETS), dtype=torch.float64, device=G.device)
@@ -387,7 +390,7 @@ def solve_lm(
             print("out of time")
             break
         live = ttl.clone().requires_grad_(True)
-        # One view for the Jacobian, alternating — 192 backward passes through
+        # One view for the Jacobian, alternating — 512 backward passes through
         # two graphs would double the only expensive part of the iteration.
         view = [VIEWS[(it - 1) % len(VIEWS)]]
         e = voice.say(live, dp, view, lang)
@@ -882,8 +885,8 @@ def main() -> None:
         "--rows",
         type=int,
         default=32,
-        help="--method lm: how many of the 192 embedding coordinates to "
-        "differentiate per iteration. All 192 costs 5-9 minutes and bought four "
+        help="--method lm: how many of the 512 embedding coordinates to "
+        "differentiate per iteration. All 512 costs 5-9 minutes and bought four "
         "iterations in twenty-five; 32 buys about twenty. 0 means all of them",
     )
     sub = ap.add_subparsers(dest="cmd", required=True)

@@ -140,7 +140,7 @@ known — and step a distance equal to the gap between the two voices
 
 The target is reachable. The gradient earns +0.03 at a tenth of that distance,
 +0.07 at half of it, and goes *backwards* at full length — worse than random.
-Style space has 12800 dimensions, the speaker embedding has 192, and the map
+Style space has 12800 dimensions, the speaker embedding has 512, and the map
 between them is conditioned badly enough (condition number 2·10⁵ to 2·10⁶) that a
 single long step in the downhill direction lands nowhere useful.
 
@@ -153,7 +153,7 @@ a few large well-aimed ones did worse. What the ill conditioning actually costs 
 patience, not correctness.
 
 `inverse.py --method lm` computes the entire Jacobian d(embedding)/d(style)
-instead — 192 backward passes — and steps with
+instead — 512 backward passes — and steps with
 
 ```
 dstyle = Jᵀ (J Jᵀ + λI)⁻¹ (target − current)
@@ -164,13 +164,20 @@ the style produces the change I want in the voice*. λ is picked by measuring, o
 a log grid, every iteration. The condition number it reports is 2·10⁵ to 2·10⁶,
 so the diagnosis was right.
 
-**The cure was not.** A micro-benchmark said 0.8 s per Jacobian row, so 2.6
-minutes for all 192; in the real loop it is 5 to 9, because holding one graph
-across 192 backward passes grows the process to 2.7 GB. Four iterations was all a
-twenty-five-minute budget bought, for +0.637 on unseen views — *below* plain
-descent's +0.673. `--rows 32` projects the Jacobian onto a fresh random subspace
-each iteration to buy about twenty iterations instead of four; the honest note is
-that this has not been run to completion yet, so nothing here claims it wins.
+**The cure was not.** Each Jacobian takes 5 to 9 minutes, so four iterations was
+all a twenty-five-minute budget bought, for +0.637 on unseen views — *below* plain
+descent's +0.673.
+
+The cost was also mispredicted, by me, for a reason worth recording: a
+micro-benchmark said 0.8 s per row and I multiplied by 192, getting 2.6 minutes,
+then explained the gap with memory pressure. WeSpeaker's CAM++ emits **512**
+numbers, not the 192 that 3D-Speaker's CAM++ does, and I never checked. 512 × 0.8 s
+is seven minutes — the benchmark was right, the arithmetic was wrong, and the
+memory-pressure story was invented to cover it.
+
+`--rows 32` projects the Jacobian onto a fresh random subspace each iteration, so
+the cost stops depending on the embedding's width at all. It has not been run to
+completion; nothing here claims it wins.
 
 Two more measurements are baked in:
 
