@@ -123,7 +123,7 @@ export function SttModelPicker({
                       .then(refresh)
                   }
                   title="Delete the downloaded files"
-                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive"
+                  className="mt-1.5 shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive"
                 >
                   <Trash2 className="size-3.5" />
                 </button>
