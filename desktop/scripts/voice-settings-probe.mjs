@@ -15,7 +15,7 @@
  *
  *   npm run smoke:voicesettings          (build first — it drives out/)
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -25,6 +25,23 @@ import { WebSocket } from "ws";
 const require = createRequire(import.meta.url);
 const electron = require("electron");
 const PORT = 9401;
+
+/** Kill the app AND its children.
+ *
+ * child.kill() on Windows takes the main process only: Electron's
+ * --type=gpu-process, --type=renderer and --type=utility survive it, and the
+ * GPU one keeps a graphics context. Ten probe runs in an evening leave ten of
+ * those behind, which is how this was noticed — a PID eating the GPU long after
+ * the probe said it was done. */
+function killTree(child) {
+  try {
+    if (process.platform === "win32")
+      spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+    else child.kill();
+  } catch {
+    /* already gone */
+  }
+}
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -357,7 +374,7 @@ try {
 } catch (err) {
   check(`the probe ran (${err.message})`, false, log.slice(-600));
 } finally {
-  child.kill();
+  killTree(child);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nthe voices have names, and one column each");

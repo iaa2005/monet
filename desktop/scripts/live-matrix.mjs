@@ -29,7 +29,7 @@
  * MONET_COMPACT_TOKENS is read once, when the module loads.
  */
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import {
   copyFileSync,
   existsSync,
@@ -145,8 +145,21 @@ async function bootApp(env) {
       throw new Error(`the app exited (${child.exitCode})\n${log.slice(-2000)}`)
     await sleep(300)
   }
-  child.kill()
+  killTree(child)
   throw new Error(`the app never opened its dev API\n${log.slice(-3000)}`)
+}
+
+/** Kill the app AND its children — child.kill() leaves Electron's GPU,
+ * renderer and utility processes running on Windows, and the GPU one holds a
+ * graphics context for as long as it lives. */
+function killTree(child) {
+  try {
+    if (process.platform === 'win32')
+      spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+    else child.kill()
+  } catch {
+    /* already gone */
+  }
 }
 
 function makeApi(port, token) {
@@ -1209,7 +1222,7 @@ for (const [key, list] of groups) {
       check(`${s.name} runs to the end`, false, err.message)
     }
   }
-  app.child.kill()
+  killTree(app.child)
   await sleep(500)
   try {
     rmSync(app.dataDir, { recursive: true, force: true })

@@ -15,7 +15,7 @@
  *
  *   node scripts/first-run-probe.mjs
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -30,6 +30,23 @@ const electron = require("electron");
 // page as "the wizard never appeared".
 let portSeq = 9333;
 const nextPort = () => ++portSeq;
+
+/** Kill the app AND its children.
+ *
+ * child.kill() on Windows takes the main process only: Electron's
+ * --type=gpu-process, --type=renderer and --type=utility survive it, and the
+ * GPU one keeps a graphics context. Ten probe runs in an evening leave ten of
+ * those behind, which is how this was noticed — a PID eating the GPU long after
+ * the probe said it was done. */
+function killTree(child) {
+  try {
+    if (process.platform === "win32")
+      spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+    else child.kill();
+  } catch {
+    /* already gone */
+  }
+}
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -157,7 +174,7 @@ async function look(dataDir) {
     cdp.ws.close();
     return { seen, log };
   } finally {
-    child.kill();
+    killTree(child);
     await sleep(600);
   }
 }
@@ -257,7 +274,7 @@ const fresh = mkdtempSync(join(tmpdir(), "first-run-fresh-"));
     );
     cdp.ws.close();
   } finally {
-    child.kill();
+    killTree(child);
     await sleep(600);
   }
 }
@@ -355,7 +372,7 @@ const fresh = mkdtempSync(join(tmpdir(), "first-run-fresh-"));
     );
     cdp.ws.close();
   } finally {
-    child.kill();
+    killTree(child);
     await sleep(600);
   }
 }
