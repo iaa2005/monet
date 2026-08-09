@@ -11,6 +11,7 @@ import {
   runAgent,
   resetConversation,
   seedConversation,
+  messagesInContext,
   ensureTranscriptLoaded,
   compactSessionNow,
   undoCompaction,
@@ -18,7 +19,6 @@ import {
   rewindTranscriptToUserTurn,
   estimateSessionTokens,
   computeContextBreakdown,
-  undoPrompts,
   undoableTurnCount,
   lastTurnTokens,
   lastRunEditedFiles,
@@ -399,7 +399,28 @@ export function registerChatIPC(): void {
     // (seedConversation is a no-op once the transcript is loaded).
     await ensureTranscriptLoaded(sessionId);
     if (payload.seed && payload.seed.length > 0) {
+      // SAY when this happens, rather than removing it.
+      //
+      // The plan was to delete this fallback: a chat of 234 messages whose model
+      // context was a 3.4k text-only rebuild is a lie, and the lie is what made
+      // /compact look broken. But the lie was the METER, and that is fixed — the
+      // gauge now reads the transcript, so a chat continuing on a text-only
+      // reconstruction shows its real, small size. Deleting the seed after that
+      // buys no honesty and costs the ability to continue every chat written
+      // before the transcript store came back to life.
+      //
+      // What was actually missing is this line. The tool output is gone from the
+      // model's view either way; the difference is whether anyone is told.
+      const before = messagesInContext(sessionId).length;
       seedConversation(sessionId, payload.seed);
+      if (messagesInContext(sessionId).length > before)
+        win.webContents.send("chat:token", {
+          sessionId,
+          event: {
+            type: "harness",
+            text: `Continuing from the visible conversation only — this chat has no stored model history, so tool output from earlier turns is not in context`,
+          },
+        });
     }
 
     // Continuing a chat is what clears the mark it wears for having failed.
@@ -750,11 +771,6 @@ export function registerChatIPC(): void {
 
   // Drop the last N prompts from the model's context. Files are untouched —
   // that is the checkpoint rewind, a different question.
-  ipcMain.handle(
-    "chat:undoPrompts",
-    async (_e, sessionId: string, count?: number) =>
-      undoPrompts(sessionId || "default", count ?? 1),
-  );
 
   ipcMain.handle("chat:undoableTurns", async (_e, sessionId?: string) =>
     undoableTurnCount(sessionId || "default"),

@@ -419,14 +419,12 @@ export interface ElectronAPI {
       }[],
       space?: string,
     ) => Promise<{ ok: boolean }>;
-    /** Drop the last N prompts from the model's context (files untouched). */
-    undoPrompts: (
-      sessionId: string,
-      count?: number,
-    ) => Promise<{ removed: number; turnsLeft: number; messagesDropped: number }>;
     turnContext: (
       sessionId: string,
     ) => Promise<{ id: string; inContext: boolean }[]>;
+    /** Take ONE prompt (and its reply) out of the model's context, or put it
+     * back. The only mechanism there is — the bulk "undo last prompt" was a
+     * second name for a loop over this one, and is gone. */
     setTurnContext: (
       sessionId: string,
       messageId: string,

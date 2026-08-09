@@ -36,7 +36,6 @@ import {
   setTurnContext,
   turnContextState,
   undoCompaction,
-  undoPrompts,
 } from "../agent/index.js";
 import { estimateTokens } from "../agent/compaction.js";
 import type { LLMEvent } from "../llm/adapter.js";
@@ -343,15 +342,6 @@ export function initDevApi(): void {
             return;
           }
           const r = setTurnContext(id, b.messageId, b.inContext !== false);
-          json(res, 200, { ...r, context: contextReport(id) });
-          return;
-        }
-        if (path.startsWith("/undo/") && req.method === "POST") {
-          const id = idFrom(path, "/undo/");
-          const b = JSON.parse((await readBody(req)) || "{}") as {
-            count?: number;
-          };
-          const r = await undoPrompts(id, b.count ?? 1);
           json(res, 200, { ...r, context: contextReport(id) });
           return;
         }

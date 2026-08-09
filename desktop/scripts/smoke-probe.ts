@@ -1213,13 +1213,17 @@ async function main() {
   }
 
   // ── Context undo ───────────────────────────────────────────────────────
-  // Dropping the last prompts from the model's context, WITHOUT reverting
-  // files. Lives here rather than in a renderer probe because it operates on
-  // the agent's real conversation state, which needs the vendor runtime.
+  // Taking a prompt out of the model's context WITHOUT reverting files. Lives
+  // here rather than in a renderer probe because it operates on the agent's real
+  // conversation state, which needs the vendor runtime.
+  //
+  // There used to be an `undoPrompts(sid, n)` beside this — a loop calling
+  // setTurnContext on the last n turns, i.e. the same operation with a second
+  // name and a second button in the UI. It is gone; these checks moved onto what
+  // it was looping over, because every property they pin belongs there.
   {
     const {
       seedConversation,
-      undoPrompts,
       undoableTurnCount,
       turnContextState,
       setTurnContext,
@@ -1237,11 +1241,16 @@ async function main() {
       { role: 'assistant', content: 'third answer' },
     ])
 
-    check('undo counts the prompts in context', (await undoableTurnCount(sid)) === 3)
+    check('it counts the prompts in context', (await undoableTurnCount(sid)) === 3)
 
-    const one = await undoPrompts(sid, 1)
-    check('undoing one removes one', one.removed === 1)
-    check('and reports what is left', one.turnsLeft === 2)
+    /** The last turn still being sent — what the removed bulk call chose. */
+    const lastLive = (): string | null => {
+      const live = turnContextState(sid).filter((t) => t.inContext)
+      return live.length ? live[live.length - 1].id : null
+    }
+
+    const one = setTurnContext(sid, lastLive()!, false)
+    check('taking one out reports what it changed', one.ok && one.changed === 2, one)
     check('two prompts are still being sent', (await undoableTurnCount(sid)) === 2)
     // Marked, not truncated — that is what makes it reversible and what lets
     // the chat go on showing a prompt it has stopped sending.
@@ -1256,14 +1265,16 @@ async function main() {
       messagesInContext(sid).length,
     )
 
-    const two = await undoPrompts(sid, 2)
-    check('undoing two removes two', two.removed === 2)
+    setTurnContext(sid, lastLive()!, false)
+    setTurnContext(sid, lastLive()!, false)
     check('no prompt is left in context', (await undoableTurnCount(sid)) === 0)
     check('but all three are still on record', turnContextState(sid).length === 3)
+    check('and nothing at all is sent', messagesInContext(sid).length === 0)
 
-    // Asking for more than exists must clamp, not throw or wrap around.
-    const over = await undoPrompts(sid, 99)
-    check('undoing past the start removes nothing', over.removed === 0)
+    // A turn already out cannot be taken out again — the count must not go
+    // negative or wrap, which is what the bulk call clamped for.
+    const again = setTurnContext(sid, turnContextState(sid)[0].id, false)
+    check('taking out what is already out changes nothing', again.ok && again.changed === 0, again)
 
     // …and every one of them can come back.
     for (const t of turnContextState(sid)) setTurnContext(sid, t.id, true)
@@ -1275,7 +1286,10 @@ async function main() {
     )
 
     resetConversation(sid)
-    check('undo on an empty session is a no-op', (await undoPrompts(sid, 1)).removed === 0)
+    check(
+      'an id that points at nothing is refused, not thrown',
+      setTurnContext(sid, 'no-such-id', false).ok === false,
+    )
   }
 
   // ── Goal driver ────────────────────────────────────────────────────────

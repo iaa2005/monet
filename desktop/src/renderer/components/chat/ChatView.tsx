@@ -1132,9 +1132,21 @@ export function ChatView({
       if (!sessionId) return;
       const dropped = outOfContext.has(messageId);
       const r = await api()?.chat.setTurnContext(sessionId, messageId, dropped);
-      // A prompt sent before this build has no transcript turn to point
-      // at; saying nothing would read as a dead button.
-      if (r && !r.ok) return;
+      // A prompt with no transcript turn behind it cannot be taken out of a
+      // context it was never in — and until now this returned silently, which
+      // is indistinguishable from a broken button. It WAS broken, for every
+      // chat: the transcript store had been dead since a schema mistake, so
+      // there was never a turn to point at. Saying so costs one line and turns
+      // "nothing happens" into something a person can act on.
+      if (r && !r.ok) {
+        useChatStore
+          .getState()
+          .setError(
+            "This prompt has no model-facing turn behind it, so it cannot be " +
+              "taken out of context. Prompts sent from now on can be.",
+          );
+        return;
+      }
       await refreshContext();
     },
     [sessionId, outOfContext, refreshContext],

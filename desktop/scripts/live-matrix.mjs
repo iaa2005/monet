@@ -398,10 +398,17 @@ scenario('code_rewind', null, async (api) => {
   )
   check('and so is the file nobody touched', read(cwd, 'keep.txt') === 'untouched by anybody\n')
 
-  // Undo is the OTHER lever: it forgets, it does not restore.
+  // Taking a prompt out of context is the OTHER lever: it forgets, it does not
+  // restore. It used to be reached here through POST /undo, which was a loop
+  // over this same call for the last N turns — one mechanism wearing two names,
+  // and the second one is gone. Named by messageId now, which is what the
+  // button in the chat does.
   const ctxBefore = await api.get(`/context/${s}`)
-  const u = await api.post(`/undo/${s}`, { count: 1 })
-  check('undo removes one prompt from context', u.removed === 1, u)
+  const u = await api.post(`/context/${s}`, {
+    messageId: t1.userMessageId,
+    inContext: false,
+  })
+  check('taking a prompt out of context removes its whole turn', u.changed >= 2, u)
   check(
     '…and leaves the files exactly as the rewind left them',
     read(cwd, 'notes.txt') !== null && read(cwd, 'second.txt') === null,
@@ -1353,6 +1360,73 @@ scenario('lang_matrix', null, async (api, ctx) => {
     rows.every((r) => r.tools > 0),
     rows,
   )
+})
+
+// 14 ─ The meter tells the truth, and taking a prompt out moves it.
+//
+// Everything here was broken at once and the symptoms hid each other. The
+// transcript store had been dead since a schema mistake, so no chat had a
+// model-facing history; the meter preferred the renderer's count of the VISIBLE
+// messages, tool output included, so it read 537k while the model was sent 2,764;
+// and "remove this prompt" needs a transcript turn to point at, so it silently
+// did nothing. A manual compaction that genuinely ran looked like a no-op.
+//
+// This asks the only questions that distinguish them, against a real model:
+// does the number the gauge draws come from what is SENT, does it move when a
+// prompt is taken out, and does it come back.
+scenario('context_truth', null, async (api) => {
+  const cwd = workspace({
+    'big.txt': Array.from({ length: 400 }, (_, i) => `line ${i} ${'x'.repeat(80)}`).join('\n'),
+  })
+  const t1 = await ask(api, {
+    message: 'Read big.txt and tell me how many lines it has. Nothing else.',
+    cwd,
+    maxTurns: 6,
+  })
+  const s = t1.sessionId
+  check('it actually read the file', t1.toolCalls > 0, t1.toolCalls)
+
+  const after = await api.get(`/context/${s}`)
+  check(
+    'the transcript exists — the store is alive',
+    after.stored.messages > 0,
+    after.stored,
+  )
+  check(
+    'THE METER COUNTS WHAT IS SENT, TOOL OUTPUT INCLUDED',
+    after.inContextTokens > 1_000,
+    { inContextTokens: after.inContextTokens, stored: after.stored },
+  )
+  say(`      in context: ${after.inContextTokens} tokens, ${after.stored.messages} messages`)
+
+  // Take the prompt out. This is the ONLY mechanism now — the bulk
+  // "undo last prompt" was a second name for a loop over this one.
+  const off = await api.post(`/context/${s}`, {
+    messageId: t1.userMessageId,
+    inContext: false,
+  })
+  check('taking the prompt out changes something', off.changed > 0, off)
+  check(
+    'AND THE NUMBER MOVES',
+    off.context.inContextTokens < after.inContextTokens,
+    { before: after.inContextTokens, after: off.context.inContextTokens },
+  )
+  check(
+    'nothing was deleted — the rows are all still there',
+    off.context.stored.messages === after.stored.messages,
+    { now: off.context.stored.messages, was: after.stored.messages },
+  )
+
+  const back = await api.post(`/context/${s}`, {
+    messageId: t1.userMessageId,
+    inContext: true,
+  })
+  check(
+    'and putting it back restores the count',
+    back.context.inContextTokens === after.inContextTokens,
+    { restored: back.context.inContextTokens, was: after.inContextTokens },
+  )
+  discard(cwd)
 })
 
 // ─── Runner ─────────────────────────────────────────────────────────────

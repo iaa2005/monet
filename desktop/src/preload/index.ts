@@ -83,14 +83,6 @@ const electronAPI = {
     ): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:inject", sessionId, text, attachments, space),
     /** Drop the last N prompts from the model's context (files untouched). */
-    undoPrompts: (
-      sessionId: string,
-      count?: number,
-    ): Promise<{
-      removed: number;
-      turnsLeft: number;
-      messagesDropped: number;
-    }> => ipcRenderer.invoke("chat:undoPrompts", sessionId, count),
     /** Which prompts the model can still read — drawn directly, not derived. */
     turnContext: (
       sessionId: string,
