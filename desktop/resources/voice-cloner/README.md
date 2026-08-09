@@ -5,11 +5,12 @@ the 0.3 MB JSON the app imports in *Settings → Voice → Import a voice file*.
 
 ```bash
 pip install -r requirements.txt
-python clone.py voice.wav --name Sasha --minutes 20
+python clone.py voice.wav --name Sasha --minutes 60
 ```
 
 `voice.wav` is already here if the app recorded it for you. The result is
-`Sasha.json` next to this README.
+`Sasha.json` next to this README. An hour, not twenty minutes: twelve minutes of
+descent scored 0.673 on a real recording and forty-five more took it to 0.886.
 
 **`clone.py` is still the one to run.** `inverse.py` next to it holds three other
 methods, a benchmark with a known right answer, and the measurements that decided
@@ -88,17 +89,16 @@ draws the optimiser saw, and on ones it never did.
 | `adam` with the flow noise **fresh** — `clone.py`'s old method | +0.7136 | +0.7004 |
 | `adam`, fresh noise, **4 draws averaged per step** | +0.7489 | **+0.7105** |
 
-The bottom two rows are why the held-out column exists, and they are the result of
-the whole exercise. Fixing the flow noise makes the objective exactly reproducible
-and the score climbs to +0.909, of which **+0.24 is the optimiser learning two
-particular draws of noise** rather than a voice. Drawing fresh noise every step
-looks worse the whole way — it plateaus at +0.71 and visibly wanders, +0.714,
-+0.617, +0.636, +0.682 on consecutive checks — and ends up better where it counts,
-with a held-out gap of 0.013 against 0.236.
+The fixed-noise row is why the held-out column exists. Fixing the flow noise makes
+the objective exactly reproducible and the score climbs to +0.909, of which
+**+0.24 is the optimiser learning two particular draws of noise** rather than a
+voice: a held-out gap of 0.236 against 0.013 for fresh noise. Without a held-out
+column that run looks like the best result on the page.
 
-So `clone.py`'s original design beat every method built to replace it: +0.700
+So `clone.py`'s original design beat all three methods built to replace it: +0.700
 against +0.673, +0.637 and +0.509. Worth writing down precisely because it is not
-what any of the reasoning predicted.
+what any of the reasoning predicted — and the one thing that did improve on it
+came from inside, not from a new idea.
 
 **The one improvement that survived contact was the smallest.** `--draws 4`
 averages four fresh renderings per step: unbiased like fresh noise, with the
@@ -123,11 +123,13 @@ loses 0.085 to an unseen noise draw and nothing at all to unseen sentences
 (+0.9162 with the same texts and different seeds). Any number here quoted against
 1.0 flatters itself.
 
-## Why the gradient is the wrong direction
+## The gradient is a bad direction to step far in — and the only one that works
 
-`inverse.py` exists because of one measurement. Start at preset M4, aim at preset
-F1 — a target whose true answer we hold, so the ceiling is known — and step a
-distance equal to the gap between the two voices (‖F1 − M4‖ = 2.77):
+Read the next table and the conclusion above together, because they look like they
+disagree and they do not. `inverse.py` was built on this measurement: start at
+preset M4, aim at preset F1 — a target whose true answer we hold, so the ceiling is
+known — and step a distance equal to the gap between the two voices
+(‖F1 − M4‖ = 2.77):
 
 | direction, one voice-length | cos to F1 (start +0.43) |
 | --- | --- |
@@ -136,12 +138,19 @@ distance equal to the gap between the two voices (‖F1 − M4‖ = 2.77):
 | a random direction | +0.477 |
 | a low-rank random direction | +0.431 |
 
-The target is reachable. The gradient earns +0.07 at a tenth of that distance,
+The target is reachable. The gradient earns +0.03 at a tenth of that distance,
 +0.07 at half of it, and goes *backwards* at full length — worse than random.
 Style space has 12800 dimensions, the speaker embedding has 192, and the map
-between them is conditioned badly enough that steepest descent spends its budget
-on changes nothing can hear. That is the whole story of `clone.py`'s 273
-iterations for +0.33.
+between them is conditioned badly enough (condition number 2·10⁵ to 2·10⁶) that a
+single long step in the downhill direction lands nowhere useful.
+
+Which invites exactly the wrong conclusion, and it took two twenty-five-minute
+runs to find that out: **the gradient is only useless as a direction to travel far
+in.** It is perfectly good for a short step — +0.03 for a tenth of a voice — and
+short steps, taken a thousand times, are what carried a real recording from +0.27
+to +0.886. Every method here that tried to replace those thousand small steps with
+a few large well-aimed ones did worse. What the ill conditioning actually costs is
+patience, not correctness.
 
 `inverse.py --method lm` computes the entire Jacobian d(embedding)/d(style)
 instead — 192 backward passes — and steps with
