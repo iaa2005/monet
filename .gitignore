@@ -27,3 +27,4 @@ desktop/resources/voice-cloner/__pycache__/
 desktop/resources/voice-cloner/*.onnx
 desktop/resources/voice-cloner/*.wav
 desktop/resources/voice-cloner/*.json
+desktop/resources/voice-cloner/*.npz

@@ -330,9 +330,13 @@ def target_embedding(
         sys.exit("that clip is under three seconds — record 20-40 s of speech")
     # Several windows, averaged: one four-second slice of a recording can be
     # unrepresentative (a cough, a pause, one loud word).
-    window = int(4.0 * rate)
-    hop = max(1, (mono.numel() - window) // 5) if mono.numel() > window else 1
-    embs = []
+    window = min(int(4.0 * rate), mono.numel())
+    hop = max(1, (mono.numel() - window) // 5)
+    with torch.no_grad():
+        embs = [
+            embed_waveform(mono[p : p + window], rate, speaker)
+            for p in range(0, mono.numel() - window + 1, hop)
+        ][:6]
     stacked = torch.cat(embs, dim=0).mean(dim=0, keepdim=True)
     print(f"target from {mono.numel() / rate:.0f} s of audio, {len(embs)} windows")
     return F.normalize(stacked, dim=-1)
@@ -379,6 +383,13 @@ def main() -> None:
         help="pull towards the starting preset; higher = safer, less like you",
     )
     ap.add_argument("--init", default=None, help="preset to start from (F1…M5)")
+    ap.add_argument(
+        "--init-json",
+        type=Path,
+        default=None,
+        help="start from a style file instead of a preset — inverse.py writes one "
+        "in seconds, and descent from there beats descent from the nearest preset",
+    )
     ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "xpu"])
     args = ap.parse_args()
 
@@ -434,7 +445,10 @@ def main() -> None:
         )
         return ttl, dp
 
-    if args.init:
+    if args.init_json:
+        start = args.init_json
+        print(f"starting from {start}")
+    elif args.init:
         start = models / f"{args.init}.json"
     else:
         print("scoring the presets…")
