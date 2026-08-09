@@ -222,16 +222,32 @@ minutes — on the honest column: Adam +0.673, Levenberg-Marquardt +0.637.
 ## The ceiling, measured
 
 Those 400 synthesised voices are a sample of everything the model can be made to
-say inside the presets' span. Scored against a real 19-second recording:
+say inside the presets' span. Scored against a real 19-second recording, alongside
+what descent reaches outside it. The right-hand column uses three sentences and
+three flow-noise seeds that nothing in the run had ever spoken:
 
-| | cosine |
-| --- | --- |
-| the best of 400 voices across the whole span | **+0.3815** |
-| the best plain preset (M4) | +0.2667 |
-| `clone.py`'s twenty-minute descent, *outside* the span | **+0.6677** (held-out +0.6633) |
-| — for scale: a synthetic voice to its nearest synthetic neighbour | +0.9547 |
-| — for scale: two synthetic voices at random | +0.5061 |
-| — for scale: the same style spoken twice, different flow noise | +0.92 |
+| | familiar | **unseen** |
+| --- | --- | --- |
+| the best plain preset (M4) | +0.2667 | +0.2931 |
+| the fitted encoder's one matrix multiply | +0.1783 | +0.1607 |
+| the best of 400 voices across the whole span | +0.3815 | — |
+| `clone.py`, 12 minutes | +0.6677 | +0.6683 |
+| `clone.py`, 45 minutes more from that style | **+0.8860** | **+0.8675** |
+| — for scale: a synthetic voice to its nearest synthetic neighbour | +0.9547 | |
+| — for scale: two synthetic voices at random | +0.5061 | |
+| — for scale: the same style spoken twice, different flow noise | +0.92 | |
+
+**+0.868 on a real voice, verified on sentences it never saw** (+0.817, +0.807,
++0.815 individually — a spread of 0.01, so there is no text-fitting in it). That is
+94% of the model's own reproducibility, and it took no new method: the earlier
++0.667 was the end of a twelve-minute budget, not the end of the descent.
+
+Run it long. `--minutes 60` is a reasonable default for a voice you care about.
+
+**Keep the anchor on.** That 45-minute run was `--anchor 0`, and past iteration
+~700 it came apart: the smoothed score fell from +0.857 to +0.699 by iteration
+1100 as the style drifted off anything the model knows. Only the kept best state
+saved the result. The 0.02 default exists for exactly that.
 
 Read together, those numbers settle several arguments:
 
@@ -247,32 +263,38 @@ Read together, those numbers settle several arguments:
 - **`clone.py`'s number was honest all along**: +0.6677 optimised against +0.6633
   on unseen sentences and unseen flow noise — a gap of 0.004, because it draws
   fresh noise every step and so can never fit any particular draw.
-- **+0.9 is not a target.** The same style spoken twice scores +0.92 against
-  itself. Two *different* voices score +0.5. A number near +0.9 would mean the
-  synthesiser had matched its own reproducibility, on a speaker it was never
-  trained on. What +0.67 means is "recognisably related", which is what the
-  model can honestly do.
+- **+0.9 is the wall, and it is close.** The same style spoken twice scores +0.92
+  against itself; two *different* voices score +0.5. So +0.92 is not a score to
+  beat, it is the noise in the ruler. A 45-minute descent reached +0.868 on unseen
+  sentences, which leaves almost nothing between the result and the measurement's
+  own floor. Past that point the metric stops being able to tell you anything, and
+  the question becomes whether it sounds right rather than what it scores.
 
 ## What to expect
 
 Measured on this pipeline (CPU, one core-heavy iteration ≈ 2 s):
 
-- With the speaker loss on a real 19-second recording: the best single preset
-  scored 0.347 and the descent reached **0.673** in 273 iterations (12 min, CPU),
-  still rising when the budget ran out. All ten presets were scored first and the
-  five female ones came in at 0.135-0.220 against 0.272-0.347 for the male ones,
-  which is a useful sign the metric is not noise.
+- On a real 19-second recording: the best single preset scored 0.347 and the
+  descent reached **0.673** in 273 iterations (12 min, CPU), still rising when the
+  budget ran out — and continuing it for 45 minutes more reached **0.886**, so
+  "still rising" was worth taking literally. All ten presets were scored first and
+  the five female ones came in at 0.135-0.220 against 0.272-0.347 for the male
+  ones, which is a useful sign the metric is not noise.
 - Starting from the nearest preset, similarity climbed from **0.31 → 0.45**
   within eight iterations at `--lr 1e-3`.
 - `--lr 0.02` **destroys** the voice within three steps: the style's own values
   average 0.02, so a step that size is a different voice, not a nudge. The
   default is 1e-3 for that reason.
 - Numbers to read: ~0.3 is "a stranger of roughly the right kind", ~0.6 is
-  recognisably related, past ~0.75 is a good likeness. A single line wobbles by
-  ±0.03 because every pass draws fresh flow noise — the smoothed column is the
-  one that matters, and it is what picks the winner.
-- 20 minutes ≈ 500 iterations. There is no harm in `--minutes 120`; the best
-  style so far is kept, so stopping early with Ctrl-C only costs the last few.
+  recognisably related, ~0.87 is as close as the metric can see (the same style
+  spoken twice scores 0.92). A single line wobbles by ±0.03 because every pass
+  draws fresh flow noise — the smoothed column is the one that matters, and it is
+  what picks the winner.
+- 20 minutes ≈ 500 iterations, and 60 is better. There is no harm in
+  `--minutes 120`; the best style so far is kept, so stopping early with Ctrl-C
+  only costs the last few. Keep `--anchor` at its default on long runs — a run at
+  0 came apart after ~700 iterations and only the kept best state survived.
+- `--init-json` continues from a style file, which is how 0.673 became 0.886.
 
 It is a likeness, not a forgery. The model was never trained to reproduce
 arbitrary speakers.
