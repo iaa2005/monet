@@ -48,8 +48,14 @@ function db(): ReturnType<typeof getSessionDb> {
         in_context INTEGER NOT NULL DEFAULT 1,
         PRIMARY KEY (session_id, seq)
       );
-      CREATE INDEX IF NOT EXISTS idx_transcript_msgid
-        ON transcript(session_id, msg_id);
+      -- The index on msg_id is created AFTER the migrations below, not here.
+      -- Here it referenced a column that only exists on a database created by
+      -- this version, so on every upgraded one the whole batch died with
+      -- "no such column: msg_id" — before the ALTER TABLE that would have
+      -- added it. The ready flag stayed false, so every later call re-ran the
+      -- same failing batch, and replaceTranscript's catch swallowed it all: no
+      -- durable transcript, no context events, for any session, indefinitely.
+      -- Reproduced on a real 15-session database.
       CREATE INDEX IF NOT EXISTS idx_transcript_session ON transcript(session_id);
       CREATE TABLE IF NOT EXISTS context_events (
         id TEXT PRIMARY KEY,
@@ -88,6 +94,11 @@ function db(): ReturnType<typeof getSessionDb> {
       d.exec(
         "ALTER TABLE transcript ADD COLUMN in_context INTEGER NOT NULL DEFAULT 1",
       );
+    // Now that the column is certain to exist. An index on a column added by a
+    // migration cannot be declared alongside the table that predates it.
+    d.exec(
+      "CREATE INDEX IF NOT EXISTS idx_transcript_msgid ON transcript(session_id, msg_id)",
+    );
     ready = true;
   }
   return d;
@@ -128,7 +139,12 @@ export function loadTranscriptWithMeta(sessionId: string): {
       ids: rows.map((r) => r.msg_id),
       inContext: rows.map((r) => r.in_context !== 0),
     };
-  } catch {
+  } catch (err) {
+    // The most damaging silence of the three: the chat still renders, because
+    // the display rows are a different table, so nothing looks wrong — and the
+    // model quietly gets a text-only rebuild of a conversation whose tool
+    // output it can no longer see.
+    complainOnce("loadTranscript", err);
     return { messages: [], hidden: [], ids: [], inContext: [] };
   }
 }
@@ -176,9 +192,30 @@ export function replaceTranscript(
       );
     });
     tx();
-  } catch {
+  } catch (err) {
     /* best-effort persistence — a failed write never breaks a run */
+    complainOnce("replaceTranscript", err);
   }
+}
+
+/**
+ * Say it once, then never again.
+ *
+ * This file's catches are deliberate — losing a transcript write must not kill a
+ * run in progress. But silence turned a one-line schema mistake into weeks of a
+ * feature that simply did not exist: no durable transcript for any chat, no
+ * context events, and `/compact` quietly doing nothing because there was nothing
+ * to compact. The cost of a log line is nothing; the cost of not having one was
+ * everything above.
+ */
+const complained = new Set<string>();
+function complainOnce(where: string, err: unknown): void {
+  if (complained.has(where)) return;
+  complained.add(where);
+  console.error(
+    `[transcript] ${where} failed and the durable history is now off:`,
+    err instanceof Error ? err.message : err,
+  );
 }
 
 export function clearTranscript(sessionId: string): void {

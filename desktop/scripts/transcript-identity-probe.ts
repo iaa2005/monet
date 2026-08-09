@@ -44,6 +44,66 @@ const { getSessionDb } = await import('../src/main/session/store.js')
 type Msg = { role: 'user' | 'assistant'; content: string }
 const said = (role: Msg['role'], content: string): Msg => ({ role, content })
 
+// ─── A DATABASE FROM AN OLDER BUILD ─────────────────────────────────────
+//
+// MUST BE FIRST: the store's schema work runs once, on the first call, so a
+// probe that touches it earlier can never see this path — which is exactly how
+// the bug below survived. Every case in this file used a fresh temp data dir,
+// where the table is created complete.
+//
+// The real failure, found on a 15-session database: the msg_id index was
+// declared in the same exec batch as CREATE TABLE IF NOT EXISTS, so on a table
+// created before that column existed the batch died with "no such column:
+// msg_id" — before the ALTER TABLE that adds it. The ready flag stayed false,
+// every later call re-ran the same failing batch, and the catches turned it
+// into silence: no durable transcript and no context events for ANY chat, and
+// /compact doing nothing because there was nothing to compact.
+
+{
+  // The five columns the old build wrote, created before transcript.ts opens.
+  getSessionDb().exec(`
+    CREATE TABLE IF NOT EXISTS transcript (
+      session_id TEXT NOT NULL,
+      seq INTEGER NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      hidden INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (session_id, seq)
+    );
+  `)
+  const before = (
+    getSessionDb().prepare('PRAGMA table_info(transcript)').all() as {
+      name: string
+    }[]
+  ).map((c) => c.name)
+  check(
+    'the legacy table really is missing the columns',
+    !before.includes('msg_id') && !before.includes('in_context'),
+    before,
+  )
+
+  replaceTranscript('legacy', [said('user', 'kept')] as never, [false], {
+    ids: ['m-legacy'],
+    inContext: [true],
+  })
+  const back = loadTranscriptWithMeta('legacy')
+  check(
+    'A TRANSCRIPT STILL WRITES ON A DATABASE FROM AN OLDER BUILD',
+    back.messages.length === 1 && back.ids[0] === 'm-legacy',
+    { messages: back.messages.length, ids: back.ids },
+  )
+  const after = (
+    getSessionDb().prepare('PRAGMA table_info(transcript)').all() as {
+      name: string
+    }[]
+  ).map((c) => c.name)
+  check(
+    '…because the migration ran instead of dying on its own index',
+    after.includes('msg_id') && after.includes('in_context'),
+    after,
+  )
+}
+
 // ─── Identity survives a save ───────────────────────────────────────────
 
 {
