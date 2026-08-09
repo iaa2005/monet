@@ -1285,6 +1285,76 @@ scenario('recon_trigger', null, async (api, ctx) => {
   }
 })
 
+// 12c ─ One request, five languages, and the features that read it.
+//
+// Two features decide whether to run by matching the user's prose against a
+// list of English verbs — recon's `worthRecon` and clarify's `worthClarifying`,
+// the second a byte-for-byte copy of the first. Neither knows any language but
+// English (and, since this week, some Russian stems). So the same brief, written
+// five ways, should get five different treatments — which is the claim under
+// test here, and the reason a table beats an argument.
+//
+// The request is deliberately AMBIGUOUS in every language: "add a limit to the
+// list" does not say what limit, where, or what happens past it. If clarify is
+// worth having, it should ask. If it only asks in English, it is not a feature,
+// it is a phrasebook.
+scenario('lang_matrix', null, async (api, ctx) => {
+  writeFileSync(
+    join(ctx.dataDir, 'agent-features.json'),
+    JSON.stringify({ recon: true, clarify: true }),
+    'utf8',
+  )
+  const SEED = {
+    'list.js': [
+      'export function render(items) {',
+      '  return items.map((i) => `<li>${i.name}</li>`).join("")',
+      '}',
+      '',
+    ].join('\n'),
+  }
+  const ASKS = [
+    ['en', 'Add a limit to the list in list.js'],
+    ['ru', 'Добавь ограничение в список в list.js'],
+    ['tr', 'list.js içindeki listeye bir sınır ekle'],
+    ['de', 'Füge der Liste in list.js eine Begrenzung hinzu'],
+    ['zh', '在 list.js 的列表里加一个上限'],
+  ]
+  const rows = []
+  for (const [lang, message] of ASKS) {
+    const r = await ask(api, { cwd: workspace(SEED), maxTurns: 12, message })
+    const harness = (r.steps ?? [])
+      .filter((s) => s.type === 'harness')
+      .map((s) => s.text ?? '')
+    rows.push({
+      lang,
+      chars: message.length,
+      clarify: harness.some((t) => /anything ambiguous/i.test(t)),
+      recon: harness.some((t) => /Reconnaissance/i.test(t)),
+      tools: (r.steps ?? []).filter((s) => s.type === 'tool').length,
+    })
+  }
+  say('')
+  say('      lang  chars  clarify  recon  tools')
+  for (const r of rows)
+    say(
+      `      ${r.lang}    ${String(r.chars).padStart(3)}    ` +
+        `${r.clarify ? 'yes    ' : ' no    '}  ${r.recon ? 'yes  ' : ' no  '}  ${r.tools}`,
+    )
+  say('')
+
+  const same = (key) => new Set(rows.map((r) => r[key])).size === 1
+  // The claim is not that either feature must fire. It is that the SAME brief
+  // must be treated the same way whatever language it is written in. Whichever
+  // way these go, they must go together.
+  check('clarify treats all five languages alike', same('clarify'), rows)
+  check('recon treats all five languages alike', same('recon'), rows)
+  check(
+    'and every one of them actually got the work done',
+    rows.every((r) => r.tools > 0),
+    rows,
+  )
+})
+
 // ─── Runner ─────────────────────────────────────────────────────────────
 
 if (!existsSync(MAIN)) {
