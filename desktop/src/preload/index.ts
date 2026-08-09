@@ -158,7 +158,6 @@ const electronAPI = {
     contextBreakdown: (
       sessionId?: string,
       space?: string,
-      messageTokens?: number,
     ): Promise<{
       budget: number;
       used: number;
@@ -169,7 +168,6 @@ const electronAPI = {
         "chat:contextBreakdown",
         sessionId,
         space,
-        messageTokens,
       ),
     onToken: (
       callback: (payload: { sessionId: string; event: LLMEvent }) => void,

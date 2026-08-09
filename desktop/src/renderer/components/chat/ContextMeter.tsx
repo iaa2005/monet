@@ -9,7 +9,7 @@
  * refreshed whenever the session or its usage changes, so the gauge persists
  * across chat switches and stays live through a session (never disappears).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Gauge } from "lucide-react";
 import {
   DropdownMenu,
@@ -17,32 +17,28 @@ import {
   DropdownMenuContent,
 } from "@/components/ui/dropdown-menu";
 import { useChatStore } from "@/stores/chatStore";
-import type { ChatMessage } from "@/types/chat";
 import type { ContextBreakdown, ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
-/** Rough token estimate of the VISIBLE messages (chars/4). Computed in the
- * renderer because it always has the loaded history — even for old chats the
- * main process never ran this session, which otherwise counted as 0. */
-function estimateMessageTokens(messages: ChatMessage[]): number {
-  let chars = 0;
-  for (const m of messages) {
-    chars += m.content?.length ?? 0;
-    if (m.toolCall) {
-      chars += m.toolCall.name?.length ?? 0;
-      chars += m.toolCall.output?.length ?? 0;
-      try {
-        chars += JSON.stringify(m.toolCall.input ?? {}).length;
-      } catch {
-        /* skip */
-      }
-    }
-  }
-  return Math.ceil(chars / 4);
-}
+/*
+ * There is no estimate here any more, and that is the fix.
+ *
+ * This counted the VISIBLE messages — tool inputs and outputs included — and the
+ * main process preferred it over its own, on the reasoning that the renderer
+ * always has the loaded history. What it always has is the DISPLAY history, and
+ * compaction does not touch that: it truncates the model-facing transcript.
+ *
+ * So a chat reported 537,000 tokens while the model was being sent 2,764, and a
+ * manual compaction that genuinely ran (3,405 → 2,764, recorded in
+ * context_events) left the number exactly where it was. Which reads, correctly,
+ * as "compaction does nothing".
+ *
+ * The number now comes from the transcript alone, which is the thing that is
+ * sent, the thing compaction shrinks, and the thing you are billed for.
+ */
 
 function fmt(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -79,7 +75,8 @@ export function ContextMeter({
   className?: string;
 }): JSX.Element {
   const messages = useChatStore((s) => s.messages);
-  const msgTokens = useMemo(() => estimateMessageTokens(messages), [messages]);
+  // Refetch when the conversation grows — the count, not an estimate of it.
+  const msgCount = messages.length;
   const [data, setData] = useState<ContextBreakdown | null>(null);
   const [loading, setLoading] = useState(false);
   const [compactions, setCompactions] = useState<
@@ -123,7 +120,7 @@ export function ContextMeter({
     return () => {
       cancelled = true;
     };
-  }, [sessionId, msgTokens, refreshKey]);
+  }, [sessionId, msgCount, refreshKey]);
 
   // Compaction history for this chat — powers "rewind through compact".
   useEffect(() => {
@@ -145,7 +142,7 @@ export function ContextMeter({
     return () => {
       cancelled = true;
     };
-  }, [sessionId, msgTokens, refreshKey]);
+  }, [sessionId, msgCount, refreshKey]);
 
   const undoCompact = async (id: string): Promise<void> => {
     await api()?.chat.undoCompact(sessionId ?? "default", id);
@@ -171,9 +168,9 @@ export function ContextMeter({
     useChatStore.getState().bumpContext();
   };
 
-  // Recompute whenever the session, space, or the visible message tokens change
-  // (message tokens move on every turn AND on chat switches), passing the
-  // renderer's own message estimate so old chats count correctly.
+  // Recompute when the session or space changes, and when the conversation grows
+  // — a turn is what moves the context. The main process answers from the
+  // transcript; nothing about the display history is passed to it.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -182,7 +179,6 @@ export function ContextMeter({
         const r = await api()?.chat.contextBreakdown(
           sessionId ?? "default",
           space,
-          msgTokens,
         );
         if (!cancelled && r) setData(r);
       } finally {
@@ -192,11 +188,11 @@ export function ContextMeter({
     return () => {
       cancelled = true;
     };
-  }, [sessionId, space, msgTokens]);
+  }, [sessionId, space, msgCount]);
 
   const budget = data?.budget ?? ctxWindow;
   // The breakdown total (accurate) once loaded; before that a light fallback.
-  const used = data?.used ?? Math.max(usedTokens, msgTokens);
+  const used = data?.used ?? usedTokens;
   const pct = budget > 0 ? Math.min(100, Math.round((used / budget) * 100)) : 0;
   const pctOf = (n: number): number => (budget > 0 ? (n / budget) * 100 : 0);
 

@@ -886,8 +886,8 @@ export function registerChatIPC(): void {
   // Per-category breakdown of what fills the context window right now.
   ipcMain.handle(
     "chat:contextBreakdown",
-    (_e, sessionId?: string, space?: string, messageTokens?: number) =>
-      computeContextBreakdown(sessionId || "default", space, messageTokens),
+    (_e, sessionId?: string, space?: string) =>
+      computeContextBreakdown(sessionId || "default", space),
   );
 
   // Code Rewind: restore the workspace to a turn's checkpoint (shadow git).

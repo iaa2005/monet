@@ -1218,17 +1218,43 @@ export function lastRunEditedFiles(sessionId: string): string[] {
 export async function computeContextBreakdown(
   sessionId: string,
   space?: string,
-  messageTokensOverride?: number,
 ): Promise<ContextBreakdown> {
   const provider = getProviderManager().getActive();
   const budget = provider?.inputLimit ?? provider?.contextLimit ?? 200_000;
-  // Prefer the renderer's estimate (it always has the visible history, even for
-  // old chats never run in this process); fall back to the in-memory run.
-  const messageTokens =
-    messageTokensOverride ??
-    // Only what is still sent — a prompt taken out of context stops
-    // costing tokens, and the meter has to say so.
-    estimateTokens((conversations.get(sessionId) ?? []).filter(isInContext));
+  // The renderer's estimate is a FALLBACK, not a preference — and getting that
+  // backwards is why "/compact does nothing" was reported on a chat the meter
+  // said held 300k tokens.
+  //
+  // The renderer counts the VISIBLE messages, tool output included. Compaction
+  // truncates the model-facing transcript and never touches the display rows, so
+  // the override could not move: a manual compaction that really did run (3405
+  // tokens down to 2764, recorded in context_events) left the meter reading the
+  // same 300k, because that 300k was the display table and had not been sent to
+  // a model in the first place.
+  //
+  // So: when this process actually holds the conversation, measure THAT, and
+  // only what is still in context — a prompt taken out stops costing tokens and
+  // the meter has to say so. The override answers for the one case it was added
+  // for: an old chat this process has never run.
+  // ONE source: the transcript, which is what the model is actually sent. The
+  // live map when a turn has run, the durable rows otherwise (it stays empty
+  // until then — measured: live 0 messages, stored 9).
+  //
+  // There used to be a third source, and it was the bug: the renderer passed an
+  // estimate of the VISIBLE messages, tool output included, and it always won.
+  // So a chat whose model context was 2,764 tokens reported 537,000, and a
+  // manual compaction that really ran — 3,405 down to 2,764, in context_events —
+  // moved the number not at all, because that number was the display table.
+  // A meter that measures something compaction cannot touch is not a meter.
+  const live = conversations.get(sessionId);
+  const counted =
+    live && live.length > 0
+      ? live.filter(isInContext)
+      : (() => {
+          const stored = loadTranscriptWithMeta(sessionId);
+          return stored.messages.filter((_, i) => stored.inContext[i] !== false);
+        })();
+  const messageTokens = estimateTokens(counted);
 
   let systemTokens = 0;
   let toolTokens = 0;
