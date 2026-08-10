@@ -40,6 +40,13 @@ if (isAcpLaunch(process.argv)) {
 // build, so the opt-out has to be set now — before any prompt exists.
 applyLeanEnv();
 
+// Every new webContents starts from this, and a popup's first request can
+// leave before any per-window handler runs. Session-level setUserAgent was not
+// enough: Google still answered "this browser or app may not be secure".
+app.userAgentFallback =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like " +
+  `Gecko) Chrome/${process.versions.chrome || "120.0.0.0"} Safari/537.36`;
+
 const isDev = !app.isPackaged;
 
 let mainWindow: BrowserWindow | null = null;
@@ -175,6 +182,7 @@ function installWebviewGuards(win: BrowserWindow): void {
     });
 
     guest.on("did-create-window", (child) => {
+      child.webContents.setUserAgent(chromeUserAgent());
       child.once("ready-to-show", () => child.show());
     });
 
@@ -190,6 +198,29 @@ function installWebviewGuards(win: BrowserWindow): void {
     if (!uaSet.has(ses)) {
       uaSet.add(ses);
       ses.setUserAgent(chromeUserAgent());
+      // THE CLIENT HINTS ARE THE OTHER TELL, and the one that survived the UA
+      // fix: Chromium sends Sec-CH-UA listing its brands, and in Electron that
+      // list says "Electron". Google reads it, and answers "this browser or app
+      // may not be secure" however clean the User-Agent string is. Rewriting
+      // both is what makes the pane look like what it actually is — Chromium of
+      // this version.
+      const major = (process.versions.chrome || "120").split(".")[0];
+      ses.webRequest.onBeforeSendHeaders((details, callback) => {
+        const h = details.requestHeaders;
+        h["User-Agent"] = chromeUserAgent();
+        if ("Sec-CH-UA" in h || "sec-ch-ua" in h) {
+          delete h["sec-ch-ua"];
+          h["Sec-CH-UA"] =
+            `"Chromium";v="${major}", "Google Chrome";v="${major}", "Not?A_Brand";v="24"`;
+        }
+        if ("sec-ch-ua-full-version-list" in h || "Sec-CH-UA-Full-Version-List" in h) {
+          delete h["sec-ch-ua-full-version-list"];
+          h["Sec-CH-UA-Full-Version-List"] =
+            `"Chromium";v="${process.versions.chrome}", ` +
+            `"Google Chrome";v="${process.versions.chrome}", "Not?A_Brand";v="24.0.0.0"`;
+        }
+        callback({ requestHeaders: h });
+      });
     }
 
     // The visit log behind the empty tab's "Recent" section. Recorded here
