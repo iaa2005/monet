@@ -35,6 +35,9 @@ export type SourceKind = "github" | "registry";
  */
 type SourceCommon = {
   id: string;
+  /** Display name on the source chip. When absent the label is derived from the
+   * id — `repo/sub` for GitHub sources, the registry's own name otherwise. */
+  name?: string;
   /** Off means not listed and not fetched — the simple switch the chips are. */
   enabled: boolean;
   /** Ships with the app. Can be switched off, never deleted: removing it would
@@ -87,13 +90,23 @@ const MARKETPLACES: Extract<SkillSource, { kind: "registry" }> = {
   builtin: true,
 };
 
+const MONET_SKILLS: Extract<SkillSource, { kind: "github" }> = {
+  kind: "github",
+  id: "iaa2005/monet-directory/skills",
+  repo: "iaa2005/monet-directory",
+  sub: "skills",
+  name: "Code Monet Skills",
+  enabled: true,
+  builtin: true,
+};
+
 /** Registries the app understands, by id and by endpoint — a source naming
  * anything else is dropped rather than queried with a guessed dialect. */
 const KNOWN_REGISTRIES = [SKILLSDIRECTORY, MARKETPLACES];
 
 /** Ids that ship with the app — switchable, not removable. */
 export const BUILTIN_IDS = new Set([
-  "iaa2005/monet-directory/skills",
+  MONET_SKILLS.id,
   SKILLSDIRECTORY.id,
   MARKETPLACES.id,
 ]);
@@ -136,11 +149,13 @@ export function parseStoredSource(raw: StoredSource): SkillSource | null {
     const norm = normalizeSource(raw);
     if (norm.split("/").length < 2) return null;
     const parts = norm.split("/");
+    const builtin = DEFAULT_SOURCES.find((d) => d.id === norm);
     return {
       kind: "github",
       id: norm,
       repo: parts.slice(0, 2).join("/"),
       sub: parts.slice(2).join("/"),
+      ...(builtin?.name ? { name: builtin.name } : {}),
       enabled: true,
       builtin: BUILTIN_IDS.has(norm),
     };
@@ -183,7 +198,7 @@ export function toStored(s: SkillSource): StoredSource {
  * where "not just a search" comes from. It is a source like any other now, so
  * its chip is there before anything is typed. */
 export const DEFAULT_SOURCES: SkillSource[] = [
-  parseStoredSource("iaa2005/monet-directory/skills")!,
+  MONET_SKILLS,
   SKILLSDIRECTORY,
   MARKETPLACES,
 ];

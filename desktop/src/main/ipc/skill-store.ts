@@ -412,8 +412,8 @@ async function listGithub(src: Extract<SkillSource, { kind: "github" }>): Promis
   const prefix = src.sub ? `${src.sub}/` : "";
   const dirs = paths
     .filter((p) => p.startsWith(prefix) && p.endsWith("/SKILL.md"))
-    .map((p) => p.slice(0, -"/SKILL.md".length))
-    .slice(0, 60);
+    .map((p) => p.slice(0, -"/SKILL.md".length));
+    // .slice(0, 60);
   const resolve = installResolver();
   const metas = await Promise.allSettled(
     dirs.map(async (dir) => {

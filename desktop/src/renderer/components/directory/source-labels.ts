@@ -27,7 +27,8 @@ export interface LabelableSource {
 
 /** The chip text before collisions are considered. */
 function short(s: LabelableSource): string {
-  if (s.kind === "registry") return s.name ?? s.id;
+  if (s.name) return s.name;
+  if (s.kind === "registry") return s.id;
   const repo = s.repo?.split("/")[1] ?? s.id;
   return [repo, s.sub].filter(Boolean).join("/");
 }

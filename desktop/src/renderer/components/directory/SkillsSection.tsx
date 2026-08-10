@@ -57,6 +57,8 @@ const FILTERS = [
 ];
 /** Must match REGISTRY_PAGE in the main process — the offset it pages by. */
 const REGISTRY_PAGE = 100;
+/** How many skills a repo group shows before offering "Show all N skills". */
+const GROUP_INITIAL = 10;
 
 const SORTS = [
   { label: "Most installed", value: "installs" },
@@ -608,6 +610,9 @@ export function SkillsSection({ query }: { query: string }): JSX.Element {
         )}
       </div>
 
+      {/* Sentinel for infinite scroll — triggers registry paging. */}
+      <div ref={sentinel} className="h-px" />
+
       {/* Read it, and see the audit, before it becomes instructions the model
           follows. Keyed by uid so switching skills starts over rather than
           carrying the previous verdict across. */}
@@ -647,11 +652,20 @@ function RepoGroupCard({
   onToggle: () => void;
   renderCard: (s: StoreSkill, look?: CardLook) => JSX.Element;
 }): JSX.Element {
+  const [showAll, setShowAll] = useState(false);
+  const visible =
+    !open || showAll || group.items.length <= GROUP_INITIAL
+      ? group.items
+      : group.items.slice(0, GROUP_INITIAL);
   return (
     <div className="rounded-lg border border-border">
       <button
         type="button"
-        onClick={onToggle}
+        onClick={() => {
+          // Reset the "show all" when collapsing — reopening starts fresh.
+          if (open) setShowAll(false);
+          onToggle();
+        }}
         className="flex w-full items-start gap-2.5 p-4 text-left"
       >
         <OwnerAvatar owner={avatarOwner(group.key)} />
@@ -690,11 +704,17 @@ function RepoGroupCard({
         </span>
       </button>
       {open && (
-        // No padding, no gap, no rounding: the group is the card and these are
-        // its lines, so the whole thing reads as one table rather than cards
-        // nested inside a card.
         <div className="border-t border-border">
-          {group.items.map((s) => renderCard(s, "row"))}
+          {visible.map((s) => renderCard(s, "row"))}
+          {group.items.length > GROUP_INITIAL && !showAll && (
+            <button
+              type="button"
+              onClick={() => setShowAll(true)}
+              className="w-full border-b border-border/60 px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.04]"
+            >
+              Show all {group.items.length} skills
+            </button>
+          )}
         </div>
       )}
     </div>
