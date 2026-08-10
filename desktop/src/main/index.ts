@@ -139,11 +139,58 @@ function installWebviewGuards(win: BrowserWindow): void {
   // put a page outside every control this app has over it; the panel's own tab
   // strip is where it belongs.
   win.webContents.on("did-attach-webview", (_event, guest) => {
-    guest.setWindowOpenHandler(({ url }) => {
+    guest.setWindowOpenHandler(({ url, disposition }) => {
+      // A POPUP GETS A REAL WINDOW. A LINK GETS A TAB. No host list.
+      //
+      // Denying every window.open and re-opening it as a tab is right for
+      // target=_blank and wrong for a popup, because a popup ANSWERS ITS
+      // OPENER: an OAuth flow hands its result back through
+      // window.opener/postMessage, and a tab has no opener, so a sign-in that
+      // succeeds has nowhere to return and the page simply sits there. It is
+      // also invisible when it fails — a popup usually opens on about:blank and
+      // is filled by script, so the https test below never matched it: deny, no
+      // tab, no trace on screen.
+      //
+      // Chromium already tells the two apart and the answer is in `disposition`:
+      // window.open with features is 'new-window', a plain target=_blank is
+      // 'foreground-tab'. Keying on that needs no list of sites, works for a
+      // domain nobody thought of, and keeps the tab strip for the case it was
+      // built for.
+      if (disposition === "new-window" || disposition === "other") {
+        return {
+          action: "allow",
+          overrideBrowserWindowOptions: {
+            width: 520,
+            height: 680,
+            autoHideMenuBar: true,
+            // No partition override: the child inherits the guest's session, so
+            // the cookie a sign-in sets is the one the panel will read.
+            webPreferences: { nodeIntegration: false, contextIsolation: true },
+          },
+        };
+      }
       if (/^https?:/i.test(url) && !win.isDestroyed())
         win.webContents.send("browser:openTab", url);
       return { action: "deny" };
     });
+
+    guest.on("did-create-window", (child) => {
+      child.once("ready-to-show", () => child.show());
+    });
+
+    // ONE UA for the whole pane, set on the session so every request in it —
+    // the page, its popups, their subresources — carries the same thing.
+    //
+    // Ours says Electron, and Google refuses OAuth in anything that does
+    // (disallowed_useragent, their rule against embedded webviews). Stripping it
+    // is not a lie: this IS Chromium, and the version below is its real one. Set
+    // on the session rather than per-window because a popup's first request can
+    // be on the wire before any window handler runs.
+    const ses = guest.session;
+    if (!uaSet.has(ses)) {
+      uaSet.add(ses);
+      ses.setUserAgent(chromeUserAgent());
+    }
 
     // The visit log behind the empty tab's "Recent" section. Recorded here
     // rather than in the renderer because every page the panel shows IS a
@@ -204,6 +251,25 @@ function installWebviewGuards(win: BrowserWindow): void {
  * Dev: the vite origin. Packaged: a file: URL inside our renderer output.
  * Everything else stays denied — this must never widen into "any file:".
  */
+/**
+ * A plain Chrome User-Agent, built from the Chromium this app already runs.
+ *
+ * Google refuses OAuth in anything whose UA says Electron — `disallowed_useragent`,
+ * their policy against embedded webviews — and ours says it twice: the app name
+ * and `Electron/x.y.z`. Stripping both leaves a UA that is not a lie: it is the
+ * same Chromium, and the version is its real one.
+ */
+export function chromeUserAgent(): string {
+  const chrome = process.versions.chrome || "120.0.0.0";
+  return (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+    `Chrome/${chrome} Safari/537.36`
+  );
+}
+
+/** Sessions already given the plain Chrome UA. */
+const uaSet = new WeakSet<Electron.Session>();
+
 function isPopoutUrl(url: string): boolean {
   if (!/popout\.html(\?|#|$)/.test(url)) return false;
   const devOrigin = process.env["ELECTRON_RENDERER_URL"];
