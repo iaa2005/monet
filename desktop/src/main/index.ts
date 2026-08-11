@@ -516,6 +516,20 @@ app.whenReady().then(() => {
   // restart is worse than none, since the user thinks the machine is held awake.
   initPowerSaveBlocker();
 
+  // If the browser tools drive the user's OWN browser, start listening for its
+  // extension NOW. The extension is the side that dials, and it can only dial
+  // something that answers: a server brought up lazily on the first tool call
+  // leaves the extension saying "Waiting for Code Monet…" from the moment the
+  // app starts until the agent happens to need a page — which reads as the
+  // pairing being broken. Cheap: a loopback listener with no client.
+  void import("./browser/config.js").then(async ({ getBrowserConfig }) => {
+    const cfg = getBrowserConfig();
+    if (cfg.enabled && cfg.engine === "bridge") {
+      const { startBridge } = await import("./browser/bridge.js");
+      startBridge();
+    }
+  });
+
 
   // Arm scheduled routines (cron) + the localhost webhook/API trigger server.
   setTimeout(() => {

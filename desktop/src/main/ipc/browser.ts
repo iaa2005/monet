@@ -18,6 +18,8 @@ import {
   bridgeToken,
   exportBridgeExtension,
   regenerateBridgeToken,
+  startBridge,
+  stopBridge,
 } from "../browser/bridge.js";
 import { partitionFor } from "../browser/session.js";
 import { detectDevServers, type DevServer } from "../browser/dev-servers.js";
@@ -99,15 +101,23 @@ ipcMain.handle("browser:getConfig", (): BrowserConfig => getBrowserConfig());
       const before = getBrowserConfig();
       const next = setBrowserConfig(patch);
       resetVendorTools();
-      // Turning the tools off tears down both engines. Switching AWAY from the
+      // Turning the tools off tears down every engine. Switching AWAY from the
       // external one closes its window — leaving a Chrome nobody is driving
       // running in the background is how users end up force-quitting it.
       if (!next.enabled) {
         disconnectCdp();
         shutdownBrowser();
-      } else if (before.engine === "external" && next.engine === "embedded") {
+        stopBridge();
+      } else if (before.engine === "external" && next.engine !== "external") {
         shutdownBrowser();
       }
+      // THE BRIDGE MUST BE LISTENING BEFORE THE AGENT NEEDS IT. The extension
+      // is the one that dials, and it can only dial something that answers —
+      // so a server started lazily, on the first tool call, leaves the popup
+      // saying "Waiting for Code Monet…" for ever and the pairing looking
+      // broken. Choosing this engine is what starts it; leaving it stops it.
+      if (next.enabled && next.engine === "bridge") startBridge();
+      else if (before.engine === "bridge" && next.engine !== "bridge") stopBridge();
       return next;
     },
   );
@@ -142,10 +152,13 @@ ipcMain.handle("browser:getConfig", (): BrowserConfig => getBrowserConfig());
   //
   // Settings shows the pairing code and whether a browser has answered; the
   // download hands over a folder Chrome's "Load unpacked" accepts as-is.
-  ipcMain.handle("browser:bridgeStatus", () => ({
-    ...bridgeStatus(),
-    token: bridgeToken(),
-  }));
+  ipcMain.handle("browser:bridgeStatus", () => {
+    // Opening the pairing panel is itself a reason to be listening: the user
+    // is about to enter the code, and the extension will dial the moment they
+    // do. Idempotent, so asking repeatedly costs nothing.
+    if (getBrowserConfig().engine === "bridge") startBridge();
+    return { ...bridgeStatus(), token: bridgeToken() };
+  });
   ipcMain.handle("browser:bridgeRegenerate", () => regenerateBridgeToken());
   ipcMain.handle("browser:bridgeExport", () => {
     const r = exportBridgeExtension();

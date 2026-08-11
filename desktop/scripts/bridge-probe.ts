@@ -56,7 +56,25 @@ for (const signal of ["exit", "uncaughtException", "unhandledRejection"] as cons
     }
   });
 
+// ─── LISTENING BEFORE ANYONE ASKS ───────────────────────────────────────
+//
+// The extension is the side that dials. A server brought up lazily — on the
+// first browser tool call, as this one was — answers nothing until the agent
+// happens to need a page, so the popup says "Waiting for Code Monet…" from
+// startup onwards and the pairing looks broken. Seen exactly that way in the
+// field. Starting must therefore be its own act, not a side effect of use.
+check("nothing is listening before it is started", !bridgeStatus().listening);
 startBridge();
+check(
+  "STARTING IS ITS OWN ACT — no tool call needed for the extension to dial",
+  bridgeStatus().listening,
+  bridgeStatus(),
+);
+check(
+  "…and starting twice is harmless, since every entry point calls it",
+  (startBridge(), bridgeStatus().listening),
+);
+
 const TOKEN = bridgeToken();
 const URL = `ws://127.0.0.1:${bridgePort()}`;
 const EXT_ORIGIN = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
