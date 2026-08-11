@@ -156,14 +156,24 @@ let client: WebSocket | null = null;
 let seq = 0;
 const pending = new Map<number, Pending>();
 const handlers = new Set<CdpEventHandler>();
-/** What the extension last told us about the tab it holds. */
-let attachedTab: { id: number; url: string; title: string } | null = null;
+
+/** One of the agent's tabs, as the extension last described it. */
+export interface BridgeTab {
+  id: number;
+  url: string;
+  title: string;
+  session: string | null;
+  active: boolean;
+}
+/** Every tab the agent holds, across sessions. Pushed by the extension after
+ * anything that changes them, so no round trip is needed to list them. */
+let agentTabs: BridgeTab[] = [];
 
 export interface BridgeStatus {
   listening: boolean;
   port: number;
   connected: boolean;
-  tab: { id: number; url: string; title: string } | null;
+  tabs: BridgeTab[];
 }
 
 export function bridgeStatus(): BridgeStatus {
@@ -171,8 +181,27 @@ export function bridgeStatus(): BridgeStatus {
     listening: server !== null,
     port: BRIDGE_PORT,
     connected: client !== null && client.readyState === 1,
-    tab: attachedTab,
+    tabs: agentTabs,
   };
+}
+
+/**
+ * Which session's tabs a run works in.
+ *
+ * This is the name on the tab group in the user's browser — `agent:<session>`
+ * — so it wants to be recognisable rather than a uuid. Kimi's screenshots show
+ * `agent:x-news`, `agent:gforms`; same idea.
+ */
+let sessionName = "agent";
+export function setBridgeSession(name: string): void {
+  sessionName = (name || "agent")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 24) || "agent";
+}
+export function bridgeSession(): string {
+  return sessionName;
 }
 
 /** A message the extension sends us. */
@@ -185,7 +214,7 @@ interface FromExtension {
   method?: string;
   params?: Record<string, unknown>;
   token?: string;
-  tab?: { id: number; url: string; title: string };
+  tabs?: BridgeTab[];
 }
 
 /**
@@ -245,12 +274,8 @@ export function startBridge(): void {
         return;
       }
 
-      if (msg.type === "attached" && msg.tab) {
-        attachedTab = msg.tab;
-        return;
-      }
-      if (msg.type === "detached") {
-        attachedTab = null;
+      if (msg.type === "tabs" && Array.isArray(msg.tabs)) {
+        agentTabs = msg.tabs;
         return;
       }
       if (msg.type === "event" && msg.method) {
@@ -271,7 +296,7 @@ export function startBridge(): void {
       clearTimeout(greetingDeadline);
       if (client === ws) {
         client = null;
-        attachedTab = null;
+        agentTabs = [];
         for (const [, p] of pending) {
           clearTimeout(p.timer);
           p.reject(new Error("the browser extension disconnected"));
@@ -281,11 +306,20 @@ export function startBridge(): void {
     });
   });
 
-  wss.on("error", (err) => {
-    console.error("[bridge] listen failed:", err);
-    server = null;
+  // Failing to BIND and erroring while bound are different, and treating them
+  // the same is how one refused connection turned into EADDRINUSE: the handle
+  // was cleared on any error, so the next startBridge() — which is idempotent
+  // only while `server` is set — tried to listen a second time on a port the
+  // first server still held. Found by the probe, not by reading.
+  let bound = false;
+  wss.on("listening", () => {
+    bound = true;
+    console.log(`[bridge] listening on 127.0.0.1:${BRIDGE_PORT}`);
   });
-  console.log(`[bridge] listening on 127.0.0.1:${BRIDGE_PORT}`);
+  wss.on("error", (err) => {
+    console.error(`[bridge] ${bound ? "server error" : "listen failed"}:`, err);
+    if (!bound) server = null;
+  });
 }
 
 export function stopBridge(): void {
@@ -295,7 +329,7 @@ export function stopBridge(): void {
     /* already gone */
   }
   client = null;
-  attachedTab = null;
+  agentTabs = [];
   server?.close();
   server = null;
 }
@@ -339,13 +373,13 @@ class BridgeTransport implements BrowserTransport {
   readonly targetId = "bridge";
 
   /** Every CDP command goes out as-is; the extension replays it through
-   * chrome.debugger on the tab it holds. This is the whole reason the input
-   * methods, the refs and the tools need no bridge-specific code. */
+   * chrome.debugger on this session's current tab. This is the whole reason
+   * the input methods, the refs and the tools need no bridge-specific code. */
   async send(
     method: string,
     params: Record<string, unknown> = {},
   ): Promise<Record<string, unknown>> {
-    return call({ type: "cdp", method, params });
+    return call({ type: "cdp", method, params, session: sessionName });
   }
 
   async waitEvent(method: string, timeoutMs: number): Promise<void> {
@@ -369,25 +403,31 @@ class BridgeTransport implements BrowserTransport {
     return () => handlers.delete(handler);
   }
 
-  // Navigation goes through chrome.tabs rather than CDP Page.navigate: it is
-  // the user's own tab, and the tabs API keeps its history, its group and its
-  // back button behaving the way the user expects afterwards.
+  // Navigation goes through chrome.tabs rather than CDP Page.navigate: these
+  // are real tabs in the user's browser, and the tabs API keeps their history,
+  // their group and their back button behaving the way the user expects.
+  // Opens one when the session has none — the agent should not have to know
+  // whether it has been here before.
   async navigate(url: string): Promise<void> {
-    await call({ type: "tabs", op: "navigate", url });
+    await call({ type: "tabs", op: "navigate", url, session: sessionName });
   }
 
   async reload(): Promise<void> {
-    await call({ type: "tabs", op: "reload" });
+    await call({ type: "tabs", op: "reload", session: sessionName });
   }
 
   async goHistory(delta: -1 | 1): Promise<void> {
-    await call({ type: "tabs", op: delta < 0 ? "back" : "forward" });
+    await call({
+      type: "tabs",
+      op: delta < 0 ? "back" : "forward",
+      session: sessionName,
+    });
   }
 
-  /** Bring the controlled tab to the front IN THE USER'S BROWSER — a capture
-   * of a background tab never answers, exactly as in the embedded engine. */
+  /** Bring the current tab to the front IN THE USER'S BROWSER — a capture of a
+   * background tab never answers, exactly as in the embedded engine. */
   async reveal(): Promise<void> {
-    await call({ type: "tabs", op: "activate" });
+    await call({ type: "tabs", op: "activate", session: sessionName });
   }
 
   async mouseMove(x: number, y: number): Promise<void> {
@@ -487,6 +527,46 @@ function virtualKey(key: string): number {
     default:
       return 0;
   }
+}
+
+// ─── Tabs, for the BrowserTabs tool ─────────────────────────────────────
+//
+// The agent works in several at once — a search here, the form it is filling
+// there — which is the whole point of it having its own group rather than one
+// borrowed tab.
+
+/** Open a NEW tab in this session's group. Returns its id. */
+export async function bridgeOpenTab(url: string): Promise<number> {
+  const r = await call({
+    type: "tabs",
+    op: "open",
+    url,
+    session: sessionName,
+  });
+  return Number(r.tabId);
+}
+
+/** The agent's tabs, freshest first asked. */
+export async function bridgeListTabs(): Promise<BridgeTab[]> {
+  await call({ type: "tabs", op: "list", session: sessionName });
+  // The extension answers the list by pushing `tabs`, which the socket handler
+  // above stores — so by the time the call resolves, this is current.
+  return agentTabs;
+}
+
+/** Point the other tools at one of them. */
+export async function bridgeSelectTab(tabId: number): Promise<void> {
+  await call({ type: "tabs", op: "select", tabId, session: sessionName });
+}
+
+export async function bridgeCloseTab(tabId: number): Promise<void> {
+  await call({ type: "tabs", op: "close", tabId, session: sessionName });
+}
+
+/** Close everything this session opened — one action ends the excursion. */
+export async function bridgeCloseSession(): Promise<number> {
+  const r = await call({ type: "tabs", op: "close_session", session: sessionName });
+  return Number(r.closed ?? 0);
 }
 
 let transport: BridgeTransport | null = null;

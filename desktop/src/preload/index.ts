@@ -1068,7 +1068,13 @@ const electronAPI = {
       listening: boolean;
       port: number;
       connected: boolean;
-      tab: { id: number; url: string; title: string } | null;
+      tabs: {
+        id: number;
+        url: string;
+        title: string;
+        session: string | null;
+        active: boolean;
+      }[];
       token: string;
     }> => ipcRenderer.invoke("browser:bridgeStatus"),
     /** Mint a new pairing code — every paired browser is dropped. */

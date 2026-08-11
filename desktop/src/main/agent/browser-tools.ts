@@ -841,8 +841,10 @@ export const BrowserResizeTool = buildTool({
 const tabsSchema = lazySchema(() =>
   z.strictObject({
     action: z
-      .enum(["list", "select", "close"])
-      .describe("What to do. Use BrowserNavigate to open a page."),
+      .enum(["list", "select", "close", "closeAll"])
+      .describe(
+        "What to do. Use BrowserNavigate to open a page. closeAll ends the whole session (its tab group), and only applies when driving the user's own browser.",
+      ),
     tabId: z
       .string()
       .optional()
@@ -879,10 +881,67 @@ export const BrowserTabsTool = buildTool({
     return "List browser tabs, or switch/close one.";
   },
   async call({ action, tabId }: z.infer<TabsSchema>) {
-    if (getBrowserConfig().engine === "external")
+    const engine = getBrowserConfig().engine;
+    if (engine === "external")
       return {
         data: {
           text: "Tabs are only managed for the Browser panel. The external Chrome drives one page; use BrowserNavigate.",
+          isError: true,
+        },
+      };
+    // The bridge keeps its tabs in the user's own browser, grouped per
+    // session, so the list comes from the extension rather than our registry.
+    if (engine === "bridge") {
+      const {
+        bridgeCloseSession,
+        bridgeCloseTab,
+        bridgeListTabs,
+        bridgeSelectTab,
+        bridgeSession,
+      } = await import("../browser/bridge.js");
+      try {
+        if (action === "list") {
+          const tabs = await bridgeListTabs();
+          if (tabs.length === 0)
+            return ok(
+              "No tabs open in this session. BrowserNavigate opens one, in a tab group named " +
+                `"agent:${bridgeSession()}" beside the user's own tabs.`,
+            );
+          return ok(
+            tabs
+              .map(
+                (t) =>
+                  `${t.active ? "*" : " "} ${t.id}  ${t.title || "(untitled)"} — ${t.url}`,
+              )
+              .join("\n") + "\n\n* = the tab the other tools act on.",
+          );
+        }
+        if (action === "closeAll") {
+          const n = await bridgeCloseSession();
+          return ok(`Closed ${n} tab(s) — the whole session's group is gone.`);
+        }
+        const id = Number(tabId);
+        if (!tabId || Number.isNaN(id))
+          return {
+            data: {
+              text: `action=${action} needs a numeric tabId (see action=list).`,
+              isError: true,
+            },
+          };
+        if (action === "select") {
+          await bridgeSelectTab(id);
+          return ok(`Now acting on tab ${id}.`);
+        }
+        await bridgeCloseTab(id);
+        return ok(`Closed tab ${id}.`);
+      } catch (err) {
+        return fail(err, "Tabs");
+      }
+    }
+    if (action === "closeAll")
+      return {
+        data: {
+          text: "closeAll only applies when driving the user's own browser (the bridge engine), where tabs live in a session's tab group. Close tabs one at a time here.",
           isError: true,
         },
       };

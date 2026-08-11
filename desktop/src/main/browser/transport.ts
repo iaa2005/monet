@@ -18,7 +18,7 @@ import type { WebContents } from "electron";
 import { getBrowserConfig, type BrowserEngine } from "./config.js";
 import { activeContents, revealPanel } from "./registry.js";
 import { getExternalTransport } from "./external.js";
-import { getBridgeTransport } from "./bridge.js";
+import { getBridgeTransport, setBridgeSession } from "./bridge.js";
 import { ensureLogging, stopLogging } from "./logs.js";
 import { currentRunSession } from "../agent/run-session.js";
 import { getVisibleChatSession } from "../session/visible.js";
@@ -343,12 +343,22 @@ export class NoPageError extends Error {
  */
 export async function getTransport(): Promise<BrowserTransport> {
   const engine = getBrowserConfig().engine;
+  if (engine === "bridge") {
+    // The session names the tab GROUP in the user's own browser, so it is
+    // taken from the chat rather than invented: "agent:tesla-tear-sheet"
+    // sitting beside their own tabs says whose it is and which chat it
+    // belongs to. Set per call because the run can change between them.
+    const sid = currentRunSession() ?? getVisibleChatSession();
+    if (sid) {
+      const { getSessionStore } = await import("../session/store.js");
+      setBridgeSession(getSessionStore().get(sid)?.title || sid);
+    }
+    const t = getBridgeTransport();
+    ensureLogging(t);
+    return t;
+  }
   const t =
-    engine === "external"
-      ? getExternalTransport()
-      : engine === "bridge"
-        ? getBridgeTransport()
-        : embeddedFromActiveTab();
+    engine === "external" ? getExternalTransport() : embeddedFromActiveTab();
   ensureLogging(t);
   return t;
 }

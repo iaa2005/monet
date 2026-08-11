@@ -51,7 +51,7 @@ function BridgePairing(): JSX.Element {
   const [status, setStatus] = useState<{
     connected: boolean;
     token: string;
-    tab: { url: string; title: string } | null;
+    tabs: { id: number; url: string; title: string; session: string | null }[];
   } | null>(null);
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
@@ -99,9 +99,11 @@ function BridgePairing(): JSX.Element {
       </div>
       {status?.connected && (
         <div className="mt-1 text-[12px] text-muted-foreground">
-          {status.tab
-            ? `Holding: ${status.tab.title || status.tab.url}`
-            : "Open the extension on a tab and press Attach to hand it one."}
+          {status.tabs.length > 0
+            ? `${status.tabs.length} tab(s) open in ${
+                new Set(status.tabs.map((t) => t.session)).size
+              } session(s) — look for the “agent:…” groups in your browser.`
+            : "No tabs yet. The agent opens its own when it needs one; they go into a tab group named after the chat."}
         </div>
       )}
 
@@ -160,9 +162,15 @@ function BridgePairing(): JSX.Element {
           </div>
         </li>
         <li>
-          <span className="text-foreground">4. Hand it a tab.</span> On the page
-          you want the agent to use, open the extension and press Attach. It
-          touches nothing else, and Chrome shows a bar while it holds the tab.
+          <span className="text-foreground">4. That is all.</span> The agent
+          opens its own tabs when it needs them, in a group named{" "}
+          <code className="rounded bg-black/[0.06] px-1 dark:bg-white/[0.08]">
+            agent:…
+          </code>{" "}
+          after the chat — close the group to end the excursion. It cannot touch
+          any other tab: a command naming one is refused in the browser, not
+          just discouraged. To lend it a page you are on, press Attach in the
+          extension.
         </li>
       </ol>
     </div>

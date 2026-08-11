@@ -35,6 +35,23 @@ setDataDir(mkdtempSync(join(tmpdir(), "bridge-probe-")));
 const { startBridge, stopBridge, bridgeToken, bridgeStatus, BRIDGE_PORT } =
   await import("../src/main/browser/bridge.js");
 
+// The probe BINDS A PORT, so it must give it back however it ends. Without
+// this a failed run left a listener behind and every later run died on
+// EADDRINUSE — which reads as the bridge being broken rather than the probe
+// leaking. (Learned the hard way, this session.)
+for (const signal of ["exit", "uncaughtException", "unhandledRejection"] as const)
+  process.on(signal, (err?: unknown) => {
+    try {
+      stopBridge();
+    } catch {
+      /* going down anyway */
+    }
+    if (signal !== "exit") {
+      console.error(err);
+      process.exit(1);
+    }
+  });
+
 startBridge();
 const TOKEN = bridgeToken();
 const URL = `ws://127.0.0.1:${BRIDGE_PORT}`;
@@ -117,16 +134,46 @@ function tryConnect(
 
   // A CDP call round-trips: the app asks, the extension answers, the caller
   // gets the result — which is all the transport is.
-  const { getBridgeTransport } = await import("../src/main/browser/transport.js").then(
-    () => import("../src/main/browser/bridge.js"),
-  );
+  const bridge = await import("../src/main/browser/bridge.js");
+  const { getBridgeTransport, setBridgeSession, bridgeListTabs, bridgeOpenTab } = bridge;
+
+  /** Stand in for the extension: echo CDP, and answer tab ops the way the real
+   * one does — a `tabs` push, then the reply. */
+  const seen: Record<string, unknown>[] = [];
   ws.on("message", (d) => {
-    const m = JSON.parse(String(d)) as { id?: number; type?: string; method?: string };
-    if (m.id != null && m.type === "cdp")
-      ws.send(
-        JSON.stringify({ id: m.id, ok: true, result: { echoed: m.method } }),
-      );
+    const m = JSON.parse(String(d)) as Record<string, unknown> & {
+      id?: number;
+      type?: string;
+      op?: string;
+      method?: string;
+    };
+    if (m.id == null) return;
+    seen.push(m);
+    if (m.type === "cdp") {
+      ws.send(JSON.stringify({ id: m.id, ok: true, result: { echoed: m.method } }));
+      return;
+    }
+    if (m.type === "tabs") {
+      if (m.op === "list" || m.op === "open")
+        ws.send(
+          JSON.stringify({
+            type: "tabs",
+            tabs: [
+              {
+                id: 42,
+                url: "https://example.com",
+                title: "Example",
+                session: m.session,
+                active: true,
+              },
+            ],
+          }),
+        );
+      ws.send(JSON.stringify({ id: m.id, ok: true, result: { tabId: 42, closed: 1 } }));
+    }
   });
+
+  setBridgeSession("Tesla Tear Sheet");
   const t = getBridgeTransport();
   const result = await t.send("Runtime.evaluate", { expression: "1+1" });
   check(
@@ -134,6 +181,40 @@ function tryConnect(
     result.echoed === "Runtime.evaluate",
     result,
   );
+
+  // ── The session travels with every command ──────────────────────────
+  //
+  // It is the name on the tab group in the user's own browser, so a command
+  // that forgets it would land the agent's tab loose among their tabs.
+  {
+    const cdp = seen.find((m) => m.type === "cdp");
+    check(
+      "EVERY COMMAND CARRIES ITS SESSION — that is what names the tab group",
+      cdp?.session === "tesla-tear-sheet",
+      cdp?.session,
+    );
+    check(
+      "…slugged from the chat's title, not a uuid the user cannot read",
+      bridge.bridgeSession() === "tesla-tear-sheet",
+      bridge.bridgeSession(),
+    );
+  }
+
+  // ── Several tabs at once, which is the point ─────────────────────────
+  {
+    const id = await bridgeOpenTab("https://example.com");
+    check("the agent can open a tab of its own", id === 42, id);
+    const tabs = await bridgeListTabs();
+    check(
+      "…and list what it holds, with the session on each",
+      tabs.length === 1 && tabs[0].session === "tesla-tear-sheet",
+      tabs,
+    );
+    const closed = await bridge.bridgeCloseSession();
+    check("…and close the whole session in one go", closed === 1, closed);
+    const op = seen.find((m) => m.op === "close_session");
+    check("…which is one message, not a loop over tabs", !!op, op);
+  }
 
   // An error from the browser must arrive as an error, not as a silent empty
   // result the caller mistakes for success.
@@ -154,6 +235,7 @@ function tryConnect(
   ws.close();
   await new Promise((r) => setTimeout(r, 300));
   check("…and closing the browser leaves nothing paired", !bridgeStatus().connected);
+  check("…and takes its tabs off the books", bridgeStatus().tabs.length === 0);
 }
 
 // ─── With nobody paired, the tools say what to do ───────────────────────

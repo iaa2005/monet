@@ -3,7 +3,7 @@
   "name": "Code Monet Bridge",
   "description": "Lets Code Monet drive the tab you choose, in the browser you are already signed in to.",
   "version": "1.0.0",
-  "permissions": ["tabs", "debugger", "storage", "alarms", "windows"],
+  "permissions": ["tabs", "tabGroups", "debugger", "storage", "alarms", "windows"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
   "action": { "default_popup": "popup.html", "default_title": "Code Monet Bridge" }

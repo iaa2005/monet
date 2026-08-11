@@ -1122,7 +1122,13 @@ export interface ElectronAPI {
       listening: boolean;
       port: number;
       connected: boolean;
-      tab: { id: number; url: string; title: string } | null;
+      tabs: {
+        id: number;
+        url: string;
+        title: string;
+        session: string | null;
+        active: boolean;
+      }[];
       token: string;
     }>;
     bridgeRegenerate: () => Promise<string>;
