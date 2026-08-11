@@ -85,12 +85,53 @@ function copySkillFilesToSandbox(
 }
 
 /**
+ * Copy a skill's bundled files into the chat sandbox and return the note that
+ * tells the model they are there — or '' if there was nothing to bridge.
+ *
+ * A skill's "Base directory" is a HOST path. In Home (and any sandboxed chat)
+ * that path is unreachable, so a skill whose SKILL.md says "read
+ * SKILL-tearsheet.md" or "run scripts/foo.py" sends the model hunting: it
+ * tries SandboxRead on a host path (refused), then a bare relative path
+ * (absent), then RunCommand/find (nothing), and only recovers if it thinks to
+ * call the Skill tool — which is the one place that used to do this copy.
+ * Measured: five wasted steps before recovery on the equity-research skill.
+ * Both entry points (this tool AND the slash-command expansion) bridge now, so
+ * the files are already in place at the SAME relative paths the moment the
+ * instructions arrive.
+ */
+export function bridgeSkillFilesToSandbox(
+  sessionId: string,
+  skillDir: string,
+): string {
+  const copied = copySkillFilesToSandbox(sessionId, skillDir)
+  if (copied.length === 0) return ''
+  const shown = copied.slice(0, 20).join(', ')
+  const more = copied.length > 20 ? ` (+${copied.length - 20} more)` : ''
+  return (
+    `\n\n---\n[Sandbox] This chat is isolated, so the skill's host "Base ` +
+    `directory" above is NOT reachable — do not try to read it or find it on ` +
+    `disk. The skill's files were copied into this chat's sandbox at the SAME ` +
+    `relative paths (subfolders preserved): read them with SandboxRead or open ` +
+    `them from RunPython (cwd is the sandbox root): ${shown}${more}. Some ` +
+    `bundled scripts may rely on tools unavailable in the sandbox (e.g. ` +
+    `LibreOffice); prefer generating output directly with RunPython.`
+  )
+}
+
+/**
  * Expand a user-typed slash command ("/name args") into its prompt text —
  * the same client-side expansion the CLI does. Returns null when the input
  * isn't a known prompt command, so the caller can send the raw text instead.
+ *
+ * When the command IS a skill and the chat is sandboxed (Home), the skill's
+ * bundled files are bridged into the sandbox here too — not only when the
+ * model calls the Skill tool. Without this, "/my-skill" handed the model
+ * instructions that referenced files it could not reach, and it burned several
+ * turns hunting for them before recovering. See bridgeSkillFilesToSandbox.
  */
 export async function expandSlashCommand(
   message: string,
+  opts: { sessionId?: string; space?: string } = {},
 ): Promise<string | null> {
   const m = message.match(/^\/([A-Za-z0-9_:./-]+)(?:\s+([\s\S]*))?$/)
   if (!m) return null
@@ -125,8 +166,13 @@ export async function expandSlashCommand(
         ) => Promise<ContentBlockParam[]>
       }
     ).getPromptForCommand(m[2] ?? '', ctx)
-    const text = flattenBlocks(blocks)
+    let text = flattenBlocks(blocks)
     if (!text) return null
+    // Same bridge the Skill tool does: a skill invoked by slash needs its
+    // files in the sandbox just as much as one invoked by tool call.
+    const skillDir = (command as { skillRoot?: string }).skillRoot
+    if (opts.space === 'home' && skillDir)
+      text += bridgeSkillFilesToSandbox(opts.sessionId || 'default', skillDir)
     return (
       `<command name="/${m[1]}"${m[2] ? ` args=${JSON.stringify(m[2])}` : ''}>\n` +
       `${text}\n</command>\n\n` +
@@ -270,22 +316,8 @@ export const InlineSkillTool = buildTool({
       const space = (context as { space?: string }).space
       const sessionId = (context as { sessionId?: string }).sessionId || 'default'
       const skillDir = (command as { skillRoot?: string }).skillRoot
-      if (space === 'home' && skillDir) {
-        const copied = copySkillFilesToSandbox(sessionId, skillDir)
-        if (copied.length > 0) {
-          const shown = copied.slice(0, 20).join(', ')
-          const more =
-            copied.length > 20 ? ` (+${copied.length - 20} more)` : ''
-          text +=
-            `\n\n---\n[Home sandbox] This chat is isolated, so the skill's host ` +
-            `"Base directory" above is NOT reachable. The skill's files were ` +
-            `copied into this chat's sandbox at the SAME relative paths ` +
-            `(subfolders preserved) — read them with SandboxRead or open them ` +
-            `from RunPython (cwd is the sandbox root): ${shown}${more}. Note some ` +
-            `bundled scripts may rely on tools unavailable in the sandbox ` +
-            `(e.g. LibreOffice); prefer generating output directly with RunPython.`
-        }
-      }
+      if (space === 'home' && skillDir)
+        text += bridgeSkillFilesToSandbox(sessionId, skillDir)
 
       return {
         data: {

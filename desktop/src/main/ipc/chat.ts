@@ -457,7 +457,12 @@ export function registerChatIPC(): void {
       }
       message = goalMatch[1]!;
     } else if (message.trimStart().startsWith("/")) {
-      const expanded = await expandSlashCommand(message.trim());
+      // Space + session go through so a skill invoked by slash bridges its
+      // bundled files into the sandbox, exactly as the Skill tool does.
+      const expanded = await expandSlashCommand(message.trim(), {
+        sessionId,
+        space: payload.space,
+      });
       if (expanded) message = expanded;
     }
 
