@@ -142,7 +142,22 @@ export function BrowserView({
         partition={partition}
         // window.open must reach main's handler, which turns it into a tab in
         // our own strip instead of an OS window (see installWebviewGuards).
-        allowpopups
+        //
+        // THE STRING IS LOAD-BEARING, and the cast is the price of it.
+        // `<webview allowpopups />` is a bare JSX boolean, and `webview` has no
+        // dash in its name, so React treats it as an unknown HTML element
+        // rather than a custom one and DROPS the attribute entirely — React
+        // itself says so: "Received `true` for a non-boolean attribute
+        // `allowpopups`… pass a string instead". Without the attribute on the
+        // element, Chromium blocks every popup in the pane before any of our
+        // code runs: window.open returns null, setWindowOpenHandler is never
+        // consulted, and a sign-in button spins for ever with no window and no
+        // error to show for it. That was the real reason Google sign-in "did
+        // not open a window" — the disposition handler in main was correct all
+        // along and simply unreachable. React's own DOM types insist this prop
+        // is a boolean, which is precisely the value that does not survive, so
+        // the string is cast past them.
+        allowpopups={"true" as unknown as boolean}
         className="size-full"
       />
     </div>
