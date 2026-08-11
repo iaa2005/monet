@@ -47,6 +47,15 @@ app.userAgentFallback =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like " +
   `Gecko) Chrome/${process.versions.chrome || "120.0.0.0"} Safari/537.36`;
 
+// FedCM is ON in this Chromium but has no UI in Electron, and that kills
+// "Sign in with Google" buttons built on Google Identity Services without a
+// trace: GIS sees IdentityCredential, calls navigator.credentials.get, and
+// waits for a browser dialog that no one will ever draw — no popup, no error,
+// a dead click (seen live on kimi.com). With the feature off, GIS falls back
+// to its window.open popup flow, which the window-open handler below turns
+// into a real child window. Must be set before app is ready.
+app.commandLine.appendSwitch("disable-features", "FedCm");
+
 const isDev = !app.isPackaged;
 
 let mainWindow: BrowserWindow | null = null;
@@ -198,26 +207,36 @@ function installWebviewGuards(win: BrowserWindow): void {
     if (!uaSet.has(ses)) {
       uaSet.add(ses);
       ses.setUserAgent(chromeUserAgent());
-      // THE CLIENT HINTS ARE THE OTHER TELL, and the one that survived the UA
-      // fix: Chromium sends Sec-CH-UA listing its brands, and in Electron that
-      // list says "Electron". Google reads it, and answers "this browser or app
-      // may not be secure" however clean the User-Agent string is. Rewriting
-      // both is what makes the pane look like what it actually is — Chromium of
-      // this version.
-      const major = (process.versions.chrome || "120").split(".")[0];
+      // THE CLIENT HINTS ARE THE OTHER TELL — but not the way the first fix
+      // here assumed. Measured on this exact runtime (Electron 33 / Chromium
+      // 130): the page-side API is alive and answers
+      //   navigator.userAgentData.brands = "Not?A_Brand";99, "Chromium";130
+      // — no Electron in it — while the NETWORK side sends no Sec-CH-UA
+      // header at all, on any request. A UA string claiming Chrome/130 with
+      // no client hints beside it is a combination no real browser produces
+      // (real Chromium sends the three low-entropy hints with every https
+      // request), and Google's sign-in reads that inconsistency as "this
+      // browser or app may not be secure". The first fix made it worse: it
+      // invented a "Google Chrome" brand in the headers that the page's own
+      // JS then contradicted.
+      //
+      // So the headers now say EXACTLY what the JS already says — brands,
+      // order and GREASE token copied from navigator.userAgentData of this
+      // runtime, not invented.
+      const major = (process.versions.chrome || "130").split(".")[0];
+      const platform =
+        process.platform === "darwin"
+          ? "macOS"
+          : process.platform === "win32"
+            ? "Windows"
+            : "Linux";
       ses.webRequest.onBeforeSendHeaders((details, callback) => {
         const h = details.requestHeaders;
         h["User-Agent"] = chromeUserAgent();
-        if ("Sec-CH-UA" in h || "sec-ch-ua" in h) {
-          delete h["sec-ch-ua"];
-          h["Sec-CH-UA"] =
-            `"Chromium";v="${major}", "Google Chrome";v="${major}", "Not?A_Brand";v="24"`;
-        }
-        if ("sec-ch-ua-full-version-list" in h || "Sec-CH-UA-Full-Version-List" in h) {
-          delete h["sec-ch-ua-full-version-list"];
-          h["Sec-CH-UA-Full-Version-List"] =
-            `"Chromium";v="${process.versions.chrome}", ` +
-            `"Google Chrome";v="${process.versions.chrome}", "Not?A_Brand";v="24.0.0.0"`;
+        if (/^https:/i.test(details.url)) {
+          h["sec-ch-ua"] = `"Not?A_Brand";v="99", "Chromium";v="${major}"`;
+          h["sec-ch-ua-mobile"] = "?0";
+          h["sec-ch-ua-platform"] = `"${platform}"`;
         }
         callback({ requestHeaders: h });
       });
