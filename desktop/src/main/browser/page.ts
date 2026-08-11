@@ -72,7 +72,34 @@ async function seedMouse(): Promise<void> {
 
 export async function pageNavigate(
   url: string,
+  newTab = false,
 ): Promise<{ title: string; url: string }> {
+  // A SECOND TAB, when asked for one. Without this the agent had no way to
+  // open one at all: navigate always reused the current page, BrowserTabs
+  // could only list/select/close, and window.open from BrowserEval is stopped
+  // by the popup blocker (a scripted open is not a user gesture). So a job
+  // that wants two sites side by side — compare these, watch that while
+  // filling this — could only visit them one after another, losing the first.
+  if (newTab) {
+    const { getBrowserConfig } = await import("./config.js");
+    const engine = getBrowserConfig().engine;
+    if (engine === "external")
+      throw new Error(
+        "The external Chrome drives a single page — it has no second tab to open. Switch to the Browser panel or your own browser (Settings → Automation) for several pages at once.",
+      );
+    if (engine === "bridge") {
+      // The extension waits for the tab to finish loading before answering,
+      // so there is no load event left to wait for here.
+      const { bridgeOpenTab } = await import("./bridge.js");
+      await bridgeOpenTab(url);
+    } else {
+      const { openNewTab } = await import("./registry.js");
+      await openNewTab(url);
+      const t = await getTransport();
+      await t.waitEvent("Page.loadEventFired", 12_000);
+    }
+    return pageInfo();
+  }
   const hadPage = await hasPage();
   const t = await transport(url);
   // When the panel had no tab, ensureTab already opened one AT this url —

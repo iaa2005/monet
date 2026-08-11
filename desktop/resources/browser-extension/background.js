@@ -114,7 +114,7 @@ async function connect() {
  * not scatter a second `agent:x` beside the first); else a new one.
  */
 async function groupTabs(tabIds, session, groupTitle) {
-  if (!session) return;
+  if (!session || !chrome.tabGroups) return;
   try {
     const known = groupBySession.get(session);
     if (known != null) {
@@ -147,13 +147,19 @@ async function groupTabs(tabIds, session, groupTitle) {
   }
 }
 
-chrome.tabGroups.onRemoved.addListener((g) => {
-  for (const [session, id] of groupBySession)
-    if (id === g.id) {
-      groupBySession.delete(session);
-      break;
-    }
-});
+// Guarded because this runs at TOP LEVEL: if chrome.tabGroups is absent — an
+// older Chrome, a build without the permission, a Chromium fork — an
+// unguarded call throws here and the whole service worker fails to start.
+// Nothing connects, nothing is logged where anyone looks, and the extension
+// simply appears dead. Grouping is a nicety; the bridge is not.
+if (chrome.tabGroups?.onRemoved)
+  chrome.tabGroups.onRemoved.addListener((g) => {
+    for (const [session, id] of groupBySession)
+      if (id === g.id) {
+        groupBySession.delete(session);
+        break;
+      }
+  });
 
 async function attachDebugger(tabId) {
   try {
@@ -169,6 +175,36 @@ async function attachDebugger(tabId) {
       /* a domain this target does not support is not fatal */
     }
   }
+}
+
+/**
+ * Wait until the tab has actually loaded — their waitForLoad, and it earns its
+ * place: chrome.tabs.create answers as soon as the tab EXISTS, so a caller
+ * that read the page straight afterwards would read about:blank. Resolves on
+ * the timeout rather than rejecting: a page that never fires complete (a slow
+ * feed, a stalled subresource) is still a page worth acting on.
+ */
+function waitForLoad(tabId, timeoutMs = 15_000) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      clearTimeout(timer);
+      resolve();
+    };
+    const onUpdated = (id, info) => {
+      if (id === tabId && info.status === "complete") finish();
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    // It may already be done by the time we started listening.
+    chrome.tabs.get(tabId).then(
+      (t) => t.status === "complete" && finish(),
+      () => finish(),
+    );
+  });
 }
 
 async function own(tabId, session, groupTitle) {
@@ -255,6 +291,7 @@ async function handle(msg) {
       // `activate` is the explicit "look at this".
       const tab = await chrome.tabs.create({ url: msg.url, active: false });
       await own(tab.id, msg.session, msg.group);
+      await waitForLoad(tab.id);
       return { tabId: tab.id };
     }
     case "navigate": {
@@ -271,10 +308,12 @@ async function handle(msg) {
       if (msg.newTab || reuse == null) {
         const tab = await chrome.tabs.create({ url: msg.url, active: false });
         await own(tab.id, msg.session, msg.group);
+        await waitForLoad(tab.id);
         return { tabId: tab.id, opened: true };
       }
       await chrome.tabs.update(reuse, { url: msg.url });
       if (msg.session) currentBySession.set(msg.session, reuse);
+      await waitForLoad(reuse);
       return { tabId: reuse, opened: false };
     }
     case "select": {

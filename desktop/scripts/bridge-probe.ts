@@ -4,9 +4,9 @@
  * This is the security surface of the whole engine. A WebSocket on loopback is
  * NOT private: a page you visit can open one to 127.0.0.1 and CORS does not
  * stop it, so a bridge that answers whoever connects hands a signed-in browser
- * to any site. Kimi's shipped extension talks to a fixed port with no
- * authentication at all (measured: no token, no handshake, no origin check in
- * its background.js) — this exists so ours cannot drift into that.
+ * to any site. Ours refuses every non-extension origin and every client that
+ * cannot produce the pairing token; these checks exist so that cannot quietly
+ * become untrue.
  *
  * Drives the REAL server over a real socket.
  *
@@ -29,10 +29,14 @@ function check(name: string, cond: boolean, detail?: unknown): void {
   }
 }
 
+// A port of its own: the real app may be running and holding 8317, and a
+// probe that fails because the product works is worse than no probe.
+process.env.MONET_BRIDGE_PORT ||= "18317";
+
 const { setDataDir } = await import("../src/main/data-dir.js");
 setDataDir(mkdtempSync(join(tmpdir(), "bridge-probe-")));
 
-const { startBridge, stopBridge, bridgeToken, bridgeStatus, BRIDGE_PORT } =
+const { startBridge, stopBridge, bridgeToken, bridgeStatus, bridgePort } =
   await import("../src/main/browser/bridge.js");
 
 // The probe BINDS A PORT, so it must give it back however it ends. Without
@@ -54,7 +58,7 @@ for (const signal of ["exit", "uncaughtException", "unhandledRejection"] as cons
 
 startBridge();
 const TOKEN = bridgeToken();
-const URL = `ws://127.0.0.1:${BRIDGE_PORT}`;
+const URL = `ws://127.0.0.1:${bridgePort()}`;
 const EXT_ORIGIN = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
 
 check("the token is long enough to be worth typing once", TOKEN.length >= 16, TOKEN.length);
@@ -201,9 +205,15 @@ function tryConnect(
   }
 
   // ── Several tabs at once, which is the point ─────────────────────────
+  //
+  // The gap this closes, found live: the model had NO way to open a tab.
+  // BrowserNavigate always reused the current one, BrowserTabs could only
+  // list/select/close, and window.open through BrowserEval is stopped by the
+  // popup blocker — a scripted open is not a user gesture. So "compare these
+  // two sites" could only be done one after the other, losing the first.
   {
     const id = await bridgeOpenTab("https://example.com");
-    check("the agent can open a tab of its own", id === 42, id);
+    check("THE AGENT CAN OPEN A TAB OF ITS OWN — no popup blocker involved", id === 42, id);
     const tabs = await bridgeListTabs();
     check(
       "…and list what it holds, with the session on each",

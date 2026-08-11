@@ -137,6 +137,12 @@ const navSchema = lazySchema(() =>
       .enum(["back", "forward", "reload"])
       .optional()
       .describe("Move through history instead of opening a URL."),
+    newTab: z
+      .boolean()
+      .optional()
+      .describe(
+        "Open in a NEW tab instead of reusing the current one, so the page you were on stays open. Use when you need two sites at once (compare, or keep a reference while working). BrowserTabs lists them and switches between them.",
+      ),
   }),
 );
 type NavSchema = ReturnType<typeof navSchema>;
@@ -167,6 +173,11 @@ export const BrowserNavigateTool = buildTool({
       "Waits for the page to finish loading before returning, so you can call",
       "BrowserReadPage straight afterwards.",
       "",
+      "Pass newTab: true to open it BESIDE the current page rather than",
+      "replacing it — that is how you keep two sites open at once. Do not try",
+      "window.open through BrowserEval: a scripted open is not a user gesture",
+      "and the popup blocker stops it.",
+      "",
       "If the user is running a dev server, prefer its localhost URL over a",
       "production one — that is the app they are editing.",
     ].join("\n");
@@ -174,7 +185,7 @@ export const BrowserNavigateTool = buildTool({
   async description() {
     return "Open a URL, or go back/forward/reload.";
   },
-  async call({ url, action }: z.infer<NavSchema>) {
+  async call({ url, action, newTab }: z.infer<NavSchema>) {
     try {
       if (action) {
         await pageHistory(action);
@@ -189,10 +200,11 @@ export const BrowserNavigateTool = buildTool({
             isError: true,
           },
         };
-      const info = await pageNavigate(url);
+      const info = await pageNavigate(url, newTab === true);
       await pageSettle();
       return ok(
-        `Opened "${info.title}" — ${info.url}\nCall BrowserReadPage to see what is on it.${await traffic()}`,
+        `Opened "${info.title}"${newTab ? " in a new tab" : ""} — ${info.url}\n` +
+          `Call BrowserReadPage to see what is on it.${await traffic()}`,
       );
     } catch (err) {
       return fail(err, "Navigation");

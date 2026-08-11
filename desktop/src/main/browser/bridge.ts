@@ -16,13 +16,18 @@
  * send — which is why every input method, the human-paced mouse path and the
  * per-key typing above this file, works here with nothing added.
  *
- * WHAT WE DO NOT COPY: their extension talks to a fixed localhost port with no
- * authentication of any kind (measured — no token, no handshake, no origin
- * check in the shipped background.js). A WebSocket from a web page is not
- * subject to CORS, so any site the user visits can open that port and drive
- * their logged-in browser. Ours requires a pairing token the user carries from
- * this app into the extension by hand, and refuses any origin that is not an
- * extension.
+ * WHERE WE GO FURTHER, stated only as far as it was measured: their shipped
+ * background.js carries no credential of its own. It connects to a URL kept in
+ * chrome.storage, defaulting to ws://127.0.0.1:10086/ws, and a popup action
+ * (GENERATE_CONNECTION) POSTs /api/connections to obtain one — so a secret may
+ * well live inside that URL; their service side is not in the zip and cannot
+ * be read from here.
+ *
+ * What is certain is the shape of the risk, and it is why ours does both: a
+ * WebSocket from a web page is not subject to CORS, so a bridge on a known
+ * loopback port that answers whoever connects would hand a signed-in browser
+ * to any site the user visits. So this one refuses every origin that is not an
+ * extension, AND requires a pairing token the user carries across by hand.
  */
 
 import { randomBytes } from "crypto";
@@ -33,8 +38,19 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { getDataDir } from "../data-dir.js";
 import type { BrowserTransport, CdpEventHandler, Rect } from "./transport.js";
 
-/** Loopback only, and a port unlikely to collide with a dev server. */
-export const BRIDGE_PORT = 8317;
+/**
+ * Loopback only, and a port unlikely to collide with a dev server.
+ *
+ * A FUNCTION, not a const: overridable because a second Code Monet — or the
+ * probe, while the app is running — would otherwise fail to bind and look like
+ * the bridge is broken. Read at call time because a bundled probe has its
+ * imports hoisted above its own first statement, so a const would be fixed at
+ * 8317 before the override could be set. The extension talks to 8317, so an
+ * override means pairing that instance by hand; it is for testing.
+ */
+export function bridgePort(): number {
+  return Number(process.env.MONET_BRIDGE_PORT) || 8317;
+}
 const CMD_TIMEOUT_MS = 20_000;
 
 // ─── Pairing ────────────────────────────────────────────────────────────
@@ -179,7 +195,7 @@ export interface BridgeStatus {
 export function bridgeStatus(): BridgeStatus {
   return {
     listening: server !== null,
-    port: BRIDGE_PORT,
+    port: bridgePort(),
     connected: client !== null && client.readyState === 1,
     tabs: agentTabs,
   };
@@ -225,7 +241,7 @@ interface FromExtension {
  */
 export function startBridge(): void {
   if (server) return;
-  const wss = new WebSocketServer({ host: "127.0.0.1", port: BRIDGE_PORT });
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: bridgePort() });
   server = wss;
 
   wss.on("connection", (ws, req) => {
@@ -314,7 +330,7 @@ export function startBridge(): void {
   let bound = false;
   wss.on("listening", () => {
     bound = true;
-    console.log(`[bridge] listening on 127.0.0.1:${BRIDGE_PORT}`);
+    console.log(`[bridge] listening on 127.0.0.1:${bridgePort()}`);
   });
   wss.on("error", (err) => {
     console.error(`[bridge] ${bound ? "server error" : "listen failed"}:`, err);

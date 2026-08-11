@@ -106,9 +106,30 @@ export async function ensureTab(url: string, timeoutMs = 10_000): Promise<void> 
     }
   }
   if (activeContents()) return;
+  await askPanelForTab(url, timeoutMs);
+}
+
+/**
+ * Open ANOTHER tab, whether or not one is already open.
+ *
+ * ensureTab returns early when the panel has a page — right for "make sure
+ * there is somewhere to act", wrong for "I want a second site open beside the
+ * first". Without this the agent had no way to reach two pages at once:
+ * navigate reused the current tab, and window.open from BrowserEval is
+ * stopped by the popup blocker, a scripted open being no user gesture.
+ */
+export async function openNewTab(url: string, timeoutMs = 10_000): Promise<void> {
+  await askPanelForTab(url, timeoutMs);
+}
+
+async function askPanelForTab(url: string, timeoutMs: number): Promise<void> {
   const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
   if (!win) throw new Error("No app window is open.");
 
+  // Counted, not compared by id: whether the panel makes the new tab the
+  // active one is its business, and a check that assumed it would turn a
+  // successful open into a spurious failure.
+  const before = listTabs().length;
   const registered = new Promise<void>((resolve) => waiters.push(resolve));
   // Tag the request with the run's session: the renderer files the tab on
   // that chat's desk instead of whichever chat is on screen.
@@ -122,7 +143,7 @@ export async function ensureTab(url: string, timeoutMs = 10_000): Promise<void> 
   await Promise.race([registered, expired]);
   if (timer) clearTimeout(timer);
 
-  if (!activeContents())
+  if (!activeContents() || listTabs().length <= before)
     throw new Error("The Browser panel did not open a tab in time.");
 }
 
