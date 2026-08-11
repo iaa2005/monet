@@ -219,6 +219,7 @@ async function own(tabId, session, groupTitle) {
 async function disown(tabId) {
   const meta = agentTabs.get(tabId);
   agentTabs.delete(tabId);
+  if (focusedForInput === tabId) focusedForInput = null;
   if (meta?.session && currentBySession.get(meta.session) === tabId) {
     const next = [...agentTabs.entries()].find(([, m]) => m.session === meta.session);
     if (next) currentBySession.set(meta.session, next[0]);
@@ -275,13 +276,36 @@ function undrivable(url) {
   return /^(chrome|edge|about|devtools|chrome-extension):/i.test(String(url || ""));
 }
 
+/** The tab last brought to the front for input, so it is done once per burst
+ * rather than once per keystroke. */
+let focusedForInput = null;
+
 async function handle(msg) {
-  if (msg.type === "cdp")
-    return await chrome.debugger.sendCommand(
-      { tabId: target(msg.tabId, msg.session) },
-      msg.method,
-      msg.params || {},
-    );
+  if (msg.type === "cdp") {
+    const tabId = target(msg.tabId, msg.session);
+    // REAL INPUT NEEDS A REAL FOCUSED TAB. Measured, not assumed: typing into
+    // ya.ru's search box did nothing while the tab was in the background —
+    // document.activeElement was the textarea and its value stayed empty,
+    // because Chrome delivers key events through the focused widget, and a
+    // tab opened with active:false has none. Everything else (reading,
+    // evaluating, screenshots) is fine in the background, so only Input.*
+    // pays for this.
+    //
+    // Bringing the tab forward is also the honest thing: the agent is typing
+    // where the user can see it, which is the whole promise of driving their
+    // own browser rather than a hidden one.
+    if (msg.method.startsWith("Input.") && focusedForInput !== tabId) {
+      try {
+        const tab = await chrome.tabs.get(tabId);
+        await chrome.tabs.update(tabId, { active: true });
+        await chrome.windows.update(tab.windowId, { focused: true });
+        focusedForInput = tabId;
+      } catch {
+        /* the window went away; the command below will say so properly */
+      }
+    }
+    return await chrome.debugger.sendCommand({ tabId }, msg.method, msg.params || {});
+  }
 
   if (msg.type !== "tabs") throw new Error(`unknown message type: ${msg.type}`);
 
