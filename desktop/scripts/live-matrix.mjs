@@ -685,17 +685,16 @@ scenario('edit_retry', null, async (api) => {
   const before = await api.get(`/context/${s}`)
   const r = await api.post(`/rewind/${s}`, { sha: t1.checkpointSha })
   check('the file rewind succeeds', r.ok, r)
+  // Anchored by the second prompt's id — cut just before it, keeping turn 1.
   const cut = await api.post(`/truncate/${s}`, {
-    keepUserTurns: 1,
-    totalUserTurns: before.turns.length,
+    beforePromptId: before.turns[1].id,
   })
 
   // `ok` rather than a fidelity: the cut either happens or it is REFUSED.
   // There used to be a "text" fidelity, which meant the transcript had been
   // cleared and the chat would rebuild a text-only version of itself from its
-  // bubbles — every tool call and result silently gone. A disagreement about
-  // how many prompts exist now stops the operation instead of costing the
-  // history.
+  // bubbles — every tool call and result silently gone. A prompt that cannot
+  // be anchored now stops the operation instead of costing the history.
   check('the transcript is cut, not refused', cut.ok === true, cut)
   check('…to one turn', cut.context.turns.length === 1, cut.context.turns)
   check('the file that turn wrote is gone', read(cwd, 'draft.txt') === null, read(cwd, 'draft.txt'))
@@ -815,15 +814,13 @@ scenario('rewind_after_compact', 2500, async (api) => {
   )
 
   // …and the OTHER half of "rewind to here", which a compaction used to take
-  // away silently. Compaction removed the turns it folded, so the chat and the
-  // transcript stopped agreeing about how many prompts existed, and every cut
-  // from then on was refused — answered by clearing the transcript and letting
-  // the chat rebuild a text-only version of itself from its bubbles. Folding
-  // by flag keeps the count still, so the cut is a cut again.
+  // away silently. Compaction removed the turns it folded, so the chat and
+  // the transcript stopped describing the same conversation, and every cut
+  // from then on was refused. Folding by flag keeps every turn addressable,
+  // so a cut anchored at a prompt's id still finds its prompt.
   const nowCtx = await api.get(`/context/${s}`)
   const cut = await api.post(`/truncate/${s}`, {
-    keepUserTurns: 1,
-    totalUserTurns: nowCtx.turns.length,
+    beforePromptId: nowCtx.turns[1].id,
   })
   check('A TRANSCRIPT CUT STILL WORKS ACROSS A COMPACTION', cut.ok === true, cut)
   check('…and cut to where it was asked to', cut.context.turns.length === 1, cut.context.turns)

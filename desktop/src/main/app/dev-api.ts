@@ -31,7 +31,7 @@ import {
 import {
   compactSessionNow,
   messagesInContext,
-  rewindTranscriptToUserTurn,
+  rewindTranscriptBeforePrompt,
   runAgent,
   setTurnContext,
   turnContextState,
@@ -366,17 +366,17 @@ export function initDevApi(): void {
 
         // The transcript half of "rewind to here" — the renderer pairs this
         // with a checkpoint rewind and drops the prompt in the composer.
+        // Anchored by the prompt's id (a /send returns it as userMessageId).
         if (path.startsWith("/truncate/") && req.method === "POST") {
           const id = idFrom(path, "/truncate/");
           const b = JSON.parse((await readBody(req)) || "{}") as {
-            keepUserTurns?: number;
-            totalUserTurns?: number;
+            beforePromptId?: string;
           };
-          const r = await rewindTranscriptToUserTurn(
-            id,
-            b.keepUserTurns ?? 0,
-            b.totalUserTurns,
-          );
+          if (!b.beforePromptId) {
+            json(res, 400, { error: "beforePromptId is required" });
+            return;
+          }
+          const r = await rewindTranscriptBeforePrompt(id, b.beforePromptId);
           json(res, 200, { ...r, context: contextReport(id) });
           return;
         }

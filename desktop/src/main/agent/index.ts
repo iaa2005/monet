@@ -843,12 +843,19 @@ export async function compactSessionNow(
  */
 /** Whether a transcript message begins a real, VISIBLE user turn (a prompt with
  * a display bubble) — not a tool_result continuation of the assistant turn, and
- * not a hidden background-delivery turn. This is what the renderer counts as a
- * user bubble, so rewind's user-turn index stays exact. */
+ * not a hidden background-delivery turn. */
 function isUserTurnBoundary(m: LLMMessage): boolean {
   if (m.role !== "user" || hiddenTurns.has(m)) return false;
   if (typeof m.content === "string") return true;
-  return m.content.some((b) => b.type !== "tool_result");
+  // A message carrying tool_result blocks CONTINUES the assistant's turn, no
+  // matter what text rode in beside them — harness notes and late user notes
+  // are folded into exactly this shape. The old rule ("any non-tool_result
+  // block makes this a prompt") turned every such rider into a boundary in
+  // the middle of a turn: the turn count drifted from the chat's bubble
+  // count, and a turn taken out of context could end at the rider, leaving
+  // the tail of the real turn behind. A real prompt never shares a message
+  // with tool results, so the presence of one decides it.
+  return !m.content.some((b) => b.type === "tool_result");
 }
 
 /**
@@ -920,11 +927,10 @@ function isEmptyUserContent(content: string | LLMContentBlock[]): boolean {
  * What a transcript operation can answer with.
  *
  * `ok: false` is a REFUSAL, not a fallback. Both of these used to answer a
- * disagreement about how many user turns exist by clearing the transcript and
- * letting the chat rebuild a text-only version of itself from its bubbles —
- * silently throwing away every tool call and result in the conversation. The
- * disagreement is a bug when it happens, and the caller has to be able to say
- * so rather than lose the history to it.
+ * problem with the transcript by clearing it and letting the chat rebuild a
+ * text-only version of itself from its bubbles — silently throwing away every
+ * tool call and result in the conversation. The caller has to be able to say
+ * "nothing happened" rather than lose the history to it.
  */
 export interface TranscriptOpResult {
   ok: boolean;
@@ -932,10 +938,11 @@ export interface TranscriptOpResult {
   error?: string;
 }
 
-/** Why the two sides can disagree, said once. */
-const TURN_COUNT_DRIFT =
-  "The chat and the model's transcript disagree about how many prompts this " +
-  "conversation has, so there is no safe place to cut. Nothing was changed.";
+/** Why an unbound prompt cannot anchor a cut, said once. Only prompts sent
+ * before bubble ids were bound to transcript turns lack the anchor. */
+const UNANCHORED_PROMPT =
+  "This prompt has no model-facing turn bound to it, so there is nowhere to " +
+  "cut. Nothing was changed. Prompts sent from now on can be rewound.";
 
 /**
  * Copy a session's full-fidelity transcript into a NEW session.
@@ -951,49 +958,37 @@ const TURN_COUNT_DRIFT =
  * hidden flags (background-delivery turns, compaction summaries), and forking
  * is only offered while the session is idle, so the DB is current.
  *
- * `keepUserTurns` cuts at a user-turn boundary for "branch from here".
+ * `beforePromptId` cuts just before that prompt's turn for "branch from
+ * here" — the same anchor rule as rewindTranscriptBeforePrompt, and the same
+ * refusal when the prompt has no bound turn. `idMap` renames message ids in
+ * the copy: display bubbles are keyed globally, so the forked chat draws NEW
+ * bubble ids, and the copied turns must be re-bound to them or none of the
+ * fork's prompts can ever be addressed (toggled, rewound, branched) again.
  */
 export async function forkTranscriptToSession(
   fromSessionId: string,
   toSessionId: string,
-  keepUserTurns?: number,
-  totalUserTurns?: number,
+  beforePromptId?: string,
+  idMap?: Record<string, string>,
 ): Promise<TranscriptOpResult> {
   const { messages, hidden, ids, inContext } =
     loadTranscriptWithMeta(fromSessionId);
-  if (messages.length === 0)
-    return { ok: false, removed: 0, error: "This chat has no model history yet." };
-
-  const hiddenSet = new Set(messages.filter((_m, i) => hidden[i]));
-  const isBoundary = (m: LLMMessage): boolean => {
-    if (m.role !== "user" || hiddenSet.has(m)) return false;
-    if (typeof m.content === "string") return true;
-    return m.content.some((b) => b.type !== "tool_result");
-  };
+  // No model history is not a refusal — the fork simply starts without one,
+  // exactly like its parent.
+  if (messages.length === 0) return { ok: true, removed: 0 };
 
   let cut = messages.length;
-  if (keepUserTurns != null) {
-    const boundaries = messages.filter(isBoundary).length;
-    if (totalUserTurns != null && boundaries !== totalUserTurns)
-      return { ok: false, removed: 0, error: TURN_COUNT_DRIFT };
-    let seen = 0;
-    for (let i = 0; i < messages.length; i++) {
-      if (isBoundary(messages[i])) {
-        if (seen === keepUserTurns) {
-          cut = i;
-          break;
-        }
-        seen++;
-      }
-    }
+  if (beforePromptId != null) {
+    cut = ids.indexOf(beforePromptId);
+    if (cut < 0) return { ok: false, removed: 0, error: UNANCHORED_PROMPT };
   }
 
   // Ids and context flags come along: a forked chat whose prompts had been
   // taken out of context must still have them out, and must still be able to
-  // name them.
+  // name them — under the fork's own bubble ids.
   const copy = messages.slice(0, cut);
   replaceTranscript(toSessionId, copy, hidden.slice(0, cut), {
-    ids: ids.slice(0, cut),
+    ids: ids.slice(0, cut).map((id) => (id && idMap?.[id]) || id),
     inContext: inContext.slice(0, cut),
   });
 
@@ -1019,41 +1014,36 @@ export async function forkTranscriptToSession(
 }
 
 /**
- * Truncate the durable transcript to the first `keepUserTurns` user turns,
- * keeping their assistant/tool continuations intact.
+ * Truncate the durable transcript to just BEFORE the prompt with this bubble
+ * id — that prompt's turn and everything after it are removed; everything
+ * before it survives with its tool blocks intact.
  *
- * Refuses rather than clearing when the counts disagree — see
- * TranscriptOpResult. The caller must not truncate its own display until this
- * has said yes.
+ * By id, not by count. The old form kept "the first N user turns" and had to
+ * verify N against its own count of turn boundaries — a count that drifted
+ * the moment a harness note was folded into a user-role message, after which
+ * EVERY rewind in that chat refused with a drift error, forever. The bubble
+ * id is bound to its transcript turn when the prompt is sent (see runOne),
+ * so the cut point is looked up rather than derived, and nothing about any
+ * OTHER message's shape can break it. Refuses rather than guessing when the
+ * prompt has no bound turn (sent before ids were bound) — the caller must
+ * not truncate its own display until this has said yes.
  */
-export async function rewindTranscriptToUserTurn(
+export async function rewindTranscriptBeforePrompt(
   sessionId: string,
-  keepUserTurns: number,
-  totalUserTurns?: number,
+  promptId: string,
 ): Promise<TranscriptOpResult> {
   await ensureTranscriptLoaded(sessionId);
   const msgs = conversations.get(sessionId);
-  if (!msgs || msgs.length === 0)
-    return { ok: false, removed: 0, error: "This chat has no model history yet." };
-  const boundaries = msgs.filter(isUserTurnBoundary).length;
-  if (totalUserTurns != null && boundaries !== totalUserTurns)
-    return { ok: false, removed: 0, error: TURN_COUNT_DRIFT };
-  let seen = 0;
-  let cut = msgs.length;
-  for (let i = 0; i < msgs.length; i++) {
-    if (isUserTurnBoundary(msgs[i])) {
-      if (seen === keepUserTurns) {
-        cut = i;
-        break;
-      }
-      seen++;
-    }
-  }
+  // No model history is not a refusal: there is nothing to cut, and the
+  // caller's file/display rewind is still a perfectly good thing to do.
+  if (!msgs || msgs.length === 0) return { ok: true, removed: 0 };
+  const cut = msgs.findIndex((m) => messageIds.get(m) === promptId);
+  if (cut < 0) return { ok: false, removed: 0, error: UNANCHORED_PROMPT };
   const removed = msgs.length - cut;
   msgs.length = cut; // truncate in place — keeps the conversations Map ref
   persistTranscript(sessionId);
   if (removed > 0)
-    recordContextEvent(sessionId, "rewind", { keepUserTurns, removed });
+    recordContextEvent(sessionId, "rewind", { promptId, removed });
   // Discarded turns leave stale derived state.
   lastUsageBySession.delete(sessionId);
   compactionFloor.delete(sessionId);
@@ -1981,7 +1971,7 @@ async function runAgentScoped(
         });
         // Falls through to the ordinary end-of-turn path below.
       } else {
-        appendUserText(messages, RECON_DONE);
+        appendUserText(messages, RECON_DONE, hiddenTurns);
         onEvent({ type: "harness", text: "Plan in hand — starting the work" });
         persistTranscript(sessionId);
         continue;
@@ -2035,7 +2025,7 @@ async function runAgentScoped(
           type: "harness",
           text: `The model answered with nothing — nudged it to continue (${nudgesUsed}/${MAX_NUDGES})`,
         });
-        appendUserText(messages);
+        appendUserText(messages, undefined, hiddenTurns);
         persistTranscript(sessionId);
         continue;
       }
@@ -2363,7 +2353,7 @@ async function runAgentScoped(
         console.warn(
           `[agent] loop detected — steering (${loopSteersUsed}/${MAX_LOOP_STEERS}): ${rep.toolName} ×${rep.count}`,
         );
-        appendUserText(messages, loopNote(rep.toolName, rep.count));
+        appendUserText(messages, loopNote(rep.toolName, rep.count), hiddenTurns);
         onEvent({
           type: "harness",
           text: `Going in circles — ${rep.toolName} ran ${rep.count}× with identical input; asked the model to change approach`,
@@ -2389,7 +2379,7 @@ async function runAgentScoped(
         type: "harness",
         text: `Step budget extended by ${extra} (to ${budget}) — the run is still producing new work`,
       });
-      appendUserText(messages, extensionNote(extra, budget));
+      appendUserText(messages, extensionNote(extra, budget), hiddenTurns);
     }
 
     // A write was refused for want of a read. The phase opens now, with the
@@ -2397,7 +2387,7 @@ async function runAgentScoped(
     if (openReconAfterBatch) {
       openReconAfterBatch = false;
       reconLeft = RECON_TURNS;
-      appendUserText(messages, RECON_PROMPT);
+      appendUserText(messages, RECON_PROMPT, hiddenTurns);
       onEvent({ type: "harness", text: "Reconnaissance — reading before writing" });
     }
 
@@ -2405,7 +2395,7 @@ async function runAgentScoped(
     // results this line can join, rather than beside the tool_use blocks it
     // would have separated from them.
     if (reconEnded) {
-      appendUserText(messages, RECON_TIMEUP);
+      appendUserText(messages, RECON_TIMEUP, hiddenTurns);
       onEvent({ type: "harness", text: "Done looking — starting the work" });
     }
 
@@ -2431,7 +2421,7 @@ async function runAgentScoped(
         type: "harness",
         text: `${left} steps left — asked the model to start converging`,
       });
-      appendUserText(messages, budgetWarning(left));
+      appendUserText(messages, budgetWarning(left), hiddenTurns);
     }
 
     persistTranscript(sessionId);
@@ -2448,7 +2438,7 @@ async function runAgentScoped(
       type: "harness",
       text: "Out of steps — asked the model for a handoff summary",
     });
-    appendUserText(messages, WRAP_UP_PROMPT);
+    appendUserText(messages, WRAP_UP_PROMPT, hiddenTurns);
     try {
       await adapter.stream(
         {

@@ -14,7 +14,7 @@ import {
   compactSessionNow,
   undoCompaction,
   forkTranscriptToSession,
-  rewindTranscriptToUserTurn,
+  rewindTranscriptBeforePrompt,
   estimateSessionTokens,
   computeContextBreakdown,
   lastTurnTokens,
@@ -775,38 +775,32 @@ export function registerChatIPC(): void {
     return { ok: true };
   });
 
-  // Full-fidelity rewind: truncate the durable transcript to keep the first N
-  // user turns (tool blocks intact), instead of clearing + reseeding as text.
+  // Full-fidelity fork/rewind, anchored by the prompt's bubble id — the
+  // transcript is cut just before that prompt's turn, tool blocks intact.
   ipcMain.handle(
     "chat:forkTranscript",
     (
       _e,
       fromSessionId: string,
       toSessionId: string,
-      keepUserTurns?: number,
-      totalUserTurns?: number,
+      beforePromptId?: string,
+      idMap?: Record<string, string>,
     ) =>
       forkTranscriptToSession(
         fromSessionId || "default",
         toSessionId,
-        keepUserTurns,
-        totalUserTurns,
+        beforePromptId,
+        idMap,
       ),
   );
 
   ipcMain.handle(
     "chat:rewindTranscript",
-    async (
-      _e,
-      sessionId: string,
-      keepUserTurns: number,
-      totalUserTurns?: number,
-    ) => {
+    async (_e, sessionId: string, beforePromptId: string) => {
       abortBgAgents(sessionId || "default");
-      return rewindTranscriptToUserTurn(
+      return rewindTranscriptBeforePrompt(
         sessionId || "default",
-        keepUserTurns,
-        totalUserTurns,
+        beforePromptId,
       );
     },
   );

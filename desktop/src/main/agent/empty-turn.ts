@@ -75,6 +75,7 @@ function hasToolUse(m: LLMMessage): boolean {
 export function appendUserText(
   messages: LLMMessage[],
   nudge: string = NUDGE,
+  hiddenTurns?: WeakSet<LLMMessage>,
 ): NudgePlacement {
   const last = messages[messages.length - 1];
   // The one shape that must never be appended to: an assistant message
@@ -91,10 +92,23 @@ export function appendUserText(
   if (last?.role === "assistant" && hasToolUse(last)) return "refused";
   if (!last || last.role !== "user") {
     // Not a shape the loop produces, but pushing beats losing the run.
-    messages.push({ role: "user", content: nudge });
+    const msg: LLMMessage = { role: "user", content: nudge };
+    messages.push(msg);
+    // Every pushed message is scaffolding — a nudge, a budget note, a recon
+    // prompt. None of it is a user turn the chat should count. Mark it so
+    // Rewind/Edit see the same number of prompts the chat draws.
+    hiddenTurns?.add(msg);
     return "pushed";
   }
   if (Array.isArray(last.content)) {
+    // When the last message is pure tool_results it is NOT a user-turn
+    // boundary, and merging a text block into it makes it one. Mark it
+    // hidden so Rewind/Edit still see the same number of prompts the chat
+    // draws. A message that was already a boundary (already had text) does
+    // not change — a prompt that was counted stays counted.
+    if (last.content.every((b) => b.type === "tool_result")) {
+      hiddenTurns?.add(last);
+    }
     last.content.push({ type: "text", text: nudge });
   } else {
     last.content = [

@@ -606,11 +606,15 @@ export default function App(): JSX.Element {
       if (idx < 0 || msgs[idx].role !== "user" || !fromId) return;
       const newId = (): string =>
         crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
-      const prior = msgs.slice(0, idx).map((m) => ({ ...m, id: newId() }));
-      const keepUserTurns = msgs
-        .slice(0, idx)
-        .filter((m) => m.role === "user").length;
-      const totalUserTurns = msgs.filter((m) => m.role === "user").length;
+      // Display bubbles are keyed globally, so the branch draws fresh ids —
+      // and the transcript copy renames its turn bindings through this map,
+      // or none of the branch's prompts could ever be addressed again.
+      const idMap: Record<string, string> = {};
+      const prior = msgs.slice(0, idx).map((m) => {
+        const id = newId();
+        idMap[m.id] = id;
+        return { ...m, id };
+      });
       try {
         const title = `${sessionTitle || "Chat"} (branch)`;
         const s = (await api()?.sessions.create(title, store.space)) as
@@ -618,12 +622,9 @@ export default function App(): JSX.Element {
           | undefined;
         if (!s?.id) return;
         await api()?.sessions.save({ id: s.id, title, messages: prior });
-        await api()?.chat.forkTranscript(
-          fromId,
-          s.id,
-          keepUserTurns,
-          totalUserTurns,
-        );
+        // Cut just before the clicked prompt — it goes to the composer, not
+        // into the branch's history.
+        await api()?.chat.forkTranscript(fromId, s.id, msgs[idx].id, idMap);
         await adoptForkExtras(fromId, s.id);
         store.loadSessionMessages(s.id, prior);
         store.setCurrentSessionId(s.id);
@@ -1100,7 +1101,12 @@ export default function App(): JSX.Element {
     // the fork's future auto-saves keep using the new ids.
     const newId = (): string =>
       crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
-    const forked = msgs.map((m) => ({ ...m, id: newId() }));
+    const idMap: Record<string, string> = {};
+    const forked = msgs.map((m) => {
+      const id = newId();
+      idMap[m.id] = id;
+      return { ...m, id };
+    });
     try {
       const fromId = store.currentSessionId;
       const s = (await api()?.sessions.create()) as { id: string } | undefined;
@@ -1113,7 +1119,9 @@ export default function App(): JSX.Element {
         // The display copy above is the surface; this copies the model-facing
         // transcript (tool calls and results), which is what makes the fork
         // continue with real context instead of a text-only reconstruction.
-        if (fromId) await api()?.chat.forkTranscript(fromId, s.id);
+        // The idMap re-binds its turns to the fresh bubble ids above.
+        if (fromId)
+          await api()?.chat.forkTranscript(fromId, s.id, undefined, idMap);
         await adoptForkExtras(fromId, s.id);
         store.loadSessionMessages(s.id, forked);
         store.setCurrentSessionId(s.id);
@@ -1172,7 +1180,12 @@ export default function App(): JSX.Element {
         if (!session) return;
         const newId = (): string =>
           crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
-        const forked = session.messages.map((m) => ({ ...m, id: newId() }));
+        const idMap: Record<string, string> = {};
+        const forked = session.messages.map((m) => {
+          const nid = newId();
+          idMap[m.id] = nid;
+          return { ...m, id: nid };
+        });
         const title = `${session.title || "Chat"} (fork)`;
         const s = (await api()?.sessions.create(
           title,
@@ -1180,7 +1193,7 @@ export default function App(): JSX.Element {
         )) as { id: string } | undefined;
         if (s?.id) {
           await api()?.sessions.save({ id: s.id, title, messages: forked });
-          await api()?.chat.forkTranscript(id, s.id);
+          await api()?.chat.forkTranscript(id, s.id, undefined, idMap);
           await adoptForkExtras(id, s.id);
           useChatStore.getState().bumpSessions();
           handleSelectSession({ id: s.id, title, messages: forked });

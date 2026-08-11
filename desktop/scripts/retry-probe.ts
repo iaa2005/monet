@@ -36,9 +36,9 @@ interface SentPayload {
   }[];
 }
 
-/** What rewindTranscript was asked to cut to, so the probe can check the
- * COUNT — a mid-run note is not a prompt and must not move it. */
-const cuts: { keep: number; total: number }[] = [];
+/** What rewindTranscript was asked to cut at — the id of the prompt being
+ * resent, never anything derived from counting the messages around it. */
+const cuts: { beforePromptId: string }[] = [];
 
 const sent: SentPayload[] = [];
 const DISK: Record<string, { text?: string; base64?: string }> = {
@@ -52,8 +52,8 @@ const bridge = {
       sent.push(p);
       return { ok: true };
     },
-    rewindTranscript: async (_id: string, keep: number, total?: number) => {
-      cuts.push({ keep, total: total ?? -1 });
+    rewindTranscript: async (_id: string, beforePromptId: string) => {
+      cuts.push({ beforePromptId });
       return { ok: true as const, removed: 2 };
     },
   },
@@ -195,10 +195,10 @@ check(
 //
 // Ctrl+S hands text to a turn already running. The chat draws it as a user
 // message — it is the user's words — but it starts no turn: it rides along
-// with the tool results of the turn it interrupted. Counted as a prompt, the
-// chat's count drifts one ahead of the transcript's, and since that count is
-// what a rewind cuts BY, every later Rewind and Retry in the chat hit the
-// mismatch and refused. Permanently, and with no way to tell why.
+// with the tool results of the turn it interrupted. A retry of the prompt
+// before it must cut AT that prompt's id, unmoved by the note sitting
+// between them. (When cuts were counted rather than anchored, this note
+// drifted the count and every later Rewind in the chat refused, forever.)
 {
   useChatStore.getState().finishStreaming();
   useChatStore.getState().clearMessages();
@@ -227,8 +227,8 @@ check(
 
   await useChatStore.getState().resendFrom(first.id);
   check(
-    "THE NOTE DOES NOT COUNT AS A PROMPT",
-    cuts.length === 1 && cuts[0].keep === 0 && cuts[0].total === 1,
+    "THE NOTE DOES NOT MOVE WHERE THE CUT LANDS",
+    cuts.length === 1 && cuts[0].beforePromptId === first.id,
     cuts[0],
   );
 }

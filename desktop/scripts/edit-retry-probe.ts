@@ -38,12 +38,12 @@ function check(name: string, cond: boolean, detail?: unknown): void {
 const rewinds: { sessionId: string; sha: string }[] = [];
 const truncations: {
   sessionId: string;
-  keepUserTurns: number;
-  totalUserTurns?: number;
+  beforePromptId: string;
 }[] = [];
 let rewindOk = true;
-/** Make the transcript claim one prompt the chat does not have. */
-let ghostPrompt = false;
+/** Make the transcript's turns unaddressable — bound to no bubble on screen,
+ * like a chat whose prompts predate id binding. */
+let unanchored = false;
 
 const bridge = {
   checkpoints: {
@@ -56,25 +56,23 @@ const bridge = {
     diffStat: async () => null,
   },
   chat: {
-    rewindTranscript: async (
-      sessionId: string,
-      keepUserTurns: number,
-      totalUserTurns?: number,
-    ) => {
-      truncations.push({ sessionId, keepUserTurns, totalUserTurns });
+    rewindTranscript: async (sessionId: string, beforePromptId: string) => {
+      truncations.push({ sessionId, beforePromptId });
       return { ok: true as const, removed: 2 };
     },
     // What the transcript says its prompts are. The rewind asks this BEFORE
-    // touching anything, so a disagreement costs nothing instead of leaving
-    // the folder in one turn's state and the conversation in another's.
-    // In the normal case the two sides agree, which is what `ghostPrompt`
-    // exists to break.
+    // touching anything, so a prompt with no bound turn costs nothing instead
+    // of leaving the folder in one turn's state and the conversation in
+    // another's. Normally every prompt on screen is bound, which is what
+    // `unanchored` exists to break.
     turnContext: async () => {
       const mine = useChatStore
         .getState()
         .messages.filter((m) => m.role === "user" && !m.injected)
         .map((m) => ({ id: m.id, inContext: true }));
-      return ghostPrompt ? [{ id: "ghost", inContext: true }, ...mine] : mine;
+      return unanchored
+        ? mine.map((_m, i) => ({ id: `legacy-${i}`, inContext: true }))
+        : mine;
     },
     send: async () => ({ ok: true }),
   },
@@ -141,14 +139,9 @@ const third = turn("and a benchmark", "sha-after-3");
     rewinds[0],
   );
   check(
-    "the transcript is cut to the turns kept",
-    truncations.length === 1 && truncations[0].keepUserTurns === 2,
+    "the transcript is cut just before the prompt being edited",
+    truncations.length === 1 && truncations[0].beforePromptId === third,
     truncations,
-  );
-  check(
-    "…and it says how many turns the CHAT has, so main can spot a compaction",
-    truncations[0]?.totalUserTurns === 3,
-    truncations[0],
   );
   const msgs = useChatStore.getState().messages;
   check("the screen is cut to the same place", msgs.length === 4, msgs.length);
@@ -201,7 +194,7 @@ const third = turn("and a benchmark", "sha-after-3");
   );
   check(
     "…and still truncates to nothing",
-    truncations.length === 1 && truncations[0].keepUserTurns === 0,
+    truncations.length === 1 && truncations[0].beforePromptId === first,
     truncations,
   );
   check(
@@ -210,57 +203,6 @@ const third = turn("and a benchmark", "sha-after-3");
     useChatStore.getState().composerDraft,
   );
   check("the chat is empty", useChatStore.getState().messages.length === 0);
-}
-
-// ─── The picker's rewind: to a checkpoint, keeping the turn ─────────────
-//
-// Same two steps, opposite ends. rewindAndEdit removes the turn and offers
-// the prompt back; rewindTo (the checkpoint picker) restores THAT snapshot
-// and keeps everything up to and including it. Confusing them either loses
-// a turn nobody asked to lose or restores one turn too few.
-
-{
-  useChatStore.getState().setCurrentSessionId("s3");
-  // The previous block left a prompt in the box; this path must not add one.
-  useChatStore.getState().setComposerDraft("");
-  turn("one", "sha-1", "s3");
-  turn("two", "sha-2", "s3");
-  const msgs = useChatStore.getState().messages;
-  const secondReply = msgs[3];
-  rewinds.length = 0;
-  truncations.length = 0;
-
-  await useChatStore.getState().rewindTo(secondReply.id);
-  check(
-    "the picker restores the checkpoint it was pointed at",
-    rewinds.length === 1 && rewinds[0].sha === "sha-2",
-    rewinds,
-  );
-  check(
-    "…and keeps the turn that made it",
-    useChatStore.getState().messages.length === 4,
-    useChatStore.getState().messages.length,
-  );
-  check(
-    "…truncating the transcript to the same place",
-    truncations.length === 1 && truncations[0].keepUserTurns === 2,
-    truncations,
-  );
-  check(
-    "…and leaves the composer alone — this one is not an edit",
-    useChatStore.getState().composerDraft === "",
-    useChatStore.getState().composerDraft,
-  );
-
-  rewindOk = false;
-  truncations.length = 0;
-  await useChatStore.getState().rewindTo(secondReply.id);
-  check(
-    "it too refuses to truncate after a failed restore",
-    truncations.length === 0,
-    truncations,
-  );
-  rewindOk = true;
 }
 
 // ─── What it must refuse ────────────────────────────────────────────────
@@ -289,26 +231,26 @@ const third = turn("and a benchmark", "sha-after-3");
   useChatStore.getState().finishStreaming();
 }
 
-// ─── A DISAGREEMENT COSTS NOTHING, INSTEAD OF COSTING THE HISTORY ───────
+// ─── AN UNANCHORED PROMPT COSTS NOTHING, INSTEAD OF COSTING THE HISTORY ─
 //
-// The two sides count prompts independently, and when they disagree there is
-// no safe place to cut. This used to answer by CLEARING the transcript and
-// letting the chat rebuild a text-only version of itself from its bubbles —
-// every tool call and result in the conversation gone, silently. It is asked
-// first now, and a disagreement stops the whole operation before the folder,
-// the transcript or the screen has moved.
+// A prompt sent before bubble ids were bound to transcript turns has no
+// anchor to cut at. The count-based ancestor of this check was chat-wide:
+// one harness note folded into a user-role message anywhere and EVERY rewind
+// in the chat refused, forever. The anchor is per-prompt, and it is asked
+// first — the refusal stops the whole operation before the folder, the
+// transcript or the screen has moved.
 {
   rewinds.length = 0;
   truncations.length = 0;
   useChatStore.getState().setCurrentSessionId("s3");
   const only = turn("one prompt", "sha-s3", "s3");
-  // The transcript believes there is one more. Nothing may be undone.
-  ghostPrompt = true;
+  // The transcript has turns, but none of them is bound to this bubble.
+  unanchored = true;
   const before = useChatStore.getState().messages.length;
 
   await useChatStore.getState().rewindAndEdit(only);
   check(
-    "NOTHING IS UNDONE WHEN THE TWO SIDES DISAGREE",
+    "NOTHING IS UNDONE WHEN THE PROMPT HAS NO BOUND TURN",
     rewinds.length === 0 && truncations.length === 0,
     { rewinds, truncations },
   );
@@ -319,7 +261,7 @@ const third = turn("and a benchmark", "sha-after-3");
   );
   check(
     "…and it says so rather than doing something else",
-    /disagree/.test(useChatStore.getState().error ?? ""),
+    /no model-facing turn/.test(useChatStore.getState().error ?? ""),
     useChatStore.getState().error,
   );
 }

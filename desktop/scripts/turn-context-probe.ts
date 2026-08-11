@@ -32,25 +32,35 @@ const { turnRange, danglingToolIds } = await import(
 
 type Msg = { role: string; content: unknown }
 
-/** Two prompts; the first one used a tool. */
+/** Two prompts; the first one used a tool, and its tool_result carries a
+ * harness note beside it — the exact shape that used to open a false turn
+ * boundary in the middle of the first turn. */
 const msgs: Msg[] = [
   { role: 'user', content: 'first prompt' },
   {
     role: 'assistant',
     content: [{ type: 'tool_use', id: 'tu-1', name: 'Read', input: {} }],
   },
-  { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu-1' }] },
+  {
+    role: 'user',
+    content: [
+      { type: 'tool_result', tool_use_id: 'tu-1' },
+      { type: 'text', text: '[Harness note, not from the user — keep going.]' },
+    ],
+  },
   { role: 'assistant', content: 'answered the first' },
   { role: 'user', content: 'second prompt' },
   { role: 'assistant', content: 'answered the second' },
 ]
 
 /** The agent's own rule, restated: a visible prompt, not a tool_result
- * continuation. */
+ * continuation — and a message carrying tool_result blocks is a continuation
+ * NO MATTER what text rode in beside them, because harness notes and late
+ * user notes ride exactly there. */
 const isBoundary = (m: Msg): boolean =>
   m.role === 'user' &&
   (typeof m.content === 'string' ||
-    (m.content as { type: string }[]).some((b) => b.type !== 'tool_result'))
+    !(m.content as { type: string }[]).some((b) => b.type === 'tool_result'))
 
 // ─── What a prompt owns ─────────────────────────────────────────────────
 

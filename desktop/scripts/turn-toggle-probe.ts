@@ -53,6 +53,9 @@ const said = (role: Msg['role'], content: string): Msg => ({ role, content })
 // Two complete turns, the second with a tool call — the shape that makes the
 // unit "a whole turn" rather than "a message": an assistant `tool_use` whose
 // `tool_result` is missing is a request every provider refuses outright.
+// The tool_result carries a harness note beside it, because that is where
+// the agent folds its notes — and a rule that mistakes the rider for a new
+// prompt splits this turn in half.
 const SID = 'toggle'
 const messages: Msg[] = [
   said('user', 'first question'),
@@ -64,7 +67,10 @@ const messages: Msg[] = [
   },
   {
     role: 'user',
-    content: [{ type: 'tool_result', tool_use_id: 'call-1', content: 'a file' }],
+    content: [
+      { type: 'tool_result', tool_use_id: 'call-1', content: 'a file' },
+      { type: 'text', text: '[Harness note, not from the user — keep going.]' },
+    ],
   },
   said('assistant', 'second answer'),
 ]

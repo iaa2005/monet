@@ -33,19 +33,6 @@ function generateId(): string {
   return crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
 }
 
-/**
- * How many PROMPTS a chat has — the unit Rewind and Edit cut by.
- *
- * Not every user-role message is a prompt. A note handed to a turn already
- * running (Ctrl+S) is drawn as one and is not one: it rides along inside the
- * turn it interrupted and starts nothing. Counting it made this number one
- * larger than the transcript's own count of user turns, and from then on
- * every rewind in that chat hit the mismatch and refused.
- */
-function countPrompts(msgs: ChatMessage[]): number {
-  return msgs.filter((m) => m.role === "user" && !m.injected).length;
-}
-
 /** The permission mode a send should run under. Home only knows approve/skip,
  * so a Code-only mode saved in prefs degrades to manual approval there. */
 function permissionModeFor(space: string): string {
@@ -53,30 +40,12 @@ function permissionModeFor(space: string): string {
   return localStorage.getItem("permission-mode") ?? "default";
 }
 
-/**
- * Do the chat and the model's transcript agree about how many prompts exist?
- *
- * Asked BEFORE anything is undone, because a rewind is three separate
- * mutations — the folder, the transcript, the screen — and there is no order
- * of those three in which a refusal partway through leaves the user somewhere
- * they asked to be. So the disagreement is found first, and nothing moves.
- *
- * An empty transcript is not a disagreement: it means this chat has no model
- * history at all (nothing has been sent in it yet), and a file rewind is still
- * a perfectly good thing to do.
- */
-async function promptsAgree(
-  sessionId: string,
-  msgs: ChatMessage[],
-): Promise<boolean> {
-  const turns = await electron()?.chat.turnContext(sessionId);
-  if (!turns || turns.length === 0) return true;
-  return turns.length === countPrompts(msgs);
-}
-
-const TURN_COUNT_DRIFT =
-  "The chat and the model's transcript disagree about how many prompts this " +
-  "conversation has, so there is no safe place to cut. Nothing was changed.";
+/** Main's own refusal for a prompt with no bound transcript turn, said here
+ * too so the pre-flight check in rewindAndEdit can refuse BEFORE the file
+ * checkpoint moves — same wording as rewindTranscriptBeforePrompt's. */
+const UNANCHORED_PROMPT =
+  "This prompt has no model-facing turn bound to it, so there is nowhere to " +
+  "cut. Nothing was changed. Prompts sent from now on can be rewound.";
 
 /** What chat.send wants for each attachment (raw content, not display meta). */
 type SendAttachment = NonNullable<
@@ -508,9 +477,6 @@ export interface ChatStore {
    * truncate to before it, reset the main-process history, and resend the
    * (optionally edited) text. */
   resendFrom: (messageId: string, newText?: string) => Promise<void>;
-  /** Code Rewind: restore the workspace to a message's checkpoint (shadow git)
-   * and truncate the conversation to and including that message. */
-  rewindTo: (messageId: string) => Promise<void>;
   /** Code Rewind (under a user message): restore the workspace to the state
    * BEFORE this turn, truncate the conversation to before it, and drop the
    * user's prompt back into the composer for editing + resend. */
@@ -776,7 +742,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
             content: event.content,
             timestamp: Date.now(),
             // Said INTO a running turn, not sent as a prompt. Carried on the
-            // message so countPrompts can skip it — see the note there.
+            // message so the chat can draw it differently — see types/chat.ts.
             ...(event.injected ? { injected: true as const } : {}),
             ...(matched?.attachments ? { attachments: matched.attachments } : {}),
           },
@@ -1137,11 +1103,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // (No files are involved here, so there is nothing else to sequence.)
       const prior = msgs.slice(0, idx);
       const bridge = electron();
-      const cut = await bridge?.chat.rewindTranscript(
-        sessionId,
-        countPrompts(prior),
-        countPrompts(msgs),
-      );
+      const cut = await bridge?.chat.rewindTranscript(sessionId, messageId);
       if (cut && !cut.ok) {
         mutate(sessionId, (p) => ({ ...p, error: cut.error ?? "Retry failed." }));
         return;
@@ -1179,57 +1141,6 @@ export const useChatStore = create<ChatStore>((set, get) => {
         effort,
         attachments,
       });
-    },
-
-    rewindTo: async (messageId) => {
-      const state = get();
-      const sessionId = state.currentSessionId;
-      if (!sessionId || state.isStreaming) return;
-      const msgs = state.messages;
-      const idx = msgs.findIndex((m) => m.id === messageId);
-      if (idx < 0) return;
-
-      const bridge = electron();
-      // Asked before anything moves — see promptsAgree.
-      if (!(await promptsAgree(sessionId, msgs))) {
-        mutate(sessionId, (p) => ({ ...p, error: TURN_COUNT_DRIFT }));
-        return;
-      }
-
-      const sha = msgs[idx].checkpointSha;
-      if (sha) {
-        const r = await bridge?.checkpoints.rewind(sessionId, sha);
-        if (r && !r.ok) {
-          mutate(sessionId, (p) => ({
-            ...p,
-            error: r.error ?? "Rewind failed.",
-          }));
-          return;
-        }
-      }
-      // Truncate to and including this message; cut the durable transcript to
-      // the same prompt count so the next send continues from here.
-      const kept = msgs.slice(0, idx + 1);
-      const cut = await bridge?.chat.rewindTranscript(
-        sessionId,
-        countPrompts(kept),
-        countPrompts(msgs),
-      );
-      if (cut && !cut.ok) {
-        mutate(sessionId, (p) => ({ ...p, error: cut.error ?? "Rewind failed." }));
-        return;
-      }
-      mutate(sessionId, (p) => ({
-        ...p,
-        messages: kept,
-        isStreaming: false,
-        error: null,
-      }));
-      // Write the truncation down NOW. A send would persist it as a side
-      // effect, but a rewind is complete without one — leave the DB unsaved
-      // and reopening the chat brings back everything just removed, which
-      // reads as the rewind never having happened.
-      await persistSession(sessionId);
     },
 
     stageMessageForComposer: async (message, stagedKey) => {
@@ -1295,9 +1206,16 @@ export const useChatStore = create<ChatStore>((set, get) => {
       if (idx < 0 || msgs[idx].role !== "user") return;
       const bridge = electron();
 
-      // Asked before anything moves — see promptsAgree.
-      if (!(await promptsAgree(sessionId, msgs))) {
-        mutate(sessionId, (p) => ({ ...p, error: TURN_COUNT_DRIFT }));
+      // Asked before anything moves: a rewind is three separate mutations —
+      // the folder, the transcript, the screen — and a refusal partway
+      // through leaves the user somewhere they did not ask to be. A prompt
+      // sent before bubble ids were bound to transcript turns has no anchor
+      // to cut at; find that out while everything is still untouched. An
+      // empty turn list is fine — no model history means nothing to cut, and
+      // the file rewind is still a good thing to do.
+      const turns = (await bridge?.chat.turnContext(sessionId)) ?? [];
+      if (turns.length > 0 && !turns.some((t) => t.id === messageId)) {
+        mutate(sessionId, (p) => ({ ...p, error: UNANCHORED_PROMPT }));
         return;
       }
 
@@ -1326,11 +1244,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // so the next send continues with full fidelity, then the screen, then
       // the prompt goes into the composer.
       const prior = msgs.slice(0, idx);
-      const cut = await bridge?.chat.rewindTranscript(
-        sessionId,
-        countPrompts(prior),
-        countPrompts(msgs),
-      );
+      const cut = await bridge?.chat.rewindTranscript(sessionId, messageId);
       if (cut && !cut.ok) {
         mutate(sessionId, (p) => ({ ...p, error: cut.error ?? "Rewind failed." }));
         return;
@@ -1342,9 +1256,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
         isStreaming: false,
         error: null,
       }));
-      // Same as rewindTo: the truncation is real only once it is in the DB.
-      // This path drops the prompt into the composer, and deciding not to
-      // resend it is a legitimate way to use it — the rewind must hold anyway.
+      // The truncation is real only once it is in the DB — leave it unsaved
+      // and reopening the chat brings back everything just removed, which
+      // reads as the rewind never having happened. This path drops the prompt
+      // into the composer, and deciding not to resend it is a legitimate way
+      // to use it — the rewind must hold anyway.
       await persistSession(sessionId);
       await get().stageMessageForComposer(msgs[idx], sessionId);
     },

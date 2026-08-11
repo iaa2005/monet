@@ -434,15 +434,14 @@ export interface ElectronAPI {
     forkTranscript: (
       fromSessionId: string,
       toSessionId: string,
-      keepUserTurns?: number,
-      totalUserTurns?: number,
+      beforePromptId?: string,
+      idMap?: Record<string, string>,
     ) => Promise<{ ok: boolean; removed: number; error?: string }>;
-    /** Answers ok:false rather than clearing when the display and the
-     * transcript disagree about how many prompts exist. */
+    /** Cut the transcript to just before this prompt's turn. Answers
+     * ok:false rather than guessing when the prompt has no bound turn. */
     rewindTranscript: (
       sessionId: string,
-      keepUserTurns: number,
-      totalUserTurns?: number,
+      beforePromptId: string,
     ) => Promise<{ ok: boolean; removed: number; error?: string }>;
     compact: (sessionId?: string) => Promise<{
       ok: boolean;

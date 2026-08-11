@@ -96,34 +96,31 @@ const electronAPI = {
       ipcRenderer.invoke("chat:setTurnContext", sessionId, messageId, inContext),
     reset: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("chat:reset", sessionId),
-    /** Copy the full-fidelity transcript into a fork's session. */
+    /** Copy the full-fidelity transcript into a fork's session, cut just
+     * before the given prompt, with message ids renamed through `idMap` to
+     * the fork's own bubble ids. */
     forkTranscript: (
       fromSessionId: string,
       toSessionId: string,
-      keepUserTurns?: number,
-      totalUserTurns?: number,
+      beforePromptId?: string,
+      idMap?: Record<string, string>,
     ): Promise<{ ok: boolean; removed: number; error?: string }> =>
       ipcRenderer.invoke(
         "chat:forkTranscript",
         fromSessionId,
         toSessionId,
-        keepUserTurns,
-        totalUserTurns,
+        beforePromptId,
+        idMap,
       ),
-    /** Cut the model's transcript back to `keepUserTurns` prompts. Answers
-     * ok:false rather than clearing when the counts disagree — the caller must
-     * not truncate its own display until this has said yes. */
+    /** Cut the model's transcript to just before this prompt's turn. Answers
+     * ok:false rather than guessing when the prompt has no bound transcript
+     * turn — the caller must not truncate its own display until this has
+     * said yes. */
     rewindTranscript: (
       sessionId: string,
-      keepUserTurns: number,
-      totalUserTurns?: number,
+      beforePromptId: string,
     ): Promise<{ ok: boolean; removed: number; error?: string }> =>
-      ipcRenderer.invoke(
-        "chat:rewindTranscript",
-        sessionId,
-        keepUserTurns,
-        totalUserTurns,
-      ),
+      ipcRenderer.invoke("chat:rewindTranscript", sessionId, beforePromptId),
     compact: (
       sessionId?: string,
     ): Promise<{ ok: boolean; before?: number; after?: number; error?: string }> =>

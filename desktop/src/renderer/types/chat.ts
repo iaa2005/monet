@@ -45,11 +45,9 @@ export interface ChatMessage {
    * It looks like a user message and it is one, but it does NOT start a turn:
    * the text rides along with the tool results of the turn it interrupted,
    * because that is the only slot where user text is legal between a tool call
-   * and its answer. So it must not be COUNTED as a prompt — `countPrompts`
-   * skips it. It was counted, and the effect was quiet and permanent: the
-   * chat's prompt count and the transcript's user-turn count drifted apart by
-   * one, and from then on every Rewind and every edit-and-resend in that chat
-   * saw the mismatch and refused.
+   * and its answer. So it is not a prompt — Rewind and the context toggle
+   * anchor on prompt bubbles by id, and this one deliberately has no turn
+   * bound to it.
    */
   injected?: boolean
 }
