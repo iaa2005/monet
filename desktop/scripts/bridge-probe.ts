@@ -1,0 +1,178 @@
+/**
+ * The bridge's front door: who may drive the user's browser.
+ *
+ * This is the security surface of the whole engine. A WebSocket on loopback is
+ * NOT private: a page you visit can open one to 127.0.0.1 and CORS does not
+ * stop it, so a bridge that answers whoever connects hands a signed-in browser
+ * to any site. Kimi's shipped extension talks to a fixed port with no
+ * authentication at all (measured: no token, no handshake, no origin check in
+ * its background.js) — this exists so ours cannot drift into that.
+ *
+ * Drives the REAL server over a real socket.
+ *
+ *   npm run smoke:bridge
+ */
+
+import { mkdtempSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
+import WebSocket from "ws";
+
+let failures = 0;
+function check(name: string, cond: boolean, detail?: unknown): void {
+  if (cond) console.log(`PASS  ${name}`);
+  else {
+    failures++;
+    console.log(
+      `FAIL  ${name}${detail === undefined ? "" : ` — ${JSON.stringify(detail)}`}`,
+    );
+  }
+}
+
+const { setDataDir } = await import("../src/main/data-dir.js");
+setDataDir(mkdtempSync(join(tmpdir(), "bridge-probe-")));
+
+const { startBridge, stopBridge, bridgeToken, bridgeStatus, BRIDGE_PORT } =
+  await import("../src/main/browser/bridge.js");
+
+startBridge();
+const TOKEN = bridgeToken();
+const URL = `ws://127.0.0.1:${BRIDGE_PORT}`;
+const EXT_ORIGIN = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
+
+check("the token is long enough to be worth typing once", TOKEN.length >= 16, TOKEN.length);
+
+/** Open a socket and report how it ended: "welcome" or the close code. */
+function tryConnect(
+  origin: string,
+  token: string | null,
+): Promise<{ welcomed: boolean; code: number }> {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(URL, { origin });
+    let welcomed = false;
+    const done = (code: number): void => resolve({ welcomed, code });
+    ws.on("open", () => {
+      if (token !== null) ws.send(JSON.stringify({ type: "hello", token }));
+    });
+    ws.on("message", (d) => {
+      const m = JSON.parse(String(d)) as { type?: string };
+      if (m.type === "welcome") {
+        welcomed = true;
+        ws.close();
+      }
+    });
+    ws.on("close", (code) => done(code));
+    ws.on("error", () => done(-1));
+    setTimeout(() => {
+      try {
+        ws.close();
+      } catch {
+        /* already closed */
+      }
+      done(-2);
+    }, 8_000);
+  });
+}
+
+// ─── A PAGE MUST NOT GET IN ─────────────────────────────────────────────
+
+{
+  const r = await tryConnect("https://evil.example.com", TOKEN);
+  check(
+    "A WEB PAGE IS REFUSED EVEN WITH THE RIGHT TOKEN — origin decides first",
+    !r.welcomed,
+    r,
+  );
+}
+
+{
+  const r = await tryConnect(EXT_ORIGIN, "WRONG-TOKEN-ENTIRELY");
+  check("an extension with the wrong token is refused", !r.welcomed, r);
+}
+
+{
+  const r = await tryConnect(EXT_ORIGIN, null);
+  check(
+    "…and one that never greets is dropped rather than left open",
+    !r.welcomed && r.code !== -2,
+    r,
+  );
+}
+
+// ─── The paired extension works ─────────────────────────────────────────
+
+{
+  const ws = new WebSocket(URL, { origin: EXT_ORIGIN });
+  const welcomed = await new Promise<boolean>((resolve) => {
+    ws.on("open", () => ws.send(JSON.stringify({ type: "hello", token: TOKEN })));
+    ws.on("message", (d) => {
+      const m = JSON.parse(String(d)) as { type?: string };
+      if (m.type === "welcome") resolve(true);
+    });
+    ws.on("error", () => resolve(false));
+    setTimeout(() => resolve(false), 8_000);
+  });
+  check("THE RIGHT TOKEN FROM AN EXTENSION IS LET IN", welcomed);
+  check("…and the app reports a paired browser", bridgeStatus().connected, bridgeStatus());
+
+  // A CDP call round-trips: the app asks, the extension answers, the caller
+  // gets the result — which is all the transport is.
+  const { getBridgeTransport } = await import("../src/main/browser/transport.js").then(
+    () => import("../src/main/browser/bridge.js"),
+  );
+  ws.on("message", (d) => {
+    const m = JSON.parse(String(d)) as { id?: number; type?: string; method?: string };
+    if (m.id != null && m.type === "cdp")
+      ws.send(
+        JSON.stringify({ id: m.id, ok: true, result: { echoed: m.method } }),
+      );
+  });
+  const t = getBridgeTransport();
+  const result = await t.send("Runtime.evaluate", { expression: "1+1" });
+  check(
+    "a CDP command reaches the browser and its answer comes back",
+    result.echoed === "Runtime.evaluate",
+    result,
+  );
+
+  // An error from the browser must arrive as an error, not as a silent empty
+  // result the caller mistakes for success.
+  ws.removeAllListeners("message");
+  ws.on("message", (d) => {
+    const m = JSON.parse(String(d)) as { id?: number };
+    if (m.id != null)
+      ws.send(JSON.stringify({ id: m.id, ok: false, error: "no tab attached" }));
+  });
+  let threw = "";
+  try {
+    await t.send("Page.captureScreenshot");
+  } catch (err) {
+    threw = err instanceof Error ? err.message : String(err);
+  }
+  check("a refusal from the browser surfaces as an error", /no tab attached/.test(threw), threw);
+
+  ws.close();
+  await new Promise((r) => setTimeout(r, 300));
+  check("…and closing the browser leaves nothing paired", !bridgeStatus().connected);
+}
+
+// ─── With nobody paired, the tools say what to do ───────────────────────
+
+{
+  const { getBridgeTransport } = await import("../src/main/browser/bridge.js");
+  let msg = "";
+  try {
+    getBridgeTransport();
+  } catch (err) {
+    msg = err instanceof Error ? err.message : String(err);
+  }
+  check(
+    "an unpaired bridge explains the fix rather than failing obscurely",
+    /pairing code|extension/i.test(msg),
+    msg,
+  );
+}
+
+stopBridge();
+console.log(failures ? `\n${failures} FAILED` : "\nONLY A PAIRED EXTENSION DRIVES THE BROWSER");
+process.exit(failures ? 1 : 0);

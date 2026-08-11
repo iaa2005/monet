@@ -14,6 +14,10 @@ files:
 extraResources:
   - from: resources/voice-cloner
     to: voice-cloner
+  # Same reason: the bridge extension is COPIED OUT to a folder the user hands
+  # to Chrome's "Load unpacked", which cannot read inside app.asar.
+  - from: resources/browser-extension
+    to: browser-extension
 # Native binaries can't be spawned from inside app.asar — keep them on disk
 # (spawn paths swap app.asar → app.asar.unpacked at runtime).
 asarUnpack:

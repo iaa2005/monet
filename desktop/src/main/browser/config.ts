@@ -2,11 +2,17 @@
  * Browser config — the model can drive a browser only when the user opts in
  * (it is outward-facing, like the official app's "Browser Use" toggle).
  *
- * Two engines answer to the same tools:
+ * Three engines answer to the same tools:
  *   embedded — the <webview> in the app's Browser panel (default)
  *   external — a separate Chrome/Edge launched with its own profile
+ *   bridge   — the user's OWN browser, through the Code Monet extension
  * The engine decides which transport the page operations talk to; everything
  * above the transport (refs, human-paced input, tools) is shared.
+ *
+ * The third exists because the first two start as strangers to every site: a
+ * fresh profile is signed into nothing, and an embedded webview is what
+ * Google's anti-phishing check refuses outright. The user's daily browser is
+ * already signed in, so nothing has to be signed into twice. See bridge.ts.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
@@ -14,7 +20,7 @@ import { join } from "path";
 import { getDataDir } from "../data-dir.js";
 
 /** Which browser the tools drive. */
-export type BrowserEngine = "embedded" | "external";
+export type BrowserEngine = "embedded" | "external" | "bridge";
 
 /** How much the model may do without asking. See browser/origins.ts. */
 export type BrowserApproval = "manual" | "allowlist" | "auto";
@@ -57,7 +63,7 @@ export function getBrowserConfig(): BrowserConfig {
     const raw = JSON.parse(readFileSync(p, "utf-8")) as Partial<BrowserConfig>;
     return {
       enabled: !!raw.enabled,
-      engine: oneOf(raw.engine, ["embedded", "external"], DEFAULT.engine),
+      engine: oneOf(raw.engine, ["embedded", "external", "bridge"], DEFAULT.engine),
       approval: oneOf(raw.approval, ["manual", "allowlist", "auto"], DEFAULT.approval),
       allowedOrigins: Array.isArray(raw.allowedOrigins)
         ? raw.allowedOrigins.filter((o): o is string => typeof o === "string")

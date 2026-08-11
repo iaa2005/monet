@@ -1,10 +1,11 @@
 /**
- * One way to drive a page, two things that can be driven.
+ * One way to drive a page, three things that can be driven.
  *
  * The embedded engine is the panel's <webview>; the external one is a separate
- * Chrome. Everything above this file — refs, human-paced input, the tools
- * themselves — is written once and works on both, which is the only reason
- * keeping two engines is affordable.
+ * Chrome; the bridge is the user's own browser, reached through an extension
+ * (bridge.ts). Everything above this file — refs, human-paced input, the tools
+ * themselves — is written once and works on all three, which is the only
+ * reason keeping three engines is affordable.
  *
  * The interface is stated in INTENT (move the mouse there, type this character)
  * rather than in CDP messages, because the two engines disagree about input.
@@ -17,6 +18,7 @@ import type { WebContents } from "electron";
 import { getBrowserConfig, type BrowserEngine } from "./config.js";
 import { activeContents, revealPanel } from "./registry.js";
 import { getExternalTransport } from "./external.js";
+import { getBridgeTransport } from "./bridge.js";
 import { ensureLogging, stopLogging } from "./logs.js";
 import { currentRunSession } from "../agent/run-session.js";
 import { getVisibleChatSession } from "../session/visible.js";
@@ -340,10 +342,13 @@ export class NoPageError extends Error {
  * minute.
  */
 export async function getTransport(): Promise<BrowserTransport> {
+  const engine = getBrowserConfig().engine;
   const t =
-    getBrowserConfig().engine === "external"
+    engine === "external"
       ? getExternalTransport()
-      : embeddedFromActiveTab();
+      : engine === "bridge"
+        ? getBridgeTransport()
+        : embeddedFromActiveTab();
   ensureLogging(t);
   return t;
 }

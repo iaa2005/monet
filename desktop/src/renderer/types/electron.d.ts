@@ -1118,6 +1118,15 @@ export interface ElectronAPI {
     partition: (sessionId?: string) => Promise<string>;
     clearData: (partition: string) => Promise<void>;
     devServers: () => Promise<DevServer[]>;
+    bridgeStatus: () => Promise<{
+      listening: boolean;
+      port: number;
+      connected: boolean;
+      tab: { id: number; url: string; title: string } | null;
+      token: string;
+    }>;
+    bridgeRegenerate: () => Promise<string>;
+    bridgeExport: () => Promise<{ ok: boolean; path?: string; error?: string }>;
     registerTab: (tabId: string, webContentsId: number) => Promise<void>;
     unregisterTab: (tabId: string) => Promise<void>;
     activateTab: (tabId: string) => Promise<void>;

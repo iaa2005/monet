@@ -7,10 +7,15 @@
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
+  Check,
   Chrome,
+  Copy,
+  Download,
   ListChecks,
   PanelRight,
   Plus,
+  Puzzle,
+  RefreshCw,
   ShieldQuestion,
   X,
   Zap,
@@ -31,6 +36,137 @@ import { PickCard } from "@/components/settings/PickCard";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
+}
+
+/**
+ * Pairing the user's own browser: get the extension, carry the code across.
+ *
+ * The code is the whole access control. A local WebSocket that can drive a
+ * signed-in browser must not answer to anyone who finds the port — a page you
+ * visit can open a WebSocket to localhost, and CORS does not stop it. So the
+ * app refuses every connection that cannot produce this, and the only way it
+ * travels is a person typing it into the extension.
+ */
+function BridgePairing(): JSX.Element {
+  const [status, setStatus] = useState<{
+    connected: boolean;
+    token: string;
+    tab: { url: string; title: string } | null;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    const poll = (): void => {
+      api()
+        ?.browser.bridgeStatus()
+        .then((s) => live && setStatus(s))
+        .catch(() => {});
+    };
+    poll();
+    const t = setInterval(poll, 2000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, []);
+
+  const download = async (): Promise<void> => {
+    const r = await api()?.browser.bridgeExport();
+    if (r?.ok && r.path) setSaved(r.path);
+  };
+
+  const copy = (): void => {
+    if (!status?.token) return;
+    void navigator.clipboard.writeText(status.token);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="mt-4 rounded-lg border border-border/60 p-3">
+      <div className="flex items-center gap-2">
+        <span
+          className={cn(
+            "size-2 rounded-full",
+            status?.connected ? "bg-emerald-500" : "bg-muted-foreground/40",
+          )}
+        />
+        <span className="text-[13px] font-medium">
+          {status?.connected ? "Your browser is paired" : "No browser paired yet"}
+        </span>
+      </div>
+      {status?.connected && (
+        <div className="mt-1 text-[12px] text-muted-foreground">
+          {status.tab
+            ? `Holding: ${status.tab.title || status.tab.url}`
+            : "Open the extension on a tab and press Attach to hand it one."}
+        </div>
+      )}
+
+      <ol className="mt-3 space-y-2.5 text-[12px] text-muted-foreground">
+        <li>
+          <span className="text-foreground">1. Get the extension.</span> It is
+          saved as a folder — that is what Chrome's “Load unpacked” asks for.
+          <div className="mt-1.5">
+            <button
+              type="button"
+              onClick={() => void download()}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2 py-1 text-[12px] text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+            >
+              <Download className="size-3.5" />
+              Download extension
+            </button>
+            {saved && (
+              <div className="mt-1 break-all text-[11px]">Saved to {saved}</div>
+            )}
+          </div>
+        </li>
+        <li>
+          <span className="text-foreground">2. Load it.</span> Open{" "}
+          <code className="rounded bg-black/[0.06] px-1 dark:bg-white/[0.08]">
+            chrome://extensions
+          </code>
+          , turn on Developer mode, click “Load unpacked”, pick that folder.
+        </li>
+        <li>
+          <span className="text-foreground">3. Pair it.</span> Click the
+          extension, paste this code:
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <code className="rounded bg-black/[0.06] px-2 py-1 font-mono text-[13px] tracking-widest text-foreground dark:bg-white/[0.08]">
+              {status?.token ?? "…"}
+            </code>
+            <button
+              type="button"
+              onClick={copy}
+              title="Copy"
+              className="rounded-md border border-border/60 p-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+            >
+              {copied ? (
+                <Check className="size-3.5 text-emerald-500" />
+              ) : (
+                <Copy className="size-3.5" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => void api()?.browser.bridgeRegenerate()}
+              title="New code — unpairs every browser"
+              className="rounded-md border border-border/60 p-1 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+            >
+              <RefreshCw className="size-3.5" />
+            </button>
+          </div>
+        </li>
+        <li>
+          <span className="text-foreground">4. Hand it a tab.</span> On the page
+          you want the agent to use, open the extension and press Attach. It
+          touches nothing else, and Chrome shows a bar while it holds the tab.
+        </li>
+      </ol>
+    </div>
+  );
 }
 
 
@@ -151,6 +287,12 @@ export function AutomationSettings(): JSX.Element {
                     "Its own profile under the app data folder — your real browser is never touched. For sites that refuse an embedded view, or when you need extensions.",
                     Chrome,
                   ],
+                  [
+                    "bridge",
+                    "Your own browser, through the extension",
+                    "The browser you already use, already signed in — nothing has to be signed into twice. It only ever touches the one tab you hand it.",
+                    Puzzle,
+                  ],
                 ] as const
               ).map(([value, label, hint, icon]) => (
                 <PickCard
@@ -165,6 +307,8 @@ export function AutomationSettings(): JSX.Element {
             </div>
           </div>
         )}
+
+        {browserOn && engine === "bridge" && <BridgePairing />}
 
         {browserOn && (
           <div className="mt-4">

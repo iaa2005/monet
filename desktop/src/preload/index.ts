@@ -1062,6 +1062,22 @@ const electronAPI = {
       ipcRenderer.invoke("browser:clearData", partition),
     devServers: (): Promise<DevServer[]> =>
       ipcRenderer.invoke("browser:devServers"),
+    /** The bridge engine: pairing code, whether a browser answered, and which
+     * tab it is holding. */
+    bridgeStatus: (): Promise<{
+      listening: boolean;
+      port: number;
+      connected: boolean;
+      tab: { id: number; url: string; title: string } | null;
+      token: string;
+    }> => ipcRenderer.invoke("browser:bridgeStatus"),
+    /** Mint a new pairing code — every paired browser is dropped. */
+    bridgeRegenerate: (): Promise<string> =>
+      ipcRenderer.invoke("browser:bridgeRegenerate"),
+    /** Copy the extension somewhere Chrome's "Load unpacked" can take, and
+     * reveal it. Answers with the folder. */
+    bridgeExport: (): Promise<{ ok: boolean; path?: string; error?: string }> =>
+      ipcRenderer.invoke("browser:bridgeExport"),
     /** Tell main which guest belongs to this tab (after dom-ready). */
     registerTab: (tabId: string, webContentsId: number): Promise<void> =>
       ipcRenderer.invoke("browser:registerTab", tabId, webContentsId),

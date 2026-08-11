@@ -7,12 +7,18 @@
  * the external browser down.
  */
 
-import { BrowserWindow, dialog, ipcMain, session } from "electron";
+import { BrowserWindow, dialog, ipcMain, session, shell } from "electron";
 import {
   getBrowserConfig,
   setBrowserConfig,
   type BrowserConfig,
 } from "../browser/config.js";
+import {
+  bridgeStatus,
+  bridgeToken,
+  exportBridgeExtension,
+  regenerateBridgeToken,
+} from "../browser/bridge.js";
 import { partitionFor } from "../browser/session.js";
 import { detectDevServers, type DevServer } from "../browser/dev-servers.js";
 import {
@@ -131,6 +137,23 @@ ipcMain.handle("browser:getConfig", (): BrowserConfig => getBrowserConfig());
   ipcMain.handle("browser:devServers", (): Promise<DevServer[]> =>
     detectDevServers(getWorkspacePath()),
   );
+
+  // ─── The bridge engine: the user's own browser ────────────────────────
+  //
+  // Settings shows the pairing code and whether a browser has answered; the
+  // download hands over a folder Chrome's "Load unpacked" accepts as-is.
+  ipcMain.handle("browser:bridgeStatus", () => ({
+    ...bridgeStatus(),
+    token: bridgeToken(),
+  }));
+  ipcMain.handle("browser:bridgeRegenerate", () => regenerateBridgeToken());
+  ipcMain.handle("browser:bridgeExport", () => {
+    const r = exportBridgeExtension();
+    // Open the folder so the next step (Load unpacked → pick this folder) is
+    // in front of the user rather than in a path they have to retype.
+    if (r.ok && r.path) shell.showItemInFolder(r.path);
+    return r;
+  });
 
   // The tab registry. The renderer reports ids because it is the only side
   // that knows which guest belongs to which tab, and which tab is on screen.

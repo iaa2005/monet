@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        width: 280px;
+        margin: 0;
+        padding: 14px;
+        font: 13px/1.45 system-ui, -apple-system, Segoe UI, sans-serif;
+      }
+      h1 { font-size: 13px; margin: 0 0 10px; font-weight: 600; }
+      .row { display: flex; gap: 6px; align-items: center; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: #999; flex: none; }
+      .dot.on { background: #2a7d5f; }
+      .muted { opacity: 0.7; }
+      input {
+        width: 100%; box-sizing: border-box; padding: 6px 8px; margin: 8px 0;
+        font: inherit; letter-spacing: 0.08em; text-transform: uppercase;
+      }
+      button {
+        width: 100%; padding: 7px 10px; font: inherit; cursor: pointer;
+        border-radius: 6px; border: 1px solid rgba(128,128,128,0.4);
+        background: transparent; color: inherit;
+      }
+      button.primary { background: #2a7d5f; color: #fff; border-color: transparent; }
+      #tab { margin-top: 8px; font-size: 12px; word-break: break-all; }
+      hr { border: 0; border-top: 1px solid rgba(128,128,128,0.25); margin: 12px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Code Monet Bridge</h1>
+    <div class="row"><span class="dot" id="dot"></span><span id="status">checking…</span></div>
+
+    <div id="pairing">
+      <hr />
+      <div class="muted">Pairing code — Settings → Automation in Code Monet.</div>
+      <input id="token" placeholder="XXXXXXXXXXXX" autocomplete="off" spellcheck="false" />
+      <button id="pair" class="primary">Pair</button>
+    </div>
+
+    <hr />
+    <button id="toggle">Attach this tab</button>
+    <div id="tab" class="muted"></div>
+    <div class="muted" style="margin-top: 10px; font-size: 11px">
+      While a tab is attached, Chrome shows a "being debugged" bar — that is the
+      agent's hold on it. Detach here, or close the bar, to end it.
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>
