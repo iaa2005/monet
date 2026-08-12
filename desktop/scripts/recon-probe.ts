@@ -16,12 +16,14 @@
 
 import {
   LOOK_FIRST_NOTE,
+  LOOK_FIRST_TOOLS,
   planWasMade,
   RECON_DONE,
   RECON_PROMPT,
   RECON_TIMEUP,
   RECON_TOOLS,
   RECON_TURNS,
+  reconRefusal,
   reconTools,
 } from "../src/main/agent/recon.js";
 import { WRITERS } from "../src/main/agent/writers.js";
@@ -115,6 +117,53 @@ function check(name: string, cond: boolean, detail?: unknown): void {
   check(
     "no language, no word list, nothing to translate",
     !/[а-яё]/i.test(LOOK_FIRST_NOTE) || true,
+  );
+}
+
+// ─── What "look first" is about, and what it is not ─────────────────────
+//
+// The trigger used to be WRITERS, the set that answers "could this batch have
+// changed the folder" — under which RunPython is a writer. In Home the first
+// thing every chat does is RunPython, against an empty sandbox, for data off
+// the network: every Home chat opened with a refusal and six read-only turns.
+
+{
+  check(
+    "running something is not a blind write",
+    !LOOK_FIRST_TOOLS.has("RunPython") &&
+      !LOOK_FIRST_TOOLS.has("RunCommand") &&
+      !LOOK_FIRST_TOOLS.has("Bash"),
+    [...LOOK_FIRST_TOOLS],
+  );
+  check(
+    "…but overwriting a file you have not read still is",
+    LOOK_FIRST_TOOLS.has("Edit") && LOOK_FIRST_TOOLS.has("Write"),
+  );
+  check(
+    "the trigger is narrower than the rewind's idea of a writer",
+    [...LOOK_FIRST_TOOLS].every((n) => WRITERS.has(n)) &&
+      LOOK_FIRST_TOOLS.size < WRITERS.size,
+  );
+  // The phase is a toolset the model is OFFERED; this is the part that makes
+  // it true when the model calls a name it remembers from an earlier turn.
+  const refusal = reconRefusal("RunPython");
+  check(
+    "a tool the phase does not offer is refused by name",
+    /RunPython/.test(refusal),
+  );
+  check(
+    "…as the harness, not as the user",
+    /not from the user/i.test(refusal),
+  );
+  check(
+    "…and the refusal says how to get the tools back",
+    /stop calling tools/i.test(refusal),
+  );
+  check(
+    "every tool the refusal recommends is one the phase actually allows",
+    ["Read", "Grep", "Glob", "WebFetch", "AskUserQuestion"].every(
+      (n) => RECON_TOOLS.has(n) && refusal.includes(n),
+    ),
   );
 }
 

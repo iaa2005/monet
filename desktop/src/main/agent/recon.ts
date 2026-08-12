@@ -118,6 +118,55 @@ export const RECON_TIMEUP = [
 ].join("\n");
 
 /**
+ * Which calls "read it first" is even ABOUT.
+ *
+ * This used to be writers.ts's WRITERS, and that set answers a different
+ * question — "could this batch have changed the folder", asked so a rewind
+ * does not miss a file. Under it, `RunPython` counts as a writer, and in Home
+ * the very first thing a chat does is RunPython: the sandbox starts empty, the
+ * data comes off the network, and there is nothing to have read. Every Home
+ * chat opened with a refusal, six read-only turns, and a Glob answering
+ * "sandbox is empty". Measured on "нарисуй график Apple": two wasted turns
+ * before the work started, on a task with no files in it at all.
+ *
+ * The condition the note actually states is "you are about to overwrite
+ * something you have not seen". That is these four tools, and only when the
+ * target is already there — see targetExists in the loop. Running a command is
+ * not on the list: `git status`, `npm test` and a yfinance download are not
+ * blind writes, and a run's first action being a command is ordinary.
+ */
+export const LOOK_FIRST_TOOLS = new Set([
+  "Edit",
+  "MultiEdit",
+  "NotebookEdit",
+  "Write",
+]);
+
+/**
+ * Refusing a tool the recon phase does not offer.
+ *
+ * The phase hands the model a reduced toolset, which is not the same as
+ * enforcing it: a model that called RunPython last turn calls it again from
+ * memory, and the executor looked the name up in the FULL registry and ran it.
+ * So the writing tools were "taken away" in the sense that they were not
+ * listed, and available in the sense that they worked — the run did its whole
+ * job inside the looking phase, and the answer that followed was then read as
+ * the plan and handed back with "now do the work". The user's word for the
+ * result was "ЧТО? КАААК?".
+ */
+export function reconRefusal(toolName: string): string {
+  return [
+    "[Harness note, not from the user — reconnaissance phase.]",
+    "",
+    `${toolName} is not available while looking. This phase is for reading:`,
+    "Read, Grep, Glob, WebFetch, WebSearch, TodoWrite, AskUserQuestion.",
+    "",
+    "When you know enough, stop calling tools and write out the plan — every",
+    "tool comes back the moment you do.",
+  ].join("\n");
+}
+
+/**
  * Nothing here predicts anything from the user's words any more.
  *
  * There used to be `worthRecon`: English action verbs, a few Russian stems, and

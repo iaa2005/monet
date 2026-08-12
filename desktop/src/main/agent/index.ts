@@ -25,13 +25,19 @@ import { CONNECTOR_TOOL_NAMES } from "./connector-tools.js";
 import { isFeatureOn } from "./features.js";
 import {
   LOOK_FIRST_NOTE,
+  LOOK_FIRST_TOOLS,
   planWasMade,
   RECON_DONE,
   RECON_PROMPT,
   RECON_TIMEUP,
+  RECON_TOOLS,
   RECON_TURNS,
+  reconRefusal,
   reconTools,
 } from "./recon.js";
+import { existsSync } from "fs";
+import { resolveSandboxPath } from "../sandbox/files.js";
+import { sessionSpace } from "./session-space.js";
 import { connectorServerNames } from "../mcp/manager.js";
 import { getService } from "../connectors/services/registry.js";
 import {
@@ -1949,8 +1955,13 @@ async function runAgentScoped(
           `with no result immediately after — ${misplaced.slice(0, 3).join(", ")}`,
       );
     // While reconnaissance lasts, the model is handed a toolset in which
-    // starting to code is not an available action.
-    const turnTools = reconLeft > 0 ? reconTools(tools) : tools;
+    // starting to code is not an available action. Latched here rather than
+    // read again at execution time: reconLeft is decremented once the calls
+    // are in, so by then the turn that was offered the reduced toolset can no
+    // longer be recognised as one — and the last recon turn would enforce
+    // nothing. See the refusal in runOne.
+    const reconTurn = reconLeft > 0;
+    const turnTools = reconTurn ? reconTools(tools) : tools;
 
     try {
       await adapter.stream(
@@ -2189,11 +2200,56 @@ async function runAgentScoped(
       image?: { base64: string; mediaType: string };
     }[] = [];
 
+    /**
+     * Is this write landing on a file that is already there?
+     *
+     * "Read it before you change it" is advice about an EXISTING file. Creating
+     * one is not a blind write — there is nothing to have read — and in Home,
+     * where every chat starts with an empty folder, treating it as one meant
+     * the first Write of every chat was refused. Edit and NotebookEdit need an
+     * existing file by construction, so they answer yes and let the tool report
+     * a missing file in its own words.
+     */
+    const targetExists = (tc: {
+      name: string;
+      input: Record<string, unknown>;
+    }): boolean => {
+      if (tc.name !== "Write") return true;
+      const p = tc.input.file_path ?? tc.input.path;
+      if (typeof p !== "string" || !p) return false;
+      try {
+        if (sessionSpace(sessionId, space) === "home") {
+          const abs = resolveSandboxPath(sessionId, p);
+          return !!abs && existsSync(abs);
+        }
+        return existsSync(p);
+      } catch {
+        return false;
+      }
+    };
+
     const runOne = async (tc: {
       id: string;
       name: string;
       input: Record<string, unknown>;
     }): Promise<(typeof results)[number]> => {
+      // The phase is only OFFERED as a reduced toolset; this is what makes it
+      // true. A model that used RunPython last turn calls it again from memory
+      // and the executor, which resolves names against the full registry, ran
+      // it — so the run finished its work inside the looking phase and the
+      // answer got handed back as "a plan you should now carry out". See
+      // reconRefusal.
+      if (reconTurn && !RECON_TOOLS.has(tc.name)) {
+        const refusal = reconRefusal(tc.name);
+        onEvent({
+          type: "tool_result",
+          toolUseID: tc.id,
+          toolName: tc.name,
+          content: refusal,
+          final: true,
+        });
+        return { tool_use_id: tc.id, content: refusal, is_error: true };
+      }
       // LOOK BEFORE YOU WRITE, decided on the action instead of on the words.
       //
       // This used to be predicted from the prompt by `worthRecon`: English
@@ -2205,20 +2261,33 @@ async function runAgentScoped(
       // not deciding whether a task needs looking at.
       //
       // The condition the phase actually cares about needs no language at all:
-      // a write is about to happen and nothing has been read. That is visible
-      // here, exactly once per run, and in every live run so far it would not
-      // have fired — a read preceded every write.
+      // a write is about to LAND ON SOMETHING THAT EXISTS and nothing has been
+      // read. Both halves matter — see LOOK_FIRST_TOOLS for what the first one
+      // cost when it was merely "a writer", and targetExists for the second.
       if (
         isFeatureOn("recon") &&
         !lookFirstSpent &&
         readsThisRun === 0 &&
-        WRITERS.has(tc.name)
+        LOOK_FIRST_TOOLS.has(tc.name) &&
+        targetExists(tc)
       ) {
         lookFirstSpent = true;
         openReconAfterBatch = true;
         onEvent({
           type: "harness",
           text: `Asked it to read before writing (${tc.name} with nothing read yet)`,
+        });
+        // The refusal reaches the MODEL as a tool result, and used to reach the
+        // renderer as nothing at all: the "Running…" placeholder below is only
+        // sent further down, so the bubble for a refused call opened on the
+        // tool_use event and never closed. "Таск как бы зависает со статусом
+        // running" was this line missing.
+        onEvent({
+          type: "tool_result",
+          toolUseID: tc.id,
+          toolName: tc.name,
+          content: LOOK_FIRST_NOTE,
+          final: true,
         });
         return {
           tool_use_id: tc.id,
