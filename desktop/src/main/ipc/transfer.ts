@@ -79,7 +79,7 @@ interface BundleArtifact {
 
 /** A file from the Home sandbox work tree, at its relative path (subfolders
  * preserved) — restored into the imported chat's sandbox so RunPython /
- * SandboxRead and the Files tab see it. */
+ * Read and the Files tab see it. */
 interface BundleSandboxFile {
   path: string;
   mediaType: string;

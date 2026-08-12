@@ -38,7 +38,7 @@ import { tunablePrompt } from '../prompts/index.js'
 
 // Home is isolated: a skill's "Base directory" host path is unreachable there.
 // Copy the skill's bundled files into the chat sandbox — recursively, preserving
-// subfolders — so SandboxRead and RunPython can use them at the same relative
+// subfolders — so Read and RunPython can use them at the same relative
 // paths the skill's instructions reference (e.g. scripts/office/pack.py).
 const SKILL_COPY_MAX_FILE = 2 * 1024 * 1024 // 2 MB per file
 const SKILL_COPY_MAX_TOTAL = 12 * 1024 * 1024 // 12 MB total
@@ -96,7 +96,7 @@ function copySkillFilesToSandbox(
  * A skill's "Base directory" is a HOST path. In Home (and any sandboxed chat)
  * that path is unreachable, so a skill whose SKILL.md says "read
  * SKILL-tearsheet.md" or "run scripts/foo.py" sends the model hunting: it
- * tries SandboxRead on a host path (refused), then a bare relative path
+ * tries Read on a host path (refused), then a bare relative path
  * (absent), then RunCommand/find (nothing), and only recovers if it thinks to
  * call the Skill tool — which is the one place that used to do this copy.
  * Measured: five wasted steps before recovery on the equity-research skill.
@@ -116,7 +116,7 @@ export function bridgeSkillFilesToSandbox(
     `\n\n---\n[Sandbox] This chat is isolated, so the skill's host "Base ` +
     `directory" above is NOT reachable — do not try to read it or find it on ` +
     `disk. The skill's files were copied into this chat's sandbox at the SAME ` +
-    `relative paths (subfolders preserved): read them with SandboxRead or open ` +
+    `relative paths (subfolders preserved): read them with Read or open ` +
     `them from RunPython (cwd is the sandbox root): ${shown}${more}. Some ` +
     `bundled scripts may rely on tools unavailable in the sandbox (e.g. ` +
     `LibreOffice); prefer generating output directly with RunPython.`
@@ -338,7 +338,7 @@ export const InlineSkillTool = buildTool({
 
       // In Home the skill's bundled files live on the host FS, which the
       // isolated chat cannot read — bridge them into the chat sandbox so
-      // SandboxRead / RunPython can use them.
+      // Read / RunPython can use them.
       const space = (context as { space?: string }).space
       const sessionId = (context as { sessionId?: string }).sessionId || 'default'
       const skillDir = (command as { skillRoot?: string }).skillRoot

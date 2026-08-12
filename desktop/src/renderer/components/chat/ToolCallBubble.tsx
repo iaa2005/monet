@@ -121,9 +121,6 @@ const HUMAN_NAMES: Record<string, string> = {
   UpdatePlan: "Updated the plan document",
   Task: "Delegated task",
   RunPython: "Ran Python",
-  SandboxList: "Listed sandbox files",
-  SandboxRead: "Read sandbox file",
-  SandboxWrite: "Wrote sandbox file",
   BrowserNavigate: "Opened page",
   BrowserReadPage: "Read page",
   BrowserClick: "Clicked",
@@ -142,7 +139,9 @@ function inputPreview(name: string, input: Record<string, unknown>): string {
   const str = (k: string): string | undefined =>
     typeof input[k] === "string" ? (input[k] as string) : undefined;
   if (name === "Bash" || name === "PowerShell") return str("command") ?? "";
-  const path = str("file_path") ?? str("path");
+  // `name` too: in a Home chat Read/Write/Edit are the sandbox tools, and
+  // they take a sandbox-relative `name` rather than an absolute file_path.
+  const path = str("file_path") ?? str("path") ?? str("name");
   if (
     name === "Read" ||
     name === "Write" ||
@@ -298,11 +297,9 @@ function ToolDetail({
     );
   }
 
-  if (name === "RunPython" || name === "SandboxWrite") {
-    const sent =
-      name === "RunPython" ? str("code") : str("content");
-    const sentLang =
-      name === "RunPython" ? "python" : langFromPath(str("name") ?? "");
+  if (name === "RunPython") {
+    const sent = str("code");
+    const sentLang = "python";
     return (
       <ToolPanes bare={inGroup}>
         {sent && (
@@ -310,7 +307,6 @@ function ToolDetail({
             <CodeBlock
               code={sent}
               language={sentLang}
-              maxHeight={name === "SandboxWrite" ? 280 : undefined}
               bare
               className="my-0 rounded-none border-0"
             />

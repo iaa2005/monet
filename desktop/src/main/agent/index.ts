@@ -426,8 +426,8 @@ export function getConversationText(
 const HOME_DIRECTIVE_DEFAULT = [
   "You are in HOME. Your default workspace is an ISOLATED sandbox — you have",
   "no direct access to the user's filesystem or shell. This chat has its OWN",
-  "sandbox of files (user attachments + files you produce): SandboxList",
-  "shows them (subfolders included), SandboxRead/SandboxWrite handle text files,",
+  "sandbox of files (user attachments + files you produce): Glob",
+  "finds them (subfolders included), Read/Write handle text files,",
   "and RunPython executes Python in the same directory — use it for computation,",
   "data analysis and binary documents (charts, docx, xlsx). Every file written",
   "there is attached to the conversation automatically. Only the tools",

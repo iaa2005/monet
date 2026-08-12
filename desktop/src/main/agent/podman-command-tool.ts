@@ -97,7 +97,7 @@ export const RunCommandTool = buildTool({
           text:
             `Command running in background with ID: ${r.taskId}. Output is ` +
             `being written to: ${r.outputPath}. You will be notified when it ` +
-            `completes. To check interim output, use SandboxRead on that file ` +
+            `completes. To check interim output, use Read on that file ` +
             `path.`,
         },
       };

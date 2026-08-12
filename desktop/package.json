@@ -107,6 +107,7 @@
     "smoke:mcpcat": "node scripts/renderer-probe.mjs scripts/mcp-catalog-probe.ts",
     "smoke:srclabels": "node scripts/renderer-probe.mjs scripts/source-labels-probe.ts",
     "smoke:skillsrc": "node scripts/renderer-probe.mjs scripts/skill-sources-probe.ts",
+    "smoke:space": "node scripts/build-agent-db-probe.mjs scripts/session-space-probe.ts",
     "smoke:skillbridge": "node scripts/build-agent-db-probe.mjs scripts/skill-bridge-probe.ts",
     "smoke:marketplace": "node scripts/renderer-probe.mjs scripts/marketplace-probe.ts",
     "smoke:catalogschema": "node scripts/catalog-schema-probe.mjs",

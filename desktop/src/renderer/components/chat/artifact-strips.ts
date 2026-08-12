@@ -43,7 +43,7 @@ export function stripIndexes(
     }
     lastIdx = i;
     // Any tool whose result carries [artifact] markers contributes to the
-    // turn's strip (RunPython, RunCommand, SandboxWrite, screenshots …).
+    // turn's strip (RunPython, RunCommand, Write, screenshots …).
     const out = m.toolCall?.output;
     if (out && out.includes("[artifact]"))
       for (const f of sandboxFilesFromOutput(out, m.timestamp))

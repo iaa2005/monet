@@ -25,7 +25,6 @@ export const WRITERS = new Set([
   "PowerShell",
   "RunPython",
   "RunCommand",
-  "SandboxWrite",
   "Task",
   "Skill",
 ]);

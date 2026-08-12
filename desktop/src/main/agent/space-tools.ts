@@ -8,17 +8,21 @@
  * a tool gets added elsewhere and nobody asks which space it belongs to.
  */
 
-/** Tools advertised to Home (isolated space): no host filesystem/shell —
- * file access is scoped to the CHAT's sandbox via the Sandbox* tools. */
+/** Tools advertised to Home (isolated space): no host filesystem, no host
+ * shell. Read/Write/Edit/Glob appear here too, but in Home they resolve to
+ * the sandbox implementations — getVendorToolsForSpace swaps them, so the
+ * model never picks a filesystem by picking a tool name. */
 export const HOME_TOOL_NAMES = new Set([
   "RunPython",
   // Long installs and builds run detached via its run_in_background flag;
   // the turn keeps thinking and the finish is announced on its own.
   "RunCommand",
-  "SandboxList",
-  "SandboxRead",
-  "SandboxWrite",
-  "SandboxEdit",
+  // The same names Code uses. In Home they resolve to the sandbox
+  // implementations — see getVendorToolsForSpace.
+  "Read",
+  "Write",
+  "Edit",
+  "Glob",
   // Serving the chat's own folder over a loopback-only port, from inside the
   // container — the isolated alternative to DevServer, which is Code's.
   "ServeSandbox",
@@ -71,10 +75,6 @@ export const HOME_TOOL_NAMES = new Set([
 export const SANDBOX_ONLY_NAMES = new Set([
   "RunPython",
   "RunCommand",
-  "SandboxList",
-  "SandboxRead",
-  "SandboxWrite",
-  "SandboxEdit",
 ]);
 
 /**

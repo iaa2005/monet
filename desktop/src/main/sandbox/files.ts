@@ -5,7 +5,7 @@
  * (sandboxWorkDir = <dataDir>/sandboxes/<id>) — the SAME tree Podman mounts at
  * /work, the subprocess engine uses as cwd, and (since subdir support) the
  * Pyodide engine seeds from and writes back to. It is a real directory tree, so
- * files live at their relative paths (subfolders included). SandboxList/Read/
+ * files live at their relative paths (subfolders included). Glob/Read/
  * Write and RunPython therefore all see one coherent, nested directory.
  */
 
@@ -108,7 +108,7 @@ export function readSandboxFile(
   } catch {
     return {
       ok: false,
-      error: `No file named "${name}" in this chat's sandbox. Use SandboxList to see what exists.`,
+      error: `No file named "${name}" in this chat's sandbox. Use Glob to see what exists.`,
     };
   }
   if (!st.isFile())
@@ -141,7 +141,7 @@ export function editSandboxFile(
   try {
     buf = readFileSync(abs);
   } catch {
-    return { ok: false, error: `No file named "${name}" in this chat's sandbox. Use SandboxList to see what exists.` };
+    return { ok: false, error: `No file named "${name}" in this chat's sandbox. Use Glob to see what exists.` };
   }
   if (buf.includes(0))
     return { ok: false, error: "Binary file — edit with RunPython instead." };
@@ -188,7 +188,7 @@ export function writeSandboxFile(
 /**
  * Drop an arbitrary file (any bytes, e.g. a skill's bundled resource) into the
  * chat sandbox at a relative path, preserving subfolders. Written to the work
- * dir on disk AND mirrored into the live Pyodide FS, so both SandboxRead and
+ * dir on disk AND mirrored into the live Pyodide FS, so both Read and
  * RunPython see it. Returns the stored absolute path (or null if the path is
  * invalid / escapes the sandbox).
  */

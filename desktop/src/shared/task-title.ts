@@ -25,10 +25,6 @@ const TOOL_LABELS: Record<string, string> = {
   // The sandbox tools touch this chat's scratch folder, not the user's disk.
   // Worth keeping distinct: "Write · app.py" reading as a write to their
   // project would be a lie.
-  SandboxWrite: "Sandbox write",
-  SandboxRead: "Sandbox read",
-  SandboxEdit: "Sandbox edit",
-  SandboxList: "Sandbox files",
 };
 
 export function toolLabel(tool: string): string {

@@ -171,7 +171,7 @@ function resolvePath(
     if (isAbsolute(raw))
       return {
         error:
-          "Home has no access to the machine's filesystem. Give a path inside this chat's sandbox (see SandboxList).",
+          "Home has no access to the machine's filesystem. Give a path inside this chat's sandbox (see Glob).",
       };
     const abs = resolveSandboxPath(sessionId, raw);
     if (!abs)

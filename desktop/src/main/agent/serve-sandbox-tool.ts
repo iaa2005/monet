@@ -79,7 +79,7 @@ export const ServeSandboxTool = buildTool({
       [
         "Serve this chat's sandbox folder over HTTP so a page you wrote can be",
         "opened in the browser. The document root is the sandbox itself — the",
-        "same folder SandboxWrite and RunPython use — so write your .html",
+        "same folder Write and RunPython use — so write your .html",
         "there and it is served immediately; never copy files anywhere else to",
         "make them reachable.",
         "",

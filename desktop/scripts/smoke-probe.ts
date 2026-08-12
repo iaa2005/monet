@@ -403,6 +403,36 @@ async function main() {
     clearSessionEngine(serveSid)
   }
 
+  // 4d-bis. Read/Write/Edit/Glob mean the sandbox in Home and the disk in
+  // Code — same names, different implementations. Which one a session gets is
+  // decided from its database row; that half is checked in
+  // session-space-probe.ts, which runs on the harness that can open the DB.
+  // Here: that the swap happens at all, and that no Sandbox* name survives.
+  {
+    const { getVendorToolsForSpace } = await import(
+      '../src/main/agent/vendor-tools.js'
+    )
+    const home = getVendorToolsForSpace('home')
+    const code = getVendorToolsForSpace('code')
+    const find = (ts: { name: string }[], n: string) => ts.find(t => t.name === n)
+    const sandboxy = (t: { searchHint?: string } | undefined) =>
+      /sandbox/i.test(t?.searchHint ?? '')
+
+    for (const n of ['Read', 'Write', 'Edit', 'Glob'])
+      check(`${n} exists in both spaces`, !!find(home, n) && !!find(code, n))
+    check('Home Read is the sandbox one', sandboxy(find(home, 'Read')))
+    check('Code Read is the disk one', !sandboxy(find(code, 'Read')))
+    check('Home Write is the sandbox one', sandboxy(find(home, 'Write')))
+    check('Code Write is the disk one', !sandboxy(find(code, 'Write')))
+    check(
+      'no Sandbox* file tool is advertised any more',
+      ![...home, ...code].some(t =>
+        /^Sandbox(Read|Write|Edit|List)$/.test(t.name),
+      ),
+    )
+    check('one Read, not two', home.filter(t => t.name === 'Read').length === 1)
+  }
+
   // 4e. The shell surface is ONE tool, and waiting is not a tool at all.
   //
   // Sleep, RunCommandBackground and BackgroundOutput were four names for one

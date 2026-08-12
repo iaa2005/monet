@@ -30,8 +30,8 @@ const REPLAYABLE_TOOLS = new Set([
   "Write",
   "Edit",
   "MultiEdit",
-  "SandboxRead",
-  "SandboxList",
+  "Read",
+  "Glob",
   "ListMcpResources",
   "ReadMcpResource",
 ]);

@@ -44,8 +44,8 @@ export const RECON_TOOLS = new Set([
   "WebFetch",
   "WebSearch",
   // Reading the sandbox / the vault
-  "SandboxList",
-  "SandboxRead",
+  "Glob",
+  "Read",
   "ObsidianSearch",
   "ObsidianRead",
   // Code intelligence — all read-only by construction

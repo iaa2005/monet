@@ -81,11 +81,12 @@ import { NotebookEditTool } from "../engine/tools/NotebookEditTool/NotebookEditT
 import { effectiveMode } from "./session-mode.js";
 import type { AskPlanApprovalFn } from "../ipc/plan.js";
 import {
-  SandboxListTool,
-  SandboxReadTool,
-  SandboxWriteTool,
-  SandboxEditTool,
+  SandboxFileGlobTool,
+  SandboxFileReadTool,
+  SandboxFileWriteTool,
+  SandboxFileEditTool,
 } from "./sandbox-file-tools.js";
+import { sessionSpace } from "./session-space.js";
 import { ensurePosixShell } from "./shell-env.js";
 import {
   BrowserClickTool,
@@ -271,10 +272,6 @@ const ALL_TOOLS = [
   RunCommandTool,
   ListMcpResourcesTool,
   ReadMcpResourceTool,
-  SandboxListTool,
-  SandboxReadTool,
-  SandboxWriteTool,
-  SandboxEditTool,
   BrowserNavigateTool,
   BrowserReadPageTool,
   BrowserClickTool,
@@ -304,7 +301,9 @@ const ALL_TOOLS = [
 
 /** Every tool, for prompt seeding — see seedTunablePrompts(). */
 export function getAllToolsForSeeding(): Tool[] {
-  return ALL_TOOLS;
+  // The sandbox file tools are not in ALL_TOOLS — they share their names with
+  // the disk ones — but their prompts are editable too, so seeding sees both.
+  return [...ALL_TOOLS, ...SANDBOX_FILE_TOOLS];
 }
 
 /** The options object a tool's prompt() reads. Built once for seeding. */
@@ -451,8 +450,34 @@ export function toolConcurrencyLookup(
   };
 }
 
+/**
+ * Home's file tools address the chat's sandbox; Code's address the disk. They
+ * carry the SAME names — Read, Write, Edit, Glob — because the model should
+ * not have to know which filesystem it is on to ask for a file. Choosing
+ * between them is this function's job, and it is made from the session row
+ * (see sessionSpace), not from a value the renderer passed in.
+ */
+const SANDBOX_FILE_TOOLS = [
+  SandboxFileReadTool,
+  SandboxFileWriteTool,
+  SandboxFileEditTool,
+  SandboxFileGlobTool,
+] as unknown as Tool[];
+
+const SANDBOX_FILE_TOOL_NAMES = new Set(SANDBOX_FILE_TOOLS.map((t) => t.name));
+
 export function getVendorToolsForSpace(space?: string, sessionId?: string): Tools {
-  return getVendorTools().filter((t) => isSpaceToolAllowed(t.name, space, sessionId));
+  const resolved = sessionSpace(sessionId, space);
+  const base = getVendorTools().filter((t) =>
+    isSpaceToolAllowed(t.name, resolved, sessionId),
+  );
+  if (resolved !== "home") return base;
+  // Swap, never append: two tools of one name would make the model's choice
+  // ambiguous and findToolByName's arbitrary.
+  return [
+    ...base.filter((t) => !SANDBOX_FILE_TOOL_NAMES.has(t.name)),
+    ...SANDBOX_FILE_TOOLS,
+  ];
 }
 
 // ─── API schema conversion (adapter-facing) ─────────────────────────────
