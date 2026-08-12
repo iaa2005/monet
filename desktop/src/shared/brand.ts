@@ -42,6 +42,24 @@ export const DOT_DIR_PROD = `.${BRAND}-prod`;
  */
 export const MEMORY_FILENAMES = ["MONET.md", "CLAUDE.md"] as const;
 
+/** The one we write when we get to choose. Reading still accepts both. */
+export const MEMORY_FILE = MEMORY_FILENAMES[0];
+
+/**
+ * Upstream's names, kept here so the rename is a single-file job.
+ *
+ * The vendored command registry is written for that product and says so, and
+ * its text reaches the user through the "/" menu and reaches the MODEL through
+ * command expansion. Both are rewritten on the way out (see shared/rebrand),
+ * and neither the source nor the destination should be a literal buried in
+ * whatever file happens to do the rewriting.
+ */
+export const UPSTREAM_NAME = "Claude Code";
+/** Upstream's project-memory file — the one MEMORY_FILE replaces in text. */
+export const UPSTREAM_MEMORY_FILE = "CLAUDE.md";
+/** Upstream's API product. A real thing with a real name: never rewritten. */
+export const UPSTREAM_API_NAME = "Claude API";
+
 /**
  * Chromium partition prefix for the Browser panel (see main/browser/session.ts).
  * Named cookie stores live on disk under this — a rename orphans every login.

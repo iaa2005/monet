@@ -27,6 +27,7 @@ import { findCommand, getCommands, getSkillToolCommands } from '@vendor/commands
 import { getProjectRoot } from '@vendor/bootstrap/state.js'
 import type { Command } from '@vendor/types/command.js'
 import { lazySchema } from '@vendor/utils/lazySchema.js'
+import { rebrand } from '@shared/rebrand.js'
 import { getAppState, initVendorRuntime } from './vendor-context.js'
 import { copyBufferIntoSandbox } from '../sandbox/files.js'
 import { tunablePrompt } from '../prompts/index.js'
@@ -144,8 +145,8 @@ export async function expandSlashCommand(
       getCommands(root),
       getSkillToolCommands(root).catch(() => [] as Command[]),
     ])
-    const command =
-      findCommand(m[1], commands) ?? skillCmds.find(c => c.name === m[1])
+    const vendorCommand = findCommand(m[1], commands)
+    const command = vendorCommand ?? skillCmds.find(c => c.name === m[1])
     if (
       !command ||
       typeof (command as { getPromptForCommand?: unknown })
@@ -176,7 +177,18 @@ export async function expandSlashCommand(
         ) => Promise<ContentBlockParam[]>
       }
     ).getPromptForCommand(m[2] ?? '', ctx)
+    // The same rename the menu gets — and this copy goes to the MODEL, which
+    // is where the brand actually bites: /init's prompt says "create a
+    // CLAUDE.md file, which will be given to future instances of Claude Code",
+    // so the model dutifully wrote upstream's file under upstream's name. We
+    // read both memory files (MEMORY_FILENAMES) but write ours.
+    //
+    // ONLY for commands that came from the vendor registry. A skill is the
+    // user's own writing, and rewriting names inside it would be exactly the
+    // over-reach shared/rebrand is careful to avoid elsewhere — if their skill
+    // says CLAUDE.md, it means CLAUDE.md.
     let text = flattenBlocks(blocks)
+    if (vendorCommand) text = rebrand(text)
     if (!text) return null
     // Same bridge the Skill tool does: a skill invoked by slash needs its
     // files in the sandbox just as much as one invoked by tool call.

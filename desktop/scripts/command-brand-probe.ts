@@ -13,8 +13,15 @@
  *   npm run smoke:cmdbrand
  */
 
+import { readFileSync } from "fs";
 import { rebrand } from "@shared/rebrand";
-import { APP_NAME } from "@shared/brand";
+import {
+  APP_NAME,
+  MEMORY_FILE,
+  UPSTREAM_API_NAME,
+  UPSTREAM_MEMORY_FILE,
+  UPSTREAM_NAME,
+} from "@shared/brand";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: unknown): void {
@@ -30,22 +37,36 @@ function check(name: string, cond: boolean, detail?: unknown): void {
 // ─── What it must change ────────────────────────────────────────────────
 
 {
+  const sample = `Initialize a new ${UPSTREAM_MEMORY_FILE} file with ${UPSTREAM_NAME}`;
   check(
     "the product name becomes ours",
-    rebrand("Initialize a new CLAUDE.md file with Claude Code") ===
-      `Initialize a new CLAUDE.md file with ${APP_NAME}`,
-    rebrand("Initialize a new CLAUDE.md file with Claude Code"),
+    rebrand(sample) === `Initialize a new ${MEMORY_FILE} file with ${APP_NAME}`,
+    rebrand(sample),
   );
+  const word = UPSTREAM_NAME.split(" ")[0];
   check(
-    "a bare Claude means the agent, which here may not be Claude at all",
-    rebrand("Set a goal for Claude to work toward") ===
+    "a bare vendor word means the agent, which here may not be that vendor",
+    rebrand(`Set a goal for ${word} to work toward`) ===
       "Set a goal for the agent to work toward",
-    rebrand("Set a goal for Claude to work toward"),
+    rebrand(`Set a goal for ${word} to work toward`),
   );
   check(
     "…including possessives",
-    rebrand("Claude's status line") === "the agent's status line",
-    rebrand("Claude's status line"),
+    rebrand(`${word}'s status line`) === "the agent's status line",
+    rebrand(`${word}'s status line`),
+  );
+  // The point of the exercise: a rename is one file. Comments may NAME the
+  // things they explain — code may not.
+  const rule = readFileSync(
+    new URL("../src/shared/rebrand.ts", import.meta.url),
+    "utf8",
+  )
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+  check(
+    "NOTHING IS SPELT OUT IN THE RULE — every name comes from brand.ts",
+    !new RegExp(`${UPSTREAM_NAME.split(" ")[0]}|${APP_NAME.split(" ")[1]}`).test(rule),
+    rule.match(/.*(Claude|Monet).*/)?.[0],
   );
 }
 
@@ -53,20 +74,23 @@ function check(name: string, cond: boolean, detail?: unknown): void {
 
 {
   check(
-    "CLAUDE.md IS A REAL FILE — renaming it in the text would be a lie",
-    rebrand("Edit CLAUDE.md files and manage auto memory").includes("CLAUDE.md"),
-    rebrand("Edit CLAUDE.md files and manage auto memory"),
+    "THE MEMORY FILE BECOMES OURS — it is the one we write when we choose",
+    rebrand(`Edit ${UPSTREAM_MEMORY_FILE} files and manage auto memory`) ===
+      `Edit ${MEMORY_FILE} files and manage auto memory`,
+    rebrand(`Edit ${UPSTREAM_MEMORY_FILE} files and manage auto memory`),
   );
   check(
-    "Claude API is a real product and keeps its name",
-    rebrand("Load Claude API reference material").includes("Claude API"),
-    rebrand("Load Claude API reference material"),
+    "the upstream API is a real product and keeps its name",
+    rebrand(`Load ${UPSTREAM_API_NAME} reference material`).includes(
+      UPSTREAM_API_NAME,
+    ),
+    rebrand(`Load ${UPSTREAM_API_NAME} reference material`),
   );
   check(
     "…even beside a rebranded mention",
-    rebrand("Claude Code can call the Claude API") ===
-      `${APP_NAME} can call the Claude API`,
-    rebrand("Claude Code can call the Claude API"),
+    rebrand(`${UPSTREAM_NAME} can call the ${UPSTREAM_API_NAME}`) ===
+      `${APP_NAME} can call the ${UPSTREAM_API_NAME}`,
+    rebrand(`${UPSTREAM_NAME} can call the ${UPSTREAM_API_NAME}`),
   );
   check(
     "text with nothing to change is returned untouched",
