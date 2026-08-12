@@ -10,7 +10,10 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { logForDebugging } from '../debug.js'
-import type { EnvironmentKind } from '../../integrations.js'
+/** Where this agent is running, per CLAUDE_CODE_ENVIRONMENT_KIND. Declared
+ *  here now: the module it came from held Anthropic's remote-session client,
+ *  and this three-string union was the only thing anyone still wanted. */
+type EnvironmentKind = 'anthropic_cloud' | 'byoc' | 'bridge'
 import type { TurnStartTime } from './types.js'
 
 /** Shared debug logger for file persistence modules */

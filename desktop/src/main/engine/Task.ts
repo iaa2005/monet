@@ -6,7 +6,6 @@ import { getTaskOutputPath } from './tasks/diskOutput.js'
 export type TaskType =
   | 'local_bash'
   | 'local_agent'
-  | 'remote_agent'
   | 'in_process_teammate'
   | 'local_workflow'
   | 'monitor_mcp'
@@ -79,6 +78,8 @@ export type Task = {
 const TASK_ID_PREFIXES: Record<string, string> = {
   local_bash: 'b', // Keep as 'b' for backward compatibility
   local_agent: 'a',
+  // No remote_agent task is created any more, but ids already written with
+  // this prefix still have to parse.
   remote_agent: 'r',
   in_process_teammate: 't',
   local_workflow: 'w',

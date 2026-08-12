@@ -302,101 +302,10 @@ export async function readAgentMetadata(
   }
 }
 
-export type RemoteAgentMetadata = {
-  taskId: string
-  remoteTaskType: string
-  /** CCR session ID — used to fetch live status from the Sessions API on resume. */
-  sessionId: string
-  title: string
-  command: string
-  spawnedAt: number
-  toolUseId?: string
-  isLongRunning?: boolean
-  isUltraplan?: boolean
-  isRemoteReview?: boolean
-  remoteTaskMetadata?: Record<string, unknown>
-}
-
-function getRemoteAgentsDir(): string {
-  // Same sessionProjectDir fallback as getAgentTranscriptPath — the project
-  // dir (containing the .jsonl), not the session dir, so sessionId is joined.
-  const projectDir = getSessionProjectDir() ?? getProjectDir(getOriginalCwd())
-  return join(projectDir, getSessionId(), 'remote-agents')
-}
-
-function getRemoteAgentMetadataPath(taskId: string): string {
-  return join(getRemoteAgentsDir(), `remote-agent-${taskId}.meta.json`)
-}
-
-/**
- * Persist metadata for a remote-agent task so it can be restored on session
- * resume. Per-task sidecar file (sibling dir to subagents/) survives
- * hydrateSessionFromRemote's .jsonl wipe; status is always fetched fresh
- * from CCR on restore — only identity is persisted locally.
- */
-export async function writeRemoteAgentMetadata(
-  taskId: string,
-  metadata: RemoteAgentMetadata,
-): Promise<void> {
-  const path = getRemoteAgentMetadataPath(taskId)
-  await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, JSON.stringify(metadata))
-}
-
-export async function readRemoteAgentMetadata(
-  taskId: string,
-): Promise<RemoteAgentMetadata | null> {
-  const path = getRemoteAgentMetadataPath(taskId)
-  try {
-    const raw = await readFile(path, 'utf-8')
-    return JSON.parse(raw) as RemoteAgentMetadata
-  } catch (e) {
-    if (isFsInaccessible(e)) return null
-    throw e
-  }
-}
-
-export async function deleteRemoteAgentMetadata(taskId: string): Promise<void> {
-  const path = getRemoteAgentMetadataPath(taskId)
-  try {
-    await unlink(path)
-  } catch (e) {
-    if (isFsInaccessible(e)) return
-    throw e
-  }
-}
-
-/**
- * Scan the remote-agents/ directory for all persisted metadata files.
- * Used by restoreRemoteAgentTasks to reconnect to still-running CCR sessions.
- */
-export async function listRemoteAgentMetadata(): Promise<
-  RemoteAgentMetadata[]
-> {
-  const dir = getRemoteAgentsDir()
-  let entries: Dirent[]
-  try {
-    entries = await readdir(dir, { withFileTypes: true })
-  } catch (e) {
-    if (isFsInaccessible(e)) return []
-    throw e
-  }
-  const results: RemoteAgentMetadata[] = []
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith('.meta.json')) continue
-    try {
-      const raw = await readFile(join(dir, entry.name), 'utf-8')
-      results.push(JSON.parse(raw) as RemoteAgentMetadata)
-    } catch (e) {
-      // Skip unreadable or corrupt files — a partial write from a crashed
-      // fire-and-forget persist shouldn't take down the whole restore.
-      logForDebugging(
-        `listRemoteAgentMetadata: skipping ${entry.name}: ${String(e)}`,
-      )
-    }
-  }
-  return results
-}
+// A block of remote-agent metadata lived here: the shape, its directory, and
+// read/write/delete/list over it. It persisted a handle to a session running
+// on Anthropic's cloud so a restart could reconnect to it. RemoteAgentTask
+// was the only reader and it is gone.
 
 export function sessionIdExists(sessionId: string): boolean {
   const projectDir = getProjectDir(getOriginalCwd())
