@@ -580,6 +580,7 @@ const MessageRow = memo(
                   {msg.content ? (
                     <MarkdownViewer
                       content={stripInterrupt(msg.content)}
+                      asOf={msg.timestamp}
                     />
                   ) : null}
                   {isInterrupted(msg.content) && (

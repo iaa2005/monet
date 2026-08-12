@@ -112,5 +112,54 @@ check(
   renderWidget('chart', JSON.stringify({ series: [] })) !== null,
 )
 
+// A chart in the history must keep the numbers it was drawn with. The model
+// may write tsla.json three times in one chat; the answer given after the
+// first write is not retroactively about the third. Artifacts keep one copy
+// per write, so the rule is "newest at or before the message" — this is that
+// selection, over the shape collectArtifacts produces.
+{
+  const pick = (
+    items: { name: string; ts: number; path: string }[],
+    want: string,
+    asOf: number | undefined,
+  ) =>
+    asOf
+      ? items
+          .filter(a => a.name === want && a.ts <= asOf)
+          .sort((x, y) => y.ts - x.ts)[0]
+      : undefined
+
+  const versions = [
+    { name: 'tsla.json', ts: 1000, path: '/a/1000-tsla.json' },
+    { name: 'tsla.json', ts: 2000, path: '/a/2000-tsla.json' },
+    { name: 'tsla.json', ts: 3000, path: '/a/3000-tsla.json' },
+    { name: 'other.json', ts: 2500, path: '/a/2500-other.json' },
+  ]
+  check(
+    'a chart from the first turn keeps the first version',
+    pick(versions, 'tsla.json', 1500)?.path === '/a/1000-tsla.json',
+  )
+  check(
+    '…the second turn keeps the second',
+    pick(versions, 'tsla.json', 2500)?.path === '/a/2000-tsla.json',
+  )
+  check(
+    '…and the newest turn gets the newest',
+    pick(versions, 'tsla.json', 9999)?.path === '/a/3000-tsla.json',
+  )
+  check(
+    'a write at the same millisecond counts as already written',
+    pick(versions, 'tsla.json', 2000)?.path === '/a/2000-tsla.json',
+  )
+  check(
+    'another file is never picked',
+    pick(versions, 'tsla.json', 9999)?.name === 'tsla.json',
+  )
+  check(
+    'with nothing written yet there is no snapshot, and it falls back to live',
+    pick(versions, 'tsla.json', 500) === undefined,
+  )
+}
+
 console.log(failures === 0 ? '\nA CHART DRAWS, AND A BROKEN ONE STAYS VISIBLE' : `\n${failures} FAILURES`)
 process.exit(failures ? 1 : 0)

@@ -21,6 +21,7 @@
 
 import { useEffect, useState } from "react";
 import { useChatStore } from "@/stores/chatStore";
+import { useSessionArtifacts } from "@/lib/sessionArtifacts";
 import { Chart, type ChartSpec } from "./Chart";
 
 interface Api {
@@ -33,13 +34,35 @@ interface Api {
       sessionId?: string,
     ) => Promise<{ name: string; path: string }[]>;
   };
+  artifacts?: {
+    readText?: (
+      path: string,
+    ) => Promise<{ ok: boolean; content?: string; error?: string }>;
+  };
 }
 
 const api = (): Api | undefined =>
   (window as unknown as { electronAPI?: Api }).electronAPI;
 
-export function ChartFromFile({ spec }: { spec: ChartSpec }): JSX.Element {
+export function ChartFromFile({
+  spec,
+  asOf,
+}: {
+  spec: ChartSpec;
+  /**
+   * When the message holding this block was written.
+   *
+   * Without it a chart reads whatever the file says NOW, so the model writing
+   * a second tsla.json silently rewrites every chart earlier in the chat — the
+   * transcript stops being a record of what was answered. Artifacts are stored
+   * one file per write ("<ts>-tsla.json", which is what the version chip in
+   * the Artifacts panel lists), so the version that existed at `asOf` is still
+   * on disk. This picks that one.
+   */
+  asOf?: number;
+}): JSX.Element {
   const sessionId = useChatStore((s) => s.currentSessionId);
+  const artifacts = useSessionArtifacts();
   const [loaded, setLoaded] = useState<ChartSpec | null>(null);
   const [error, setError] = useState<string | null>(null);
   const src = spec.src;
@@ -51,14 +74,29 @@ export function ChartFromFile({ spec }: { spec: ChartSpec }): JSX.Element {
     void (async () => {
       try {
         const sandbox = api()?.sandbox;
-        let r = await sandbox?.readText?.(sessionId ?? undefined, src ?? "");
+        const base = (p: string): string => p.split(/[\\/]/).pop() ?? p;
+        const want = base(src ?? "");
+        // The copy that existed when this message was written. Artifacts are
+        // stored one file per write ("<ts>-tsla.json" — the same copies the
+        // version chip lists), so "newest at or before asOf" is exactly the
+        // version this answer was drawn from.
+        const snapshot = asOf
+          ? artifacts.output
+              .filter((a) => base(a.name) === want && a.ts <= asOf && a.path)
+              .sort((x, y) => y.ts - x.ts)[0]
+          : undefined;
+        let r = snapshot?.path
+          ? await api()?.artifacts?.readText?.(snapshot.path)
+          : undefined;
+        // No snapshot — a file the model wrote outside a tool result, or a
+        // chart from before this chat recorded one. Fall back to live.
+        if (!r?.ok)
+          r = await sandbox?.readText?.(sessionId ?? undefined, src ?? "");
         if (!r?.ok) {
-          // The name as written did not resolve. A model that wrote
-          // "out/tsla.json" in Python and "tsla.json" in the block meant the
-          // same file, so try to find it by basename before giving up.
-          const base = (p: string): string => p.split(/[\\/]/).pop() ?? p;
+          // A model that wrote "out/tsla.json" in Python and "tsla.json" in
+          // the block meant the same file.
           const files = await sandbox?.listFiles?.(sessionId ?? undefined);
-          const hit = files?.find((f) => base(f.name) === base(src ?? ""));
+          const hit = files?.find((f) => base(f.name) === want);
           if (hit) r = await sandbox?.readText?.(sessionId ?? undefined, hit.name);
         }
         if (!r?.ok || !r.content) {
@@ -80,7 +118,7 @@ export function ChartFromFile({ spec }: { spec: ChartSpec }): JSX.Element {
     return () => {
       alive = false;
     };
-  }, [src, sessionId, spec]);
+  }, [src, sessionId, spec, asOf, artifacts]);
 
   if (error)
     return (

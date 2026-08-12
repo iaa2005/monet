@@ -130,7 +130,17 @@ function price(n: number): string {
   return n.toFixed(2);
 }
 
-function niceTicks(min: number, max: number, count = 4): number[] {
+/**
+ * Roughly how many horizontal gridlines to aim for.
+ *
+ * Four left a $300 stock with lines a hundred dollars apart, so reading a
+ * candle's level off the axis meant estimating a third of the gap. Seven puts
+ * them close enough to read against, which is the only thing a gridline is
+ * for.
+ */
+const Y_TICKS = 7;
+
+function niceTicks(min: number, max: number, count = Y_TICKS): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max) || min === max)
     return [min];
   const span = max - min;

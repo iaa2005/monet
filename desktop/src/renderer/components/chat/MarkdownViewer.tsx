@@ -53,6 +53,12 @@ interface MarkdownViewerProps {
   /** Documentation pages may use a small set of literal HTML tags (<kbd>).
    * Off for chat: model output stays text, whatever it contains. */
   docsHtml?: boolean;
+  /**
+   * When this text was written. A widget reading a file resolves the version
+   * that existed THEN, so an answer given three turns ago keeps the numbers it
+   * was given with — the model may well have rewritten the file since.
+   */
+  asOf?: number;
 }
 
 /**
@@ -217,6 +223,7 @@ function MarkdownViewerImpl({
   content: raw,
   className,
   docsHtml = false,
+  asOf,
 }: MarkdownViewerProps): JSX.Element {
   // Extract YAML frontmatter so it can be rendered as a code block — but only
   // when it IS frontmatter and not a horizontal rule (see lib/frontmatter).
@@ -383,14 +390,14 @@ function MarkdownViewerImpl({
       // A fenced block whose language names a widget draws that widget. It
       // falls through to a code block when the payload does not parse, so a
       // malformed one shows its source instead of vanishing.
-      const widget = renderWidget(lang, codeStr);
+      const widget = renderWidget(lang, codeStr, { asOf });
       if (widget) return widget;
       if (lang || codeStr.includes("\n")) return <CodeBlock code={codeStr} language={lang ?? ""} />;
       return <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.9em]" {...rest}>{children}</code>;
     },
     // Only reachable when docsHtml let the tag through the sanitiser.
     kbd: ({ node: _n, ...p }: any) => <Kbd {...p} />,
-  }), []);
+  }), [asOf]);
   const rehype = docsHtml ? DOCS_REHYPE : ([rehypeKatex] as never[]);
   return (
     <div

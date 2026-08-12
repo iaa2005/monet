@@ -23,11 +23,18 @@
 import { Chart, type ChartSpec } from "./Chart";
 import { ChartFromFile } from "./ChartFromFile";
 
-/** Renders a parsed payload, or throws/returns null if the payload is wrong. */
-type Widget = (payload: unknown) => JSX.Element | null;
+/** What the widget knows about the message it sits in. */
+export interface WidgetContext {
+  /** When the message was written. A widget reading a file resolves the
+   *  version that existed then — see ChartFromFile. */
+  asOf?: number;
+}
+
+/** Renders a parsed payload, or returns null if the payload is wrong. */
+type Widget = (payload: unknown, ctx: WidgetContext) => JSX.Element | null;
 
 const WIDGETS: Record<string, Widget> = {
-  chart: (payload) => {
+  chart: (payload, ctx) => {
     if (!payload || typeof payload !== "object" || Array.isArray(payload))
       return null;
     const spec = payload as ChartSpec;
@@ -37,7 +44,8 @@ const WIDGETS: Record<string, Widget> = {
     // why. Accept both shapes rather than teach the model ours.
     // `src` names a sandbox file holding the rows — the block need carry no
     // data at all, which is the point: the model stops retyping them.
-    if (typeof spec.src === "string" && spec.src) return <ChartFromFile spec={spec} />;
+    if (typeof spec.src === "string" && spec.src)
+      return <ChartFromFile spec={spec} asOf={ctx.asOf} />;
     const hasSeries = Array.isArray(spec.series) && spec.series.length > 0;
     const hasTopLevel = Array.isArray(spec.ohlc) || Array.isArray(spec.data);
     // An explicitly empty series list is a chart with no rows — the widget
@@ -60,6 +68,7 @@ export function isWidgetLang(lang: string | undefined): boolean {
 export function renderWidget(
   lang: string | undefined,
   source: string,
+  ctx: WidgetContext = {},
 ): JSX.Element | null {
   if (!lang || !(lang in WIDGETS)) return null;
   let payload: unknown;
@@ -69,7 +78,7 @@ export function renderWidget(
     return null;
   }
   try {
-    return WIDGETS[lang]!(payload);
+    return WIDGETS[lang]!(payload, ctx);
   } catch {
     return null;
   }
