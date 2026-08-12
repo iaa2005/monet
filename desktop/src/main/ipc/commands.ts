@@ -32,6 +32,20 @@ function hidden(c: Command): boolean {
   return !!(c as { isHidden?: boolean }).isHidden;
 }
 
+/**
+ * Vendor commands that survive the prompt-type filter and still cannot work
+ * here. Offering a command that does nothing is worse than not offering it:
+ * the user spends a turn finding out.
+ *
+ *  - statusline expands to "create an agent of type statusline-setup", which
+ *    this app has no definition for, and then edits a settings.json we do not
+ *    read (our config lives under <dataDir>/claude);
+ *  - insights reads the CLI's JSONL session files under CLAUDE_CONFIG_DIR.
+ *    We keep history in SQLite, so it reports on an empty set and hands back
+ *    a file:// link the desktop does not open.
+ */
+const INAPPLICABLE = new Set(["statusline", "insights"]);
+
 export function registerCommandsIPC(): void {
   ipcMain.handle(
     "commands:list",
@@ -71,7 +85,10 @@ export function registerCommandsIPC(): void {
           commands: all
             .filter(
               (c) =>
-                c.type === "prompt" && !hidden(c) && !skillMap.has(c.name),
+                c.type === "prompt" &&
+                !hidden(c) &&
+                !skillMap.has(c.name) &&
+                !INAPPLICABLE.has(c.name),
             )
             .map(toInfo),
           skills: [...skillMap.values()],

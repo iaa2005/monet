@@ -27,7 +27,7 @@ import { findCommand, getCommands, getSkillToolCommands } from '@vendor/commands
 import { getProjectRoot } from '@vendor/bootstrap/state.js'
 import type { Command } from '@vendor/types/command.js'
 import { lazySchema } from '@vendor/utils/lazySchema.js'
-import { initVendorRuntime } from './vendor-context.js'
+import { getAppState, initVendorRuntime } from './vendor-context.js'
 import { copyBufferIntoSandbox } from '../sandbox/files.js'
 import { tunablePrompt } from '../prompts/index.js'
 
@@ -152,11 +152,21 @@ export async function expandSlashCommand(
         .getPromptForCommand !== 'function'
     )
       return null
-    // Minimal context: prompt expanders mostly read cwd/args; the abort
-    // controller satisfies the common interface bits.
+    // A REAL context, because some expanders do real work. This used to be a
+    // hand-made stub of {abortController, options} — enough for the expanders
+    // that only read cwd and args, and a TypeError for every one that runs an
+    // inline shell command (`` !`git diff` ``): those go through
+    // executeShellCommandsInPrompt → hasPermissionsToUseTool, which calls
+    // context.getAppState(). The throw was swallowed by the catch below and
+    // the caller sent the model the literal text "/security-review", so the
+    // command looked like it did nothing. Same for any SKILL whose SKILL.md
+    // embeds a shell block.
     const ctx = {
       abortController: new AbortController(),
       options: { commands, tools: [], debug: false },
+      getAppState,
+      setAppState: () => {},
+      getToolPermissionContext: () => getAppState().toolPermissionContext,
     } as unknown as ToolUseContext
     const blocks = await (
       command as {

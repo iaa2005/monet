@@ -713,6 +713,9 @@ export function MessageInput({
     const sid = store.currentSessionId;
     const text = input.trim();
     if (!sid || (!text && files.length === 0)) return;
+    // A command is for the app, whatever key sent it. Without this, Ctrl+S
+    // during a run handed the model the literal text "/clear".
+    if (takeLocalCommand(text)) return;
     applyText("");
     const { payload, display } = await takeStagedFiles();
     const r = await api()?.chat.inject(sid, text, payload, store.space);
@@ -725,6 +728,9 @@ export function MessageInput({
     const sid = useChatStore.getState().currentSessionId;
     const text = input.trim();
     if (!sid || (!text && files.length === 0)) return;
+    // Same as injectNow: queueing "/compact" behind the run would send it to
+    // the model when the run ends, not compact anything.
+    if (takeLocalCommand(text)) return;
     applyText("");
     const { payload, display } = await takeStagedFiles();
     useChatStore.getState().enqueueMessage(sid, text, display, payload);
@@ -783,24 +789,23 @@ export function MessageInput({
         ?.commands.list()
         .then((r) =>
           setSlashItems({
-            // App-level commands run in the composer, not on the model.
+            // App-level commands run in the composer, not on the model — and
+            // the menu is generated from the same list that intercepts them,
+            // so an entry can never be offered without being handled.
             commands: [
-              {
-                name: "compact",
-                description: "Compact this chat's context (summarize old turns)",
-              },
-              {
-                name: "clear",
-                description: "Clear this chat's conversation history",
-              },
-              {
-                name: "rename",
-                description: "Rename this chat: /rename New title",
-              },
+              ...localCommands.map((c) => ({
+                name: c.name,
+                description: c.description,
+              })),
               {
                 name: "create-routine",
                 description:
                   "Describe a task and a schedule; the agent builds the routine",
+              },
+              {
+                name: "goal",
+                description:
+                  "Work towards an objective until it is met: /goal <objective>",
               },
               ...r.commands,
             ],
@@ -935,40 +940,113 @@ export function MessageInput({
   };
 
   /** App-level commands handled in the composer, never sent to the model. */
-  const runLocalCommand = async (
-    cmd: string,
-    arg: string,
-  ): Promise<void> => {
-    const store = useChatStore.getState();
-    const sid = store.currentSessionId;
-    if (cmd === "compact") {
-      setNotice("Compacting context…");
-      const r = await api()?.chat.compact(sid);
-      setNotice(
-        r?.ok && r.before != null && r.after != null
-          ? r.after < r.before
-            ? `Context compacted: ~${fmtTok(r.before)} → ~${fmtTok(r.after)} tokens.`
-            : `Nothing to compact — at ~${fmtTok(r.before)} tokens a summary would be no smaller.`
-          : (r?.error ?? "Nothing to compact yet."),
-      );
-      return;
-    }
-    if (cmd === "clear") {
-      if (sid) void api()?.chat.reset(sid);
-      store.clearMessages();
-      setNotice("Conversation history cleared.");
-      return;
-    }
-    if (cmd === "rename") {
-      if (!sid) {
-        setNotice("Nothing to rename yet — send a message first.");
-        return;
-      }
-      const title = arg.slice(0, 60);
-      await api()?.sessions.updateTitle(sid, title);
-      store.bumpSessions();
-      setNotice(title ? `Renamed to “${title}”.` : "Chat title regenerated.");
-    }
+  /**
+   * The commands the APP answers, rather than the model.
+   *
+   * One list, used for both the menu and the interception, because two lists
+   * is what went wrong: the menu offered /compact, /clear and /rename while
+   * only `send()` knew to catch them, so pressing Ctrl+Enter during a run
+   * (queue) or Ctrl+S (inject) posted the literal text "/clear" to the model,
+   * which of course cleared nothing.
+   */
+  const localCommands: {
+    name: string;
+    description: string;
+    run: (arg: string) => void | Promise<void>;
+  }[] = [
+    {
+      name: "compact",
+      description: "Compact this chat's context (summarize old turns)",
+      run: async () => {
+        setNotice("Compacting context…");
+        const r = await api()?.chat.compact(
+          useChatStore.getState().currentSessionId,
+        );
+        setNotice(
+          r?.ok && r.before != null && r.after != null
+            ? r.after < r.before
+              ? `Context compacted: ~${fmtTok(r.before)} → ~${fmtTok(r.after)} tokens.`
+              : `Nothing to compact — at ~${fmtTok(r.before)} tokens a summary would be no smaller.`
+            : (r?.error ?? "Nothing to compact yet."),
+        );
+      },
+    },
+    {
+      name: "clear",
+      description: "Clear this chat — screen, model context and stored history",
+      run: async () => {
+        const store = useChatStore.getState();
+        const sid = store.currentSessionId;
+        if (sid) void api()?.chat.reset(sid);
+        // Not clearMessages: that leaves the rows in the database, and they
+        // come back on the next save or reopen. See clearHistory.
+        await store.clearHistory();
+        setNotice("Conversation cleared.");
+      },
+    },
+    {
+      name: "rename",
+      description: "Rename this chat: /rename New title",
+      run: async (arg) => {
+        const store = useChatStore.getState();
+        const sid = store.currentSessionId;
+        if (!sid) {
+          setNotice("Nothing to rename yet — send a message first.");
+          return;
+        }
+        const title = arg.slice(0, 60);
+        await api()?.sessions.updateTitle(sid, title);
+        store.bumpSessions();
+        setNotice(title ? `Renamed to “${title}”.` : "Chat title regenerated.");
+      },
+    },
+    {
+      name: "model",
+      description: "Switch the model for this chat",
+      run: () => setPickerOpen(true),
+    },
+    {
+      name: "diff",
+      description: "Show what changed in the workspace",
+      run: () => useChatStore.getState().requestOpenChanges(),
+    },
+    {
+      name: "settings",
+      description: "Open Settings",
+      run: () => useChatStore.getState().requestOpenSettings("general"),
+    },
+    {
+      name: "mcp",
+      description: "Manage MCP servers and connectors",
+      run: () => useChatStore.getState().requestOpenSettings("connectors"),
+    },
+    {
+      name: "memory",
+      description: "Open the memory settings",
+      run: () => useChatStore.getState().requestOpenSettings("memory"),
+    },
+    {
+      name: "help",
+      description: "List the commands this chat understands",
+      run: () =>
+        setNotice(
+          `Commands: ${localCommands.map((c) => `/${c.name}`).join(", ")}. ` +
+            "Type / to see skills and project commands too.",
+        ),
+    },
+  ];
+
+  /** Run it if it is ours; say whether we did. */
+  const takeLocalCommand = (text: string): boolean => {
+    const m = /^\/([a-z-]+)(?:\s+([\s\S]*))?$/i.exec(text.trim());
+    if (!m) return false;
+    const cmd = localCommands.find(
+      (c) => c.name === m[1].toLowerCase(),
+    );
+    if (!cmd) return false;
+    applyText("");
+    void cmd.run(m[2]?.trim() ?? "");
+    return true;
   };
 
   const voiceBusyElsewhere = useChatStore(
@@ -991,12 +1069,7 @@ export function MessageInput({
     if (!text) return;
 
     // Intercept app-level slash commands before anything reaches the model.
-    const local = /^\/(compact|clear|rename)(?:\s+([\s\S]*))?$/.exec(text);
-    if (local) {
-      applyText("");
-      void runLocalCommand(local[1], local[2]?.trim() ?? "");
-      return;
-    }
+    if (takeLocalCommand(text)) return;
 
     // /create-routine expands into a plain instruction rather than being handled
     // here: turning "every weekday at 9" into cron is the model's job, and it

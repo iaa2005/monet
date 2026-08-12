@@ -481,6 +481,10 @@ export interface ChatStore {
    * BEFORE this turn, truncate the conversation to before it, and drop the
    * user's prompt back into the composer for editing + resend. */
   rewindAndEdit: (messageId: string) => Promise<void>;
+  /** /clear: drop the conversation from the screen, the model's transcript
+   * AND the database — see the implementation for why the last one needs
+   * saying out loud. */
+  clearHistory: () => Promise<void>;
   /** Auto-continue: a background sub-agent finished while the chat is idle —
    * kick off a turn that delivers its queued report to the model. */
   deliverBackgroundResults: () => Promise<void>;
@@ -1080,6 +1084,47 @@ export const useChatStore = create<ChatStore>((set, get) => {
         mutate(id, () => ({ ...EMPTY }));
       } else {
         set({ messages: [], isStreaming: false, usage: null, error: null });
+      }
+    },
+
+    /**
+     * /clear: forget the conversation on BOTH sides, for good.
+     *
+     * clearMessages alone did not: it leaves `hydrated: false`, which means
+     * "this buffer is only part of the history", and the next save splices the
+     * database rows back in front of it (see mergeForSave) — so the cleared
+     * chat came back whole the moment anything persisted, or on reopen.
+     * persistSession would not have written it anyway: it returns early on an
+     * empty buffer, precisely so a half-loaded chat cannot erase itself.
+     *
+     * So the empty state is declared HYDRATED — it really is the whole history
+     * now — and written straight through, bypassing both guards deliberately.
+     */
+    clearHistory: async () => {
+      const id = get().currentSessionId;
+      if (!id) {
+        set({ messages: [], isStreaming: false, usage: null, error: null });
+        return;
+      }
+      pendingText.delete(id);
+      mutate(id, () => ({ ...EMPTY, hydrated: true }));
+      const api = sessionsApi();
+      if (!api) return;
+      try {
+        const existing = (await api.getById(id)) as
+          | { title?: string; space?: string }
+          | null
+          | undefined;
+        if (!existing) return; // deleted meanwhile — do not revive the row
+        await api.save({
+          id,
+          title: existing.title || "New Session",
+          messages: [],
+          space: existing.space,
+        });
+        get().bumpSessions();
+      } catch {
+        /* offline / DB unavailable — the screen is cleared either way */
       }
     },
 
