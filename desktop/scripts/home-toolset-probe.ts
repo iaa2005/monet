@@ -24,18 +24,26 @@ const inCode = (name: string): boolean => spaceAllows(name, "code");
 
 // ── 1. The machine stays out ──────────────────────────────────────────
 {
-  for (const name of ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit"])
+  for (const name of ["Bash", "PowerShell", "Grep", "NotebookEdit", "DevServer"])
     check(`Home refuses ${name}`, !inHome(name));
   check("but Code has Bash", inCode("Bash"));
   check("and Read", inCode("Read"));
 }
 
 // ── 2. The sandbox is how Home touches files ──────────────────────────
+//
+// The file tools are no longer separate names. Home and Code both advertise
+// Read/Write/Edit/Glob, and which FILESYSTEM those reach is decided by
+// getVendorToolsForSpace from the session's own row — so the model never picks
+// a filesystem by picking a tool name, and nothing the renderer passes can
+// move a chat out of its sandbox. This module only answers the first half:
+// the names are offered in Home. See smoke:space for the swap itself.
 {
-  for (const name of ["RunPython", "RunCommand", "SandboxList", "SandboxRead", "SandboxWrite", "SandboxEdit"])
+  for (const name of ["RunPython", "RunCommand", "Read", "Write", "Edit", "Glob"])
     check(`Home allows ${name}`, inHome(name));
-  // And they make no sense in Code, which has the real filesystem.
-  check("Code refuses SandboxRead", !inCode("SandboxRead"));
+  // Running things makes no sense in Code, which has the real shell.
+  check("Code refuses RunPython", !inCode("RunPython"));
+  check("Code refuses RunCommand", !inCode("RunCommand"));
 }
 
 // ── 3. The user's own setup is not the machine ────────────────────────
@@ -57,7 +65,7 @@ const inCode = (name: string): boolean => spaceAllows(name, "code");
 
 // ── 4. Asking, waiting, reading the web ───────────────────────────────
 {
-  for (const name of ["AskUserQuestion", "TodoWrite", "Sleep", "SendMessage", "TeamList", "ReadMediaFile"])
+  for (const name of ["AskUserQuestion", "TodoWrite", "SendMessage", "TeamList", "ReadMediaFile"])
     check(`Home allows ${name}`, inHome(name));
 }
 
