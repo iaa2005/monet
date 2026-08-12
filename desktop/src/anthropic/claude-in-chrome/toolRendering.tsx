@@ -2,9 +2,9 @@ import * as React from 'react';
 import { MessageResponse } from '../cli/components/MessageResponse.js';
 import { supportsHyperlinks } from '../cli/ink/supports-hyperlinks.js';
 import { Link, Text } from '../cli/ink.js';
-import { renderToolResultMessage as renderDefaultMCPToolResultMessage } from '@vendor/tools/MCPTool/UI.jsx';
-import type { MCPToolResult } from '@vendor/utils/mcpValidation.js';
-import { truncateToWidth } from '@vendor/utils/format.js';
+import { renderToolResultMessage as renderDefaultMCPToolResultMessage } from '@main/engine/tools/MCPTool/UI.jsx';
+import type { MCPToolResult } from '@main/engine/utils/mcpValidation.js';
+import { truncateToWidth } from '@main/engine/utils/format.js';
 import { trackClaudeInChromeTabId } from './common.js';
 export type { Tool } from '@modelcontextprotocol/sdk/types.js';
 

@@ -14,7 +14,7 @@ import {
   getSkillToolCommands,
   type Command,
 } from "../agent/commands.js";
-import { getProjectRoot } from "@vendor/bootstrap/state.js";
+import { getProjectRoot } from "../engine/state/state.js";
 import { rebrand } from "@shared/rebrand.js";
 import { initVendorRuntime } from "../agent/vendor-context.js";
 import { listSkillInfos } from "./skills.js";

@@ -22,11 +22,11 @@ import type {
   LoadedPlugin,
   PluginError,
   PluginManifest,
-} from '@vendor/types/plugin.js'
+} from '@main/engine/types/plugin.js'
 import {
   isOfficialMarketplaceName,
   parsePluginIdentifier,
-} from '@vendor/utils/plugins/pluginIdentifier.js'
+} from '@main/plugins/pluginIdentifier.js'
 
 // builtinPlugins.ts:BUILTIN_MARKETPLACE_NAME — inlined to avoid the cycle
 // through commands.js. Marketplace schemas.ts enforces 'builtin' is reserved.

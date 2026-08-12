@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 import {
   parseCronExpression,
   computeNextCronRun,
-} from "@vendor/utils/cron.js";
+} from "../engine/utils/cron.js";
 import { runAgent } from "../agent/index.js";
 import { resolveModel } from "../provider/routing.js";
 import { getProviderManager } from "../provider/manager.js";

@@ -9,7 +9,7 @@
  * compaction prompt + summary formatter so the behavior matches the upstream CLI.
  */
 
-import { getCompactPrompt, formatCompactSummary } from '@vendor/services/compact/prompt.js'
+import { getCompactPrompt, formatCompactSummary } from '../engine/compact/prompt.js'
 import type { LLMAdapter, LLMMessage } from '../llm/adapter.js'
 import type { LLMContentBlock } from '../llm/adapter.js'
 import { microCompact } from './microcompact.js'

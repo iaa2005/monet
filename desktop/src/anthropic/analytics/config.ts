@@ -5,8 +5,8 @@
  * across all analytics systems (Datadog, 1P)
  */
 
-import { isEnvTruthy } from '@vendor/utils/envUtils.js'
-import { isTelemetryDisabled } from '@vendor/utils/privacyLevel.js'
+import { isEnvTruthy } from '@main/engine/utils/envUtils.js'
+import { isTelemetryDisabled } from '@main/engine/utils/privacyLevel.js'
 
 /**
  * Check if analytics operations should be disabled

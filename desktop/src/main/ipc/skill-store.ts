@@ -611,7 +611,7 @@ async function installSkill(
     // two same-named skills from different sources apart.
     if (uid) recordOrigin(slug, uid);
     // The agent caches the skill catalog — refresh like ipc/skills.ts does.
-    void import("@vendor/skills/loadSkillsDir.js")
+    void import("../skills/loader/loadSkillsDir.js")
       .then((m) => (m as { clearSkillCaches?: () => void }).clearSkillCaches?.())
       .catch(() => {});
     void import("../agent/vendor-tools.js")

@@ -1,7 +1,7 @@
 import axios from 'axios'
-import { getOauthConfig } from '@vendor/constants/oauth.js'
+import { getOauthConfig } from '@main/engine/constants/oauth.js'
 import { isClaudeAISubscriber } from '../account/auth.js'
-import { logForDebugging } from '@vendor/utils/debug.js'
+import { logForDebugging } from '@main/engine/utils/debug.js'
 import { getOAuthHeaders, prepareApiRequest } from '../teleport/api.js'
 
 export type UltrareviewQuotaResponse = {

@@ -1,7 +1,7 @@
 import { readdir } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
-import { isFsInaccessible } from '@vendor/utils/errors.js'
+import { isFsInaccessible } from '@main/engine/utils/errors.js'
 
 export const CHROME_EXTENSION_URL = 'https://claude.ai/chrome'
 

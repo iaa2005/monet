@@ -52,22 +52,7 @@
       "@opentelemetry/exporter-prometheus": ["./src/main/shims/pkg-stubs/opentelemetry-exporter-prometheus.ts"],
       "@opentelemetry/exporter-trace-otlp-grpc": ["./src/main/shims/pkg-stubs/opentelemetry-exporter-trace-otlp-grpc.ts"],
       "@opentelemetry/exporter-trace-otlp-http": ["./src/main/shims/pkg-stubs/opentelemetry-exporter-trace-otlp-http.ts"],
-      "@opentelemetry/exporter-trace-otlp-proto": ["./src/main/shims/pkg-stubs/opentelemetry-exporter-trace-otlp-proto.ts"],
-      "@vendor/tools/*": ["./src/vendor/leaked/tools/*"],
-      "@vendor/constants/*": ["./src/vendor/leaked/constants/*"],
-      "@vendor/services/*": ["./src/vendor/leaked/services/*"],
-      "@vendor/utils/*": ["./src/vendor/leaked/utils/*"],
-      "@vendor/memdir/*": ["./src/vendor/leaked/memdir/*"],
-      "@vendor/skills/*": ["./src/vendor/leaked/skills/*"],
-      "@vendor/types/*": ["./src/vendor/leaked/types/*"],
-      "@vendor/query": ["./src/vendor/leaked/query"],
-      "@vendor/query/*": ["./src/vendor/leaked/query/*"],
-      "@vendor/QueryEngine": ["./src/vendor/leaked/QueryEngine"],
-      "@vendor/*": ["./src/vendor/leaked/*"],
-      // Vendor code uses src/-rooted imports internally; map them onto the
-      // vendor tree so both relative and src/ imports hit the SAME modules
-      // (a shim here would split state, e.g. two sessionId stores).
-      "src/*": ["./src/vendor/leaked/*"],
+      "@opentelemetry/exporter-trace-otlp-proto": ["./src/main/shims/pkg-stubs/opentelemetry-exporter-trace-otlp-proto.ts"],
       "@/*": ["./src/renderer/*"],
     },
     "module": "esnext",
@@ -83,9 +68,10 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
   },
-  // Vendor tree is intentionally NOT included wholesale — the leak is partial
-  // (no components/ink CLI renderer) and full of CLI-only modules. tsc checks
-  // the vendor files our code actually imports, transitively.
+  // src/anthropic is not listed and does not need to be: it is reached from
+  // src/main and tsc follows imports regardless. It is exempted at the gate
+  // (scripts/typecheck.mjs), not here — a tsconfig exclusion would hide the
+  // count instead of tracking it.
   "include": [
     "src/main/**/*.ts",
     "src/main/**/*.tsx",

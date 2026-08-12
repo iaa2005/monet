@@ -10,7 +10,7 @@
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
 import TurndownService from "turndown";
-import { buildTool } from "@vendor/Tool.js";
+import { buildTool } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
 
 const UA =

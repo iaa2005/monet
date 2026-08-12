@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from "fs";
 import { dirname, join, resolve, sep } from "path";
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
-import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
+import { buildTool, type ToolUseContext } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
 import { tunablePrompt } from "../prompts/index.js";
 import { getDataDir } from "../data-dir.js";
@@ -155,7 +155,7 @@ export const CreateSkillTool = buildTool({
 
       // Drop the caches, the way installing from the Directory does, so the new
       // command answers in this same session rather than after a restart.
-      await import("@vendor/skills/loadSkillsDir.js")
+      await import("../skills/loader/loadSkillsDir.js")
         .then((m) => (m as { clearSkillCaches?: () => void }).clearSkillCaches?.())
         .catch(() => {});
       await import("./vendor-tools.js")

@@ -1,4 +1,4 @@
-import { getSystemPrompt } from "@vendor/constants/prompts.js";
+import { getSystemPrompt } from "@main/engine/constants/prompts.js";
 import { getVendorToolsForSpace } from "../src/main/agent/vendor-tools.js";
 import { initVendorRuntime } from "../src/main/agent/vendor-context.js";
 import { stripExamples } from "../src/main/agent/lean-context.js";

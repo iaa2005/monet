@@ -8,37 +8,37 @@
 
 import { extname } from 'path'
 import memoize from 'lodash-es/memoize.js'
-import { env, getHostPlatformForAnalytics } from '@vendor/utils/env.js'
-import { envDynamic } from '@vendor/utils/envDynamic.js'
-import { getModelBetas } from '@vendor/utils/betas.js'
-import { getMainLoopModel } from '@vendor/utils/model/model.js'
+import { env, getHostPlatformForAnalytics } from '@main/engine/utils/env.js'
+import { envDynamic } from '@main/engine/utils/envDynamic.js'
+import { getModelBetas } from '@main/engine/utils/betas.js'
+import { getMainLoopModel } from '@main/llm/model/model.js'
 import {
   getSessionId,
   getIsInteractive,
   getKairosActive,
   getClientType,
   getParentSessionId as getParentSessionIdFromState,
-} from '@vendor/bootstrap/state.js'
-import { isEnvTruthy } from '@vendor/utils/envUtils.js'
-import { isOfficialMcpUrl } from '@vendor/services/mcp/officialRegistry.js'
+} from '@main/engine/state/state.js'
+import { isEnvTruthy } from '@main/engine/utils/envUtils.js'
+import { isOfficialMcpUrl } from '@main/mcp/protocol/officialRegistry.js'
 import { isClaudeAISubscriber, getSubscriptionType } from '../account/auth.js'
-import { getRepoRemoteHash } from '@vendor/utils/git.js'
+import { getRepoRemoteHash } from '@main/engine/utils/git.js'
 import {
   getWslVersion,
   getLinuxDistroInfo,
   detectVcs,
-} from '@vendor/utils/platform.js'
+} from '@main/engine/utils/platform.js'
 import type { CoreUserData } from '../account/user.js'
-import { getAgentContext } from '@vendor/utils/agentContext.js'
-import type { EnvironmentMetadata } from '@vendor/types/generated/events_mono/claude_code/v1/claude_code_internal_event.js'
-import type { PublicApiAuth } from '@vendor/types/generated/events_mono/common/v1/auth.js'
-import { jsonStringify } from '@vendor/utils/slowOperations.js'
+import { getAgentContext } from '@main/engine/utils/agentContext.js'
+import type { EnvironmentMetadata } from '@main/engine/types/generated/events_mono/claude_code/v1/claude_code_internal_event.js'
+import type { PublicApiAuth } from '@main/engine/types/generated/events_mono/common/v1/auth.js'
+import { jsonStringify } from '@main/engine/utils/slowOperations.js'
 import {
   getAgentId,
   getParentSessionId as getTeammateParentSessionId,
   getTeamName,
   isTeammate,
-} from '@vendor/utils/teammate.js'
+} from '@main/engine/utils/teammate.js'
 import { feature } from 'bun:bundle'
 
 /**
@@ -130,7 +130,7 @@ const BUILTIN_MCP_SERVER_NAMES: ReadonlySet<string> = new Set(
   feature('CHICAGO_MCP')
     ? [
         (
-          require('@vendor/utils/computerUse/common.js') as typeof import('@vendor/utils/computerUse/common.js')
+          require('@main/computer/native/common.js') as typeof import('@main/computer/native/common.js')
         ).COMPUTER_USE_MCP_SERVER_NAME,
       ]
     : [],

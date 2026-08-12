@@ -10,22 +10,22 @@
 
 import { randomUUID } from 'crypto'
 import type { UUID } from 'crypto'
-import type { Tools, ToolUseContext } from '@vendor/Tool.js'
-import type { AssistantMessage } from '@vendor/types/message.js'
+import type { Tools, ToolUseContext } from '../engine/Tool.js'
+import type { AssistantMessage } from '../engine/types/message.js'
 import {
   setCwdState,
   setOriginalCwd,
   setProjectRoot,
-} from '@vendor/bootstrap/state.js'
+} from '../engine/state/state.js'
 import {
   getDefaultAppState,
   type AppState,
-} from '@vendor/state/AppStateStore.js'
-import { getEmptyToolPermissionContext } from '@vendor/Tool.js'
-import type { PermissionMode } from '@vendor/types/permissions.js'
-import { enableConfigs } from '@vendor/utils/config.js'
+} from '../engine/state/AppStateStore.js'
+import { getEmptyToolPermissionContext } from '../engine/Tool.js'
+import type { PermissionMode } from '../engine/types/permissions.js'
+import { enableConfigs } from '../engine/utils/config.js'
 import { reloadHooks } from './tool-hooks.js'
-import { FileStateCache } from '@vendor/utils/fileStateCache.js'
+import { FileStateCache } from '../engine/utils/fileStateCache.js'
 import { join } from 'path'
 import { getDataDir } from '../data-dir.js'
 import { getWorkspacePath } from '../ipc/workspace.js'

@@ -20,8 +20,8 @@
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
-import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
-import { getCwd } from "@vendor/utils/cwd.js";
+import { buildTool, type ToolUseContext } from "../engine/Tool.js";
+import { getCwd } from "../engine/utils/cwd.js";
 import { lazySchema } from "./lazy-schema.js";
 import { describeAgentsForPrompt, resolveAgentDefinition } from "./agent-defs.js";
 import { runSubAgent } from "./subagent.js";

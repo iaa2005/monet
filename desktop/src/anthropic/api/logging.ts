@@ -12,16 +12,16 @@ import {
   getTeleportedSessionInfo,
   markFirstTeleportMessageLogged,
   setLastApiCompletionTimestamp,
-} from '@vendor/bootstrap/state.js'
-import type { QueryChainTracking } from '@vendor/Tool.js'
-import { isConnectorTextBlock } from '@vendor/types/connectorText.js'
-import type { AssistantMessage } from '@vendor/types/message.js'
-import { logForDebugging } from '@vendor/utils/debug.js'
-import type { EffortLevel } from '@vendor/utils/effort.js'
-import { logError } from '@vendor/utils/log.js'
-import { getAPIProviderForStatsig } from '@vendor/utils/model/providers.js'
-import type { PermissionMode } from '@vendor/utils/permissions/PermissionMode.js'
-import { jsonStringify } from '@vendor/utils/slowOperations.js'
+} from '@main/engine/state/state.js'
+import type { QueryChainTracking } from '@main/engine/Tool.js'
+import { isConnectorTextBlock } from '@main/engine/types/connectorText.js'
+import type { AssistantMessage } from '@main/engine/types/message.js'
+import { logForDebugging } from '@main/engine/utils/debug.js'
+import type { EffortLevel } from '@main/engine/utils/effort.js'
+import { logError } from '@main/engine/utils/log.js'
+import { getAPIProviderForStatsig } from '@main/llm/model/providers.js'
+import type { PermissionMode } from '@main/engine/permissions/PermissionMode.js'
+import { jsonStringify } from '@main/engine/utils/slowOperations.js'
 import { logOTelEvent } from '../analytics/telemetry/events.js'
 import {
   endLLMRequestSpan,
@@ -29,7 +29,7 @@ import {
   type Span,
 } from '../analytics/telemetry/sessionTracing.js'
 import type { NonNullableUsage } from '../cli/entrypoints/sdk/sdkUtilityTypes.js'
-import { consumeInvokingRequestId } from '@vendor/utils/agentContext.js'
+import { consumeInvokingRequestId } from '@main/engine/utils/agentContext.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,

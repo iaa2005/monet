@@ -14,7 +14,7 @@
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
-import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
+import { buildTool, type ToolUseContext } from "../../engine/Tool.js";
 import { lazySchema } from "../lazy-schema.js";
 import { tunablePrompt } from "../../prompts/index.js";
 import { blockGoal, recordJudgeRejection } from "./state.js";
@@ -136,7 +136,7 @@ export const UpdateGoalTool = buildTool({
       const space = (context as { space?: string }).space;
       let cwd: string | undefined;
       try {
-        const { getCwd } = await import("@vendor/utils/cwd.js");
+        const { getCwd } = await import("../../engine/utils/cwd.js");
         cwd = space === "home" ? undefined : getCwd();
       } catch {
         cwd = undefined;
@@ -211,7 +211,7 @@ export const UpdateGoalTool = buildTool({
     try {
       const space = (context as { space?: string }).space;
       if (space !== "home") {
-        const { getCwd } = await import("@vendor/utils/cwd.js");
+        const { getCwd } = await import("../../engine/utils/cwd.js");
         const { addGoalRunNote } = await import("../run-notes.js");
         addGoalRunNote(getCwd(), {
           at: new Date().toISOString(),

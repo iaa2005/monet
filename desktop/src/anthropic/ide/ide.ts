@@ -7,26 +7,26 @@ import { createConnection } from 'net'
 import * as os from 'os'
 import { basename, join, sep as pathSeparator, resolve } from 'path'
 import { logEvent } from '../analytics/index.js'
-import { getIsScrollDraining, getOriginalCwd } from '@vendor/bootstrap/state.js'
-import { callIdeRpc } from '@vendor/services/mcp/client.js'
+import { getIsScrollDraining, getOriginalCwd } from '@main/engine/state/state.js'
+import { callIdeRpc } from '@main/mcp/protocol/client.js'
 import type {
   ConnectedMCPServer,
   MCPServerConnection,
-} from '@vendor/services/mcp/types.js'
-import { getGlobalConfig, saveGlobalConfig } from '@vendor/utils/config.js'
-import { env } from '@vendor/utils/env.js'
-import { getClaudeConfigHomeDir, isEnvTruthy } from '@vendor/utils/envUtils.js'
+} from '@main/mcp/protocol/types.js'
+import { getGlobalConfig, saveGlobalConfig } from '@main/engine/utils/config.js'
+import { env } from '@main/engine/utils/env.js'
+import { getClaudeConfigHomeDir, isEnvTruthy } from '@main/engine/utils/envUtils.js'
 import {
   execFileNoThrow,
   execFileNoThrowWithCwd,
   execSyncWithDefaults_DEPRECATED,
-} from '@vendor/utils/execFileNoThrow.js'
-import { getFsImplementation } from '@vendor/utils/fsOperations.js'
-import { getAncestorPidsAsync } from '@vendor/utils/genericProcessUtils.js'
-import { isJetBrainsPluginInstalledCached } from '@vendor/utils/jetbrains.js'
-import { logError } from '@vendor/utils/log.js'
-import { getPlatform } from '@vendor/utils/platform.js'
-import { lt } from '@vendor/utils/semver.js'
+} from '@main/engine/utils/execFileNoThrow.js'
+import { getFsImplementation } from '@main/engine/utils/fsOperations.js'
+import { getAncestorPidsAsync } from '@main/engine/utils/genericProcessUtils.js'
+import { isJetBrainsPluginInstalledCached } from '@main/engine/utils/jetbrains.js'
+import { logError } from '@main/engine/utils/log.js'
+import { getPlatform } from '@main/engine/utils/platform.js'
+import { lt } from '@main/engine/utils/semver.js'
 
 // Lazy: IdeOnboardingDialog.tsx pulls React/ink; only needed in interactive onboarding path
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -34,17 +34,17 @@ const ideOnboardingDialog =
   (): typeof import('../cli/components/IdeOnboardingDialog.js') =>
     require('../cli/components/IdeOnboardingDialog.js')
 
-import { createAbortController } from '@vendor/utils/abortController.js'
-import { logForDebugging } from '@vendor/utils/debug.js'
-import { envDynamic } from '@vendor/utils/envDynamic.js'
-import { errorMessage, isFsInaccessible } from '@vendor/utils/errors.js'
+import { createAbortController } from '@main/engine/utils/abortController.js'
+import { logForDebugging } from '@main/engine/utils/debug.js'
+import { envDynamic } from '@main/engine/utils/envDynamic.js'
+import { errorMessage, isFsInaccessible } from '@main/engine/utils/errors.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
   checkWSLDistroMatch,
   WindowsToWSLConverter,
-} from '@vendor/utils/idePathConversion.js'
-import { sleep } from '@vendor/utils/sleep.js'
-import { jsonParse } from '@vendor/utils/slowOperations.js'
+} from '@main/engine/utils/idePathConversion.js'
+import { sleep } from '@main/engine/utils/sleep.js'
+import { jsonParse } from '@main/engine/utils/slowOperations.js'
 
 function isProcessRunning(pid: number): boolean {
   try {

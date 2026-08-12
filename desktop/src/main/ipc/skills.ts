@@ -116,7 +116,7 @@ const listSkills = listSkillInfos;
 function refreshSkillCaches(): void {
   // Vendor memoizes skill-dir discovery; our tool set caches the catalog.
   // Clear both so the next agent run sees the new/removed skill.
-  void import("@vendor/skills/loadSkillsDir.js")
+  void import("../skills/loader/loadSkillsDir.js")
     .then((m) => m.clearSkillCaches?.())
     .catch(() => {});
   void import("../agent/vendor-tools.js")

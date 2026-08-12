@@ -3,19 +3,19 @@ import { isEqual, memoize } from 'lodash-es'
 import {
   getIsNonInteractiveSession,
   getSessionTrustAccepted,
-} from '@vendor/bootstrap/state.js'
-import { getGrowthBookClientKey } from '@vendor/constants/keys.js'
+} from '@main/engine/state/state.js'
+import { getGrowthBookClientKey } from '@main/engine/constants/keys.js'
 import {
   checkHasTrustDialogAccepted,
   getGlobalConfig,
   saveGlobalConfig,
-} from '@vendor/utils/config.js'
-import { logForDebugging } from '@vendor/utils/debug.js'
-import { toError } from '@vendor/utils/errors.js'
-import { getAuthHeaders } from '@vendor/utils/http.js'
-import { logError } from '@vendor/utils/log.js'
-import { createSignal } from '@vendor/utils/signal.js'
-import { jsonStringify } from '@vendor/utils/slowOperations.js'
+} from '@main/engine/utils/config.js'
+import { logForDebugging } from '@main/engine/utils/debug.js'
+import { toError } from '@main/engine/utils/errors.js'
+import { getAuthHeaders } from '@main/engine/utils/http.js'
+import { logError } from '@main/engine/utils/log.js'
+import { createSignal } from '@main/engine/utils/signal.js'
+import { jsonStringify } from '@main/engine/utils/slowOperations.js'
 import {
   type GitHubActionsMetadata,
   getUserForGrowthBook,

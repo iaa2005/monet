@@ -1,12 +1,12 @@
 import axios from 'axios'
-import { getOauthConfig } from '@vendor/constants/oauth.js'
+import { getOauthConfig } from '@main/engine/constants/oauth.js'
 import {
   getClaudeAIOAuthTokens,
   hasProfileScope,
   isClaudeAISubscriber,
 } from '../account/auth.js'
-import { getAuthHeaders } from '@vendor/utils/http.js'
-import { getClaudeCodeUserAgent } from '@vendor/utils/userAgent.js'
+import { getAuthHeaders } from '@main/engine/utils/http.js'
+import { getClaudeCodeUserAgent } from '@main/engine/utils/userAgent.js'
 import { isOAuthTokenExpired } from '../account/oauth/client.js'
 
 export type RateLimit = {

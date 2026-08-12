@@ -37,10 +37,6 @@ const pkgStubAliases = Object.entries(
   replacement: resolve(stub),
 }))
 
-// Vendor code imports both relative (../bootstrap/state.js) and src/-rooted
-// (src/bootstrap/state.js) specifiers. Both MUST resolve to the same vendor
-// files — a shim on the src/ path only would split module state (e.g. two
-// sessionId stores). Only truly virtual Bun modules stay shimmed.
 // Note: the Bun-style 'vscode-jsonrpc/node.js' subpath is corrected to the
 // valid './node' export by vendorRequirePlugin (a file alias wouldn't apply —
 // externalizeDepsPlugin keeps the package external).
@@ -48,10 +44,11 @@ const pkgStubAliases = Object.entries(
 // the task log, which main writes and the renderer renders).
 const sharedAlias = { find: '@shared', replacement: resolve('src/shared') }
 
-// @main exists so the leaked tree can import OUR modules while it is being
-// absorbed. The arrow used to point only one way (ours → vendor); it now
-// points both, because every module that moves out leaves importers behind
-// inside the tree, and a relative path from src/vendor/leaked/… is unreadable.
+// The engine and the app are one tree now, so these two aliases are just the
+// names of its halves. There used to be a third, @vendor, plus a bare `src`
+// mapped onto src/vendor/leaked to satisfy the leak's own root-relative
+// imports. Both are gone with the folder: every specifier in the tree now
+// resolves the same way ours always did.
 const mainAlias = { find: '@main', replacement: resolve('src/main') }
 
 // The quarantine: Anthropic's own product code — their event pipeline, OAuth
@@ -66,8 +63,6 @@ const vendorAliases = [
   anthropicAlias,
   { find: 'bun:bundle', replacement: resolve('src/main/shims/bun-bundle.ts') },
   ...pkgStubAliases,
-  { find: '@vendor', replacement: resolve('src/vendor/leaked') },
-  { find: 'src', replacement: resolve('src/vendor/leaked') },
 ]
 
 // Time-limited beta builds: `MONET_BETA_EXPIRES=2026-09-01 npm run build`

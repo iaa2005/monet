@@ -21,13 +21,13 @@
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
-import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
+import { buildTool, type ToolUseContext } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
 import {
   parseCronExpression,
   computeNextCronRun,
   cronToHuman,
-} from "@vendor/utils/cron.js";
+} from "../engine/utils/cron.js";
 import { createRoutine, type RoutineInput } from "../routines/store.js";
 import { listAccounts } from "../connectors/store.js";
 import { getService } from "../connectors/services/registry.js";

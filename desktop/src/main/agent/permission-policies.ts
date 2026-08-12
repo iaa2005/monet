@@ -17,7 +17,7 @@
  * finding the right line in a 60-line conditional.
  */
 
-import type { Tool, ToolUseContext } from "@vendor/Tool.js";
+import type { Tool, ToolUseContext } from "../engine/Tool.js";
 import { isSensitivePath } from "./secret-filter.js";
 import { isReservedDevicePath, sensitivePathInCommand } from "./shell-paths.js";
 import { isOriginAllowed } from "@shared/origins.js";

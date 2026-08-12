@@ -1,7 +1,7 @@
 import { feature } from 'bun:bundle'
-import type { Command } from '@vendor/types/command.js'
-import { maybeMarkProjectOnboardingComplete } from '@vendor/projectOnboardingState.js'
-import { isEnvTruthy } from '@vendor/utils/envUtils.js'
+import type { Command } from '@main/engine/types/command.js'
+import { maybeMarkProjectOnboardingComplete } from '@main/engine/projectOnboardingState.js'
+import { isEnvTruthy } from '@main/engine/utils/envUtils.js'
 
 const OLD_INIT_PROMPT = `Please analyze this codebase and create a CLAUDE.md file, which will be given to future instances of Claude Code to operate in this repository.
 

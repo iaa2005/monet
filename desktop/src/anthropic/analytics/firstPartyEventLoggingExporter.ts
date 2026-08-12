@@ -12,24 +12,24 @@ import type { CoreUserData } from '../account/user.js'
 import {
   getIsNonInteractiveSession,
   getSessionId,
-} from '@vendor/bootstrap/state.js'
-import { ClaudeCodeInternalEvent } from '@vendor/types/generated/events_mono/claude_code/v1/claude_code_internal_event.js'
-import { GrowthbookExperimentEvent } from '@vendor/types/generated/events_mono/growthbook/v1/growthbook_experiment_event.js'
+} from '@main/engine/state/state.js'
+import { ClaudeCodeInternalEvent } from '@main/engine/types/generated/events_mono/claude_code/v1/claude_code_internal_event.js'
+import { GrowthbookExperimentEvent } from '@main/engine/types/generated/events_mono/growthbook/v1/growthbook_experiment_event.js'
 import {
   getClaudeAIOAuthTokens,
   hasProfileScope,
   isClaudeAISubscriber,
 } from '../account/auth.js'
-import { checkHasTrustDialogAccepted } from '@vendor/utils/config.js'
-import { logForDebugging } from '@vendor/utils/debug.js'
-import { getClaudeConfigHomeDir } from '@vendor/utils/envUtils.js'
-import { errorMessage, isFsInaccessible, toError } from '@vendor/utils/errors.js'
-import { getAuthHeaders } from '@vendor/utils/http.js'
-import { readJSONLFile } from '@vendor/utils/json.js'
-import { logError } from '@vendor/utils/log.js'
-import { sleep } from '@vendor/utils/sleep.js'
-import { jsonStringify } from '@vendor/utils/slowOperations.js'
-import { getClaudeCodeUserAgent } from '@vendor/utils/userAgent.js'
+import { checkHasTrustDialogAccepted } from '@main/engine/utils/config.js'
+import { logForDebugging } from '@main/engine/utils/debug.js'
+import { getClaudeConfigHomeDir } from '@main/engine/utils/envUtils.js'
+import { errorMessage, isFsInaccessible, toError } from '@main/engine/utils/errors.js'
+import { getAuthHeaders } from '@main/engine/utils/http.js'
+import { readJSONLFile } from '@main/engine/utils/json.js'
+import { logError } from '@main/engine/utils/log.js'
+import { sleep } from '@main/engine/utils/sleep.js'
+import { jsonStringify } from '@main/engine/utils/slowOperations.js'
+import { getClaudeCodeUserAgent } from '@main/engine/utils/userAgent.js'
 import { isOAuthTokenExpired } from '../account/oauth/client.js'
 import { stripProtoFields } from './index.js'
 import { type EventMetadata, to1PEventFormat } from './metadata.js'

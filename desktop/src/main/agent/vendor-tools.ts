@@ -16,17 +16,17 @@ import type {
   RequestPermission,
   UiPermissionMode,
 } from "./permission-types.js";
-import type { Tool, Tools, ToolUseContext } from "@vendor/Tool.js";
-import { findToolByName } from "@vendor/Tool.js";
-import { BashTool } from "@vendor/tools/BashTool/BashTool.js";
-import { FileEditTool } from "@vendor/tools/FileEditTool/FileEditTool.js";
-import { FileReadTool } from "@vendor/tools/FileReadTool/FileReadTool.js";
-import { FileWriteTool } from "@vendor/tools/FileWriteTool/FileWriteTool.js";
-import { GlobTool } from "@vendor/tools/GlobTool/GlobTool.js";
-import { GrepTool } from "@vendor/tools/GrepTool/GrepTool.js";
-import { PowerShellTool } from "@vendor/tools/PowerShellTool/PowerShellTool.js";
-import { TodoWriteTool } from "@vendor/tools/TodoWriteTool/TodoWriteTool.js";
-import { zodToJsonSchema } from "@vendor/utils/zodToJsonSchema.js";
+import type { Tool, Tools, ToolUseContext } from "../engine/Tool.js";
+import { findToolByName } from "../engine/Tool.js";
+import { BashTool } from "../engine/tools/BashTool/BashTool.jsx";
+import { FileEditTool } from "../engine/tools/FileEditTool/FileEditTool.js";
+import { FileReadTool } from "../engine/tools/FileReadTool/FileReadTool.js";
+import { FileWriteTool } from "../engine/tools/FileWriteTool/FileWriteTool.js";
+import { GlobTool } from "../engine/tools/GlobTool/GlobTool.js";
+import { GrepTool } from "../engine/tools/GrepTool/GrepTool.js";
+import { PowerShellTool } from "../engine/tools/PowerShellTool/PowerShellTool.jsx";
+import { TodoWriteTool } from "../engine/tools/TodoWriteTool/TodoWriteTool.js";
+import { zodToJsonSchema } from "../engine/utils/zodToJsonSchema.js";
 import { InlineSkillTool } from "./skill-tool.js";
 import { AgentTaskTool } from "./agent-tool.js";
 import { AgentSwarmTool } from "./swarm-tool.js";
@@ -82,7 +82,7 @@ import {
 } from "./plan-tool.js";
 import { SleepTool } from "./sleep-tool.js";
 import { SendMessageTool, TeamListTool } from "./team-tools.js";
-import { NotebookEditTool } from "@vendor/tools/NotebookEditTool/NotebookEditTool.js";
+import { NotebookEditTool } from "../engine/tools/NotebookEditTool/NotebookEditTool.js";
 import { effectiveMode } from "./session-mode.js";
 import type { AskPlanApprovalFn } from "../ipc/plan.js";
 import {

@@ -22,7 +22,7 @@ import { existsSync, mkdtempSync, readdirSync, statSync, writeFileSync } from "f
 import { tmpdir } from "os";
 import { basename, join } from "path";
 import { z } from "zod/v4";
-import { buildTool } from "@vendor/Tool.js";
+import { buildTool } from "../engine/Tool.js";
 import { lazySchema } from "../agent/lazy-schema.js";
 import { resolveSource, sourceHint } from "../obsidian/source.js";
 import { enabledVaults } from "../obsidian/vaults.js";

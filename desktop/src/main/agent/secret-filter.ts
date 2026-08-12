@@ -26,7 +26,7 @@
  * decision belongs to the permission layer, not to grep.
  */
 
-import type { Tool } from "@vendor/Tool.js";
+import type { Tool } from "../engine/Tool.js";
 
 /**
  * Files whose contents are secrets often enough that searching them by

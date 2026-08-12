@@ -1,10 +1,10 @@
 /**
- * Vendor sources (built for Bun) use lazy `require()` inside ESM modules —
+* The absorbed engine (built for Bun) uses lazy `require()` inside ESM modules —
  * both for cycle-breaking and feature-gated loading. In an ESM bundle that
  * crashes at call time. Two-part fix:
  *
  *  1. This plugin rewrites relative `require('./x.js')` calls inside
- *     src/vendor/leaked into hoisted namespace imports (eager, cycle-safe via
+ *     our source tree into hoisted namespace imports (eager, cycle-safe via
  *     rollup's hoisting).
  *  2. Bare requires (`require('yaml')`, node builtins) are left alone and
  *     served by a `createRequire` banner injected into the output (see
@@ -14,7 +14,25 @@
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, resolve as resolvePath } from 'node:path'
 
-const VENDOR_RE = /src[\\/]vendor[\\/]leaked/
+// This used to match src/vendor/leaked. When that folder was emptied into
+// src/main and src/anthropic the pattern silently stopped matching anything,
+// the lazy requires were left raw, and the app died at call time with
+// "Cannot find module '../utils/teammate.js'" — a runtime failure the build
+// could not see. smoke:agent caught it.
+//
+// The scope is now OUR source tree rather than a list of the absorbed
+// directories, because such a list is exactly the thing that goes stale on
+// the next move. It is safe for our own files: they never use relative
+// require() (ESM throughout), so the transform finds nothing and returns
+// null.
+//
+// It must be THIS project's src, matched absolutely. A pattern of /[\/]src[\/]/
+// also matches node_modules/debug/src/index.js, and rewriting that CJS
+// module's requires into ESM imports destroys its module.exports shape —
+// "default is not exported by debug/src/index.js", from a package nothing
+// here touches directly.
+const SRC_DIR = resolvePath(process.cwd(), 'src').replace(/\\/g, '/') + '/'
+const inOurSource = id => id.replace(/\\/g, '/').startsWith(SRC_DIR)
 const REQUIRE_RE = /(?<![.\w$])require\(\s*(['"])(\.[^'"]+)\1\s*\)/g
 
 function moduleExists(importerDir, spec) {
@@ -29,7 +47,7 @@ export function vendorRequirePlugin() {
     name: 'vendor-relative-require',
     enforce: 'pre',
     transform(code, id) {
-      if (!VENDOR_RE.test(id)) return null
+      if (!inOurSource(id)) return null
 
       let src = code
       // The Bun build imported the 'vscode-jsonrpc/node.js' subpath, but the

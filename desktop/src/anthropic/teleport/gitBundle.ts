@@ -16,11 +16,11 @@ import {
 } from '../analytics/index.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import { type FilesApiConfig, uploadFile } from '../api/filesApi.js'
-import { getCwd } from '@vendor/utils/cwd.js'
-import { logForDebugging } from '@vendor/utils/debug.js'
-import { execFileNoThrowWithCwd } from '@vendor/utils/execFileNoThrow.js'
-import { findGitRoot, gitExe } from '@vendor/utils/git.js'
-import { generateTempFilePath } from '@vendor/utils/tempfile.js'
+import { getCwd } from '@main/engine/utils/cwd.js'
+import { logForDebugging } from '@main/engine/utils/debug.js'
+import { execFileNoThrowWithCwd } from '@main/engine/utils/execFileNoThrow.js'
+import { findGitRoot, gitExe } from '@main/engine/utils/git.js'
+import { generateTempFilePath } from '@main/engine/utils/tempfile.js'
 
 // Tunable via tengu_ccr_bundle_max_bytes.
 const DEFAULT_BUNDLE_MAX_BYTES = 100 * 1024 * 1024

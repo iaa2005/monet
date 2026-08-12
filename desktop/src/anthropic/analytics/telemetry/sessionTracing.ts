@@ -14,8 +14,8 @@ import { feature } from 'bun:bundle'
 import { context as otelContext, type Span, trace } from '@opentelemetry/api'
 import { AsyncLocalStorage } from 'async_hooks'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../growthbook.js'
-import type { AssistantMessage, UserMessage } from '@vendor/types/message.js'
-import { isEnvDefinedFalsy, isEnvTruthy } from '@vendor/utils/envUtils.js'
+import type { AssistantMessage, UserMessage } from '@main/engine/types/message.js'
+import { isEnvDefinedFalsy, isEnvTruthy } from '@main/engine/utils/envUtils.js'
 import { getTelemetryAttributes } from '../telemetryAttributes.js'
 import {
   addBetaInteractionAttributes,

@@ -19,7 +19,7 @@
 
 import { readFileSync } from "fs";
 import { join } from "path";
-import type { ToolUseContext } from "@vendor/Tool.js";
+import type { ToolUseContext } from "../engine/Tool.js";
 import { getDataDir } from "../data-dir.js";
 
 export interface PreToolHookOutcome {
@@ -83,7 +83,7 @@ function parseHooksFile(raw: string): Record<string, HookMatcherFile[]> {
  */
 export async function reloadHooks(): Promise<{ events: number; error?: string }> {
   const { clearRegisteredHooks, registerHookCallbacks } = await import(
-    "@vendor/bootstrap/state.js"
+    "../engine/state/state.js"
   );
   clearRegisteredHooks();
   let raw: string;
@@ -108,7 +108,7 @@ export async function listConfiguredHooks(): Promise<
   { event: string; matcher: string; commands: string[] }[]
 > {
   try {
-    const { getRegisteredHooks } = await import("@vendor/bootstrap/state.js");
+    const { getRegisteredHooks } = await import("../engine/state/state.js");
     const snap = (getRegisteredHooks() ?? {}) as Record<string, unknown>;
     const out: { event: string; matcher: string; commands: string[] }[] = [];
     for (const [event, matchers] of Object.entries(snap)) {
@@ -133,7 +133,7 @@ export async function listConfiguredHooks(): Promise<
  * to call per tool call — the engine itself early-returns when no hook matches. */
 export async function hooksAvailable(): Promise<boolean> {
   try {
-    const { getRegisteredHooks } = await import("@vendor/bootstrap/state.js");
+    const { getRegisteredHooks } = await import("../engine/state/state.js");
     const reg = getRegisteredHooks();
     return !!reg && Object.keys(reg).length > 0;
   } catch {
@@ -151,7 +151,7 @@ export async function runPreToolHooks(args: {
 }): Promise<PreToolHookOutcome> {
   const out: PreToolHookOutcome = {};
   try {
-    const { executePreToolHooks } = await import("@vendor/utils/hooks.js");
+    const { executePreToolHooks } = await import("../engine/hooks/hooks.js");
     for await (const r of executePreToolHooks(
       args.toolName,
       args.toolUseID,
@@ -206,7 +206,7 @@ export async function runPostToolHooks(args: {
 }): Promise<PostToolHookOutcome> {
   const out: PostToolHookOutcome = {};
   try {
-    const { executePostToolHooks } = await import("@vendor/utils/hooks.js");
+    const { executePostToolHooks } = await import("../engine/hooks/hooks.js");
     for await (const r of executePostToolHooks(
       args.toolName,
       args.toolUseID,

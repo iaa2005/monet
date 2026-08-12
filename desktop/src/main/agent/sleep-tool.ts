@@ -12,13 +12,13 @@
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
-import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
+import { buildTool, type ToolUseContext } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
 import {
   SLEEP_TOOL_NAME,
   SLEEP_TOOL_PROMPT,
   DESCRIPTION,
-} from "@vendor/tools/SleepTool/prompt.js";
+} from "../engine/tools/SleepTool/prompt.js";
 import { tunablePrompt } from "../prompts/index.js";
 
 interface Output {

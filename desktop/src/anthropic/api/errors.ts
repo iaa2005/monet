@@ -7,13 +7,13 @@ import type {
   BetaMessage,
   BetaStopReason,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import { AFK_MODE_BETA_HEADER } from '@vendor/constants/betas.js'
+import { AFK_MODE_BETA_HEADER } from '@main/engine/constants/betas.js'
 import type { SDKAssistantMessageError } from '../cli/entrypoints/agentSdkTypes.js'
 import type {
   AssistantMessage,
   Message,
   UserMessage,
-} from '@vendor/types/message.js'
+} from '@main/engine/types/message.js'
 import {
   getAnthropicApiKeyWithSource,
   getClaudeAIOAuthTokens,
@@ -23,22 +23,22 @@ import {
 import {
   createAssistantAPIErrorMessage,
   NO_RESPONSE_REQUESTED,
-} from '@vendor/utils/messages.js'
+} from '@main/engine/utils/messages.js'
 import {
   getDefaultMainLoopModelSetting,
   isNonCustomOpusModel,
-} from '@vendor/utils/model/model.js'
-import { getModelStrings } from '@vendor/utils/model/modelStrings.js'
-import { getAPIProvider } from '@vendor/utils/model/providers.js'
-import { getIsNonInteractiveSession } from '@vendor/bootstrap/state.js'
+} from '@main/llm/model/model.js'
+import { getModelStrings } from '@main/llm/model/modelStrings.js'
+import { getAPIProvider } from '@main/llm/model/providers.js'
+import { getIsNonInteractiveSession } from '@main/engine/state/state.js'
 import {
   API_PDF_MAX_PAGES,
   PDF_TARGET_RAW_SIZE,
-} from '@vendor/constants/apiLimits.js'
-import { isEnvTruthy } from '@vendor/utils/envUtils.js'
-import { formatFileSize } from '@vendor/utils/format.js'
-import { ImageResizeError } from '@vendor/utils/imageResizer.js'
-import { ImageSizeError } from '@vendor/utils/imageValidation.js'
+} from '@main/engine/constants/apiLimits.js'
+import { isEnvTruthy } from '@main/engine/utils/envUtils.js'
+import { formatFileSize } from '@main/engine/utils/format.js'
+import { ImageResizeError } from '@main/engine/utils/imageResizer.js'
+import { ImageSizeError } from '@main/engine/utils/imageValidation.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -48,7 +48,7 @@ import {
   getRateLimitErrorMessage,
   type OverageDisabledReason,
 } from '../account/claudeAiLimits.js'
-import { shouldProcessRateLimits } from '@vendor/services/rateLimitMocking.js' // Used for /mock-limits command
+import { shouldProcessRateLimits } from '@main/engine/services/rateLimitMocking.js' // Used for /mock-limits command
 import { extractConnectionErrorDetails, formatAPIError } from './errorUtils.js'
 
 export const API_ERROR_MESSAGE_PREFIX = 'API Error'

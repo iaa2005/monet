@@ -24,7 +24,7 @@ import { basename, extname, isAbsolute, join, resolve, sep } from "path";
 import { pipeline } from "stream/promises";
 import type { Readable } from "stream";
 import { sandboxWorkDir } from "../../sandbox/podman-engine.js";
-import { getCwd } from "@vendor/utils/cwd.js";
+import { getCwd } from "../../engine/utils/cwd.js";
 
 /** Refuse to write files past this — a connector download is chat material,
  * not a backup channel. Per-call override for known-bigger media. */

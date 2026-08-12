@@ -24,7 +24,7 @@ import {
   sensitivePathInCommand,
   shellTokens,
 } from '../src/main/agent/shell-paths.js'
-import type { Tool, ToolUseContext } from '../src/vendor/leaked/Tool.js'
+import type { Tool, ToolUseContext } from '@main/engine/Tool.js'
 
 let failures = 0
 function check(name: string, cond: boolean, detail?: unknown): void {

@@ -10,7 +10,7 @@
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { isAbsolute, resolve } from "path";
 import { z } from "zod/v4";
-import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
+import { buildTool, type ToolUseContext } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
 import { getWorkspacePath } from "../ipc/workspace.js";
 import { lspQuery, type LspOperation } from "./lsp/manager.js";

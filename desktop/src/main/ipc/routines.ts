@@ -6,7 +6,7 @@
 import { ipcMain } from "electron";
 import { extractJson } from "../llm/json-extract.js";
 import { resolveBackgroundModel } from "../provider/routing.js";
-import { parseCronExpression, computeNextCronRun, cronToHuman } from "@vendor/utils/cron.js";
+import { parseCronExpression, computeNextCronRun, cronToHuman } from "../engine/utils/cron.js";
 import {
   listRoutines,
   getRoutine,

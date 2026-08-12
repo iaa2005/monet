@@ -22,14 +22,14 @@ import { join, relative, sep } from 'path'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import { z } from 'zod/v4'
-import { buildTool, type ToolUseContext } from '@vendor/Tool.js'
+import { buildTool, type ToolUseContext } from '../engine/Tool.js'
 import {
   findCommand,
   getCommands,
   getSkillToolCommands,
   type Command,
 } from './commands.js'
-import { getProjectRoot } from '@vendor/bootstrap/state.js'
+import { getProjectRoot } from '../engine/state/state.js'
 import { lazySchema } from './lazy-schema.js'
 import { rebrand } from '@shared/rebrand.js'
 import { getAppState, initVendorRuntime } from './vendor-context.js'

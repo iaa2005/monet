@@ -5,13 +5,13 @@ import {
   APIError,
   APIUserAbortError,
 } from '@anthropic-ai/sdk'
-import type { QuerySource } from '@vendor/constants/querySource.js'
-import type { SystemAPIErrorMessage } from '@vendor/types/message.js'
-import { isAwsCredentialsProviderError } from '@vendor/utils/aws.js'
-import { logForDebugging } from '@vendor/utils/debug.js'
-import { logError } from '@vendor/utils/log.js'
-import { createSystemAPIErrorMessage } from '@vendor/utils/messages.js'
-import { getAPIProviderForStatsig } from '@vendor/utils/model/providers.js'
+import type { QuerySource } from '@main/engine/constants/querySource.js'
+import type { SystemAPIErrorMessage } from '@main/engine/types/message.js'
+import { isAwsCredentialsProviderError } from '@main/engine/utils/aws.js'
+import { logForDebugging } from '@main/engine/utils/debug.js'
+import { logError } from '@main/engine/utils/log.js'
+import { createSystemAPIErrorMessage } from '@main/engine/utils/messages.js'
+import { getAPIProviderForStatsig } from '@main/llm/model/providers.js'
 import {
   clearApiKeyHelperCache,
   clearAwsCredentialsCache,
@@ -21,8 +21,8 @@ import {
   isClaudeAISubscriber,
   isEnterpriseSubscriber,
 } from '../account/auth.js'
-import { isEnvTruthy } from '@vendor/utils/envUtils.js'
-import { errorMessage } from '@vendor/utils/errors.js'
+import { isEnvTruthy } from '@main/engine/utils/envUtils.js'
+import { errorMessage } from '@main/engine/utils/errors.js'
 import {
   type CooldownReason,
   handleFastModeOverageRejection,
@@ -30,11 +30,11 @@ import {
   isFastModeCooldown,
   isFastModeEnabled,
   triggerFastModeCooldown,
-} from '@vendor/utils/fastMode.js'
-import { isNonCustomOpusModel } from '@vendor/utils/model/model.js'
-import { disableKeepAlive } from '@vendor/utils/proxy.js'
-import { sleep } from '@vendor/utils/sleep.js'
-import type { ThinkingConfig } from '@vendor/utils/thinking.js'
+} from '@main/engine/utils/fastMode.js'
+import { isNonCustomOpusModel } from '@main/llm/model/model.js'
+import { disableKeepAlive } from '@main/engine/utils/proxy.js'
+import { sleep } from '@main/engine/utils/sleep.js'
+import type { ThinkingConfig } from '@main/engine/utils/thinking.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -43,7 +43,7 @@ import {
 import {
   checkMockRateLimitError,
   isMockRateLimitError,
-} from '@vendor/services/rateLimitMocking.js'
+} from '@main/engine/services/rateLimitMocking.js'
 import { REPEATED_529_ERROR_MESSAGE } from './errors.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
 

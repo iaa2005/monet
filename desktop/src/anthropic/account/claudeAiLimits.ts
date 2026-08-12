@@ -1,13 +1,13 @@
 import { APIError } from '@anthropic-ai/sdk'
 import type { MessageParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import isEqual from 'lodash-es/isEqual.js'
-import { getIsNonInteractiveSession } from '@vendor/bootstrap/state.js'
+import { getIsNonInteractiveSession } from '@main/engine/state/state.js'
 import { isClaudeAISubscriber } from './auth.js'
-import { getModelBetas } from '@vendor/utils/betas.js'
-import { getGlobalConfig, saveGlobalConfig } from '@vendor/utils/config.js'
-import { logError } from '@vendor/utils/log.js'
-import { getSmallFastModel } from '@vendor/utils/model/model.js'
-import { isEssentialTrafficOnly } from '@vendor/utils/privacyLevel.js'
+import { getModelBetas } from '@main/engine/utils/betas.js'
+import { getGlobalConfig, saveGlobalConfig } from '@main/engine/utils/config.js'
+import { logError } from '@main/engine/utils/log.js'
+import { getSmallFastModel } from '@main/llm/model/model.js'
+import { isEssentialTrafficOnly } from '@main/engine/utils/privacyLevel.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../analytics/index.js'
 import { logEvent } from '../analytics/index.js'
 import { getAPIMetadata } from '../api/claude.js'
@@ -15,7 +15,7 @@ import { getAnthropicClient } from '../api/client.js'
 import {
   processRateLimitHeaders,
   shouldProcessRateLimits,
-} from '@vendor/services/rateLimitMocking.js'
+} from '@main/engine/services/rateLimitMocking.js'
 
 // Re-export message functions from centralized location
 export {

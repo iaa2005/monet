@@ -7,13 +7,13 @@ import {
   isSuppressible403,
 } from './bridgeApi.js'
 import type { BridgeConfig, BridgeApiClient } from './types.js'
-import { logForDebugging } from '@vendor/utils/debug.js'
-import { logForDiagnosticsNoPII } from '@vendor/utils/diagLogs.js'
+import { logForDebugging } from '@main/engine/utils/debug.js'
+import { logForDiagnosticsNoPII } from '@main/engine/utils/diagLogs.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
-import { registerCleanup } from '@vendor/utils/cleanupRegistry.js'
+import { registerCleanup } from '@main/engine/utils/cleanupRegistry.js'
 import {
   handleIngressMessage,
   handleServerControlRequest,
@@ -29,7 +29,7 @@ import {
   sameSessionId,
 } from './workSecret.js'
 import { toCompatSessionId, toInfraSessionId } from './sessionIdCompat.js'
-import { updateSessionBridgeId } from '@vendor/utils/concurrentSessions.js'
+import { updateSessionBridgeId } from '@main/engine/utils/concurrentSessions.js'
 import { getTrustedDeviceToken } from './trustedDevice.js'
 import { HybridTransport } from '../cli/transports/HybridTransport.js'
 import {
@@ -37,17 +37,17 @@ import {
   createV1ReplTransport,
   createV2ReplTransport,
 } from './replBridgeTransport.js'
-import { updateSessionIngressAuthToken } from '@vendor/utils/sessionIngressAuth.js'
-import { isEnvTruthy, isInProtectedNamespace } from '@vendor/utils/envUtils.js'
+import { updateSessionIngressAuthToken } from '@main/engine/utils/sessionIngressAuth.js'
+import { isEnvTruthy, isInProtectedNamespace } from '@main/engine/utils/envUtils.js'
 import { validateBridgeId } from './bridgeApi.js'
 import {
   describeAxiosError,
   extractHttpStatus,
   logBridgeSkip,
 } from './debugUtils.js'
-import type { Message } from '@vendor/types/message.js'
+import type { Message } from '@main/engine/types/message.js'
 import type { SDKMessage } from '../cli/entrypoints/agentSdkTypes.js'
-import type { PermissionMode } from '@vendor/utils/permissions/PermissionMode.js'
+import type { PermissionMode } from '@main/engine/permissions/PermissionMode.js'
 import type {
   SDKControlRequest,
   SDKControlResponse,
@@ -58,8 +58,8 @@ import {
   DEFAULT_POLL_CONFIG,
   type PollIntervalConfig,
 } from './pollConfigDefaults.js'
-import { errorMessage } from '@vendor/utils/errors.js'
-import { sleep } from '@vendor/utils/sleep.js'
+import { errorMessage } from '@main/engine/utils/errors.js'
+import { sleep } from '@main/engine/utils/sleep.js'
 import {
   wrapApiForFaultInjection,
   registerBridgeDebugHandle,

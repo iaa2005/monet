@@ -21,25 +21,25 @@ import {
   CLAUDE_AI_INFERENCE_SCOPE,
   getOauthConfig,
   OAUTH_BETA_HEADER,
-} from '@vendor/constants/oauth.js'
+} from '@main/engine/constants/oauth.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
   getAnthropicApiKeyWithSource,
   getClaudeAIOAuthTokens,
 } from '../auth.js'
-import { registerCleanup } from '@vendor/utils/cleanupRegistry.js'
-import { logForDebugging } from '@vendor/utils/debug.js'
-import { getClaudeConfigHomeDir } from '@vendor/utils/envUtils.js'
-import { classifyAxiosError } from '@vendor/utils/errors.js'
-import { safeParseJSON } from '@vendor/utils/json.js'
+import { registerCleanup } from '@main/engine/utils/cleanupRegistry.js'
+import { logForDebugging } from '@main/engine/utils/debug.js'
+import { getClaudeConfigHomeDir } from '@main/engine/utils/envUtils.js'
+import { classifyAxiosError } from '@main/engine/utils/errors.js'
+import { safeParseJSON } from '@main/engine/utils/json.js'
 import {
   getAPIProvider,
   isFirstPartyAnthropicBaseUrl,
-} from '@vendor/utils/model/providers.js'
-import { isEssentialTrafficOnly } from '@vendor/utils/privacyLevel.js'
-import { sleep } from '@vendor/utils/sleep.js'
-import { jsonStringify } from '@vendor/utils/slowOperations.js'
-import { getClaudeCodeUserAgent } from '@vendor/utils/userAgent.js'
+} from '@main/llm/model/providers.js'
+import { isEssentialTrafficOnly } from '@main/engine/utils/privacyLevel.js'
+import { sleep } from '@main/engine/utils/sleep.js'
+import { jsonStringify } from '@main/engine/utils/slowOperations.js'
+import { getClaudeCodeUserAgent } from '@main/engine/utils/userAgent.js'
 import { getRetryDelay } from '../../api/withRetry.js'
 import {
   type PolicyLimitsFetchResult,

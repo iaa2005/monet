@@ -10,24 +10,24 @@ import {
   refreshAndGetAwsCredentials,
   refreshGcpCredentialsIfNeeded,
 } from '../account/auth.js'
-import { getUserAgent } from '@vendor/utils/http.js'
-import { getSmallFastModel } from '@vendor/utils/model/model.js'
+import { getUserAgent } from '@main/engine/utils/http.js'
+import { getSmallFastModel } from '@main/llm/model/model.js'
 import {
   getAPIProvider,
   isFirstPartyAnthropicBaseUrl,
-} from '@vendor/utils/model/providers.js'
-import { getProxyFetchOptions } from '@vendor/utils/proxy.js'
+} from '@main/llm/model/providers.js'
+import { getProxyFetchOptions } from '@main/engine/utils/proxy.js'
 import {
   getIsNonInteractiveSession,
   getSessionId,
-} from '@vendor/bootstrap/state.js'
-import { getOauthConfig } from '@vendor/constants/oauth.js'
-import { isDebugToStdErr, logForDebugging } from '@vendor/utils/debug.js'
+} from '@main/engine/state/state.js'
+import { getOauthConfig } from '@main/engine/constants/oauth.js'
+import { isDebugToStdErr, logForDebugging } from '@main/engine/utils/debug.js'
 import {
   getAWSRegion,
   getVertexRegionForModel,
   isEnvTruthy,
-} from '@vendor/utils/envUtils.js'
+} from '@main/engine/utils/envUtils.js'
 
 /**
  * Environment variables for different client types:

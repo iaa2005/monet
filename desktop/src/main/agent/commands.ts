@@ -27,20 +27,20 @@ import {
   isCommandEnabled,
   getCommandName,
   type Command,
-} from "@vendor/types/command.js";
+} from "../engine/types/command.js";
 import {
   getSkillDirCommands,
   clearSkillCaches,
   getDynamicSkills,
-} from "@vendor/skills/loadSkillsDir.js";
-import { getBundledSkills } from "@vendor/skills/bundledSkills.js";
-import { getBuiltinPluginSkillCommands } from "@vendor/plugins/builtinPlugins.js";
+} from "../skills/loader/loadSkillsDir.js";
+import { getBundledSkills } from "../skills/loader/bundledSkills.js";
+import { getBuiltinPluginSkillCommands } from "../plugins/builtin/builtinPlugins.js";
 import {
   getPluginCommands,
   clearPluginCommandCache,
   getPluginSkills,
   clearPluginSkillsCache,
-} from "@vendor/utils/plugins/loadPluginCommands.js";
+} from "../plugins/loadPluginCommands.js";
 import commit from "@anthropic/cli/commands/commit.js";
 import init from "@anthropic/cli/commands/init.js";
 import review, { ultrareview } from "@anthropic/cli/commands/review.js";
@@ -52,8 +52,8 @@ export type {
   LocalJSXCommandContext,
   LocalCommandResult,
   CommandResultDisplay,
-} from "@vendor/types/command.js";
-export { getCommandName, isCommandEnabled } from "@vendor/types/command.js";
+} from "../engine/types/command.js";
+export { getCommandName, isCommandEnabled } from "../engine/types/command.js";
 
 /** The built-ins we keep. Declared as a function: their `isEnabled` reads
  *  config, which is not readable at module init. */

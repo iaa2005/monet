@@ -1,9 +1,9 @@
 import axios from 'axios'
-import { getOauthConfig } from '@vendor/constants/oauth.js'
+import { getOauthConfig } from '@main/engine/constants/oauth.js'
 import { getOrganizationUUID } from '../account/oauth/client.js'
 import { getClaudeAIOAuthTokens } from '../account/auth.js'
-import { toError } from '@vendor/utils/errors.js'
-import { logError } from '@vendor/utils/log.js'
+import { toError } from '@main/engine/utils/errors.js'
+import { logError } from '@main/engine/utils/log.js'
 import { getOAuthHeaders } from './api.js'
 
 export type EnvironmentKind = 'anthropic_cloud' | 'byoc' | 'bridge'

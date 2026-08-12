@@ -22,7 +22,7 @@ import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs
 import { existsSync, readdirSync, renameSync, writeFileSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
 import { z } from "zod/v4";
-import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
+import { buildTool, type ToolUseContext } from "../engine/Tool.js";
 import { lazySchema } from "../agent/lazy-schema.js";
 import {
   allNotes,

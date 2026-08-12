@@ -19,7 +19,7 @@ import type { AgentDefinition } from "./agent-defs.js";
 import { getSubAgentPrompt } from "./prompts-vendor.js";
 import { cavemanDirective, isCaveman } from "./caveman.js";
 import { executeVendorTool, getVendorApiTools } from "./vendor-tools.js";
-import { runWithCwdOverride } from "@vendor/utils/cwd.js";
+import { runWithCwdOverride } from "../engine/utils/cwd.js";
 
 const SUBAGENT_MAX_TURNS = 20;
 

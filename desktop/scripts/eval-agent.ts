@@ -79,7 +79,7 @@ function log(s: string): void {
 /** Mirror of buildSystemPrompt(), without importing index.ts. */
 async function buildSystem(): Promise<string> {
   const { getSystemPrompt } = await import(
-    "../src/vendor/leaked/constants/prompts.js"
+    "@main/engine/constants/prompts.js"
   );
   const sections = await getSystemPrompt(
     getVendorToolsForSpace(SPACE),
@@ -128,7 +128,7 @@ async function main(): Promise<void> {
   );
 
   const messages: LLMMessage[] = [{ role: "user", content: TASK }];
-  const { runWithCwdOverride } = await import("../src/vendor/leaked/utils/cwd.js");
+  const { runWithCwdOverride } = await import("@main/engine/utils/cwd.js");
 
   let turns = 0;
   for (; turns < MAX_TURNS; turns++) {

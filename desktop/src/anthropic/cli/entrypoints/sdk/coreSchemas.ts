@@ -8,7 +8,7 @@
  */
 
 import { z } from 'zod/v4'
-import { lazySchema } from '@vendor/utils/lazySchema.js'
+import { lazySchema } from '@main/engine/utils/lazySchema.js'
 
 // ============================================================================
 // Usage & Model Types

@@ -166,7 +166,7 @@ async function buildSystemPrompt(
 ): Promise<string> {
   initVendorRuntime();
   try {
-    const { getSystemPrompt } = await import("@vendor/constants/prompts.js");
+    const { getSystemPrompt } = await import("../engine/constants/prompts.js");
     // Space-filtered: in Home the prompt must not even MENTION Bash/FileEdit —
     // a model that reads about a tool will try to call it. sessionId resolves the
     // chat's engine so RunCommand is listed only when this chat runs on Podman.
@@ -1443,7 +1443,7 @@ export async function runAgent(
   // runWithCwdOverride pins the cwd for the prompt AND every tool call — so a
   // concurrent chat or a routine firing mid-stream can't move it out from under
   // this run. All the actual work lives in runAgentScoped.
-  const { runWithCwdOverride } = await import("@vendor/utils/cwd.js");
+  const { runWithCwdOverride } = await import("../engine/utils/cwd.js");
   const { applyWorkspaceForRun, getWorkspacePath } = await import(
     "../ipc/workspace.js"
   );
@@ -1460,7 +1460,7 @@ export async function runAgent(
   if (lastPromptCwd !== runCwd) {
     try {
       const { getSystemPromptSectionCache } = await import(
-        "@vendor/bootstrap/state.js"
+        "../engine/state/state.js"
       );
       getSystemPromptSectionCache().delete("env_info_simple");
     } catch {
@@ -1566,7 +1566,7 @@ async function runAgentScoped(
   // the end-of-turn snapshot uses, so a window and its commit can never
   // describe two different folders.
   {
-    const { getCwd } = await import("@vendor/utils/cwd.js");
+    const { getCwd } = await import("../engine/utils/cwd.js");
     cwdForRun = () => getCwd();
   }
 

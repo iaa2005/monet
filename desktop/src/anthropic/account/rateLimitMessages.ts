@@ -9,7 +9,7 @@ import {
   isOverageProvisioningAllowed,
 } from './auth.js'
 import { hasClaudeAiBillingAccess } from './billing.js'
-import { formatResetTime } from '@vendor/utils/format.js'
+import { formatResetTime } from '@main/engine/utils/format.js'
 import type { ClaudeAILimits } from './claudeAiLimits.js'
 
 const FEEDBACK_CHANNEL_ANT = '#briarpatch-cc'

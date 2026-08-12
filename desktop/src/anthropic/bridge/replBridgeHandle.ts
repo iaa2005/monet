@@ -1,4 +1,4 @@
-import { updateSessionBridgeId } from '@vendor/utils/concurrentSessions.js'
+import { updateSessionBridgeId } from '@main/engine/utils/concurrentSessions.js'
 import type { ReplBridgeHandle } from './replBridge.js'
 import { toCompatSessionId } from './sessionIdCompat.js'
 

@@ -17,17 +17,17 @@ import {
 } from '../../../analytics/index.js'
 import { fetchUltrareviewQuota } from '../../../api/ultrareviewQuota.js'
 import { fetchUtilization } from '../../../api/usage.js'
-import type { ToolUseContext } from '@vendor/Tool.js'
+import type { ToolUseContext } from '@main/engine/Tool.js'
 import {
   checkRemoteAgentEligibility,
   formatPreconditionError,
   getRemoteTaskSessionUrl,
   registerRemoteAgentTask,
-} from '@vendor/tasks/RemoteAgentTask/RemoteAgentTask.jsx'
+} from '@main/engine/tasks/RemoteAgentTask/RemoteAgentTask.jsx'
 import { isEnterpriseSubscriber, isTeamSubscriber } from '../../../account/auth.js'
-import { detectCurrentRepositoryWithHost } from '@vendor/utils/detectRepository.js'
-import { execFileNoThrow } from '@vendor/utils/execFileNoThrow.js'
-import { getDefaultBranch, gitExe } from '@vendor/utils/git.js'
+import { detectCurrentRepositoryWithHost } from '@main/engine/utils/detectRepository.js'
+import { execFileNoThrow } from '@main/engine/utils/execFileNoThrow.js'
+import { getDefaultBranch, gitExe } from '@main/engine/utils/git.js'
 import { teleportToRemote } from '../../../teleport/teleport.jsx'
 
 // One-time session flag: once the user confirms overage billing via the

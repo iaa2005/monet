@@ -86,7 +86,7 @@ async function main() {
   // 2. Grep over the repo
   const grep = await run('Grep', {
     pattern: 'export async function getSystemPrompt',
-    path: 'src/vendor/leaked/constants',
+    path: 'src/main/engine/constants',
     output_mode: 'files_with_matches',
   })
   check(
@@ -595,7 +595,7 @@ async function main() {
 
   // 7. Vendor system prompt
   try {
-    const { getSystemPrompt } = await import('../src/vendor/leaked/constants/prompts.js')
+    const { getSystemPrompt } = await import('@main/engine/constants/prompts.js')
     const sections = await getSystemPrompt(tools, MODEL)
     const prompt = sections.filter(Boolean).join('\n\n')
     check('vendor system prompt builds', prompt.length > 2000, `len=${prompt.length}`)
