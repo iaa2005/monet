@@ -23,7 +23,7 @@ import { existsSync, readdirSync, renameSync, writeFileSync, mkdirSync } from "f
 import { dirname, join } from "path";
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
-import { lazySchema } from "@vendor/utils/lazySchema.js";
+import { lazySchema } from "../agent/lazy-schema.js";
 import {
   allNotes,
   backlinksTo,

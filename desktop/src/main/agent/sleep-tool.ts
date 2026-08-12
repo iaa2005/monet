@@ -13,7 +13,7 @@
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
-import { lazySchema } from "@vendor/utils/lazySchema.js";
+import { lazySchema } from "./lazy-schema.js";
 import {
   SLEEP_TOOL_NAME,
   SLEEP_TOOL_PROMPT,

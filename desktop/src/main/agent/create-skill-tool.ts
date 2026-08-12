@@ -17,7 +17,7 @@ import { dirname, join, resolve, sep } from "path";
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
-import { lazySchema } from "@vendor/utils/lazySchema.js";
+import { lazySchema } from "./lazy-schema.js";
 import { tunablePrompt } from "../prompts/index.js";
 import { getDataDir } from "../data-dir.js";
 import { prepareSkill } from "./skill-authoring.js";

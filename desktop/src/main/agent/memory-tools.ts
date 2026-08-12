@@ -7,7 +7,7 @@
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
 import { buildTool } from "@vendor/Tool.js";
-import { lazySchema } from "@vendor/utils/lazySchema.js";
+import { lazySchema } from "./lazy-schema.js";
 import { getSessionStore } from "../session/store.js";
 
 const inputSchema = lazySchema(() =>

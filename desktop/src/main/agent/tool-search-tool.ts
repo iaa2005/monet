@@ -11,7 +11,7 @@
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
-import { lazySchema } from "@vendor/utils/lazySchema.js";
+import { lazySchema } from "./lazy-schema.js";
 import { getMcpTools, connectorServerNames } from "../mcp/manager.js";
 import { revealTools } from "./revealed-tools.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";

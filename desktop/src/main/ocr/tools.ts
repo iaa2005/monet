@@ -23,7 +23,7 @@ import { tmpdir } from "os";
 import { basename, join } from "path";
 import { z } from "zod/v4";
 import { buildTool } from "@vendor/Tool.js";
-import { lazySchema } from "@vendor/utils/lazySchema.js";
+import { lazySchema } from "../agent/lazy-schema.js";
 import { resolveSource, sourceHint } from "../obsidian/source.js";
 import { enabledVaults } from "../obsidian/vaults.js";
 import { canScan, scanDocument } from "./scan.js";

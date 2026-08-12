@@ -15,7 +15,7 @@
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
-import { lazySchema } from "@vendor/utils/lazySchema.js";
+import { lazySchema } from "../lazy-schema.js";
 import { tunablePrompt } from "../../prompts/index.js";
 import { blockGoal, recordJudgeRejection } from "./state.js";
 import { clearGoal, loadGoal, saveGoal } from "./store.js";
