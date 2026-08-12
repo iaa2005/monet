@@ -21,6 +21,7 @@
  */
 
 import { Chart, type ChartSpec } from "./Chart";
+import { ChartFromFile } from "./ChartFromFile";
 
 /** Renders a parsed payload, or throws/returns null if the payload is wrong. */
 type Widget = (payload: unknown) => JSX.Element | null;
@@ -34,6 +35,9 @@ const WIDGETS: Record<string, Widget> = {
     // `series` was the first thing a real chart tripped on: the model put
     // `ohlc` at the top level, the block fell back to code, and nothing said
     // why. Accept both shapes rather than teach the model ours.
+    // `src` names a sandbox file holding the rows — the block need carry no
+    // data at all, which is the point: the model stops retyping them.
+    if (typeof spec.src === "string" && spec.src) return <ChartFromFile spec={spec} />;
     const hasSeries = Array.isArray(spec.series) && spec.series.length > 0;
     const hasTopLevel = Array.isArray(spec.ohlc) || Array.isArray(spec.data);
     // An explicitly empty series list is a chart with no rows — the widget

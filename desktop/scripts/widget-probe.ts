@@ -27,6 +27,12 @@ const candles = JSON.stringify({
   series: [{ ohlc: [{ o: 1, h: 3, l: 0.5, c: 2 }, { o: 2, h: 4, l: 1, c: 1.5 }] }],
 })
 
+check('a chart with volume renders', renderWidget('chart', JSON.stringify({
+  type: 'candlestick', labels: ['a', 'b'],
+  ohlc: [[1, 2, 0.5, 1.5], [1.5, 3, 1, 2]],
+  volume: [1000, 2000],
+})) !== null)
+
 check('chart is a known widget language', isWidgetLang('chart'))
 check('a plain language is not', !isWidgetLang('python') && !isWidgetLang(undefined))
 check('the registry names itself', WIDGET_NAMES.includes('chart'))
@@ -73,6 +79,18 @@ check(
 )
 
 // Everything below must return null — the caller then draws a code block.
+// A block with `src` and no rows is a chart — the data lives in a sandbox
+// file so the model never retypes it. It must NOT fall back to code just for
+// having no numbers in it.
+check(
+  'a src-only block is a chart, not a code block',
+  renderWidget('chart', JSON.stringify({ type: 'candlestick', title: 'TSLA', src: 'tsla.json' })) !== null,
+)
+check(
+  'an empty src is not a chart',
+  renderWidget('chart', JSON.stringify({ type: 'candlestick', src: '' })) === null,
+)
+
 check('unparseable JSON falls back', renderWidget('chart', '{ nope') === null)
 check('a JSON scalar falls back', renderWidget('chart', '42') === null)
 check('null falls back', renderWidget('chart', 'null') === null)

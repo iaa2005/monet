@@ -13,7 +13,7 @@
  * is the moment to reach for a library — not before.
  */
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 
 export interface Candle {
   o: number;
@@ -48,10 +48,19 @@ export interface ChartSpec {
    *  more obvious shape for a single line. Accepted. */
   data?: number[];
   ohlc?: RawCandle[];
+  /** The long name beside the ticker — "Tesla, Inc." next to TSLA. A symbol
+   *  is an abbreviation, and the chart should not make anyone expand it. */
+  name?: string;
   /** Shown under the title, e.g. "USD" or "%". */
   unit?: string;
+  /** Optional, one per label. Shown in the readout beside the OHLC row —
+   *  volume is half of what anyone reads a price chart for. */
+  volume?: number[];
   /** Force the y-axis to include zero. Bars do by default; lines do not. */
   zero?: boolean;
+  /** A file in this chat's sandbox holding the rows, so the model does not
+   *  retype hundreds of numbers it already computed. See ChartFromFile. */
+  src?: string;
 }
 
 const PAD = { top: 8, right: 8, bottom: 22, left: 46 };
@@ -95,6 +104,32 @@ function toCandle(row: RawCandle): Candle | null {
     : null;
 }
 
+/**
+ * The axis form of a label.
+ *
+ * Full ISO stamps do not fit: "2026-07-13 09:30" is ~95px at 10px, the slots
+ * are ~90px, and eight of them ran into each other. The year is the same for
+ * every label on a one-month chart, so it carries nothing and goes; the rest
+ * reads the way a price chart is scanned — 07/13, 07/13 09:30.
+ */
+function axisLabel(s: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}:\d{2}))?/.exec(s);
+  if (!m) return s;
+  return m[4] ? `${m[2]}/${m[3]} ${m[4]}` : `${m[2]}/${m[3]}`;
+}
+
+/** A chip's width from its text — a fixed one truncated "2026-07-27 10:30"
+ *  to "26-07-27 10", which reads as a different date. */
+const chipWidth = (text: string): number => text.length * 5.7 + 12;
+
+/** Axis and readout prices keep their cents. fmt() rounds anything over 100 to
+ *  a whole number, which on a $300 stock hides the entire day's move. */
+function price(n: number): string {
+  const a = Math.abs(n);
+  if (a >= 1e6) return fmt(n);
+  return n.toFixed(2);
+}
+
 function niceTicks(min: number, max: number, count = 4): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max) || min === max)
     return [min];
@@ -120,7 +155,19 @@ function fmt(n: number): string {
 
 export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
   const clip = useId();
-  const [hover, setHover] = useState<number | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  /**
+   * The cursor is two independent things, which is how a trading chart works:
+   * the vertical arm SNAPS to the nearest candle, because a price belongs to a
+   * bar; the horizontal arm follows the pointer FREELY, because the question it
+   * answers is "what price is the level I am pointing at" — a support line, a
+   * previous high — and that is rarely a close.
+   *
+   * Snapping both was the first version, and it could only ever tell you what
+   * the readout already said.
+   */
+  const [cursor, setCursor] = useState<{ i: number; price: number } | null>(null);
+  const hover = cursor?.i ?? null;
 
   const model = useMemo(() => {
     // A single series may be written at the top level; several must be in
@@ -186,25 +233,105 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
   const labels = spec.labels ?? [];
   const ticks = niceTicks(min, max);
   const type = spec.type ?? "line";
-  // Every nth label, so they never collide however many points there are.
-  const labelEvery = Math.max(1, Math.ceil(n / 8));
+  // Spacing from the WIDTH of the compacted labels, not a fixed count: an
+  // hourly chart's "07/13 09:30" needs twice the room a daily "07/13" does,
+  // and eight of the long form ran into each other.
+  const axisLabels = labels.map(axisLabel);
+  const widest = Math.max(1, ...axisLabels.map((l) => l.length)) * 5.7 + 14;
+  const labelEvery = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(plotW / widest))));
+
+  // The readout follows the cursor, and falls back to the last point when the
+  // cursor is away — so a candlestick chart says what it closed at without
+  // anyone having to hover for it.
+  const at = hover ?? n - 1;
+  const candles = series.find((s) => s.ohlc?.length)?.ohlc;
+  const candle = candles?.[at];
+  const prevClose = candles?.[at - 1]?.c;
+  const change =
+    candle && prevClose !== undefined ? candle.c - prevClose : undefined;
+  const up = (change ?? 0) >= 0;
 
   return (
     <figure className="my-3 overflow-hidden rounded-xl border border-border bg-card">
-      {(spec.title || spec.subtitle) && (
+      {(spec.title || spec.subtitle || candle) && (
         <figcaption className="border-b border-border/60 px-3 py-2">
-          {spec.title && (
-            <div className="text-sm font-medium text-foreground">
-              {spec.title}
-              {spec.unit && (
-                <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">
-                  {spec.unit}
-                </span>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                {spec.title && (
+                  <span className="text-sm font-medium text-foreground">
+                    {spec.title}
+                  </span>
+                )}
+                {spec.name && (
+                  <span className="text-[13px] text-foreground/80">
+                    {spec.name}
+                  </span>
+                )}
+                {spec.unit && (
+                  <span className="text-[12px] text-muted-foreground">
+                    {spec.unit}
+                  </span>
+                )}
+                {labels[at] && (
+                  <span className="text-[12px] text-muted-foreground">
+                    {labels[at]}
+                  </span>
+                )}
+              </div>
+              {candle && (
+                <div className="mt-0.5 flex items-baseline gap-2">
+                  <span
+                    className="text-xl font-semibold tabular-nums"
+                    style={{ color: up ? "hsl(152 62% 40%)" : "hsl(0 68% 52%)" }}
+                  >
+                    {price(candle.c)}
+                  </span>
+                  {change !== undefined && (
+                    <span
+                      className="text-[13px] tabular-nums"
+                      style={{ color: up ? "hsl(152 62% 40%)" : "hsl(0 68% 52%)" }}
+                    >
+                      {up ? "+" : ""}
+                      {price(change)}({up ? "+" : ""}
+                      {((change / (prevClose || 1)) * 100).toFixed(2)}%)
+                    </span>
+                  )}
+                </div>
               )}
             </div>
-          )}
+
+            {/* Labels over values, right-aligned — the shape a quote board has
+                had for forty years, and the reason the eye finds Close without
+                reading the word. */}
+            {candle && (
+              <div className="flex shrink-0 gap-4 text-right">
+                {(
+                  [
+                    ["Open", price(candle.o)],
+                    ["Close", price(candle.c)],
+                    ["High", price(candle.h)],
+                    ["Low", price(candle.l)],
+                    ...(spec.volume?.[at] !== undefined
+                      ? ([["Volume", fmt(spec.volume[at]!)]] as [string, string][])
+                      : []),
+                  ] as [string, string][]
+                ).map(([k, v]) => (
+                  <div key={k}>
+                    <div className="text-[11px] text-muted-foreground">{k}</div>
+                    <div className="text-[13px] tabular-nums text-foreground">
+                      {v}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {spec.subtitle && (
-            <div className="text-[12px] text-muted-foreground">{spec.subtitle}</div>
+            <div className="mt-1 text-[12px] text-muted-foreground">
+              {spec.subtitle}
+            </div>
           )}
         </figcaption>
       )}
@@ -215,7 +342,8 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
           className="block h-auto w-full min-w-[420px]"
           role="img"
           aria-label={spec.title ?? "chart"}
-          onMouseLeave={() => setHover(null)}
+          ref={svgRef}
+          onMouseLeave={() => setCursor(null)}
         >
           <defs>
             <clipPath id={clip}>
@@ -317,7 +445,7 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
             })}
           </g>
 
-          {labels.map((l, i) =>
+          {axisLabels.map((l, i) =>
             i % labelEvery === 0 ? (
               <text
                 key={i}
@@ -332,34 +460,122 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
             ) : null,
           )}
 
-          {/* One hit strip per point: hovering a 1px line is not a thing
-              anyone can do. */}
-          {Array.from({ length: n }, (_, i) => (
-            <rect
-              key={i}
-              x={x(i) - plotW / n / 2}
-              y={PAD.top}
-              width={plotW / n}
-              height={plotH}
-              fill="transparent"
-              onMouseEnter={() => setHover(i)}
-            />
-          ))}
-          {hover !== null && (
-            <line
-              x1={x(hover)}
-              x2={x(hover)}
-              y1={PAD.top}
-              y2={PAD.top + plotH}
-              className="stroke-foreground"
-              strokeWidth={1}
-              opacity={0.35}
-            />
-          )}
+          {/* One surface over the whole plot rather than a strip per point:
+              the y position has to be read too, and a strip only knows its
+              own column. */}
+          <rect
+            x={PAD.left}
+            y={PAD.top}
+            width={plotW}
+            height={plotH}
+            fill="transparent"
+            onMouseMove={(e) => {
+              const box = svgRef.current?.getBoundingClientRect();
+              if (!box) return;
+              // Client pixels to viewBox units — the svg is width:100%, so the
+              // two only agree by accident.
+              const px = ((e.clientX - box.left) / box.width) * W;
+              const py = ((e.clientY - box.top) / box.height) * H;
+              const i =
+                n === 1
+                  ? 0
+                  : Math.round(((px - PAD.left) / plotW) * (n - 1));
+              setCursor({
+                i: Math.min(n - 1, Math.max(0, i)),
+                price: min + ((PAD.top + plotH - py) / plotH) * (max - min),
+              });
+            }}
+          />
+          {/* A crosshair, not just a rule: the horizontal arm and its axis
+              chip answer "what price is that" without counting gridlines,
+              which is the whole reason to hover a price chart at all. */}
+          {hover !== null &&
+            (() => {
+              // The pointer's own price, not the candle's close — that is
+              // the whole point of a free horizontal arm.
+              const v = cursor?.price;
+              const yv = typeof v === "number" ? y(v) : null;
+              const label = labels[hover];
+              // Clamped so a chip at either end stays inside the plot.
+              const half = label ? chipWidth(label) / 2 : 0;
+              const cx = Math.min(
+                Math.max(x(hover), PAD.left + half),
+                W - PAD.right - half,
+              );
+              return (
+                <g pointerEvents="none">
+                  <line
+                    x1={x(hover)}
+                    x2={x(hover)}
+                    y1={PAD.top}
+                    y2={PAD.top + plotH}
+                    className="stroke-foreground"
+                    strokeWidth={1}
+                    opacity={0.35}
+                    strokeDasharray="4 3"
+                  />
+                  {yv !== null && (
+                    <>
+                      <line
+                        x1={PAD.left}
+                        x2={W - PAD.right}
+                        y1={yv}
+                        y2={yv}
+                        className="stroke-foreground"
+                        strokeWidth={1}
+                        opacity={0.35}
+                        strokeDasharray="4 3"
+                      />
+                      <rect
+                        x={2}
+                        y={yv - 8}
+                        width={PAD.left - 6}
+                        height={16}
+                        rx={3}
+                        className="fill-foreground"
+                      />
+                      <text
+                        x={PAD.left - 8}
+                        y={yv + 3.5}
+                        textAnchor="end"
+                        className="fill-background"
+                        style={{ fontSize: 10 }}
+                      >
+                        {price(v as number)}
+                      </text>
+                    </>
+                  )}
+                  {label && (
+                    <>
+                      <rect
+                        x={cx - chipWidth(label) / 2}
+                        y={H - 17}
+                        width={chipWidth(label)}
+                        height={15}
+                        rx={3}
+                        className="fill-foreground"
+                      />
+                      <text
+                        x={cx}
+                        y={H - 6}
+                        textAnchor="middle"
+                        className="fill-background"
+                        style={{ fontSize: 9.5 }}
+                      >
+                        {label}
+                      </text>
+                    </>
+                  )}
+                </g>
+              );
+            })()}
         </svg>
       </div>
 
-      {(series.length > 1 || hover !== null) && (
+      {/* Candlesticks say everything in the header now, so a second readout
+          below would just repeat it. Lines still need a legend — a colour
+          without a name is a colour. */}
+      {!candle && (series.length > 1 || hover !== null) && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 px-3 py-1.5 text-[11px]">
           {hover !== null && labels[hover] && (
             <span className="font-medium text-foreground">{labels[hover]}</span>
