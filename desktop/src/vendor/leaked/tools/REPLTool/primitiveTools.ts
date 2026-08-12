@@ -1,5 +1,4 @@
 import type { Tool } from '../../Tool.js'
-import { AgentTool } from '../AgentTool/AgentTool.js'
 import { BashTool } from '../BashTool/BashTool.js'
 import { FileEditTool } from '../FileEditTool/FileEditTool.js'
 import { FileReadTool } from '../FileReadTool/FileReadTool.js'
@@ -24,6 +23,10 @@ let _primitiveTools: readonly Tool[] | undefined
  *
  * Referenced directly rather than via getAllBaseTools() because that
  * excludes Glob/Grep when hasEmbeddedSearchTools() is true.
+ *
+ * AgentTool is not in this list: this app does not ship it, so it can never
+ * produce a result for the display side to classify — and it was the single
+ * import holding the whole vendor tool registry in the graph.
  */
 export function getReplPrimitiveTools(): readonly Tool[] {
   return (_primitiveTools ??= [
@@ -34,6 +37,5 @@ export function getReplPrimitiveTools(): readonly Tool[] {
     GrepTool,
     BashTool,
     NotebookEditTool,
-    AgentTool,
   ])
 }

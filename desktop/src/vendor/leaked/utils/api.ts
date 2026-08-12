@@ -24,7 +24,6 @@ import {
   stripTrailingWhitespace,
 } from 'src/tools/FileEditTool/utils.js'
 import { FileWriteTool } from 'src/tools/FileWriteTool/FileWriteTool.js'
-import { getTools } from 'src/tools.js'
 import type { AgentId } from 'src/types/ids.js'
 import type { z } from 'zod/v4'
 import { CLI_SYSPROMPT_PREFIXES } from '../constants/system.js'
@@ -473,94 +472,11 @@ export function prependUserContext(
   ]
 }
 
-/**
- * Log metrics about context and system prompt size
- */
-export async function logContextMetrics(
-  mcpConfigs: Record<string, ScopedMcpServerConfig>,
-  toolPermissionContext: ToolPermissionContext,
-): Promise<void> {
-  // Early return if logging is disabled
-  if (isAnalyticsDisabled()) {
-    return
-  }
-  const [{ tools: mcpTools }, tools, userContext, systemContext] =
-    await Promise.all([
-      prefetchAllMcpResources(mcpConfigs),
-      getTools(toolPermissionContext),
-      getUserContext(),
-      getSystemContext(),
-    ])
-  // Extract individual context sizes and calculate total
-  const gitStatusSize = systemContext.gitStatus?.length ?? 0
-  const claudeMdSize = userContext.claudeMd?.length ?? 0
-
-  // Calculate total context size
-  const totalContextSize = gitStatusSize + claudeMdSize
-
-  // Get file count using ripgrep (rounded to nearest power of 10 for privacy)
-  const currentDir = getCwd()
-  const ignorePatternsByRoot = getFileReadIgnorePatterns(toolPermissionContext)
-  const normalizedIgnorePatterns = normalizePatternsToPath(
-    ignorePatternsByRoot,
-    currentDir,
-  )
-  const fileCount = await countFilesRoundedRg(
-    currentDir,
-    AbortSignal.timeout(1000),
-    normalizedIgnorePatterns,
-  )
-
-  // Calculate tool metrics
-  let mcpToolsCount = 0
-  let mcpServersCount = 0
-  let mcpToolsTokens = 0
-  let nonMcpToolsCount = 0
-  let nonMcpToolsTokens = 0
-
-  const nonMcpTools = tools.filter(tool => !tool.isMcp)
-  mcpToolsCount = mcpTools.length
-  nonMcpToolsCount = nonMcpTools.length
-
-  // Extract unique server names from MCP tool names (format: mcp__servername__toolname)
-  const serverNames = new Set<string>()
-  for (const tool of mcpTools) {
-    const parts = tool.name.split('__')
-    if (parts.length >= 3 && parts[1]) {
-      serverNames.add(parts[1])
-    }
-  }
-  mcpServersCount = serverNames.size
-
-  // Estimate tool tokens locally for analytics (avoids N API calls per session)
-  // Use inputJSONSchema (plain JSON Schema) when available, otherwise convert Zod schema
-  for (const tool of mcpTools) {
-    const schema =
-      'inputJSONSchema' in tool && tool.inputJSONSchema
-        ? tool.inputJSONSchema
-        : zodToJsonSchema(tool.inputSchema)
-    mcpToolsTokens += roughTokenCountEstimation(jsonStringify(schema))
-  }
-  for (const tool of nonMcpTools) {
-    const schema =
-      'inputJSONSchema' in tool && tool.inputJSONSchema
-        ? tool.inputJSONSchema
-        : zodToJsonSchema(tool.inputSchema)
-    nonMcpToolsTokens += roughTokenCountEstimation(jsonStringify(schema))
-  }
-
-  logEvent('tengu_context_size', {
-    git_status_size: gitStatusSize,
-    claude_md_size: claudeMdSize,
-    total_context_size: totalContextSize,
-    project_file_count_rounded: fileCount,
-    mcp_tools_count: mcpToolsCount,
-    mcp_servers_count: mcpServersCount,
-    mcp_tools_tokens: mcpToolsTokens,
-    non_mcp_tools_count: nonMcpToolsCount,
-    non_mcp_tools_tokens: nonMcpToolsTokens,
-  })
-}
+// logContextMetrics lived here: an Anthropic analytics call that measured
+// context and tool-schema sizes and shipped the numbers to their event
+// pipeline. Nothing in this tree calls it, and it was the last importer of
+// getTools from the vendor tool registry — the reason all 189 tool modules
+// were reachable. Removed.
 
 // TODO: Generalize this to all tools
 export function normalizeToolInput<T extends Tool>(

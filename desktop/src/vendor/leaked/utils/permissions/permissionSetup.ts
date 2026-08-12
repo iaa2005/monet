@@ -52,7 +52,6 @@ import { AGENT_TOOL_NAME } from '../../tools/AgentTool/constants.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { POWERSHELL_TOOL_NAME } from '../../tools/PowerShellTool/toolName.js'
-import { getToolsForDefaultPreset, parseToolPreset } from '../../tools.js'
 import {
   getFsImplementation,
   safeResolvePath,
@@ -645,24 +644,6 @@ export function transitionPermissionMode(
   return context
 }
 
-/**
- * Parse base tools specification from CLI
- * Handles both preset names (default, none) and custom tool lists
- */
-export function parseBaseToolsFromCLI(baseTools: string[]): string[] {
-  // Join all array elements and check if it's a single preset name
-  const joinedInput = baseTools.join(' ').trim()
-  const preset = parseToolPreset(joinedInput)
-
-  if (preset) {
-    return getToolsForDefaultPreset()
-  }
-
-  // Parse as a custom tool list using the same parsing logic as allowedTools/disallowedTools
-  const parsedTools = parseToolListFromCLI(baseTools)
-
-  return parsedTools
-}
 
 /**
  * Check if processPwd is a symlink that resolves to originalCwd
@@ -897,17 +878,11 @@ export async function initializeToolPermissionContext({
   )
   let parsedDisallowedToolsCli = parseToolListFromCLI(disallowedToolsCli)
 
-  // If base tools are specified, automatically deny all tools NOT in the base set
-  // We need to check if base tools were explicitly provided (not just empty default)
-  if (baseToolsCli && baseToolsCli.length > 0) {
-    const baseToolsResult = parseBaseToolsFromCLI(baseToolsCli)
-    // Normalize legacy tool names (e.g., 'Task' → 'Agent') so user-provided
-    // base tool lists using old names still match canonical names.
-    const baseToolsSet = new Set(baseToolsResult.map(normalizeLegacyToolName))
-    const allToolNames = getToolsForDefaultPreset()
-    const toolsToDisallow = allToolNames.filter(tool => !baseToolsSet.has(tool))
-    parsedDisallowedToolsCli = [...parsedDisallowedToolsCli, ...toolsToDisallow]
-  }
+  // The CLI's --base-tools branch lived here: it expanded a preset into every
+  // tool name and denied the rest. The desktop has no such flag and never
+  // calls this function, and the expansion was the ONLY thing pulling the
+  // vendor tool registry — all 189 tools — into our bundle for a code path
+  // nothing runs. Removed with parseBaseToolsFromCLI.
 
   const warnings: string[] = []
   const additionalWorkingDirectories = new Map<

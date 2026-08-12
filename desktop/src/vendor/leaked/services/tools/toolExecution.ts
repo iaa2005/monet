@@ -48,7 +48,6 @@ import {
   isDeferredTool,
   TOOL_SEARCH_TOOL_NAME,
 } from '../../tools/ToolSearchTool/prompt.js'
-import { getAllBaseTools } from '../../tools.js'
 import type { HookProgress } from '../../types/hooks.js'
 import type {
   AssistantMessage,
@@ -344,16 +343,13 @@ export async function* runToolUse(
   // First try to find in the available tools (what the model sees)
   let tool = findToolByName(toolUseContext.options.tools, toolName)
 
-  // If not found, check if it's a deprecated tool being called by alias
-  // (e.g., old transcripts calling "KillShell" which is now an alias for "TaskStop")
-  // Only fall back for tools where the name matches an alias, not the primary name
-  if (!tool) {
-    const fallbackTool = findToolByName(getAllBaseTools(), toolName)
-    // Only use fallback if the tool was found via alias (deprecated name)
-    if (fallbackTool && fallbackTool.aliases?.includes(toolName)) {
-      tool = fallbackTool
-    }
-  }
+  // A fallback used to search the CLI's whole base tool list here, so an old
+  // transcript calling a deprecated alias ("KillShell" for "TaskStop") still
+  // resolved. It cannot help us and it cost the entire tool registry: the
+  // lookup above already matches aliases (toolMatchesName), so the fallback
+  // only ever found tools the session did NOT offer — which in this app means
+  // a tool we deliberately do not ship. Running one because an old name
+  // pointed at it is worse than not finding it.
   const messageId = assistantMessage.message.id
   const requestId = assistantMessage.requestId
   const mcpServerType = getMcpServerType(
