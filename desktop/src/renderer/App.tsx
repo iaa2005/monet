@@ -422,12 +422,28 @@ export default function App(): JSX.Element {
   // currentSessionId changes, the layout state still holds the old chat's
   // values, because nothing else has run yet.
   const restoredFor = useRef<string | undefined>(undefined);
+  /**
+   * Chats deleted in this run — so leaving one does not write it back.
+   *
+   * Deleting the OPEN chat purges its rows and folders, then clears the
+   * current session id, which is a chat switch: the effect below saved the
+   * departing chat's desk on the way out and recreated the ui-state file that
+   * purgeSessionData had just removed. The record came back with the panels,
+   * the browser tabs and the open viewer files of a chat that no longer
+   * existed, and outlived the app.
+   */
+  const deletedSessions = useRef<Set<string>>(new Set());
   useEffect(() => {
     const bridge = api();
     if (!bridge) return;
     const leaving = restoredFor.current;
     const guestMerges: Promise<unknown>[] = [];
-    if (leaving && leaving !== currentSessionId && !leaving.startsWith("incognito")) {
+    if (
+      leaving &&
+      leaving !== currentSessionId &&
+      !leaving.startsWith("incognito") &&
+      !deletedSessions.current.has(leaving)
+    ) {
       const b = useBrowserStore.getState();
       const real = b.tabs.filter((t) => t.url !== "about:blank");
       // A still-running chat keeps working after you leave: its tabs move
@@ -483,10 +499,16 @@ export default function App(): JSX.Element {
     restoredFor.current = currentSessionId;
     if (!currentSessionId || currentSessionId.startsWith("incognito")) {
       // Entering the zero state (New chat without a sidebar entry): a clean
-      // desk, not the previous chat's panels still standing — and no empty
-      // browser panel left over from them either.
+      // desk, not the previous chat's panels still standing.
+      //
+      // This used to close the BROWSER and stop. Everything else — Files
+      // listing a sandbox that may no longer exist, the Viewer holding open a
+      // file out of it, Artifacts, Changes, the Terminal — stayed up wearing
+      // the previous chat's contents, which is most visible right after
+      // deleting one: the chat is gone and its windows are still there.
       useBrowserStore.getState().restoreTabs([], 0);
-      useDockStore.getState().closePanel("browser");
+      useViewerStore.getState().closeAll();
+      useDockStore.getState().applyDesk(null);
       return;
     }
     // A session send() JUST created is not a chat switch — the desk on
@@ -576,6 +598,10 @@ export default function App(): JSX.Element {
       return;
     if (restoredFor.current !== currentSessionId) return;
     const t = setTimeout(() => {
+      // The delete is awaited before the session id changes, so this timer can
+      // still be armed for a chat that no longer exists — and the clearTimeout
+      // below only runs once the switch happens.
+      if (deletedSessions.current.has(currentSessionId)) return;
       const b = useBrowserStore.getState();
       void bridge.browser.uiState.set(currentSessionId, {
         dockLayout: useDockStore.getState().layoutJson ?? undefined,
@@ -1000,6 +1026,9 @@ export default function App(): JSX.Element {
   const handleDeleteSession = useCallback(
     async (id: string) => {
       try {
+        // Before the delete, not after: the ui-state save races the switch
+        // below, and a chat marked here is one the save skips.
+        deletedSessions.current.add(id);
         await api()?.sessions.deleteById(id);
         useChatStore.getState().bumpSessions();
         if (id === currentSessionId) {
