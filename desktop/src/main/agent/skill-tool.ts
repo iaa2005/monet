@@ -17,8 +17,6 @@
  * tool being enabled).
  */
 
-import { readdirSync, readFileSync, statSync } from 'fs'
-import { join, relative, sep } from 'path'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import { z } from 'zod/v4'
@@ -33,95 +31,14 @@ import { getProjectRoot } from '../engine/state/state.js'
 import { lazySchema } from './lazy-schema.js'
 import { rebrand } from '@shared/rebrand.js'
 import { getAppState, initVendorRuntime } from './vendor-context.js'
-import { copyBufferIntoSandbox } from '../sandbox/files.js'
+import { bridgeSkillFilesToSandbox } from './skill-bridge.js'
 import { tunablePrompt } from '../prompts/index.js'
 
-// Home is isolated: a skill's "Base directory" host path is unreachable there.
-// Copy the skill's bundled files into the chat sandbox — recursively, preserving
-// subfolders — so Read and RunPython can use them at the same relative
-// paths the skill's instructions reference (e.g. scripts/office/pack.py).
-const SKILL_COPY_MAX_FILE = 2 * 1024 * 1024 // 2 MB per file
-const SKILL_COPY_MAX_TOTAL = 12 * 1024 * 1024 // 12 MB total
-const SKILL_COPY_MAX_COUNT = 200
-
-function copySkillFilesToSandbox(
-  sessionId: string,
-  skillDir: string,
-): string[] {
-  const copied: string[] = []
-  let total = 0
-  const walk = (dir: string): void => {
-    let entries: string[]
-    try {
-      entries = readdirSync(dir).sort()
-    } catch {
-      return
-    }
-    for (const e of entries) {
-      if (copied.length >= SKILL_COPY_MAX_COUNT) return
-      const full = join(dir, e)
-      const rel = relative(skillDir, full).split(sep).join('/')
-      if (rel === 'SKILL.md') continue // already inlined into the prompt
-      let st
-      try {
-        st = statSync(full)
-      } catch {
-        continue
-      }
-      if (st.isDirectory()) {
-        walk(full)
-        continue
-      }
-      if (!st.isFile()) continue
-      if (st.size === 0 || st.size > SKILL_COPY_MAX_FILE) continue
-      if (total + st.size > SKILL_COPY_MAX_TOTAL) return
-      try {
-        if (copyBufferIntoSandbox(sessionId, rel, readFileSync(full))) {
-          copied.push(rel)
-          total += st.size
-        }
-      } catch {
-        /* skip unreadable file */
-      }
-    }
-  }
-  walk(skillDir)
-  return copied
-}
-
-/**
- * Copy a skill's bundled files into the chat sandbox and return the note that
- * tells the model they are there — or '' if there was nothing to bridge.
- *
- * A skill's "Base directory" is a HOST path. In Home (and any sandboxed chat)
- * that path is unreachable, so a skill whose SKILL.md says "read
- * SKILL-tearsheet.md" or "run scripts/foo.py" sends the model hunting: it
- * tries Read on a host path (refused), then a bare relative path
- * (absent), then RunCommand/find (nothing), and only recovers if it thinks to
- * call the Skill tool — which is the one place that used to do this copy.
- * Measured: five wasted steps before recovery on the equity-research skill.
- * Both entry points (this tool AND the slash-command expansion) bridge now, so
- * the files are already in place at the SAME relative paths the moment the
- * instructions arrive.
- */
-export function bridgeSkillFilesToSandbox(
-  sessionId: string,
-  skillDir: string,
-): string {
-  const copied = copySkillFilesToSandbox(sessionId, skillDir)
-  if (copied.length === 0) return ''
-  const shown = copied.slice(0, 20).join(', ')
-  const more = copied.length > 20 ? ` (+${copied.length - 20} more)` : ''
-  return (
-    `\n\n---\n[Sandbox] This chat is isolated, so the skill's host "Base ` +
-    `directory" above is NOT reachable — do not try to read it or find it on ` +
-    `disk. The skill's files were copied into this chat's sandbox at the SAME ` +
-    `relative paths (subfolders preserved): read them with Read or open ` +
-    `them from RunPython (cwd is the sandbox root): ${shown}${more}. Some ` +
-    `bundled scripts may rely on tools unavailable in the sandbox (e.g. ` +
-    `LibreOffice); prefer generating output directly with RunPython.`
-  )
-}
+// Home is isolated: a skill's "Base directory" host path is unreachable there,
+// so its bundled files are copied into the chat sandbox before the
+// instructions that name them arrive. Both entry points below do it — the tool
+// and the slash-command expansion. See skill-bridge.ts.
+export { bridgeSkillFilesToSandbox, skillSandboxDir } from './skill-bridge.js'
 
 /**
  * Expand a user-typed slash command ("/name args") into its prompt text —
@@ -198,7 +115,12 @@ export async function expandSlashCommand(
     // files in the sandbox just as much as one invoked by tool call.
     const skillDir = (command as { skillRoot?: string }).skillRoot
     if (opts.space === 'home' && skillDir)
-      text += bridgeSkillFilesToSandbox(opts.sessionId || 'default', skillDir)
+      text += bridgeSkillFilesToSandbox(
+        opts.sessionId || 'default',
+        skillDir,
+        command.name,
+        [...commands, ...skillCmds].map(c => c.name),
+      )
     return (
       `<command name="/${m[1]}"${m[2] ? ` args=${JSON.stringify(m[2])}` : ''}>\n` +
       `${text}\n</command>\n\n` +
@@ -343,7 +265,12 @@ export const InlineSkillTool = buildTool({
       const sessionId = (context as { sessionId?: string }).sessionId || 'default'
       const skillDir = (command as { skillRoot?: string }).skillRoot
       if (space === 'home' && skillDir)
-        text += bridgeSkillFilesToSandbox(sessionId, skillDir)
+        text += bridgeSkillFilesToSandbox(
+          sessionId,
+          skillDir,
+          command.name,
+          commands.map(c => c.name),
+        )
 
       return {
         data: {
