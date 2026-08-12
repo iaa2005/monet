@@ -8,7 +8,7 @@ import {
   findCommand,
   getCommands,
   type PromptCommand,
-} from 'src/commands.js'
+} from '@main/agent/commands.js'
 import type {
   Tool,
   ToolCallProgress,

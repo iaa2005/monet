@@ -48,8 +48,15 @@ const pkgStubAliases = Object.entries(
 // the task log, which main writes and the renderer renders).
 const sharedAlias = { find: '@shared', replacement: resolve('src/shared') }
 
+// @main exists so the leaked tree can import OUR modules while it is being
+// absorbed. The arrow used to point only one way (ours → vendor); it now
+// points both, because every module that moves out leaves importers behind
+// inside the tree, and a relative path from src/vendor/leaked/… is unreadable.
+const mainAlias = { find: '@main', replacement: resolve('src/main') }
+
 const vendorAliases = [
   sharedAlias,
+  mainAlias,
   { find: 'bun:bundle', replacement: resolve('src/main/shims/bun-bundle.ts') },
   ...pkgStubAliases,
   { find: '@vendor', replacement: resolve('src/vendor/leaked') },

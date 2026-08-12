@@ -9,9 +9,12 @@
  */
 
 import { ipcMain } from "electron";
-import { getCommands, getSkillToolCommands } from "@vendor/commands.js";
+import {
+  getCommands,
+  getSkillToolCommands,
+  type Command,
+} from "../agent/commands.js";
 import { getProjectRoot } from "@vendor/bootstrap/state.js";
-import type { Command } from "@vendor/types/command.js";
 import { rebrand } from "@shared/rebrand.js";
 import { initVendorRuntime } from "../agent/vendor-context.js";
 import { listSkillInfos } from "./skills.js";

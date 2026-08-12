@@ -20,6 +20,7 @@ const ROOT = resolve(process.cwd());
 const VENDOR = join(ROOT, "src/vendor/leaked");
 
 const ALIASES = [
+  ["@main", join(ROOT, "src/main")],
   ["@vendor", join(ROOT, "src/vendor/leaked")],
   ["@shared", join(ROOT, "src/shared")],
   ["@", join(ROOT, "src/renderer")],

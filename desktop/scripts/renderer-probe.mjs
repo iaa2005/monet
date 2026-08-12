@@ -24,6 +24,11 @@ await build({
       // Code both processes share (e.g. how a tool execution is named) —
       // kept in sync with electron.vite.config.ts and tsconfig paths.
       { find: '@shared', replacement: resolve('src/shared') },
+      // @main is how the leaked tree reaches modules we have taken over. A
+      // renderer probe should not normally pull main-side code, but once the
+      // alias exists anywhere it must resolve everywhere, or a probe fails on
+      // a hop it never asked for.
+      { find: '@main', replacement: resolve('src/main') },
       // Some probes reach main-side leaf modules (the checkpoint store, the
       // file ledger) that import electron for a path or two. With
       // tree-shaking off those imports survive into the bundle, so they need

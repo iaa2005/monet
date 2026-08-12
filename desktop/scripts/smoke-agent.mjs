@@ -43,6 +43,7 @@ await build({
       { find: '@shared', replacement: resolve('src/shared') },
       { find: 'bun:bundle', replacement: resolve('src/main/shims/bun-bundle.ts') },
       ...pkgStubAliases,
+      { find: '@main', replacement: resolve('src/main') },
       { find: '@vendor', replacement: resolve('src/vendor/leaked') },
       { find: 'src', replacement: resolve('src/vendor/leaked') },
     ],

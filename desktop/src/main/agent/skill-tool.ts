@@ -23,9 +23,13 @@ import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import { z } from 'zod/v4'
 import { buildTool, type ToolUseContext } from '@vendor/Tool.js'
-import { findCommand, getCommands, getSkillToolCommands } from '@vendor/commands.js'
+import {
+  findCommand,
+  getCommands,
+  getSkillToolCommands,
+  type Command,
+} from './commands.js'
 import { getProjectRoot } from '@vendor/bootstrap/state.js'
-import type { Command } from '@vendor/types/command.js'
 import { lazySchema } from './lazy-schema.js'
 import { rebrand } from '@shared/rebrand.js'
 import { getAppState, initVendorRuntime } from './vendor-context.js'

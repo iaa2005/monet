@@ -3,6 +3,9 @@
     "baseUrl": ".",
     "paths": {
       "@shared/*": ["./src/shared/*"],
+      // The leaked tree imports OUR modules as it is absorbed — see the
+      // @main note in electron.vite.config.ts.
+      "@main/*": ["./src/main/*"],
       // bun:bundle is a Bun-only virtual module — shim provides feature().
       "bun:bundle": ["./src/main/shims/bun-bundle.ts"],
       // Vendor imports the Bun-style 'vscode-jsonrpc/node.js' subpath; the

@@ -28,6 +28,7 @@ await build({
       { find: 'electron', replacement: resolve('scripts/smoke-electron-stub.ts') },
       { find: 'bun:bundle', replacement: resolve('src/main/shims/bun-bundle.ts') },
       ...pkgStubAliases,
+      { find: '@main', replacement: resolve('src/main') },
       { find: '@vendor', replacement: resolve('src/vendor/leaked') },
       { find: 'src', replacement: resolve('src/vendor/leaked') },
     ],
