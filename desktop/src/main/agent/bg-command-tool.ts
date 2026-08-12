@@ -47,10 +47,13 @@ export const RunCommandBackgroundTool = buildTool({
       [
         "Start a shell command in the Podman sandbox WITHOUT waiting for it —",
         "installs, builds, downloads that take minutes. Returns a taskId at",
-        "once; keep working and check on it with BackgroundOutput between",
-        "steps. Same /work folder and persistent pip as RunCommand, so what a",
-        "background install puts in place is visible to every later command.",
-        "For servers use ServeSandbox instead — this is for commands that END.",
+        "once, and TELLS YOU HERE when it finishes: do not sleep, and do not",
+        "poll it with BackgroundOutput in a loop — both spend a whole step on",
+        "waiting. Get on with something else, or end your turn; the result",
+        "arrives on its own. BackgroundOutput is for when you need the output",
+        "BEFORE it is done. Same /work folder and persistent pip as RunCommand,",
+        "so what a background install puts in place is visible to every later",
+        "command. For servers use ServeSandbox — this is for commands that END.",
       ].join(" "),
     );
   },
@@ -71,7 +74,11 @@ export const RunCommandBackgroundTool = buildTool({
     if (!r.ok) return { data: { text: r.error ?? "Failed to start.", isError: true } };
     return {
       data: {
-        text: `Started in the background: taskId ${r.taskId}. Check it with BackgroundOutput when you need the result.`,
+        text:
+          `Started in the background: taskId ${r.taskId}. It will report back ` +
+          `here on its own when it finishes — do NOT sleep or poll waiting for ` +
+          `it. Carry on with something else, or end your turn; use ` +
+          `BackgroundOutput only if you need the output before it is done.`,
       },
     };
   },
