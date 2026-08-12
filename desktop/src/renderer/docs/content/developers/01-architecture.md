@@ -1,11 +1,11 @@
 ---
 title: Architecture
-description: How the pieces fit — main process, renderer, and the vendored agent toolset.
+description: How the pieces fit — main process, renderer, and the agent engine.
 order: 1
 ---
 
-Code Monet is an Electron application with the usual three-part split, plus a
-vendored copy of a professional coding agent's toolset.
+Code Monet is an Electron application with the usual three-part split, plus an
+agent engine adapted from a professional coding agent's implementation.
 
 ## Main process
 
@@ -42,19 +42,28 @@ The UI. It holds no secrets and performs no side effects of its own — every
 privileged action goes through IPC to the main process, which is what makes the
 permission model meaningful.
 
-## The vendored toolset
+## The engine
 
-`src/vendor/leaked` is a third-party agent implementation. The app drives its
-tools — their schemas, prompts, validation and permission checks — rather than
+`src/main/engine` is the agent engine: the query loop, the tool contract,
+permissions, hooks and the message plumbing. The app drives its tools — their
+schemas, prompts, validation and permission checks — rather than
 reimplementing them, which is why shell safety and file-edit discipline behave
 like the real thing.
 
-It is treated as read-only. App behaviour is built *around* it, never by editing
-it, so it can be replaced wholesale.
+It arrived as a separate `src/vendor` tree treated as read-only, and it is not
+that any more: it lives in `src/main` alongside everything else, under the same
+typecheck, and it is edited when editing is the right answer. What it brought
+with it is recorded rather than hidden — `scripts/typecheck-debt.json` holds a
+per-file allowance of type errors that may only shrink.
+
+`src/anthropic` is the part that served the original product and nothing here —
+its event pipeline, account and billing, terminal front-end, IDE and remote
+bridges. Still reachable, so still built, but gathered in one place so the
+remaining edges into it can be found and cut.
 
 ## The agent loop
 
-1. Build the system prompt (vendor sections + this app's additions + your memory).
+1. Build the system prompt (engine sections + this app's additions + your memory).
 2. Send the conversation and the tool schemas to the model.
 3. For each tool call: validate input → PreToolUse hooks → permission gate →
    execute → PostToolUse hooks.
