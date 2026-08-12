@@ -465,6 +465,37 @@ const CHART_WIDGET_DEFAULT = [
 const chartWidgetDirective = (): string =>
   tunablePrompt("chart-widget", CHART_WIDGET_DEFAULT);
 
+/**
+ * Everything prepended to the base system prompt, in order.
+ *
+ * One list, because there were two: the run built one and the context meter
+ * built another, under a comment promising they were the same. They were not —
+ * the chart directive went into the meter and not into the run, so the meter
+ * billed for an instruction the model never received. A comment cannot hold
+ * two lists in sync; a function can.
+ *
+ * `modeDirective` is the only genuine difference: the meter has no permission
+ * mode to describe.
+ */
+export function buildDirectives(
+  space: string | undefined,
+  sessionId: string | undefined,
+  modeDirective?: string,
+): string[] {
+  return [
+    ...(space === "home" ? [homeDirective()] : []),
+    ...(modeDirective ? [modeDirective] : []),
+    // How to draw a chart. Both spaces: a chart is an answer, not a workspace
+    // capability.
+    chartWidgetDirective(),
+    // What ToolSearch is holding back. Without this the model cannot tell a
+    // deferred capability from an absent one, and answers as if it were absent.
+    deferredToolsDirective(space, sessionId),
+    // What is already open, and which dev servers are already running.
+    browserDirective(),
+  ].filter(Boolean);
+}
+
 const homeDirective = (): string =>
   tunablePrompt("home-directive", HOME_DIRECTIVE_DEFAULT);
 
@@ -1271,13 +1302,8 @@ export async function computeContextBreakdown(
         ? buildSystemPrompt(provider.model, space, sessionId)
         : Promise.resolve(""),
     ]);
-    // Same directives the run builds, so the meter bills what is actually sent.
-    const directives = [
-      ...(space === "home" ? [homeDirective()] : []),
-      chartWidgetDirective(),
-      deferredToolsDirective(space, sessionId),
-      browserDirective(),
-    ].filter(Boolean);
+    // The run's own list, so the meter bills exactly what is sent.
+    const directives = buildDirectives(space, sessionId);
     const systemPrompt = [...directives, basePrompt]
       .filter(Boolean)
       .join("\n\n");
@@ -1580,15 +1606,7 @@ async function runAgentScoped(
     return;
   }
 
-  const directives = [
-    ...(space === "home" ? [homeDirective()] : []),
-    ...(modeDirective ? [modeDirective] : []),
-    // What ToolSearch is holding back. Without this the model cannot tell a
-    // deferred capability from an absent one, and answers as if it were absent.
-    deferredToolsDirective(space, sessionId),
-    // What is already open, and which dev servers are already running.
-    browserDirective(),
-  ].filter(Boolean);
+  const directives = buildDirectives(space, sessionId, modeDirective);
   const systemPrompt =
     directives.length > 0
       ? `${directives.join("\n\n")}\n\n${basePrompt}`

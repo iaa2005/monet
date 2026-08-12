@@ -433,6 +433,30 @@ async function main() {
     check('one Read, not two', home.filter(t => t.name === 'Read').length === 1)
   }
 
+  // 4d-ter. The chart widget only exists if the model is told about it.
+  //
+  // It was not, for a while. The directive went into the context meter's list
+  // and not the run's — two hand-written lists under a comment claiming they
+  // were the same. The meter billed tokens for an instruction that was never
+  // sent. One buildDirectives() now, and this is the guard on it.
+  {
+    const { buildDirectives } = await import('../src/main/agent/index.js')
+    for (const space of ['home', 'code', undefined]) {
+      const text = buildDirectives(space, undefined).join("\n\n")
+      check(
+        `the chart instruction is sent in ${space ?? 'no'} space`,
+        /language is .?chart/.test(text) && text.includes('ohlc'),
+      )
+    }
+    // The mode directive is the only thing the meter's list may lack.
+    const run = buildDirectives('home', undefined, 'MODE')
+    const meter = buildDirectives('home', undefined)
+    check(
+      'run and meter directives differ only by the mode line',
+      run.filter(d => d !== 'MODE').join('|') === meter.join('|'),
+    )
+  }
+
   // 4e. The shell surface is ONE tool, and waiting is not a tool at all.
   //
   // Sleep, RunCommandBackground and BackgroundOutput were four names for one
