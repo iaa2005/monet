@@ -34,6 +34,44 @@ check('the registry names itself', WIDGET_NAMES.includes('chart'))
 check('a line chart renders', renderWidget('chart', line) !== null)
 check('a candlestick chart renders', renderWidget('chart', candles) !== null)
 
+// The shapes a model actually writes. The first real chart came out with
+// `ohlc` at the TOP level and rows as arrays, and fell back to a code block:
+// the instruction said "give ohlc instead of data", which reads equally well
+// as replacing the series. These are that payload, verbatim in shape.
+check(
+  'top-level ohlc with array rows renders',
+  renderWidget(
+    'chart',
+    JSON.stringify({
+      type: 'candlestick',
+      title: 'TSLA',
+      labels: ['2026-07-13', '2026-07-14'],
+      ohlc: [
+        [404.61, 405.57, 391.37, 394.76],
+        [399.05, 402.22, 394.76, 396.18],
+      ],
+    }),
+  ) !== null,
+)
+check(
+  'top-level data renders as one series',
+  renderWidget(
+    'chart',
+    JSON.stringify({ type: 'line', labels: ['a', 'b'], data: [1, 2] }),
+  ) !== null,
+)
+check(
+  "pandas' open/high/low/close naming renders",
+  renderWidget(
+    'chart',
+    JSON.stringify({
+      type: 'candlestick',
+      labels: ['a'],
+      ohlc: [{ open: 1, high: 3, low: 0.5, close: 2 }],
+    }),
+  ) !== null,
+)
+
 // Everything below must return null — the caller then draws a code block.
 check('unparseable JSON falls back', renderWidget('chart', '{ nope') === null)
 check('a JSON scalar falls back', renderWidget('chart', '42') === null)

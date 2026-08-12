@@ -15,12 +15,25 @@
 
 import { useId, useMemo, useState } from "react";
 
+export interface Candle {
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+}
+
+/** A candle as it might arrive: the compact form, our form, or pandas'. */
+type RawCandle =
+  | number[]
+  | Candle
+  | { open?: number; high?: number; low?: number; close?: number };
+
 export interface ChartSeries {
   name?: string;
   /** line/bar/area: one number per label. */
   data?: number[];
   /** candlestick: one OHLC row per label. */
-  ohlc?: { o: number; h: number; l: number; c: number }[];
+  ohlc?: RawCandle[];
 }
 
 export interface ChartSpec {
@@ -29,6 +42,12 @@ export interface ChartSpec {
   subtitle?: string;
   labels?: string[];
   series?: ChartSeries[];
+  /** One unnamed series, written at the top level. The first real chart a
+   *  model drew came out this way — "give ohlc instead of data" read as
+   *  replacing the series, not the field inside it — and it is the shorter,
+   *  more obvious shape for a single line. Accepted. */
+  data?: number[];
+  ohlc?: RawCandle[];
   /** Shown under the title, e.g. "USD" or "%". */
   unit?: string;
   /** Force the y-axis to include zero. Bars do by default; lines do not. */
@@ -44,6 +63,37 @@ const H = 260;
 const HUES = [212, 152, 28, 340, 268, 190];
 const stroke = (i: number): string => `hsl(${HUES[i % HUES.length]} 72% 48%)`;
 const fill = (i: number): string => `hsl(${HUES[i % HUES.length]} 72% 48% / 0.14)`;
+
+/**
+ * One candle, from whichever shape it arrived in.
+ *
+ * `[o, h, l, c]` is what a model reaches for after a pandas round trip, and
+ * `{open, high, low, close}` is what yfinance itself names the columns. Both
+ * are obvious readings of "give ohlc"; refusing either would mean a chart
+ * that silently fell back to a code block for a payload that was not wrong,
+ * only differently spelled.
+ */
+function toCandle(row: RawCandle): Candle | null {
+  if (Array.isArray(row)) {
+    const [o, h, l, c] = row;
+    return [o, h, l, c].every((v) => typeof v === "number" && Number.isFinite(v))
+      ? { o: o!, h: h!, l: l!, c: c! }
+      : null;
+  }
+  if (!row || typeof row !== "object") return null;
+  const r = row as Record<string, unknown>;
+  const pick = (a: string, b: string): number | null => {
+    const v = r[a] ?? r[b];
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  };
+  const o = pick("o", "open");
+  const h = pick("h", "high");
+  const l = pick("l", "low");
+  const c = pick("c", "close");
+  return o !== null && h !== null && l !== null && c !== null
+    ? { o, h, l, c }
+    : null;
+}
 
 function niceTicks(min: number, max: number, count = 4): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max) || min === max)
@@ -73,9 +123,21 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
   const [hover, setHover] = useState<number | null>(null);
 
   const model = useMemo(() => {
-    const series = (spec.series ?? []).filter(
-      (s) => (s.data?.length ?? 0) > 0 || (s.ohlc?.length ?? 0) > 0,
-    );
+    // A single series may be written at the top level; several must be in
+    // `series`. Both reach the same shape here, so nothing below cares.
+    const declared: ChartSeries[] =
+      spec.series && spec.series.length > 0
+        ? spec.series
+        : spec.ohlc || spec.data
+          ? [{ name: spec.title, data: spec.data, ohlc: spec.ohlc }]
+          : [];
+    const series = declared
+      .map((s) => ({
+        name: s.name,
+        data: s.data,
+        ohlc: s.ohlc?.map(toCandle).filter((c): c is Candle => c !== null),
+      }))
+      .filter((s) => (s.data?.length ?? 0) > 0 || (s.ohlc?.length ?? 0) > 0);
     const n = Math.max(
       0,
       ...series.map((s) => s.data?.length ?? s.ohlc?.length ?? 0),

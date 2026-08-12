@@ -27,9 +27,19 @@ type Widget = (payload: unknown) => JSX.Element | null;
 
 const WIDGETS: Record<string, Widget> = {
   chart: (payload) => {
-    if (!payload || typeof payload !== "object") return null;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload))
+      return null;
     const spec = payload as ChartSpec;
-    if (!Array.isArray(spec.series)) return null;
+    // A series list, or a single series written at the top level. Requiring
+    // `series` was the first thing a real chart tripped on: the model put
+    // `ohlc` at the top level, the block fell back to code, and nothing said
+    // why. Accept both shapes rather than teach the model ours.
+    const hasSeries = Array.isArray(spec.series) && spec.series.length > 0;
+    const hasTopLevel = Array.isArray(spec.ohlc) || Array.isArray(spec.data);
+    // An explicitly empty series list is a chart with no rows — the widget
+    // says so. Nothing at all is not a chart.
+    const emptyOnPurpose = Array.isArray(spec.series) && spec.series.length === 0;
+    if (!hasSeries && !hasTopLevel && !emptyOnPurpose) return null;
     return <Chart spec={spec} />;
   },
 };
