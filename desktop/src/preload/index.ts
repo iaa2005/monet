@@ -1316,6 +1316,12 @@ const electronAPI = {
         mediaType: string;
       }[]
     > => ipcRenderer.invoke("sandbox:listFiles", sessionId),
+    /** One text file from the chat's sandbox — the chart widget's `src`. */
+    readText: (
+      sessionId: string | undefined,
+      name: string,
+    ): Promise<{ ok: boolean; content?: string; error?: string }> =>
+      ipcRenderer.invoke("sandbox:readText", sessionId, name),
     workDir: (sessionId?: string): Promise<string> =>
       ipcRenderer.invoke("sandbox:workDir", sessionId),
     supportsShell: (sessionId?: string): Promise<{ ok: boolean }> =>

@@ -25,14 +25,13 @@ import { Chart, type ChartSpec } from "./Chart";
 
 interface Api {
   sandbox?: {
+    readText?: (
+      sessionId: string | undefined,
+      name: string,
+    ) => Promise<{ ok: boolean; content?: string; error?: string }>;
     listFiles?: (
       sessionId?: string,
     ) => Promise<{ name: string; path: string }[]>;
-  };
-  artifacts?: {
-    readText?: (
-      path: string,
-    ) => Promise<{ ok: boolean; content?: string; error?: string }>;
   };
 }
 
@@ -51,20 +50,19 @@ export function ChartFromFile({ spec }: { spec: ChartSpec }): JSX.Element {
     setError(null);
     void (async () => {
       try {
-        const files = await api()?.sandbox?.listFiles?.(sessionId ?? undefined);
-        // Exact name first, then basename — a model that wrote "out/tsla.json"
-        // in Python and "tsla.json" in the block meant the same file.
-        const base = (p: string): string => p.split("/").pop() ?? p;
-        const hit =
-          files?.find((f) => f.name === src) ??
-          files?.find((f) => base(f.name) === base(src ?? ""));
-        if (!hit) {
-          if (alive) setError(`no file named ${src} in this chat's sandbox`);
-          return;
+        const sandbox = api()?.sandbox;
+        let r = await sandbox?.readText?.(sessionId ?? undefined, src ?? "");
+        if (!r?.ok) {
+          // The name as written did not resolve. A model that wrote
+          // "out/tsla.json" in Python and "tsla.json" in the block meant the
+          // same file, so try to find it by basename before giving up.
+          const base = (p: string): string => p.split(/[\\/]/).pop() ?? p;
+          const files = await sandbox?.listFiles?.(sessionId ?? undefined);
+          const hit = files?.find((f) => base(f.name) === base(src ?? ""));
+          if (hit) r = await sandbox?.readText?.(sessionId ?? undefined, hit.name);
         }
-        const r = await api()?.artifacts?.readText?.(hit.path);
         if (!r?.ok || !r.content) {
-          if (alive) setError(r?.error ?? "could not read the file");
+          if (alive) setError(r?.error ?? `could not read ${src}`);
           return;
         }
         const data: unknown = JSON.parse(r.content);

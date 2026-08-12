@@ -21,7 +21,7 @@ import {
   sandboxWorkDir,
   warmPodman,
 } from "../sandbox/podman-engine.js";
-import { listSandboxFiles } from "../sandbox/files.js";
+import { listSandboxFiles, readSandboxFile } from "../sandbox/files.js";
 import {
   mediaTypeOf,
   runShellInSandbox,
@@ -123,6 +123,19 @@ export function registerSandboxIPC(): void {
       ...f,
       mediaType: mediaTypeOf(f.name),
     })),
+  );
+
+  // One text file out of the sandbox, for the renderer.
+  //
+  // The chart widget's `src` reads its rows through here. artifacts:readText
+  // could not: it resolves under the ARTIFACTS directory and a sandbox file is
+  // not there, so every src-backed chart failed with "outside artifacts dir".
+  // readSandboxFile does the containment itself — no absolute paths, no "..",
+  // 400 KB cap — which is the same guard the Read tool runs behind.
+  ipcMain.handle(
+    "sandbox:readText",
+    (_e, sessionId: string | undefined, name: string) =>
+      readSandboxFile(sessionId || "default", name),
   );
 
   // Host path of the chat's sandbox working folder (mounted at /work), for the
