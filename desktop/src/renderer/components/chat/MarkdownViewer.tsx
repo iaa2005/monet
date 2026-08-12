@@ -14,6 +14,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import "katex/dist/katex.min.css";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ui/kbd";
+import { renderWidget } from "@/widgets";
 import { CodeBlock } from "./CodeBlock";
 import { ArtifactThumb } from "@/components/ArtifactsPanel";
 import { viewArtifact, viewWorkspaceFile } from "@/components/artifact-actions";
@@ -379,6 +380,11 @@ function MarkdownViewerImpl({
       const { node: _n, ...rest } = props;
       const codeStr = String(children).replace(/\n$/, "");
       const lang = /language-(\w+)/.exec(cls ?? "")?.[1];
+      // A fenced block whose language names a widget draws that widget. It
+      // falls through to a code block when the payload does not parse, so a
+      // malformed one shows its source instead of vanishing.
+      const widget = renderWidget(lang, codeStr);
+      if (widget) return widget;
       if (lang || codeStr.includes("\n")) return <CodeBlock code={codeStr} language={lang ?? ""} />;
       return <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.9em]" {...rest}>{children}</code>;
     },

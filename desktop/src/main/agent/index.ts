@@ -370,6 +370,7 @@ export async function seedTunablePrompts(): Promise<void> {
     getProfilePrompt();
     agentIdentityPrompt();
     homeDirective();
+    chartWidgetDirective();
     tunablePrompt("system-append", "");
     tunablePrompt("method", METHOD_DEFAULT);
     tunablePrompt("discipline", DISCIPLINE_DEFAULT);
@@ -434,6 +435,36 @@ const HOME_DIRECTIVE_DEFAULT = [
   "explicitly provided to you (e.g. Browser or Computer Use, if enabled) reach",
   "outside this sandbox — do not assume any other system access.",
 ].join(" ");
+/**
+ * How to draw a chart. The model already has every way of GETTING numbers and
+ * no cheap way of SHOWING them: a table, or a PNG that costs a matplotlib
+ * round trip and comes out at a fixed size. A fenced block is neither.
+ *
+ * Deliberately not a tool. There is nothing to call and nothing to fail —
+ * the block is part of the answer, so a chart costs no turn.
+ */
+const CHART_WIDGET_DEFAULT = [
+  "To DRAW a chart, write a fenced block whose language is `chart` containing",
+  "JSON. It renders in the chat as a real chart; there is no tool to call.",
+  "",
+  "  {",
+  '    "type": "line" | "area" | "bar" | "candlestick",',
+  '    "title": "TSLA", "subtitle": "1y daily", "unit": "USD",',
+  '    "labels": ["2025-04-21", "2025-04-22", ...],',
+  '    "series": [{ "name": "close", "data": [237.1, 241.6, ...] }]',
+  "  }",
+  "",
+  "For candlesticks give `ohlc` instead of `data`: [{o,h,l,c}, ...], one row",
+  "per label. Several series may share one chart; each gets its own colour.",
+  "",
+  "Get the numbers however suits the task — RunPython (yfinance, pandas), a",
+  "shell command, WebFetch — then put them in the block. Do NOT render a chart",
+  "to PNG just to show it. Do use a PNG when the user asked for a FILE.",
+].join("\n");
+
+const chartWidgetDirective = (): string =>
+  tunablePrompt("chart-widget", CHART_WIDGET_DEFAULT);
+
 const homeDirective = (): string =>
   tunablePrompt("home-directive", HOME_DIRECTIVE_DEFAULT);
 
@@ -1243,6 +1274,7 @@ export async function computeContextBreakdown(
     // Same directives the run builds, so the meter bills what is actually sent.
     const directives = [
       ...(space === "home" ? [homeDirective()] : []),
+      chartWidgetDirective(),
       deferredToolsDirective(space, sessionId),
       browserDirective(),
     ].filter(Boolean);

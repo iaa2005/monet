@@ -283,6 +283,40 @@ function ToolDetail({
     );
   }
 
+  // A TodoWrite call expanded to its own result text and nothing else:
+  // "Todos have been modified successfully. Ensure that you continue to use
+  // the todo list…" — a message addressed to the model, shown to the person.
+  // The list itself is right there in the input, so show that instead.
+  if (name === "TodoWrite" && Array.isArray(input.todos)) {
+    const todos = input.todos as {
+      content?: unknown;
+      status?: unknown;
+      activeForm?: unknown;
+    }[];
+    const mark = (s: unknown): string =>
+      s === "completed" ? "x" : s === "in_progress" ? "-" : " ";
+    const md = todos
+      .map((t) => {
+        const text =
+          typeof t.content === "string"
+            ? t.content
+            : typeof t.activeForm === "string"
+              ? t.activeForm
+              : "";
+        return `- [${mark(t.status)}] ${text}`;
+      })
+      .join("\n");
+    return (
+      <ToolPanes bare={inGroup}>
+        <ToolPane copyText={md}>
+          <div className="px-3 py-2 text-sm">
+            <MarkdownViewer content={md} />
+          </div>
+        </ToolPane>
+      </ToolPanes>
+    );
+  }
+
   if (name === "Write" && str("content") != null) {
     return (
       <CodeBlock
