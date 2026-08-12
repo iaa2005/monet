@@ -34,12 +34,12 @@ import { UpdateGoalTool } from "./goal/tool.js";
 import { SearchPastChatsTool } from "./memory-tools.js";
 import { getMemoryConfig } from "../memory/store.js";
 import {
-  VaultAttachTool,
-  VaultEditTool,
-  VaultMoveTool,
-  VaultReadTool,
-  VaultSearchTool,
-  VaultWriteTool,
+  ObsidianAttachTool,
+  ObsidianEditTool,
+  ObsidianMoveTool,
+  ObsidianReadTool,
+  ObsidianSearchTool,
+  ObsidianWriteTool,
 } from "../obsidian/tools.js";
 import { hasEnabledVaults } from "../obsidian/vaults.js";
 import { OCRScanTool } from "../ocr/tools.js";
@@ -258,12 +258,12 @@ const ALL_TOOLS = [
   UpdateGoalTool,
   SearchPastChatsTool,
   // The user's Obsidian vaults — advertised only while one is enabled.
-  VaultSearchTool,
-  VaultReadTool,
-  VaultWriteTool,
-  VaultEditTool,
-  VaultAttachTool,
-  VaultMoveTool,
+  ObsidianSearchTool,
+  ObsidianReadTool,
+  ObsidianWriteTool,
+  ObsidianEditTool,
+  ObsidianAttachTool,
+  ObsidianMoveTool,
   OCRScanTool,
   WebFetchTool,
   WebSearchTool,
@@ -381,17 +381,17 @@ export function isSpaceToolAllowed(
   // the permission prompt, and it refuses outright inside an unattended run.
   if (name === "CreateRoutine") return true;
   if (name === "SearchPastChats") return getMemoryConfig().searchChats;
-  // Vault tools appear only when a vault is enabled — an empty VaultSearch
+  // Vault tools appear only when a vault is enabled — an empty ObsidianSearch
   // is schema tax that invites a call destined to fail. Both spaces: the
   // knowledge base is the USER's, not the machine's, so Home's isolation
   // does not apply to it (same reasoning as connectors above).
   if (
-    name === "VaultSearch" ||
-    name === "VaultRead" ||
-    name === "VaultWrite" ||
-    name === "VaultEdit" ||
-    name === "VaultAttach" ||
-    name === "VaultMove"
+    name === "ObsidianSearch" ||
+    name === "ObsidianRead" ||
+    name === "ObsidianWrite" ||
+    name === "ObsidianEdit" ||
+    name === "ObsidianAttach" ||
+    name === "ObsidianMove"
   )
     return hasEnabledVaults();
   // OCR appears once a model is on disk. Offering it without one produces a

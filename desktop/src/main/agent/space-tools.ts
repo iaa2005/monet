@@ -44,17 +44,17 @@ export const HOME_TOOL_NAMES = new Set([
   "WebSearch",
   "SearchPastChats",
   // The Obsidian vault is the USER's knowledge base, not the machine Home
-  // isolates — same boundary reasoning as Remember below. VaultWrite is
+  // isolates — same boundary reasoning as Remember below. ObsidianWrite is
   // still a write outside any workspace, so the permission gate covers it.
-  "VaultSearch",
-  "VaultRead",
-  "VaultWrite",
+  "ObsidianSearch",
+  "ObsidianRead",
+  "ObsidianWrite",
   // Putting a picture in the vault is the same boundary as writing a note:
   // the SOURCE is resolved inside this chat's own sandbox, the workspace or
   // its artifacts — never a path the model invented.
-  "VaultEdit",
-  "VaultAttach",
-  "VaultMove",
+  "ObsidianEdit",
+  "ObsidianAttach",
+  "ObsidianMove",
   // Reading a document is looking at a file this chat already has — the
   // source resolver never leaves the sandbox, the workspace or the vault,
   // and the model that reads it runs on this machine.

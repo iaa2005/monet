@@ -5,7 +5,7 @@
  * (text / file / link / group) plus edges. The app does not draw the board —
  * what it needs is the CONTENT: which notes the canvas references (for the
  * vault graph and backlinks), what its cards say (for search), and a
- * readable rendering for the viewer and for VaultRead.
+ * readable rendering for the viewer and for ObsidianRead.
  *
  * Shared because main indexes canvases and the renderer previews them, and
  * two parsers of one format is how the two drift apart.
@@ -68,7 +68,7 @@ export function parseCanvas(raw: string): ParsedCanvas | null {
   return out;
 }
 
-/** A canvas as readable markdown — for the viewer and for VaultRead. */
+/** A canvas as readable markdown — for the viewer and for ObsidianRead. */
 export function canvasToMarkdown(name: string, raw: string): string {
   const c = parseCanvas(raw);
   if (!c)

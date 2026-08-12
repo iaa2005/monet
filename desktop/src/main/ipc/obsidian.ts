@@ -2,7 +2,7 @@
  * Obsidian IPC — Settings → Obsidian: the vault registry and its statistics.
  *
  * Registering or toggling a vault changes which tools the model is offered
- * (VaultSearch/Read/Write are gated on an enabled vault existing), so every
+ * (ObsidianSearch/Read/Write are gated on an enabled vault existing), so every
  * mutation refreshes the vendor toolset the same way Memory's toggle does.
  */
 

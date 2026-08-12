@@ -8,7 +8,7 @@
  *
  * Two flags per vault, both the user's to set:
  *   - enabled:  off means invisible — no tools, no directive, no index.
- *   - readOnly: the agent may search and read but VaultWrite refuses.
+ *   - readOnly: the agent may search and read but ObsidianWrite refuses.
  *     For archives, for other people's vaults, for "look but don't touch".
  *
  * A real Obsidian vault has a `.obsidian/` folder; any folder of .md files

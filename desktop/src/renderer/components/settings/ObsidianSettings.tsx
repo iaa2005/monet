@@ -6,7 +6,7 @@
  * here: "Remove" forgets the pointer, the notes stay where they are.
  *
  * The two switches map 1:1 onto what the agent may do: Enabled gates the
- * Vault tools' existence, Read-only keeps VaultWrite out of this vault.
+ * Vault tools' existence, Read-only keeps ObsidianWrite out of this vault.
  */
 
 import { useEffect, useState } from "react";

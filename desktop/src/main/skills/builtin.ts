@@ -80,8 +80,8 @@ The user wants an answer grounded in THEIR notes, not in your general
 knowledge. Requires an enabled vault (Settings → Obsidian).
 
 1. Decompose the question into 1-3 searchable ideas.
-2. VaultSearch each (try tags and \`link:\` filters, not just words).
-3. VaultRead the top 2-4 notes; follow [[wikilinks]] one hop when a note
+2. ObsidianSearch each (try tags and \`link:\` filters, not just words).
+3. ObsidianRead the top 2-4 notes; follow [[wikilinks]] one hop when a note
    points somewhere clearly more specific.
 4. Answer FROM THE NOTES. Every claim cites its note as a [[wikilink]].
 5. If the vault does not cover it, say exactly that — name what you searched
@@ -100,7 +100,7 @@ Turn source material into notes that JOIN the vault's graph instead of
 floating loose. Requires a writable vault (Settings → Obsidian).
 
 1. Read the source (WebFetch for a URL, the file tools for a file).
-2. VaultSearch for existing notes on the topic and for the vault's
+2. ObsidianSearch for existing notes on the topic and for the vault's
    conventions — folder layout, frontmatter style, tag vocabulary. Mirror
    what you find; do not impose your own scheme.
 3. Write ONE note per concept, not one note per source dump:
@@ -108,7 +108,7 @@ floating loose. Requires a writable vault (Settings → Obsidian).
    - frontmatter tags from the vault's existing vocabulary;
    - [[wikilinks]] to every related existing note you found in step 2;
    - a "Source" line with the URL/origin — claims stay traceable.
-4. Where an existing note already covers a concept, VaultWrite append the
+4. Where an existing note already covers a concept, ObsidianWrite append the
    new facts there instead of creating a near-duplicate.
 5. Finish with a list of what was created/updated, as [[wikilinks]].
 `;
@@ -123,18 +123,18 @@ author: Monet
 
 A REPORT first, repairs only on request. Requires an enabled vault.
 
-1. Map the vault: VaultSearch with broad queries and tags to sample its
-   structure; VaultRead hubs (heavily-backlinked notes).
+1. Map the vault: ObsidianSearch with broad queries and tags to sample its
+   structure; ObsidianRead hubs (heavily-backlinked notes).
 2. Look for:
-   - dead wikilinks (a link whose target VaultRead cannot resolve);
+   - dead wikilinks (a link whose target ObsidianRead cannot resolve);
    - orphans (notes with no backlinks and no outgoing links);
    - near-duplicates (two names for one concept — suggest a merge);
    - missing or inconsistent frontmatter/tags versus the vault's own style.
 3. Report findings grouped by kind, each item a [[wikilink]], with the
    single suggested fix per item.
-4. Fix ONLY what the user picks, one VaultWrite per fix — never a bulk
+4. Fix ONLY what the user picks, one ObsidianWrite per fix — never a bulk
    rewrite of notes you were not asked to touch. Removing a note is
-   VaultWrite mode:trash — it moves to the vault's .trash, recoverable.
+   ObsidianWrite mode:trash — it moves to the vault's .trash, recoverable.
 `;
 
 const BUILTIN_SKILLS: Record<string, string> = {

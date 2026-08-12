@@ -1,5 +1,5 @@
 /**
- * The agent's hands in the vault: VaultSearch, VaultRead, VaultWrite.
+ * The agent's hands in the vault: ObsidianSearch, ObsidianRead, ObsidianWrite.
  *
  * Everything addresses notes by WIKILINK NAME, not by filesystem path — the
  * vocabulary the vault itself is written in, and the reason the model can
@@ -65,7 +65,7 @@ function noteLine(n: IndexedNote, snippet?: string): string {
   return `- [[${n.name}]] (${n.vaultName}: ${n.relPath})${tags}${hint ? ` — ${hint}` : ""}`;
 }
 
-// ─── VaultSearch ────────────────────────────────────────────────────────
+// ─── ObsidianSearch ────────────────────────────────────────────────────────
 
 const searchSchema = lazySchema(() =>
   z.strictObject({
@@ -80,15 +80,15 @@ const searchSchema = lazySchema(() =>
 );
 type SearchSchema = ReturnType<typeof searchSchema>;
 
-export const VaultSearchTool = buildTool({
-  name: "VaultSearch",
+export const ObsidianSearchTool = buildTool({
+  name: "ObsidianSearch",
   searchHint: "search the user's Obsidian vaults",
   maxResultSizeChars: 12_000,
   get inputSchema(): SearchSchema {
     return searchSchema();
   },
   userFacingName() {
-    return "VaultSearch";
+    return "ObsidianSearch";
   },
   isReadOnly() {
     return true;
@@ -144,7 +144,7 @@ export const VaultSearchTool = buildTool({
   },
 });
 
-// ─── VaultRead ──────────────────────────────────────────────────────────
+// ─── ObsidianRead ──────────────────────────────────────────────────────────
 
 const READ_CAP = 40_000;
 
@@ -160,15 +160,15 @@ const readSchema = lazySchema(() =>
 );
 type ReadSchema = ReturnType<typeof readSchema>;
 
-export const VaultReadTool = buildTool({
-  name: "VaultRead",
+export const ObsidianReadTool = buildTool({
+  name: "ObsidianRead",
   searchHint: "read a note from the user's Obsidian vault",
   maxResultSizeChars: READ_CAP + 4_000,
   get inputSchema(): ReadSchema {
     return readSchema();
   },
   userFacingName() {
-    return "VaultRead";
+    return "ObsidianRead";
   },
   isReadOnly() {
     return true;
@@ -181,7 +181,7 @@ export const VaultReadTool = buildTool({
       "Read one note from the user's Obsidian vault by its wikilink name.",
       "Returns the note plus its graph neighbourhood: outgoing links and",
       "backlinks (notes that link here). Follow those links with further",
-      "VaultRead calls instead of guessing — the vault is written to be",
+      "ObsidianRead calls instead of guessing — the vault is written to be",
       "navigated. Read the 2-3 most relevant notes, not the whole vault.",
     ].join("\n");
   },
@@ -195,7 +195,7 @@ export const VaultReadTool = buildTool({
       if (res.kind === "none")
         return {
           data: {
-            text: `No note named "${note}". VaultSearch can find candidates.`,
+            text: `No note named "${note}". ObsidianSearch can find candidates.`,
             isError: true,
           },
         };
@@ -239,7 +239,7 @@ export const VaultReadTool = buildTool({
   },
 });
 
-// ─── VaultWrite ─────────────────────────────────────────────────────────
+// ─── ObsidianWrite ─────────────────────────────────────────────────────────
 
 const writeSchema = lazySchema(() =>
   z.strictObject({
@@ -296,15 +296,15 @@ export function trashNoteFile(vaultPath: string, relPath: string): string {
   return target;
 }
 
-export const VaultWriteTool = buildTool({
-  name: "VaultWrite",
+export const ObsidianWriteTool = buildTool({
+  name: "ObsidianWrite",
   searchHint: "create or update a note in the user's Obsidian vault",
   maxResultSizeChars: 4_000,
   get inputSchema(): WriteSchema {
     return writeSchema();
   },
   userFacingName() {
-    return "VaultWrite";
+    return "ObsidianWrite";
   },
   isReadOnly() {
     return false;
@@ -316,7 +316,7 @@ export const VaultWriteTool = buildTool({
     return [
       "Create or update a note in the user's Obsidian vault. The vault is the",
       "USER'S knowledge base: write only when they asked to save something.",
-      "Before create, VaultSearch for an existing note on the topic — append",
+      "Before create, ObsidianSearch for an existing note on the topic — append",
       "to it rather than spawning a duplicate. Connect new notes to existing",
       "ones with [[wikilinks]]; an unlinked note is invisible in a vault.",
       "Respect the vault's own conventions (folders, frontmatter, tags) as",
@@ -350,7 +350,7 @@ export const VaultWriteTool = buildTool({
         if (/\.(canvas|base)$/i.test(note))
           return {
             data: {
-              text: "VaultWrite creates markdown notes only — .canvas and .base are Obsidian's structured formats, made in Obsidian.",
+              text: "ObsidianWrite creates markdown notes only — .canvas and .base are Obsidian's structured formats, made in Obsidian.",
               isError: true,
             },
           };
@@ -437,7 +437,7 @@ export const VaultWriteTool = buildTool({
   },
 });
 
-// ─── VaultAttach ────────────────────────────────────────────────────────
+// ─── ObsidianAttach ────────────────────────────────────────────────────────
 
 /** A cap that is about sanity, not capability: a vault is often a cloud
  * folder, and a multi-gigabyte copy into one is a decision the user should
@@ -479,15 +479,15 @@ const attachSchema = lazySchema(() =>
 );
 type AttachSchema = ReturnType<typeof attachSchema>;
 
-export const VaultAttachTool = buildTool({
-  name: "VaultAttach",
+export const ObsidianAttachTool = buildTool({
+  name: "ObsidianAttach",
   searchHint: "put a file (image, video, document) into the user's Obsidian vault",
   maxResultSizeChars: 4_000,
   get inputSchema(): AttachSchema {
     return attachSchema();
   },
   userFacingName() {
-    return "VaultAttach";
+    return "ObsidianAttach";
   },
   isReadOnly() {
     return false;
@@ -514,7 +514,7 @@ export const VaultAttachTool = buildTool({
       "the note — the picture lands WHERE IT BELONGS; without it the embed is",
       "appended at the end. Prefer `replace` when the note already refers to",
       "the image: attaching twenty pictures and then moving twenty embeds by",
-      "hand is the long way round. Same rule as VaultWrite: do this when the",
+      "hand is the long way round. Same rule as ObsidianWrite: do this when the",
       "user asked to save the file, not as a side effect of having produced one.",
     ].join("\n");
   },
@@ -706,7 +706,7 @@ function isDirIn(root: string, rel: string): boolean {
   }
 }
 
-// ─── VaultEdit ──────────────────────────────────────────────────────────
+// ─── ObsidianEdit ──────────────────────────────────────────────────────────
 
 const editSchema = lazySchema(() =>
   z.strictObject({
@@ -724,15 +724,15 @@ const editSchema = lazySchema(() =>
 );
 type EditSchema = ReturnType<typeof editSchema>;
 
-export const VaultEditTool = buildTool({
-  name: "VaultEdit",
+export const ObsidianEditTool = buildTool({
+  name: "ObsidianEdit",
   searchHint: "edit part of a note in the user's Obsidian vault",
   maxResultSizeChars: 4_000,
   get inputSchema(): EditSchema {
     return editSchema();
   },
   userFacingName() {
-    return "VaultEdit";
+    return "ObsidianEdit";
   },
   isReadOnly() {
     return false;
@@ -742,7 +742,7 @@ export const VaultEditTool = buildTool({
   },
   async prompt() {
     return [
-      "Change PART of a note — the surgical counterpart of VaultWrite, which",
+      "Change PART of a note — the surgical counterpart of ObsidianWrite, which",
       "can only append or rewrite the whole thing. Read the note first;",
       "old_string must match exactly and must be unique unless you pass",
       "replace_all. Use this to fix a line, swap an image reference or",
@@ -795,7 +795,7 @@ export const VaultEditTool = buildTool({
   },
 });
 
-// ─── VaultMove ──────────────────────────────────────────────────────────
+// ─── ObsidianMove ──────────────────────────────────────────────────────────
 
 const moveSchema = lazySchema(() =>
   z.strictObject({
@@ -814,15 +814,15 @@ const moveSchema = lazySchema(() =>
 );
 type MoveSchema = ReturnType<typeof moveSchema>;
 
-export const VaultMoveTool = buildTool({
-  name: "VaultMove",
+export const ObsidianMoveTool = buildTool({
+  name: "ObsidianMove",
   searchHint: "move or rename a note or file inside the user's Obsidian vault",
   maxResultSizeChars: 6_000,
   get inputSchema(): MoveSchema {
     return moveSchema();
   },
   userFacingName() {
-    return "VaultMove";
+    return "ObsidianMove";
   },
   isReadOnly() {
     return false;

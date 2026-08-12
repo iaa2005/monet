@@ -10,7 +10,7 @@
  *
  * It takes what the user actually has: a PDF, a screenshot, a photo of a
  * page, an image already in the Obsidian vault, or a URL pointing at one. It
- * resolves those the same way VaultAttach resolves a file, so a name that
+ * resolves those the same way ObsidianAttach resolves a file, so a name that
  * works in Home works in Code.
  *
  * The model runs locally: nothing is uploaded, which is the point for
@@ -199,7 +199,7 @@ export const OCRScanTool = buildTool({
       "screenshot or a scanned form without being able to see it.",
       "",
       "It is READ-ONLY: it never writes the result anywhere. To keep it, pass",
-      "the Markdown to VaultWrite, or write the file yourself.",
+      "the Markdown to ObsidianWrite, or write the file yourself.",
     ].join("\n");
   },
   async description({ source }: z.infer<ScanSchema>) {

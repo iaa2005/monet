@@ -46,8 +46,8 @@ export const RECON_TOOLS = new Set([
   // Reading the sandbox / the vault
   "SandboxList",
   "SandboxRead",
-  "VaultSearch",
-  "VaultRead",
+  "ObsidianSearch",
+  "ObsidianRead",
   // Code intelligence — all read-only by construction
   "LspDefinition",
   "LspReferences",
