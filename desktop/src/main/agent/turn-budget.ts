@@ -63,7 +63,22 @@
  * mostly new work.
  */
 export const EXTENSION_TURNS = 20;
-export const MAX_EXTENSIONS = 2;
+/**
+ * How many times a run may earn more room.
+ *
+ * Was 2, giving every run the same hard end at 80 steps whatever it was doing
+ * — and that ceiling, not repetition, is what actually stopped things. Seen in
+ * a real run: ninety of its steps went on fighting a PDF toolchain, the budget
+ * ran out mid-fight, and the handoff fired on a run that was still making
+ * progress. The number of steps was never the problem.
+ *
+ * Each extension is re-earned on FRESH evidence — `isProductive` looks only at
+ * the last dozen calls — so a run going in circles cannot reach even the
+ * second one, while a long honest investigation is not stopped for being long.
+ * Six is a bound, not a target: 40 + 6×20 = 160 steps, and only for a run that
+ * keeps producing new work every single window along the way.
+ */
+export const MAX_EXTENSIONS = 6;
 /** How many recent calls the productivity judgement looks at. */
 export const PROGRESS_WINDOW = 12;
 /** Below this share of distinct calls the run is repeating itself. */
@@ -239,6 +254,60 @@ export function loopNote(toolName: string, count: number): string {
     "another try. Change something real: different input, a different tool,",
     "or tell the user what is blocking you.]",
   ].join(" ");
+}
+
+// ─── Ending a run that is only spinning ─────────────────────────────────
+//
+// The budget protects the bill by counting steps, which treats a run doing new
+// work and a run repeating itself exactly alike: both are stopped at the
+// ceiling, neither is stopped before it. Repetition is the better instrument
+// in BOTH directions — it is what earns a productive run more room above, and
+// it is what should end a stuck one early here, since every further step is
+// paid for and none of them is going to work.
+//
+// Only after steering has been spent: being told once to change approach is
+// the correction, and a run that takes it is not stuck. This fires when the
+// correction did not land.
+
+/** Calls after the last steer before "it did not take" is a fair conclusion. */
+export const GIVE_UP_AFTER = 8;
+
+export interface StuckState {
+  signatures: string[];
+  steersUsed: number;
+  /** Calls made since the last steer. */
+  sinceLastSteer: number;
+}
+
+/**
+ * Is this run going in circles with nothing left to try?
+ *
+ * Three things at once: every steer spent, enough calls since the last one for
+ * it to have taken effect, and the recent window still both unproductive and
+ * dominated by one repeated call. Any single one of those is ordinary; all
+ * three together is a run that will not recover by being given more steps.
+ */
+export function isStuck(state: StuckState): boolean {
+  if (state.steersUsed < MAX_LOOP_STEERS) return false;
+  if (state.sinceLastSteer < GIVE_UP_AFTER) return false;
+  if (isProductive(state.signatures)) return false;
+  return dominantRepeat(state.signatures) !== null;
+}
+
+/** What the model is asked when the run is ended for repeating itself rather
+ * than for running out — a different thing, said differently. */
+export function stuckWrapUp(toolName: string, count: number): string {
+  return [
+    `[This run is being ended early: ${toolName} has run ${count} times with`,
+    "the same input since you were last asked to change approach, and nothing",
+    "in the recent calls is new. The tools are gone for this turn, so do not",
+    "try to call one.",
+    "",
+    "Tell the user, in a few sentences: what you did establish, what you are",
+    "stuck on and what you tried, and what you would need from them (or what",
+    "you would try next) to get past it. Be concrete about the blocker — they",
+    "can often clear it in one step.]",
+  ].join("\n");
 }
 
 export interface ExtensionState {

@@ -16,6 +16,10 @@ import {
   dominantRepeat,
   EXTENSION_TURNS,
   extensionFor,
+  GIVE_UP_AFTER,
+  isStuck,
+  MAX_LOOP_STEERS,
+  stuckWrapUp,
   extensionNote,
   isProductive,
   loopNote,
@@ -113,10 +117,14 @@ function replay(
     warns[0]!.turn !== 29,
     warns[0],
   )
+  // Ten steps from the run's REAL end, wherever the earned ceiling puts it —
+  // written against the constants so raising MAX_EXTENSIONS moves the
+  // expectation with it instead of pinning a number that used to be true.
+  const ceiling = 40 + MAX_EXTENSIONS * EXTENSION_TURNS
   check(
-    'it lands ten steps before the run really ends (turn 69 of 80)',
-    warns[0]!.turn === 69 && warns[0]!.warnedLeft === 10,
-    warns[0],
+    `it lands ten steps before the run really ends (turn ${ceiling - 11} of ${ceiling})`,
+    warns[0]!.turn === ceiling - 11 && warns[0]!.warnedLeft === 10,
+    { got: warns[0], ceiling },
   )
   check(
     'both extensions are still granted',
@@ -258,9 +266,12 @@ check('too few calls to judge is not held against it', isProductive(varied(2)))
     'the extensions themselves run out',
     at({ extensionsUsed: MAX_EXTENSIONS }) === 0,
   )
+  // Bounded, but the bound is no longer the instrument: a run only reaches it
+  // by producing new work in EVERY window on the way, and a stuck one is
+  // ended by isStuck long before. See the stuck-run block below.
   check(
     'so the ceiling is bounded, not open-ended',
-    40 + MAX_EXTENSIONS * EXTENSION_TURNS <= 100,
+    40 + MAX_EXTENSIONS * EXTENSION_TURNS <= 200,
     40 + MAX_EXTENSIONS * EXTENSION_TURNS,
   )
 }
@@ -325,6 +336,72 @@ check('too few calls to judge is not held against it', isProductive(varied(2)))
   )
   check('and demands a change, not an apology', /change/i.test(n), n)
   check('it is short', n.length < 340, n.length)
+}
+
+// ─── ENDING A RUN THAT IS ONLY SPINNING ─────────────────────────────────
+//
+// The ceiling stopped a productive run and a stuck one at exactly the same
+// place: 80 steps, whatever they were doing. Measured on a real transcript,
+// ninety of that run's steps went on fighting a toolchain and the handoff
+// fired while it was still making progress — the step COUNT was never what
+// was wrong. So repetition decides in both directions: it earns room above,
+// and it ends a run early here.
+
+{
+  // Every steer spent, long enough since the last for it to have landed, and
+  // the window is still one call repeated.
+  const stuckSigs = [...varied(6), ...stuck(12)]
+  check(
+    'A RUN THAT IGNORED EVERY CORRECTION IS ENDED EARLY, not carried to the ceiling',
+    isStuck({ signatures: stuckSigs, steersUsed: MAX_LOOP_STEERS, sinceLastSteer: GIVE_UP_AFTER }),
+  )
+  check(
+    '…but not while a steer is still unspent — being told once IS the correction',
+    !isStuck({ signatures: stuckSigs, steersUsed: MAX_LOOP_STEERS - 1, sinceLastSteer: GIVE_UP_AFTER }),
+  )
+  check(
+    '…nor before the last steer has had calls to take effect',
+    !isStuck({ signatures: stuckSigs, steersUsed: MAX_LOOP_STEERS, sinceLastSteer: GIVE_UP_AFTER - 1 }),
+  )
+  check(
+    'A RUN DOING NEW WORK IS NEVER ENDED THIS WAY, however long it has gone on',
+    !isStuck({ signatures: varied(40), steersUsed: MAX_LOOP_STEERS, sinceLastSteer: 100 }),
+  )
+  const note = stuckWrapUp('RunCommand', 9)
+  check('the handoff names the blocker rather than blaming the budget', /RunCommand/.test(note) && !/out of steps/i.test(note), note)
+  check('…and asks for what would unblock it', /blocked on|stuck on|need/i.test(note))
+}
+
+// ─── A LONG HONEST RUN IS NOT CUT SHORT FOR BEING LONG ──────────────────
+
+{
+  let budget = 40
+  let used = 0
+  const sigs: string[] = []
+  for (let turn = 0; turn < 200 && turn < budget; turn++) {
+    sigs.push(`Tool${turn}:{}`) // new work every single turn
+    const extra = extensionFor({ turnsDone: turn + 1, budget, extensionsUsed: used, signatures: sigs })
+    if (extra > 0) { budget += extra; used++ }
+  }
+  check(
+    'a run producing new work every turn reaches the full earned ceiling',
+    budget === 40 + MAX_EXTENSIONS * EXTENSION_TURNS,
+    budget,
+  )
+  // The same loop, repeating itself: it must not get past the first wall.
+  let budget2 = 40
+  let used2 = 0
+  const sigs2: string[] = []
+  for (let turn = 0; turn < 200 && turn < budget2; turn++) {
+    sigs2.push('Same:{}')
+    const extra = extensionFor({ turnsDone: turn + 1, budget: budget2, extensionsUsed: used2, signatures: sigs2 })
+    if (extra > 0) { budget2 += extra; used2++ }
+  }
+  check(
+    'A REPEATING RUN EARNS NOTHING — the ceiling is not what holds it back',
+    budget2 === 40,
+    budget2,
+  )
 }
 
 console.log(

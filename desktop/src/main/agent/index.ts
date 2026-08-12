@@ -82,6 +82,8 @@ import {
   callSignature,
   dominantRepeat,
   extensionFor,
+  isStuck,
+  stuckWrapUp,
   extensionNote,
   loopNote,
   MAX_LOOP_STEERS,
@@ -1667,6 +1669,9 @@ async function runAgentScoped(
   // spoken while there is still time to act on it. See turn-budget.ts.
   let loopSteersUsed = 0;
   let lastSteerAt = 0;
+  // Set when the run is ended for repeating itself rather than for
+  // running out of steps — the handoff below says which it was.
+  let stuckOn: { toolName: string; count: number } | null = null;
 
   // Reconnaissance: the first turns run with the writing tools taken away,
   // so the model cannot start coding before it has looked. Ends when it
@@ -2361,6 +2366,31 @@ async function runAgentScoped(
       }
     }
 
+    // Going in circles with every correction already spent? Then stop now
+    // rather than at the ceiling. The steps between here and there are paid
+    // for and none of them was going to work — and the user gets told what
+    // the blocker is while it is still fresh, instead of after another forty
+    // identical calls. See turn-budget.ts.
+    if (
+      isFeatureOn("budget") &&
+      isStuck({
+        signatures: callSignatures,
+        steersUsed: loopSteersUsed,
+        sinceLastSteer: callSignatures.length - lastSteerAt,
+      })
+    ) {
+      const rep = dominantRepeat(callSignatures);
+      stuckOn = rep;
+      console.log(
+        `[agent] ending early — stuck on ${rep?.toolName} ×${rep?.count} after ${loopSteersUsed} steer(s)`,
+      );
+      onEvent({
+        type: "harness",
+        text: `Going in circles with no correction left — ended the run and asked what is blocking it`,
+      });
+      break;
+    }
+
     // At the wall, but still doing new things? Then the wall was in the wrong
     // place. Bounded and evidence-based: repetition is what refuses it.
     const extra = extensionFor({
@@ -2434,11 +2464,20 @@ async function runAgentScoped(
   // the work over. See turn-budget.ts.
   let wrapUpText = "";
   if (!signal?.aborted && isFeatureOn("budget")) {
+    // Out of steps and stuck are different endings, and the handoff should
+    // say which one it was: "I ran out of room" invites "carry on", while
+    // "I am blocked on X" invites the one thing that actually helps.
     onEvent({
       type: "harness",
-      text: "Out of steps — asked the model for a handoff summary",
+      text: stuckOn
+        ? "Stopped early — asked the model what is blocking it"
+        : "Out of steps — asked the model for a handoff summary",
     });
-    appendUserText(messages, WRAP_UP_PROMPT, hiddenTurns);
+    appendUserText(
+      messages,
+      stuckOn ? stuckWrapUp(stuckOn.toolName, stuckOn.count) : WRAP_UP_PROMPT,
+      hiddenTurns,
+    );
     try {
       await adapter.stream(
         {
