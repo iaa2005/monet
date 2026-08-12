@@ -1,19 +1,19 @@
 import axios from 'axios'
 import { getOauthConfig } from 'src/constants/oauth.js'
-import { getOrganizationUUID } from 'src/services/oauth/client.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../../services/analytics/growthbook.js'
+import { getOrganizationUUID } from '@anthropic/account/oauth/client.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
   getClaudeAIOAuthTokens,
   isClaudeAISubscriber,
-} from '../../auth.js'
+} from '@anthropic/account/auth.js'
 import { getCwd } from '../../cwd.js'
 import { logForDebugging } from '../../debug.js'
 import { detectCurrentRepository } from '../../detectRepository.js'
 import { errorMessage } from '../../errors.js'
 import { findGitRoot, getIsClean } from '../../git.js'
-import { getOAuthHeaders } from '../../teleport/api.js'
-import { fetchEnvironments } from '../../teleport/environments.js'
+import { getOAuthHeaders } from '@anthropic/teleport/api.js'
+import { fetchEnvironments } from '@anthropic/teleport/environments.js'
 
 /**
  * Checks if user needs to log in with Claude.ai

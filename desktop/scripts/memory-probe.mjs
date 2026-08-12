@@ -38,6 +38,7 @@ await build({
       { find: 'bun:bundle', replacement: resolve('src/main/shims/bun-bundle.ts') },
       ...pkgStubAliases,
       { find: '@main', replacement: resolve('src/main') },
+      { find: '@anthropic', replacement: resolve('src/anthropic') },
       { find: '@vendor', replacement: resolve('src/vendor/leaked') },
       { find: 'src', replacement: resolve('src/vendor/leaked') },
     ],

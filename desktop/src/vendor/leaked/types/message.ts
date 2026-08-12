@@ -5,7 +5,7 @@ import type {
   BetaUsage as Usage,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
-import type { SDKAssistantMessageError } from '../entrypoints/agentSdkTypes.js'
+import type { SDKAssistantMessageError } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
 import type { Attachment } from '../utils/attachments.js'
 
 // ─── Message-level enums ────────────────────────────────────────────────

@@ -1,11 +1,11 @@
 import { c as _c } from "react/compiler-runtime";
 import React from 'react';
 import { removeSandboxViolationTags } from 'src/utils/sandbox/sandbox-ui-utils.js';
-import { KeyboardShortcutHint } from '../../components/design-system/KeyboardShortcutHint.js';
-import { MessageResponse } from '../../components/MessageResponse.js';
-import { OutputLine } from '../../components/shell/OutputLine.js';
-import { ShellTimeDisplay } from '../../components/shell/ShellTimeDisplay.js';
-import { Box, Text } from '../../ink.js';
+import { KeyboardShortcutHint } from '@anthropic/cli/components/design-system/KeyboardShortcutHint.js';
+import { MessageResponse } from '@anthropic/cli/components/MessageResponse.js';
+import { OutputLine } from '@anthropic/cli/components/shell/OutputLine.js';
+import { ShellTimeDisplay } from '@anthropic/cli/components/shell/ShellTimeDisplay.js';
+import { Box, Text } from '@anthropic/cli/ink.js';
 import type { Out as BashOut } from './BashTool.js';
 type Props = {
   content: Omit<BashOut, 'interrupted'>;

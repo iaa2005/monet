@@ -1,10 +1,10 @@
 import * as React from 'react';
-import { Markdown } from 'src/components/Markdown.js';
-import { MessageResponse } from 'src/components/MessageResponse.js';
-import { RejectedPlanMessage } from 'src/components/messages/UserToolResultMessage/RejectedPlanMessage.js';
+import { Markdown } from '@anthropic/cli/components/Markdown.js';
+import { MessageResponse } from '@anthropic/cli/components/MessageResponse.js';
+import { RejectedPlanMessage } from '@anthropic/cli/components/messages/UserToolResultMessage/RejectedPlanMessage.js';
 import { BLACK_CIRCLE } from 'src/constants/figures.js';
 import { getModeColor } from 'src/utils/permissions/PermissionMode.js';
-import { Box, Text } from '../../ink.js';
+import { Box, Text } from '@anthropic/cli/ink.js';
 import type { ToolProgressData } from '../../Tool.js';
 import type { ProgressMessage } from '../../types/message.js';
 import { getDisplayPath } from '../../utils/file.js';

@@ -9,13 +9,13 @@
 
 import chalk from 'chalk'
 import type { QuerySource } from '../../constants/querySource.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../../services/analytics/index.js'
-import { queryHaiku } from '../../services/api/claude.js'
-import { startsWithApiErrorPrefix } from '../../services/api/errors.js'
+} from '@anthropic/analytics/index.js'
+import { queryHaiku } from '@anthropic/api/claude.js'
+import { startsWithApiErrorPrefix } from '@anthropic/api/errors.js'
 import { memoizeWithLRU } from '../memoize.js'
 import { jsonStringify } from '../slowOperations.js'
 import { asSystemPrompt } from '../systemPromptType.js'

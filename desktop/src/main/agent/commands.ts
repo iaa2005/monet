@@ -41,9 +41,9 @@ import {
   getPluginSkills,
   clearPluginSkillsCache,
 } from "@vendor/utils/plugins/loadPluginCommands.js";
-import commit from "@vendor/commands/commit.js";
-import init from "@vendor/commands/init.js";
-import review, { ultrareview } from "@vendor/commands/review.js";
+import commit from "@anthropic/cli/commands/commit.js";
+import init from "@anthropic/cli/commands/init.js";
+import review, { ultrareview } from "@anthropic/cli/commands/review.js";
 
 export type {
   Command,

@@ -54,14 +54,14 @@ import {
 import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-} from 'src/services/analytics/index.js'
-import { logOTelEvent } from './telemetry/events.js'
+} from '@anthropic/analytics/index.js'
+import { logOTelEvent } from '@anthropic/analytics/telemetry/events.js'
 import { ALLOWED_OFFICIAL_MARKETPLACE_NAMES } from './plugins/schemas.js'
 import {
   startHookSpan,
   endHookSpan,
   isBetaTracingEnabled,
-} from './telemetry/sessionTracing.js'
+} from '@anthropic/analytics/telemetry/sessionTracing.js'
 import {
   hookJSONOutputSchema,
   promptRequestSchema,
@@ -106,7 +106,7 @@ import type {
   ExitReason,
   SyncHookJSONOutput,
   AsyncHookJSONOutput,
-} from 'src/entrypoints/agentSdkTypes.js'
+} from '@anthropic/cli/entrypoints/agentSdkTypes.js'
 import type { StatusLineCommandInput } from '../types/statusLine.js'
 import type { ElicitResult } from '@modelcontextprotocol/sdk/types.js'
 import type { FileSuggestionCommandInput } from '../types/fileSuggestion.js'

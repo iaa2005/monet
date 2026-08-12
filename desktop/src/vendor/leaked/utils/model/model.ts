@@ -12,7 +12,7 @@ import {
   isMaxSubscriber,
   isProSubscriber,
   isTeamPremiumSubscriber,
-} from '../auth.js'
+} from '@anthropic/account/auth.js'
 import {
   has1mContext,
   is1mContextDisabled,

@@ -72,9 +72,9 @@ export type {
   WebSearchProgress,
 }
 
-import type { SpinnerMode } from './components/Spinner.js'
+import type { SpinnerMode } from '@anthropic/cli/components/Spinner.js'
 import type { QuerySource } from './constants/querySource.js'
-import type { SDKStatus } from './entrypoints/agentSdkTypes.js'
+import type { SDKStatus } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
 import type { AppState } from './state/AppState.js'
 import type {
   HookProgress,

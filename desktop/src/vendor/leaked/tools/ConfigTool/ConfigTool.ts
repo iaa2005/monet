@@ -3,7 +3,7 @@ import { z } from 'zod/v4'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../../services/analytics/index.js'
+} from '@anthropic/analytics/index.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import {
   type GlobalConfig,
@@ -238,7 +238,7 @@ export const ConfigTool = buildTool({
         '../../voice/voiceModeEnabled.js'
       )
       if (!isVoiceModeEnabled()) {
-        const { isAnthropicAuthEnabled } = await import('../../utils/auth.js')
+        const { isAnthropicAuthEnabled } = await import('@anthropic/account/auth.js')
         return {
           data: {
             success: false,

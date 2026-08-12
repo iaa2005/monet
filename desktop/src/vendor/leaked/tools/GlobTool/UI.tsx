@@ -1,10 +1,10 @@
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import React from 'react';
-import { MessageResponse } from 'src/components/MessageResponse.js';
+import { MessageResponse } from '@anthropic/cli/components/MessageResponse.js';
 import { extractTag } from 'src/utils/messages.js';
-import { FallbackToolUseErrorMessage } from '../../components/FallbackToolUseErrorMessage.js';
+import { FallbackToolUseErrorMessage } from '@anthropic/cli/components/FallbackToolUseErrorMessage.js';
 import { TOOL_SUMMARY_MAX_LENGTH } from '../../constants/toolLimits.js';
-import { Text } from '../../ink.js';
+import { Text } from '@anthropic/cli/ink.js';
 import { FILE_NOT_FOUND_CWD_NOTE, getDisplayPath } from '../../utils/file.js';
 import { truncate } from '../../utils/format.js';
 import { GrepTool } from '../GrepTool/GrepTool.js';

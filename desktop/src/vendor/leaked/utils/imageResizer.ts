@@ -8,7 +8,7 @@ import {
   IMAGE_MAX_WIDTH,
   IMAGE_TARGET_RAW_SIZE,
 } from '../constants/apiLimits.js'
-import { logEvent } from '../services/analytics/index.js'
+import { logEvent } from '@anthropic/analytics/index.js'
 import {
   getImageProcessor,
   type SharpFunction,

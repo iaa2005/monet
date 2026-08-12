@@ -19,6 +19,7 @@ const VENDOR = join(ROOT, "src/vendor/leaked");
 
 const ALIASES = [
   ["@main", join(ROOT, "src/main")],
+  ["@anthropic", join(ROOT, "src/anthropic")],
   ["@vendor", VENDOR],
   ["@shared", join(ROOT, "src/shared")],
   ["@", join(ROOT, "src/renderer")],
