@@ -99,14 +99,14 @@ import {
 import {
   getMaxOutputTokensForModel,
   queryModelWithStreaming,
-} from '@anthropic/api/claude.js'
+} from '../api.js'
 import {
   getPromptTooLongTokenGap,
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   startsWithApiErrorPrefix,
-} from '@anthropic/api/errors.js'
-import { notifyCompaction } from '@anthropic/api/promptCacheBreakDetection.js'
-import { getRetryDelay } from '@anthropic/api/withRetry.js'
+} from '../api.js'
+import { notifyCompaction } from '../api.js'
+import { getRetryDelay } from '../api.js'
 import { logPermissionContextForAnts } from '../services/internalLogging.js'
 import {
   roughTokenCountEstimation,

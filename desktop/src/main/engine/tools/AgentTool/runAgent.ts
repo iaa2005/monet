@@ -14,8 +14,8 @@ import { getSystemContext, getUserContext } from '../../context.js'
 import type { CanUseToolFn } from '../../hooks/react/useCanUseTool.jsx'
 import { query } from '../../query.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../gates.js'
-import { getDumpPromptsPath } from '@anthropic/api/dumpPrompts.js'
-import { cleanupAgentTracking } from '@anthropic/api/promptCacheBreakDetection.js'
+import { getDumpPromptsPath } from '../../api.js'
+import { cleanupAgentTracking } from '../../api.js'
 import {
   connectToServer,
   fetchToolsForClient,

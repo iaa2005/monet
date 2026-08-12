@@ -35,7 +35,6 @@ const VENDOR = join(
 // Roots that own an alias. Longest match wins, so src/vendor/leaked beats src.
 const ROOTS = [
   ["@vendor", join(ROOT, "src/vendor/leaked")],
-  ["@anthropic", join(ROOT, "src/anthropic")],
   ["@shared", join(ROOT, "src/shared")],
   ["@main", join(ROOT, "src/main")],
   ["@", join(ROOT, "src/renderer")],

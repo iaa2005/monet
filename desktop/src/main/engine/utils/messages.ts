@@ -35,7 +35,7 @@ import {
   getPdfPasswordProtectedErrorMessage,
   getPdfTooLargeErrorMessage,
   getRequestTooLargeErrorMessage,
-} from '@anthropic/api/errors.js'
+} from '../api.js'
 import type { AnyObject, Progress } from '../Tool.js'
 import { isConnectorTextBlock } from '../types/connectorText.js'
 import type {

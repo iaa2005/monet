@@ -14,7 +14,7 @@ import { Message as MessageComponent } from '../../stubs/cli/components/Message.
 import { MessageResponse } from '../../stubs/cli/components/MessageResponse.js';
 import { ToolUseLoader } from '../../stubs/cli/components/ToolUseLoader.js';
 import { Box, Text } from '../../stubs/cli/ink.js';
-import { getDumpPromptsPath } from '@anthropic/api/dumpPrompts.js';
+import { getDumpPromptsPath } from '../../api.js';
 import { findToolByName, type Tools } from '../../Tool.js';
 import type { Message, ProgressMessage } from '../../types/message.js';
 import type { AgentToolProgress } from '../../types/tools.js';

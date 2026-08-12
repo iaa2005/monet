@@ -14,9 +14,9 @@
  * be clean. A file over its count fails. A file UNDER its count is reported —
  * run with --update to bank the improvement. The total can only go down.
  *
- * src/anthropic stays a directory-wide exemption: it is a holding pen headed
- * for deletion, and per-file bookkeeping on code we intend to remove is
- * bookkeeping for its own sake.
+ * src/anthropic was a second, directory-wide exemption while Anthropic's own
+ * product code was gathered up for deletion. That tree is gone, so this file
+ * is the only exemption left.
  *
  *   npm run typecheck
  *   node scripts/typecheck.mjs --update   # bank improvements / record a move
@@ -25,7 +25,6 @@ import { spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 
 const DEBT_FILE = 'scripts/typecheck-debt.json'
-const QUARANTINE = 'src/anthropic/'
 const UPDATE = process.argv.includes('--update')
 
 const r = spawnSync(
@@ -48,14 +47,10 @@ const debt = existsSync(DEBT_FILE)
   ? JSON.parse(readFileSync(DEBT_FILE, 'utf8'))
   : {}
 
-const quarantined = [...counts].filter(([f]) => f.startsWith(QUARANTINE))
-const quarantineTotal = quarantined.reduce((n, [, c]) => n + c, 0)
-
 const unlisted = [] // our code, or a newly-broken absorbed file
 const regressed = []
 const improved = []
 for (const [f, c] of counts) {
-  if (f.startsWith(QUARANTINE)) continue
   const allowed = debt[f] ?? 0
   if (allowed === 0) unlisted.push([f, c])
   else if (c > allowed) regressed.push([f, c, allowed])
@@ -67,7 +62,6 @@ for (const f of Object.keys(debt)) if (!counts.has(f)) improved.push([f, 0, debt
 if (UPDATE) {
   const next = {}
   for (const [f, c] of [...counts].sort()) {
-    if (f.startsWith(QUARANTINE)) continue
     // Only absorbed files get an entry — anything under src/main that never
     // came from the leak must be clean, and silently granting it debt here is
     // exactly what this file exists to prevent. New entries need a reason, so
@@ -92,12 +86,10 @@ for (const [f, c, allowed] of regressed)
   console.error(`${f}: ${c} type errors, ${allowed} allowed — new errors in absorbed code`)
 
 const debtTotal = [...counts]
-  .filter(([f]) => !f.startsWith(QUARANTINE) && debt[f])
+  .filter(([f]) => debt[f])
   .reduce((n, [, c]) => n + c, 0)
 if (debtTotal)
   console.error(`(${debtTotal} recorded type errors in code absorbed from the leak — ${DEBT_FILE})`)
-if (quarantineTotal)
-  console.error(`(${quarantineTotal} type errors inside src/anthropic — the quarantine, headed for deletion)`)
 if (improved.length) {
   const won = improved.reduce((n, [, c, a]) => n + (a - c), 0)
   console.error(`${improved.length} file(s) improved by ${won} errors — run: node scripts/typecheck.mjs --update`)

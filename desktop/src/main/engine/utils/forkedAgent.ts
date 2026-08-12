@@ -18,8 +18,8 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics.js'
-import { accumulateUsage, updateUsage } from '@anthropic/api/claude.js'
-import { EMPTY_USAGE, type NonNullableUsage } from '@anthropic/api/logging.js'
+import { accumulateUsage, updateUsage } from '../api.js'
+import { EMPTY_USAGE, type NonNullableUsage } from '../api.js'
 import type { ToolUseContext } from '../Tool.js'
 import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
 import type { AgentId } from '../types/ids.js'

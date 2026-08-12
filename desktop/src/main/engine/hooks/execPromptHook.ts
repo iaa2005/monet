@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import type { HookEvent } from '../types/agentSdkTypes.js'
-import { queryModelWithoutStreaming } from '@anthropic/api/claude.js'
+import { queryModelWithoutStreaming } from '../api.js'
 import type { ToolUseContext } from '../Tool.js'
 import type { Message } from '../types/message.js'
 import { createAttachmentMessage } from '../utils/attachments.js'

@@ -12,7 +12,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../analytics.js'
-import { clearDumpState } from '@anthropic/api/dumpPrompts.js'
+import { clearDumpState } from '../../api.js'
 import type { AppState } from '../../state/AppState.jsx'
 import type {
   Tool,

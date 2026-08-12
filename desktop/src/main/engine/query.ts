@@ -4,7 +4,7 @@ import type {
   ToolUseBlock,
 } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { CanUseToolFn } from './hooks/react/useCanUseTool.jsx'
-import { FallbackTriggeredError } from '@anthropic/api/withRetry.js'
+import { FallbackTriggeredError } from './api.js'
 import {
   calculateTokenWarningState,
   isAutoCompactEnabled,
@@ -41,7 +41,7 @@ import { logError } from './utils/log.js'
 import {
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   isPromptTooLongMessage,
-} from '@anthropic/api/errors.js'
+} from './api.js'
 import { logAntError, logForDebugging } from './utils/debug.js'
 import {
   createUserMessage,
@@ -92,7 +92,7 @@ import { SLEEP_TOOL_NAME } from './tools/SleepTool/prompt.js'
 import { executePostSamplingHooks } from './hooks/postSamplingHooks.js'
 import { executeStopFailureHooks } from './hooks/hooks.js'
 import type { QuerySource } from './constants/querySource.js'
-import { createDumpPromptsFetch } from '@anthropic/api/dumpPrompts.js'
+import { createDumpPromptsFetch } from './api.js'
 import { StreamingToolExecutor } from './services/tools/StreamingToolExecutor.js'
 import { queryCheckpoint } from './utils/queryProfiler.js'
 import { runTools } from './services/tools/toolOrchestration.js'

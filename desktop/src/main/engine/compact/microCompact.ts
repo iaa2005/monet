@@ -18,7 +18,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics.js'
-import { notifyCacheDeletion } from '@anthropic/api/promptCacheBreakDetection.js'
+import { notifyCacheDeletion } from '../api.js'
 import { roughTokenCountEstimation } from '../services/tokenEstimation.js'
 import {
   clearCompactWarningSuppression,

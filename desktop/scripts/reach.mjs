@@ -21,7 +21,6 @@ import { join, dirname, resolve, relative } from "path";
 const ROOT = resolve(process.cwd());
 const ALIASES = [
   ["@shared", join(ROOT, "src/shared")],
-  ["@anthropic", join(ROOT, "src/anthropic")],
   ["@main", join(ROOT, "src/main")],
   ["@", join(ROOT, "src/renderer")],
 ];

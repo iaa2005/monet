@@ -13,8 +13,8 @@ import type { CacheSafeParams } from '../utils/forkedAgent.js'
 import { logError } from '../utils/log.js'
 import { tokenCountWithEstimation } from '../utils/tokens.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
-import { getMaxOutputTokensForModel } from '@anthropic/api/claude.js'
-import { notifyCompaction } from '@anthropic/api/promptCacheBreakDetection.js'
+import { getMaxOutputTokensForModel } from '../api.js'
+import { notifyCompaction } from '../api.js'
 import { setLastSummarizedMessageId } from '../services/SessionMemory/sessionMemoryUtils.js'
 import {
   type CompactionResult,

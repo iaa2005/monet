@@ -13,9 +13,9 @@ import {
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import { logEvent } from '../analytics.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../analytics.js'
-import { getCacheControl } from '@anthropic/api/claude.js'
-import { parsePromptTooLongTokenCounts } from '@anthropic/api/errors.js'
-import { getDefaultMaxRetries } from '@anthropic/api/withRetry.js'
+import { getCacheControl } from '../api.js'
+import { parsePromptTooLongTokenCounts } from '../api.js'
+import { getDefaultMaxRetries } from '../api.js'
 import type { Tool, ToolPermissionContext, Tools } from '../Tool.js'
 import type { Message } from '../types/message.js'
 import type {

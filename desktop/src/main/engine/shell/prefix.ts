@@ -14,8 +14,8 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics.js'
-import { queryHaiku } from '@anthropic/api/claude.js'
-import { startsWithApiErrorPrefix } from '@anthropic/api/errors.js'
+import { queryHaiku } from '../api.js'
+import { startsWithApiErrorPrefix } from '../api.js'
 import { memoizeWithLRU } from '../utils/memoize.js'
 import { jsonStringify } from '../utils/slowOperations.js'
 import { asSystemPrompt } from '../utils/systemPromptType.js'

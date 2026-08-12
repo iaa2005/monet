@@ -33,7 +33,7 @@ import {
 import { builtInCommandNames } from '../../agent/commands.js'
 import { COMMAND_NAME_TAG, TICK_TAG } from '../constants/xml.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
-import * as sessionIngress from '@anthropic/api/sessionIngress.js'
+import * as sessionIngress from '../session-ingress.js'
 import { REPL_TOOL_NAME } from '../tools/REPLTool/constants.js'
 import {
   type AgentId,

@@ -51,16 +51,9 @@ const sharedAlias = { find: '@shared', replacement: resolve('src/shared') }
 // resolves the same way ours always did.
 const mainAlias = { find: '@main', replacement: resolve('src/main') }
 
-// The quarantine: Anthropic's own product code — their event pipeline, OAuth
-// and billing, API client, terminal front-end, IDE and remote bridges. Still
-// reachable, so it is still built; gathered under one root so the edges into
-// it can be seen and cut. See scripts/vendor-plan-anthropic.mjs.
-const anthropicAlias = { find: '@anthropic', replacement: resolve('src/anthropic') }
-
 const vendorAliases = [
   sharedAlias,
   mainAlias,
-  anthropicAlias,
   { find: 'bun:bundle', replacement: resolve('src/main/shims/bun-bundle.ts') },
   ...pkgStubAliases,
 ]

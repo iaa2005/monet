@@ -10,7 +10,7 @@ import { addInvokedSkill, getSessionId } from '../../state/state.js';
 import { COMMAND_MESSAGE_TAG, COMMAND_NAME_TAG } from '../../constants/xml.js';
 import type { CanUseToolFn } from '../../hooks/react/useCanUseTool.jsx';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED, logEvent } from '../../analytics.js';
-import { getDumpPromptsPath } from '@anthropic/api/dumpPrompts.js';
+import { getDumpPromptsPath } from '../../api.js';
 import { buildPostCompactMessages } from '../../compact/compact.js';
 import { resetMicrocompactState } from '../../compact/microCompact.js';
 import type { Progress as AgentProgress } from '../../tools/AgentTool/AgentTool.jsx';

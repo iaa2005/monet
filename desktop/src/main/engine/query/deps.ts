@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { queryModelWithStreaming } from '@anthropic/api/claude.js'
+import { queryModelWithStreaming } from '../api.js'
 import { autoCompactIfNeeded } from '../compact/autoCompact.js'
 import { microcompactMessages } from '../compact/microCompact.js'
 
