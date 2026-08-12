@@ -16,7 +16,7 @@ import {
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../../engine/analytics.js'
 import { roughTokenCountEstimation } from '../../engine/services/tokenEstimation.js'
 import type { Command, PromptCommand } from '../../engine/types/command.js'
 import {

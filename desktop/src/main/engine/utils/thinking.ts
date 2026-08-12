@@ -1,7 +1,7 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import type { Theme } from './theme.js'
 import { feature } from 'bun:bundle'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import { getCanonicalName } from '../../llm/model/model.js'
 import { get3PModelCapabilityOverride } from '../../llm/model/modelSupportOverrides.js'
 import { getAPIProvider } from '../../llm/model/providers.js'

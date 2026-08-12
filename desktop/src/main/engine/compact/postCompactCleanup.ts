@@ -6,7 +6,7 @@ import { clearSpeculativeChecks } from '../tools/BashTool/bashPermissions.js'
 import { clearClassifierApprovals } from '../utils/classifierApprovals.js'
 import { resetGetMemoryFilesCache } from '../utils/claudemd.js'
 import { clearSessionMessagesCache } from '../utils/sessionStorage.js'
-import { clearBetaTracingState } from '@anthropic/analytics/telemetry/betaSessionTracing.js'
+import { clearBetaTracingState } from '../tracing.js'
 import { resetMicrocompactState } from './microCompact.js'
 
 /**

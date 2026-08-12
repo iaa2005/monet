@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { getOauthConfig } from '../../../constants/oauth.js'
 import { getOrganizationUUID } from '@anthropic/account/oauth/client.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../../gates.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
   getClaudeAIOAuthTokens,

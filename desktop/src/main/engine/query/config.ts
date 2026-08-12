@@ -1,5 +1,5 @@
 import { getSessionId } from '../state/state.js'
-import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../gates.js'
 import type { SessionId } from '../types/ids.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
 

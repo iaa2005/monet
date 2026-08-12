@@ -9,11 +9,11 @@
 
 import chalk from 'chalk'
 import type { QuerySource } from '../constants/querySource.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../analytics.js'
 import { queryHaiku } from '@anthropic/api/claude.js'
 import { startsWithApiErrorPrefix } from '@anthropic/api/errors.js'
 import { memoizeWithLRU } from '../utils/memoize.js'

@@ -1,11 +1,11 @@
 import { c as _c } from "react/compiler-runtime";
 import React from 'react';
 import { z } from 'zod/v4';
-import { FallbackToolUseErrorMessage } from '@anthropic/cli/components/FallbackToolUseErrorMessage.js';
-import { FallbackToolUseRejectedMessage } from '@anthropic/cli/components/FallbackToolUseRejectedMessage.js';
-import { MessageResponse } from '@anthropic/cli/components/MessageResponse.js';
-import { Box, Text } from '@anthropic/cli/ink.js';
-import { useShortcutDisplay } from '@anthropic/cli/keybindings/useShortcutDisplay.js';
+import { FallbackToolUseErrorMessage } from '../../stubs/cli/components/FallbackToolUseErrorMessage.js';
+import { FallbackToolUseRejectedMessage } from '../../stubs/cli/components/FallbackToolUseRejectedMessage.js';
+import { MessageResponse } from '../../stubs/cli/components/MessageResponse.js';
+import { Box, Text } from '../../stubs/cli/ink.js';
+import { useShortcutDisplay } from '../../stubs/cli/keybindings/useShortcutDisplay.js';
 import type { TaskType } from '../../Task.js';
 import type { Tool } from '../../Tool.js';
 import { buildTool, type ToolDef } from '../../Tool.js';

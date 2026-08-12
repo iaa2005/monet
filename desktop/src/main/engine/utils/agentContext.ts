@@ -22,7 +22,7 @@
  */
 
 import { AsyncLocalStorage } from 'async_hooks'
-import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '@anthropic/analytics/index.js'
+import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../analytics.js'
 import { isAgentSwarmsEnabled } from './agentSwarmsEnabled.js'
 
 /**

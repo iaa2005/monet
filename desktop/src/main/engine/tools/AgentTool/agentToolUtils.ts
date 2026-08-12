@@ -11,7 +11,7 @@ import { startAgentSummarization } from '../../services/AgentSummary/agentSummar
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../../analytics.js'
 import { clearDumpState } from '@anthropic/api/dumpPrompts.js'
 import type { AppState } from '../../state/AppState.jsx'
 import type {

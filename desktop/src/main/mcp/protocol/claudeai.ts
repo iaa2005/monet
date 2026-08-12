@@ -4,7 +4,7 @@ import { getOauthConfig } from '../../engine/constants/oauth.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../../engine/analytics.js'
 import { getClaudeAIOAuthTokens } from '@anthropic/account/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../engine/utils/config.js'
 import { logForDebugging } from '../../engine/utils/debug.js'

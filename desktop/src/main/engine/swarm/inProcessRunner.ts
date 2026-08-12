@@ -22,7 +22,7 @@ import {
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../analytics.js'
 import { getAutoCompactThreshold } from '../compact/autoCompact.js'
 import {
   buildPostCompactMessages,
@@ -96,7 +96,7 @@ import {
   readMailbox,
   writeToMailbox,
 } from '../utils/teammateMailbox.js'
-import { unregisterAgent as unregisterPerfettoAgent } from '@anthropic/analytics/telemetry/perfettoTracing.js'
+import { unregisterAgent as unregisterPerfettoAgent } from '../tracing.js'
 import { createContentReplacementState } from '../utils/toolResultStorage.js'
 import { TEAM_LEAD_NAME } from './constants.js'
 import {

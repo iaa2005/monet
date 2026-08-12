@@ -1,12 +1,12 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { useCallback, useEffect, useState } from 'react';
-import { type OptionWithDescription, Select } from '@anthropic/cli/components/CustomSelect/index.js';
-import { Pane } from '@anthropic/cli/components/design-system/Pane.js';
-import { Spinner } from '@anthropic/cli/components/Spinner.js';
+import { type OptionWithDescription, Select } from '../stubs/cli/components/CustomSelect/index.js';
+import { Pane } from '../stubs/cli/components/design-system/Pane.js';
+import { Spinner } from '../stubs/cli/components/Spinner.js';
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/react/useExitOnCtrlCDWithKeybindings.js';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- enter to proceed through setup steps
-import { Box, Text, useInput } from '@anthropic/cli/ink.js';
-import { useKeybinding } from '@anthropic/cli/keybindings/useKeybinding.js';
+import { Box, Text, useInput } from '../stubs/cli/ink.js';
+import { useKeybinding } from '../stubs/cli/keybindings/useKeybinding.js';
 import { detectPythonPackageManager, getPythonApiInstructions, installIt2, markIt2SetupComplete, type PythonPackageManager, setPreferTmuxOverIterm2, verifyIt2Setup } from './backends/it2Setup.js';
 type SetupStep = 'initial' | 'installing' | 'install-failed' | 'verify-api' | 'api-instructions' | 'verifying' | 'success' | 'failed';
 type Props = {

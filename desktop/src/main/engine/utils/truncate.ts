@@ -1,6 +1,6 @@
 // Width-aware truncation/wrapping — needs ink/stringWidth (not leaf-safe).
 
-import { stringWidth } from '@anthropic/cli/ink/stringWidth.js'
+import { stringWidth } from '../stubs/cli/ink/stringWidth.js'
 import { getGraphemeSegmenter } from './intl.js'
 
 /**

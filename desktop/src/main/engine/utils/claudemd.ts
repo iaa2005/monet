@@ -40,14 +40,14 @@ import {
   sep,
 } from 'path'
 import picomatch from 'picomatch'
-import { logEvent } from '@anthropic/analytics/index.js'
+import { logEvent } from '../analytics.js'
 import {
   getAdditionalDirectoriesForClaudeMd,
   getOriginalCwd,
 } from '../state/state.js'
 import { truncateEntrypointContent } from '../../memory/dir/memdir.js'
 import { getAutoMemEntrypoint, isAutoMemoryEnabled } from '../../memory/dir/paths.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import {
   getCurrentProjectConfig,
   getManagedClaudeRulesDir,

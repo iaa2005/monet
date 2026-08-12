@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle'
 import { isReplBridgeActive } from '../../state/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../gates.js'
 import type { Tool } from '../../Tool.js'
 import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
 

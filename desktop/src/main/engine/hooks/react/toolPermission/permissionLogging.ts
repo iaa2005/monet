@@ -5,13 +5,13 @@ import { feature } from 'bun:bundle'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
-import { sanitizeToolNameForAnalytics } from '@anthropic/analytics/metadata.js'
+} from '../../../analytics.js'
+import { sanitizeToolNameForAnalytics } from '../../../analytics.js'
 import { getCodeEditToolDecisionCounter } from '../../../state/state.js'
 import type { Tool as ToolType, ToolUseContext } from '../../../Tool.js'
 import { getLanguageName } from '../../../utils/cliHighlight.js'
 import { SandboxManager } from '../../../utils/sandbox/sandbox-adapter.js'
-import { logOTelEvent } from '@anthropic/analytics/telemetry/events.js'
+import { logOTelEvent } from '../../../tracing.js'
 import type {
   PermissionApprovalSource,
   PermissionRejectionSource,

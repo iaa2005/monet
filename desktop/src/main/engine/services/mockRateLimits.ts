@@ -5,7 +5,7 @@
 // The mock headers may not exactly match the API specification or real-world behavior.
 // Always validate against actual API responses before relying on this for production features.
 
-import type { SubscriptionType } from '@anthropic/account/oauth/types.js'
+import type { SubscriptionType } from '../stubs/account/oauth/types.js'
 import { setMockBillingAccessOverride } from '@anthropic/account/billing.js'
 import type { OverageDisabledReason } from '@anthropic/account/claudeAiLimits.js'
 

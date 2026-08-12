@@ -6,7 +6,7 @@ import {
   setProjectRoot,
 } from '../../state/state.js'
 import { clearSystemPromptSections } from '../../constants/systemPromptSections.js'
-import { logEvent } from '@anthropic/analytics/index.js'
+import { logEvent } from '../../analytics.js'
 import type { Tool } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { count } from '../../utils/array.js'

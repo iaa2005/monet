@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { z } from 'zod/v4'
 import { getOauthConfig } from '../../constants/oauth.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../gates.js'
 import { getOrganizationUUID } from '@anthropic/account/oauth/client.js'
 import { isPolicyAllowed } from '@anthropic/account/policy-limits/index.js'
 import type { ToolUseContext } from '../../Tool.js'

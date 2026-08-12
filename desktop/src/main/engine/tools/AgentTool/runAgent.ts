@@ -13,7 +13,7 @@ import type { QuerySource } from '../../constants/querySource.js'
 import { getSystemContext, getUserContext } from '../../context.js'
 import type { CanUseToolFn } from '../../hooks/react/useCanUseTool.jsx'
 import { query } from '../../query.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../gates.js'
 import { getDumpPromptsPath } from '@anthropic/api/dumpPrompts.js'
 import { cleanupAgentTracking } from '@anthropic/api/promptCacheBreakDetection.js'
 import {
@@ -76,7 +76,7 @@ import {
   isPerfettoTracingEnabled,
   registerAgent as registerPerfettoAgent,
   unregisterAgent as unregisterPerfettoAgent,
-} from '@anthropic/analytics/telemetry/perfettoTracing.js'
+} from '../../tracing.js'
 import type { ContentReplacementState } from '../../utils/toolResultStorage.js'
 import { createAgentId } from '../../utils/uuid.js'
 import { resolveAgentTools } from './agentToolUtils.js'

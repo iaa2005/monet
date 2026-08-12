@@ -1,4 +1,4 @@
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../engine/gates.js'
 import type { EffortLevel } from '../../engine/utils/effort.js'
 
 export type AntModel = {

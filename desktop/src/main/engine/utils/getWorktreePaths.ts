@@ -1,5 +1,5 @@
 import { sep } from 'path'
-import { logEvent } from '@anthropic/analytics/index.js'
+import { logEvent } from '../analytics.js'
 import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
 import { gitExe } from './git.js'
 

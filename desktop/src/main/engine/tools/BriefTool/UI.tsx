@@ -1,9 +1,9 @@
 import { c as _c } from "react/compiler-runtime";
 import figures from 'figures';
 import React from 'react';
-import { Markdown } from '@anthropic/cli/components/Markdown.js';
+import { Markdown } from '../../stubs/cli/components/Markdown.js';
 import { BLACK_CIRCLE } from '../../constants/figures.js';
-import { Box, Text } from '@anthropic/cli/ink.js';
+import { Box, Text } from '../../stubs/cli/ink.js';
 import type { ProgressMessage } from '../../types/message.js';
 import { getDisplayPath } from '../../utils/file.js';
 import { formatFileSize } from '../../utils/format.js';

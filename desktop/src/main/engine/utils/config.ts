@@ -6,12 +6,12 @@ import pickBy from 'lodash-es/pickBy.js'
 import { basename, dirname, join, resolve } from 'path'
 import { getOriginalCwd, getSessionTrustAccepted } from '../state/state.js'
 import { getAutoMemEntrypoint } from '../../memory/dir/paths.js'
-import { logEvent } from '@anthropic/analytics/index.js'
+import { logEvent } from '../analytics.js'
 import type { McpServerConfig } from '../../mcp/protocol/types.js'
 import type {
   BillingType,
   ReferralEligibilityResponse,
-} from '@anthropic/account/oauth/types.js'
+} from '../stubs/account/oauth/types.js'
 import { getCwd } from './cwd.js'
 import { registerCleanup } from './cleanupRegistry.js'
 import { logForDebugging } from './debug.js'

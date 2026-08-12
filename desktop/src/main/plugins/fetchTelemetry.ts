@@ -15,7 +15,7 @@
 import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS as SafeString,
-} from '@anthropic/analytics/index.js'
+} from '../engine/analytics.js'
 import { OFFICIAL_MARKETPLACE_NAME } from './officialMarketplace.js'
 
 export type PluginFetchSource =

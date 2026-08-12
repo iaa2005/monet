@@ -8,7 +8,7 @@ import { CLAUDE_AI_PROFILE_SCOPE } from '@main/engine/constants/oauth.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../analytics/index.js'
+} from '@main/engine/analytics.js'
 import { getModelStrings } from '@main/llm/model/modelStrings.js'
 import { getAPIProvider } from '@main/llm/model/providers.js'
 import {
@@ -25,7 +25,7 @@ import {
   shouldUseClaudeAIAuth,
 } from './oauth/client.js'
 import { getOauthProfileFromOauthToken } from './oauth/getOauthProfile.js'
-import type { OAuthTokens, SubscriptionType } from './oauth/types.js'
+import type { OAuthTokens, SubscriptionType } from '@main/engine/stubs/account/oauth/types.js'
 import {
   getApiKeyFromFileDescriptor,
   getOAuthTokenFromFileDescriptor,

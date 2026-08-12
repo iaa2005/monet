@@ -9,12 +9,12 @@ const teamMemPaths = feature('TEAMMEM')
   : null
 
 import { getKairosActive, getOriginalCwd } from '../../engine/state/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../engine/gates.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../../engine/analytics.js'
 import { GREP_TOOL_NAME } from '../../engine/tools/GrepTool/prompt.js'
 import { isReplModeEnabled } from '../../engine/tools/REPLTool/constants.js'
 import { logForDebugging } from '../../engine/utils/debug.js'

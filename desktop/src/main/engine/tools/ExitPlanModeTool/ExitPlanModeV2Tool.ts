@@ -8,8 +8,8 @@ import {
   setNeedsAutoModeExitAttachment,
   setNeedsPlanModeExitAttachment,
 } from '../../state/state.js'
-import { logEvent } from '@anthropic/analytics/index.js'
-import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '@anthropic/analytics/metadata.js'
+import { logEvent } from '../../analytics.js'
+import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../analytics.js'
 import {
   buildTool,
   type Tool,

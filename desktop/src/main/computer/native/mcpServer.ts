@@ -6,9 +6,6 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { homedir } from 'os'
 
-import { shutdownDatadog } from '@anthropic/analytics/datadog.js'
-import { shutdown1PEventLogging } from '@anthropic/analytics/firstPartyEventLogger.js'
-import { initializeAnalyticsSink } from '@anthropic/analytics/sink.js'
 import { enableConfigs } from '../../engine/utils/config.js'
 import { logForDebugging } from '../../engine/utils/debug.js'
 import { filterAppsForDescription } from './appNames.js'
@@ -79,12 +76,15 @@ export async function createComputerUseMcpServerForCli(): Promise<
 
 /**
  * Subprocess entrypoint for `--computer-use-mcp`. Mirror of
- * `runClaudeInChromeMcpServer` — stdio transport, exit on stdin close,
- * flush analytics before exit.
+ * `runClaudeInChromeMcpServer` — stdio transport, exit on stdin close.
+ *
+ * This was the only place in the app that attached an analytics sink, and the
+ * only reason the sink existed at all: without it every logEvent call queued
+ * forever. The sink is gone, so is the flush that used to hold exit open
+ * waiting for POSTs to Anthropic.
  */
 export async function runComputerUseMcpServer(): Promise<void> {
   enableConfigs()
-  initializeAnalyticsSink()
 
   const server = await createComputerUseMcpServerForCli()
   const transport = new StdioServerTransport()
@@ -93,7 +93,6 @@ export async function runComputerUseMcpServer(): Promise<void> {
   const shutdownAndExit = async (): Promise<void> => {
     if (exiting) return
     exiting = true
-    await Promise.all([shutdown1PEventLogging(), shutdownDatadog()])
     // eslint-disable-next-line custom-rules/no-process-exit
     process.exit(0)
   }

@@ -3,7 +3,7 @@ import memoize from 'lodash-es/memoize.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
   getFeatureValue_CACHED_MAY_BE_STALE,
-} from '@anthropic/analytics/growthbook.js'
+} from '../gates.js'
 import { getIsNonInteractiveSession, getSdkBetas } from '../state/state.js'
 import {
   BEDROCK_EXTRA_PARAMS_HEADERS,

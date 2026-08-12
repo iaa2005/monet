@@ -9,7 +9,7 @@ import type { AssistantMessage, AttachmentMessage, Message, NormalizedUserMessag
 import { addInvokedSkill, getSessionId } from '../../state/state.js';
 import { COMMAND_MESSAGE_TAG, COMMAND_NAME_TAG } from '../../constants/xml.js';
 import type { CanUseToolFn } from '../../hooks/react/useCanUseTool.jsx';
-import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED, logEvent } from '@anthropic/analytics/index.js';
+import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED, logEvent } from '../../analytics.js';
 import { getDumpPromptsPath } from '@anthropic/api/dumpPrompts.js';
 import { buildPostCompactMessages } from '../../compact/compact.js';
 import { resetMicrocompactState } from '../../compact/microCompact.js';
@@ -40,8 +40,8 @@ import { isRestrictedToPluginOnly, isSourceAdminTrusted } from '../../../setting
 import { parseSlashCommand } from '../slashCommandParsing.js';
 import { sleep } from '../sleep.js';
 import { recordSkillUsage } from '../suggestions/skillUsageTracking.js';
-import { logOTelEvent, redactIfDisabled } from '@anthropic/analytics/telemetry/events.js';
-import { buildPluginCommandTelemetryFields } from '@anthropic/analytics/telemetry/pluginTelemetry.js';
+import { logOTelEvent, redactIfDisabled } from '../../tracing.js';
+import { buildPluginCommandTelemetryFields } from '../../tracing.js';
 import { getAssistantMessageContentLength } from '../tokens.js';
 import { createAgentId } from '../uuid.js';
 import { getWorkload } from '../workloadContext.js';

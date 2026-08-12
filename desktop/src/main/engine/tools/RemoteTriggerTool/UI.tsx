@@ -1,6 +1,6 @@
 import React from 'react';
-import { MessageResponse } from '@anthropic/cli/components/MessageResponse.js';
-import { Text } from '@anthropic/cli/ink.js';
+import { MessageResponse } from '../../stubs/cli/components/MessageResponse.js';
+import { Text } from '../../stubs/cli/ink.js';
 import { countCharInString } from '../../utils/stringUtils.js';
 import type { Input, Output } from './RemoteTriggerTool.js';
 export function renderToolUseMessage(input: Partial<Input>): React.ReactNode {

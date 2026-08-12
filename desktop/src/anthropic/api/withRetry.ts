@@ -35,11 +35,11 @@ import { isNonCustomOpusModel } from '@main/llm/model/model.js'
 import { disableKeepAlive } from '@main/engine/utils/proxy.js'
 import { sleep } from '@main/engine/utils/sleep.js'
 import type { ThinkingConfig } from '@main/engine/utils/thinking.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '@main/engine/gates.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../analytics/index.js'
+} from '@main/engine/analytics.js'
 import {
   checkMockRateLimitError,
   isMockRateLimitError,

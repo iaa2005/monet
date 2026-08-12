@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import { logEvent } from '@anthropic/analytics/index.js'
+import { logEvent } from '../../analytics.js'
 import { logForDebugging } from '../../utils/debug.js'
 import {
   ensureParserInitialized,

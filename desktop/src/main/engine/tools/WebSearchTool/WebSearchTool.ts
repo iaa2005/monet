@@ -5,7 +5,7 @@ import type {
 import { getAPIProvider } from '../../../llm/model/providers.js'
 import type { PermissionResult } from '../../permissions/PermissionResult.js'
 import { z } from 'zod/v4'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../gates.js'
 import { queryModelWithStreaming } from '@anthropic/api/claude.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { lazySchema } from '../../utils/lazySchema.js'

@@ -10,9 +10,9 @@ import {
   getSessionId,
   setLastClassifierRequests,
 } from '../state/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
-import { logEvent } from '@anthropic/analytics/index.js'
-import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '@anthropic/analytics/metadata.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
+import { logEvent } from '../analytics.js'
+import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../analytics.js'
 import { getCacheControl } from '@anthropic/api/claude.js'
 import { parsePromptTooLongTokenCounts } from '@anthropic/api/errors.js'
 import { getDefaultMaxRetries } from '@anthropic/api/withRetry.js'

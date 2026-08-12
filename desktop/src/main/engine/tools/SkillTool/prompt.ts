@@ -6,11 +6,11 @@ import {
   getSlashCommandToolSkills,
 } from '../../../agent/commands.js'
 import { COMMAND_NAME_TAG } from '../../constants/xml.js'
-import { stringWidth } from '@anthropic/cli/ink/stringWidth.js'
+import { stringWidth } from '../../stubs/cli/ink/stringWidth.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../../analytics.js'
 import { count } from '../../utils/array.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { toError } from '../../utils/errors.js'

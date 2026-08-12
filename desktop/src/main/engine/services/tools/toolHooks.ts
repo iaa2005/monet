@@ -1,8 +1,8 @@
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
-import { sanitizeToolNameForAnalytics } from '@anthropic/analytics/metadata.js'
+} from '../../analytics.js'
+import { sanitizeToolNameForAnalytics } from '../../analytics.js'
 import type z from 'zod/v4'
 import type { CanUseToolFn } from '../../hooks/react/useCanUseTool.jsx'
 import type { AnyObject, Tool, ToolUseContext } from '../../Tool.js'

@@ -32,7 +32,7 @@ import {
   isOfficialMarketplaceName,
   parsePluginIdentifier,
 } from '../../../plugins/pluginIdentifier.js'
-import { buildPluginCommandTelemetryFields } from '@anthropic/analytics/telemetry/pluginTelemetry.js'
+import { buildPluginCommandTelemetryFields } from '../../tracing.js'
 import { z } from 'zod/v4'
 import {
   addInvokedSkill,
@@ -45,7 +45,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../../analytics.js'
 import { getAgentContext } from '../../utils/agentContext.js'
 import { errorMessage } from '../../utils/errors.js'
 import {

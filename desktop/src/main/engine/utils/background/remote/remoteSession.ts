@@ -1,5 +1,5 @@
 import type { SDKMessage } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
-import { checkGate_CACHED_OR_BLOCKING } from '@anthropic/analytics/growthbook.js'
+import { checkGate_CACHED_OR_BLOCKING } from '../../../gates.js'
 import { isPolicyAllowed } from '@anthropic/account/policy-limits/index.js'
 import { detectCurrentRepositoryWithHost } from '../../detectRepository.js'
 import { isEnvTruthy } from '../../envUtils.js'

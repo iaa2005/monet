@@ -1,6 +1,6 @@
 import chalk from 'chalk'
-import { ctrlOToExpand } from '@anthropic/cli/components/CtrlOToExpand.js'
-import { stringWidth } from '@anthropic/cli/ink/stringWidth.js'
+import { ctrlOToExpand } from '../stubs/cli/components/CtrlOToExpand.js'
+import { stringWidth } from '../stubs/cli/ink/stringWidth.js'
 import sliceAnsi from './sliceAnsi.js'
 
 // Text rendering utilities for terminal display

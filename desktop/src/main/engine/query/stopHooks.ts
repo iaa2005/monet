@@ -1,10 +1,10 @@
 import { feature } from 'bun:bundle'
-import { getShortcutDisplay } from '@anthropic/cli/keybindings/shortcutFormat.js'
+import { getShortcutDisplay } from '../stubs/cli/keybindings/shortcutFormat.js'
 import { isExtractModeActive } from '../../memory/dir/paths.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../analytics.js'
 import type { ToolUseContext } from '../Tool.js'
 import type { HookProgress } from '../types/hooks.js'
 import type {

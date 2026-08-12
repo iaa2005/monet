@@ -10,31 +10,29 @@ import {
   getSessionId,
   isSessionPersistenceDisabled,
 } from '../state/state.js'
-import instances from '@anthropic/cli/ink/instances.js'
+import instances from '../stubs/cli/ink/instances.js'
 import {
   DISABLE_KITTY_KEYBOARD,
   DISABLE_MODIFY_OTHER_KEYS,
-} from '@anthropic/cli/ink/termio/csi.js'
+} from '../stubs/cli/ink/termio/csi.js'
 import {
   DBP,
   DFE,
   DISABLE_MOUSE_TRACKING,
   EXIT_ALT_SCREEN,
   SHOW_CURSOR,
-} from '@anthropic/cli/ink/termio/dec.js'
+} from '../stubs/cli/ink/termio/dec.js'
 import {
   CLEAR_ITERM2_PROGRESS,
   CLEAR_TAB_STATUS,
   CLEAR_TERMINAL_TITLE,
   supportsTabStatus,
   wrapForMultiplexer,
-} from '@anthropic/cli/ink/termio/osc.js'
-import { shutdownDatadog } from '@anthropic/analytics/datadog.js'
-import { shutdown1PEventLogging } from '@anthropic/analytics/firstPartyEventLogger.js'
+} from '../stubs/cli/ink/termio/osc.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../analytics.js'
 import type { AppState } from '../state/AppState.jsx'
 import { runCleanupFunctions } from './cleanupRegistry.js'
 import { logForDebugging } from './debug.js'
@@ -498,17 +496,10 @@ export async function gracefulShutdown(
     })
   }
 
-  // Flush analytics — capped at 500ms. Previously unbounded: the 1P exporter
-  // awaits all pending axios POSTs (10s each), eating the full failsafe budget.
-  // Lost analytics on slow networks are acceptable; a hanging exit is not.
-  try {
-    await Promise.race([
-      Promise.all([shutdown1PEventLogging(), shutdownDatadog()]),
-      sleep(500),
-    ])
-  } catch {
-    // Ignore analytics shutdown errors
-  }
+  // A flush of pending analytics used to happen here, capped at 500ms because
+  // the first-party exporter would otherwise await every in-flight POST and
+  // eat the whole failsafe budget. There is nothing in flight: this app sends
+  // no analytics, so exit is 500ms cheaper in the worst case.
 
   if (options?.finalMessage) {
     try {

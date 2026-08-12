@@ -10,7 +10,7 @@
  * from non-React code in the in-process runner.
  */
 
-import type { ToolUseConfirm } from '@anthropic/cli/components/permissions/PermissionRequest.js'
+import type { ToolUseConfirm } from '../stubs/cli/components/permissions/PermissionRequest.js'
 import type { ToolPermissionContext } from '../Tool.js'
 
 export type SetToolUseConfirmQueueFn = (

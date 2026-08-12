@@ -31,7 +31,7 @@ import type { ModelUsage } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from './analytics.js'
 import { getAdvisorUsage } from './utils/advisor.js'
 import {
   getCurrentProjectConfig,

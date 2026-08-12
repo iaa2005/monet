@@ -3,7 +3,7 @@ import type {
   ImageBlockParam,
   TextBlockParam,
 } from '@anthropic-ai/sdk/resources/index.mjs'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import {
   countMessagesTokensWithAPI,
   roughTokenCountEstimation,

@@ -1,6 +1,6 @@
 import { dirname, isAbsolute, sep } from 'path'
-import { logEvent } from '@anthropic/analytics/index.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { logEvent } from '../../analytics.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../gates.js'
 import { diagnosticTracker } from '../../services/diagnosticTracking.js'
 import { clearDeliveredDiagnosticsForFile } from '../../../lsp/LSPDiagnosticRegistry.js'
 import { getLspServerManager } from '../../../lsp/manager.js'

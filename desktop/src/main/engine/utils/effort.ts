@@ -2,7 +2,7 @@
 import { isUltrathinkEnabled } from './thinking.js'
 import { getInitialSettings } from '../../settings/settings.js'
 import { isProSubscriber, isMaxSubscriber, isTeamSubscriber } from '@anthropic/account/auth.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import { getAPIProvider } from '../../llm/model/providers.js'
 import { get3PModelCapabilityOverride } from '../../llm/model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'

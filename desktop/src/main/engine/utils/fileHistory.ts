@@ -16,7 +16,7 @@ import {
   getOriginalCwd,
   getSessionId,
 } from '../state/state.js'
-import { logEvent } from '@anthropic/analytics/index.js'
+import { logEvent } from '../analytics.js'
 import { notifyVscodeFileUpdated } from '../../mcp/protocol/vscodeSdkMcp.js'
 import type { LogOption } from '../types/logs.js'
 import { inspect } from 'util'

@@ -70,12 +70,12 @@ import {
   getTotalInputTokens,
   getTotalOutputTokens,
 } from '../state/state.js'
-import { getFeatureValue_CACHED_WITH_REFRESH } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_WITH_REFRESH } from '../gates.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
-import { sanitizeToolNameForAnalytics } from '@anthropic/analytics/metadata.js'
+} from '../analytics.js'
+import { sanitizeToolNameForAnalytics } from '../analytics.js'
 import {
   clearClassifierChecking,
   setClassifierChecking,

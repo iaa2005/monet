@@ -1,4 +1,4 @@
-import { logEvent } from '@anthropic/analytics/index.js'
+import { logEvent } from '../../analytics.js'
 import { extractHeredocs } from '../../shell/bash/heredoc.js'
 import { ParsedCommand } from '../../shell/bash/ParsedCommand.js'
 import {

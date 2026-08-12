@@ -12,7 +12,7 @@ import { logForDiagnosticsNoPII } from '@main/engine/utils/diagLogs.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../analytics/index.js'
+} from '@main/engine/analytics.js'
 import { registerCleanup } from '@main/engine/utils/cleanupRegistry.js'
 import {
   handleIngressMessage,
@@ -51,7 +51,7 @@ import type { PermissionMode } from '@main/engine/permissions/PermissionMode.js'
 import type {
   SDKControlRequest,
   SDKControlResponse,
-} from '../cli/entrypoints/sdk/controlTypes.js'
+} from '@main/engine/stubs/cli/entrypoints/sdk/controlTypes.js'
 import { createCapacityWake, type CapacitySignal } from './capacityWake.js'
 import { FlushGate } from './flushGate.js'
 import {

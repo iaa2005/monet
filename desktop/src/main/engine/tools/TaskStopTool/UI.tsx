@@ -1,7 +1,7 @@
 import React from 'react';
-import { MessageResponse } from '@anthropic/cli/components/MessageResponse.js';
-import { stringWidth } from '@anthropic/cli/ink/stringWidth.js';
-import { Text } from '@anthropic/cli/ink.js';
+import { MessageResponse } from '../../stubs/cli/components/MessageResponse.js';
+import { stringWidth } from '../../stubs/cli/ink/stringWidth.js';
+import { Text } from '../../stubs/cli/ink.js';
 import { truncateToWidthNoEllipsis } from '../../utils/format.js';
 import type { Output } from './TaskStopTool.js';
 export function renderToolUseMessage(): React.ReactNode {

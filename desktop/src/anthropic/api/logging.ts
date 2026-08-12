@@ -22,19 +22,19 @@ import { logError } from '@main/engine/utils/log.js'
 import { getAPIProviderForStatsig } from '@main/llm/model/providers.js'
 import type { PermissionMode } from '@main/engine/permissions/PermissionMode.js'
 import { jsonStringify } from '@main/engine/utils/slowOperations.js'
-import { logOTelEvent } from '../analytics/telemetry/events.js'
+import { logOTelEvent } from '@main/engine/tracing.js'
 import {
   endLLMRequestSpan,
   isBetaTracingEnabled,
   type Span,
-} from '../analytics/telemetry/sessionTracing.js'
-import type { NonNullableUsage } from '../cli/entrypoints/sdk/sdkUtilityTypes.js'
+} from '@main/engine/tracing.js'
+import type { NonNullableUsage } from '@main/engine/stubs/cli/entrypoints/sdk/sdkUtilityTypes.js'
 import { consumeInvokingRequestId } from '@main/engine/utils/agentContext.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../analytics/index.js'
-import { sanitizeToolNameForAnalytics } from '../analytics/metadata.js'
+} from '@main/engine/analytics.js'
+import { sanitizeToolNameForAnalytics } from '@main/engine/analytics.js'
 import { EMPTY_USAGE } from './emptyUsage.js'
 import { classifyAPIError } from './errors.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'

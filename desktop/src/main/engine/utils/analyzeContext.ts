@@ -8,7 +8,7 @@ import { microcompactMessages } from '../compact/microCompact.js'
 import { getSdkBetas } from '../state/state.js'
 import { getCommandName } from '../../agent/commands.js'
 import { getSystemContext } from '../context.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import {
   AUTOCOMPACT_BUFFER_TOKENS,
   getEffectiveContextWindowSize,

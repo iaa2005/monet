@@ -1,10 +1,10 @@
 import { c as _c } from "react/compiler-runtime";
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import React from 'react';
-import { CtrlOToExpand } from '@anthropic/cli/components/CtrlOToExpand.js';
-import { FallbackToolUseErrorMessage } from '@anthropic/cli/components/FallbackToolUseErrorMessage.js';
-import { MessageResponse } from '@anthropic/cli/components/MessageResponse.js';
-import { Box, Text } from '@anthropic/cli/ink.js';
+import { CtrlOToExpand } from '../../engine/stubs/cli/components/CtrlOToExpand.js';
+import { FallbackToolUseErrorMessage } from '../../engine/stubs/cli/components/FallbackToolUseErrorMessage.js';
+import { MessageResponse } from '../../engine/stubs/cli/components/MessageResponse.js';
+import { Box, Text } from '../../engine/stubs/cli/ink.js';
 import { getDisplayPath } from '../../engine/utils/file.js';
 import { extractTag } from '../../engine/utils/messages.js';
 import type { Input, Output } from './LSPTool.js';

@@ -1,4 +1,4 @@
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import { getRateLimitTier, getSubscriptionType } from '@anthropic/account/auth.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 

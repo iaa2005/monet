@@ -12,9 +12,9 @@ import {
   MAX_TOOL_RESULT_BYTES,
   MAX_TOOL_RESULTS_PER_MESSAGE_CHARS,
 } from '../constants/toolLimits.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
-import { logEvent } from '@anthropic/analytics/index.js'
-import { sanitizeToolNameForAnalytics } from '@anthropic/analytics/metadata.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
+import { logEvent } from '../analytics.js'
+import { sanitizeToolNameForAnalytics } from '../analytics.js'
 import type { Message } from '../types/message.js'
 import { logForDebugging } from './debug.js'
 import { getErrnoCode, toError } from './errors.js'

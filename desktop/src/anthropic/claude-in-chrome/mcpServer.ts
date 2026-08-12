@@ -6,14 +6,11 @@ import {
 } from '@ant/claude-for-chrome-mcp'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { format } from 'util'
-import { shutdownDatadog } from '../analytics/datadog.js'
-import { shutdown1PEventLogging } from '../analytics/firstPartyEventLogger.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '@main/engine/gates.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../analytics/index.js'
-import { initializeAnalyticsSink } from '../analytics/sink.js'
+} from '@main/engine/analytics.js'
 import { getClaudeAIOAuthTokens } from '../account/auth.js'
 import { enableConfigs, getGlobalConfig, saveGlobalConfig } from '@main/engine/utils/config.js'
 import { logForDebugging } from '@main/engine/utils/debug.js'
@@ -247,22 +244,18 @@ export function createChromeContext(
 
 export async function runClaudeInChromeMcpServer(): Promise<void> {
   enableConfigs()
-  initializeAnalyticsSink()
   const context = createChromeContext()
 
   const server = createClaudeForChromeMcpServer(context)
   const transport = new StdioServerTransport()
 
   // Exit when parent process dies (stdin pipe closes).
-  // Flush analytics before exiting so final-batch events (e.g. disconnect) aren't lost.
   let exiting = false
   const shutdownAndExit = async (): Promise<void> => {
     if (exiting) {
       return
     }
     exiting = true
-    await shutdown1PEventLogging()
-    await shutdownDatadog()
     // eslint-disable-next-line custom-rules/no-process-exit
     process.exit(0)
   }

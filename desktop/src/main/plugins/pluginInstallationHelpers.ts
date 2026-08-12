@@ -12,7 +12,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_PII_TAGGED,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../engine/analytics.js'
 import { getCwd } from '../engine/utils/cwd.js'
 import { toError } from '../engine/utils/errors.js'
 import { getFsImplementation } from '../engine/utils/fsOperations.js'
@@ -21,7 +21,7 @@ import {
   getSettingsForSource,
   updateSettingsForSource,
 } from '../settings/settings.js'
-import { buildPluginTelemetryFields } from '@anthropic/analytics/telemetry/pluginTelemetry.js'
+import { buildPluginTelemetryFields } from '../engine/tracing.js'
 import { clearAllCaches } from './cacheUtils.js'
 import {
   formatDependencyCountSuffix,

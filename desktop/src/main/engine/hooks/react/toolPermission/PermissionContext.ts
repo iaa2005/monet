@@ -3,9 +3,9 @@ import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
-import { sanitizeToolNameForAnalytics } from '@anthropic/analytics/metadata.js'
-import type { ToolUseConfirm } from '@anthropic/cli/components/permissions/PermissionRequest.js'
+} from '../../../analytics.js'
+import { sanitizeToolNameForAnalytics } from '../../../analytics.js'
+import type { ToolUseConfirm } from '../../../stubs/cli/components/permissions/PermissionRequest.js'
 import type {
   ToolPermissionContext,
   Tool as ToolType,

@@ -23,7 +23,14 @@ import { join, dirname, resolve, relative, posix } from "path";
 import { execFileSync } from "child_process";
 
 const ROOT = resolve(process.cwd());
-const VENDOR = join(ROOT, "src/vendor/leaked");
+// Which tree is being emptied. It was src/vendor/leaked; it is src/anthropic
+// now, and it will be something else next time — a hardcoded path is how a
+// tool like this silently stops doing anything.
+const rootArg = process.argv[process.argv.indexOf("--root") + 1];
+const VENDOR = join(
+  ROOT,
+  rootArg && !rootArg.startsWith("--") ? rootArg : "src/vendor/leaked",
+);
 
 // Roots that own an alias. Longest match wins, so src/vendor/leaked beats src.
 const ROOTS = [
@@ -77,7 +84,12 @@ if (!planPath || planPath.startsWith("--")) {
   console.error("usage: vendor-move.mjs --plan <file.mjs> [--apply]");
   process.exit(2);
 }
-const { PLAN } = await import("file://" + resolve(planPath));
+const plan = await import("file://" + resolve(planPath));
+const PLAN = plan.PLAN ?? [];
+// A plan may also name exact files. Prefix rules flatten a subtree onto one
+// destination directory, which is right for "utils/ -> engine/utils/" and
+// wrong for a scattered set that has to keep its shape.
+const FILES = plan.FILES ?? null;
 const APPLY = process.argv.includes("--apply");
 
 // Longest prefix wins, so "utils/permissions" can land elsewhere than "utils".
@@ -85,9 +97,15 @@ const rules = [...PLAN].sort((a, b) => b[0].length - a[0].length);
 const vendorFiles = walk(VENDOR);
 const rel = (f) => relative(VENDOR, f).replace(/\\/g, "/");
 
-/** Where a vendor file lands, or null if it stays. */
+/** Where a file lands, or null if it stays. */
 const destination = new Map();
+if (FILES) {
+  const list = typeof FILES === "function" ? FILES(vendorFiles.map(rel)) : FILES;
+  for (const [from, to] of list)
+    destination.set(join(VENDOR, from), join(ROOT, "src", to));
+}
 for (const f of vendorFiles) {
+  if (destination.has(f)) continue;
   const r = rel(f);
   const hit = rules.find(([prefix]) => r === prefix || r.startsWith(prefix + "/"));
   if (!hit) continue;

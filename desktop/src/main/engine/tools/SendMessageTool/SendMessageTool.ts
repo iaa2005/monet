@@ -756,7 +756,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
           }
           /* eslint-disable @typescript-eslint/no-require-imports */
           const { postInterClaudeMessage } =
-            require('@anthropic/bridge/peerSessions.js') as typeof import('@anthropic/bridge/peerSessions.js')
+            require('../../stubs/bridge/peerSessions.js') as typeof import('../../stubs/bridge/peerSessions.js')
           /* eslint-enable @typescript-eslint/no-require-imports */
           const result = await postInterClaudeMessage(
             addr.target,

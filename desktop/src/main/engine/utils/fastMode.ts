@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { getOauthConfig, OAUTH_BETA_HEADER } from '../constants/oauth.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import {
   getIsNonInteractiveSession,
   getKairosActive,
@@ -9,7 +9,7 @@ import {
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../analytics.js'
 import {
   getAnthropicApiKey,
   getClaudeAIOAuthTokens,

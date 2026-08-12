@@ -39,7 +39,7 @@ import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
   getDynamicConfig_BLOCKS_ON_INIT,
   getFeatureValue_CACHED_MAY_BE_STALE,
-} from '@anthropic/analytics/growthbook.js'
+} from '../gates.js'
 import {
   addDirHelpMessage,
   validateDirectoryForWorkspace,
@@ -47,7 +47,7 @@ import {
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../analytics.js'
 import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js'
 import { BASH_TOOL_NAME } from '../tools/BashTool/toolName.js'
 /* eslint-enable @typescript-eslint/no-require-imports */

@@ -13,7 +13,7 @@ import {
 } from '../tools/FileEditTool/constants.js'
 import type { z } from 'zod/v4'
 import { getOriginalCwd, getSessionId } from '../state/state.js'
-import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../gates.js'
 import type { AnyObject, Tool, ToolPermissionContext } from '../Tool.js'
 import { FILE_READ_TOOL_NAME } from '../tools/FileReadTool/prompt.js'
 import { getCwd } from '../utils/cwd.js'

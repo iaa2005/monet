@@ -12,8 +12,8 @@ import {
   resolve,
   sep,
 } from 'path'
-import { logEvent } from '@anthropic/analytics/index.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { logEvent } from '../analytics.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import { getCwd } from './cwd.js'
 import { logForDebugging } from './debug.js'
 import { isENOENT, isFsInaccessible } from './errors.js'

@@ -19,7 +19,7 @@
 import { bindSessionContext, type ComputerUseSessionContext, type CuCallToolResult, type CuPermissionRequest, type CuPermissionResponse, DEFAULT_GRANT_FLAGS, type ScreenshotDims } from '@ant/computer-use-mcp';
 import * as React from 'react';
 import { getSessionId } from '../../engine/state/state.js';
-import { ComputerUseApproval } from '@anthropic/cli/components/permissions/ComputerUseApproval/ComputerUseApproval.js';
+import { ComputerUseApproval } from '../../engine/stubs/cli/components/permissions/ComputerUseApproval/ComputerUseApproval.js';
 import type { Tool, ToolUseContext } from '../../engine/Tool.js';
 import { logForDebugging } from '../../engine/utils/debug.js';
 import { checkComputerUseLock, tryAcquireComputerUseLock } from './computerUseLock.js';

@@ -1,8 +1,8 @@
 import * as React from 'react';
 import type { z } from 'zod/v4';
-import { MessageResponse } from '@anthropic/cli/components/MessageResponse.js';
-import { OutputLine } from '@anthropic/cli/components/shell/OutputLine.js';
-import { Box, Text } from '@anthropic/cli/ink.js';
+import { MessageResponse } from '../../stubs/cli/components/MessageResponse.js';
+import { OutputLine } from '../../stubs/cli/components/shell/OutputLine.js';
+import { Box, Text } from '../../stubs/cli/ink.js';
 import type { ToolProgressData } from '../../Tool.js';
 import type { ProgressMessage } from '../../types/message.js';
 import { jsonStringify } from '../../utils/slowOperations.js';

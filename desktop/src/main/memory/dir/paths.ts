@@ -5,7 +5,7 @@ import {
   getIsNonInteractiveSession,
   getProjectRoot,
 } from '../../engine/state/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../engine/gates.js'
 import {
   getClaudeConfigHomeDir,
   isEnvDefinedFalsy,

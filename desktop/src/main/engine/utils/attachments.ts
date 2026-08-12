@@ -2,7 +2,7 @@
 import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-} from '@anthropic/analytics/index.js'
+} from '../analytics.js'
 import {
   toolMatchesName,
   type Tools,
@@ -216,7 +216,7 @@ import {
   getEffectiveContextWindowSize,
   isAutoCompactEnabled,
 } from '../compact/autoCompact.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import {
   hasInstructionsLoadedHook,
   executeInstructionsLoadedHooks,

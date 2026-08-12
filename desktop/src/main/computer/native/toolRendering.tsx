@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { MessageResponse } from '@anthropic/cli/components/MessageResponse.js';
-import { Text } from '@anthropic/cli/ink.js';
+import { MessageResponse } from '../../engine/stubs/cli/components/MessageResponse.js';
+import { Text } from '../../engine/stubs/cli/ink.js';
 import { truncateToWidth } from '../../engine/utils/format.js';
 import type { MCPToolResult } from '../../engine/utils/mcpValidation.js';
 type CuToolInput = Record<string, unknown> & {

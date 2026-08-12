@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Box, Text } from '@anthropic/cli/ink.js';
+import { Box, Text } from '../../stubs/cli/ink.js';
 import type { ToolProgressData } from '../../Tool.js';
 import type { ProgressMessage } from '../../types/message.js';
 import type { ThemeName } from '../../utils/theme.js';

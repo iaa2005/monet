@@ -6,15 +6,14 @@ import type {
 import { createHash } from 'crypto'
 import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from '../constants/prompts.js'
 import { getSystemContext, getUserContext } from '../context.js'
-import { isAnalyticsDisabled } from '@anthropic/analytics/config.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
   getFeatureValue_CACHED_MAY_BE_STALE,
-} from '@anthropic/analytics/growthbook.js'
+} from '../gates.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../analytics.js'
 import { prefetchAllMcpResources } from '../../mcp/protocol/client.js'
 import type { ScopedMcpServerConfig } from '../../mcp/protocol/types.js'
 import { BashTool } from '../tools/BashTool/BashTool.jsx'

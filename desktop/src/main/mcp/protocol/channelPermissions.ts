@@ -24,7 +24,7 @@
  */
 
 import { jsonStringify } from '../../engine/utils/slowOperations.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../engine/gates.js'
 
 /**
  * GrowthBook runtime gate — separate from the channels gate (tengu_harbor)

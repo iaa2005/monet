@@ -3,7 +3,7 @@ import { z } from 'zod/v4'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
+} from '../../analytics.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import {
   type GlobalConfig,

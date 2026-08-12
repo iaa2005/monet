@@ -1,5 +1,5 @@
 import { type StructuredPatchHunk, structuredPatch } from 'diff'
-import { logEvent } from '@anthropic/analytics/index.js'
+import { logEvent } from '../analytics.js'
 import { getLocCounter } from '../state/state.js'
 import { addToTotalLinesChanged } from '../cost-tracker.js'
 import type { FileEdit } from '../tools/FileEditTool/types.js'

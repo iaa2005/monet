@@ -11,22 +11,5 @@
   "google-auth-library": "src/main/shims/pkg-stubs/google-auth-library.ts",
   "audio-capture-napi": "src/main/shims/pkg-stubs/audio-capture-napi.ts",
   "image-processor-napi": "src/main/shims/pkg-stubs/image-processor-napi.ts",
-  "sharp": "src/main/shims/pkg-stubs/sharp.ts",
-  "@opentelemetry/api-logs": "src/main/shims/pkg-stubs/opentelemetry-api-logs.ts",
-  "@opentelemetry/core": "src/main/shims/pkg-stubs/opentelemetry-core.ts",
-  "@opentelemetry/resources": "src/main/shims/pkg-stubs/opentelemetry-resources.ts",
-  "@opentelemetry/semantic-conventions": "src/main/shims/pkg-stubs/opentelemetry-semantic-conventions.ts",
-  "@opentelemetry/sdk-logs": "src/main/shims/pkg-stubs/opentelemetry-sdk-logs.ts",
-  "@opentelemetry/sdk-metrics": "src/main/shims/pkg-stubs/opentelemetry-sdk-metrics.ts",
-  "@opentelemetry/sdk-trace-base": "src/main/shims/pkg-stubs/opentelemetry-sdk-trace-base.ts",
-  "@opentelemetry/exporter-logs-otlp-grpc": "src/main/shims/pkg-stubs/opentelemetry-exporter-logs-otlp-grpc.ts",
-  "@opentelemetry/exporter-logs-otlp-http": "src/main/shims/pkg-stubs/opentelemetry-exporter-logs-otlp-http.ts",
-  "@opentelemetry/exporter-logs-otlp-proto": "src/main/shims/pkg-stubs/opentelemetry-exporter-logs-otlp-proto.ts",
-  "@opentelemetry/exporter-metrics-otlp-grpc": "src/main/shims/pkg-stubs/opentelemetry-exporter-metrics-otlp-grpc.ts",
-  "@opentelemetry/exporter-metrics-otlp-http": "src/main/shims/pkg-stubs/opentelemetry-exporter-metrics-otlp-http.ts",
-  "@opentelemetry/exporter-metrics-otlp-proto": "src/main/shims/pkg-stubs/opentelemetry-exporter-metrics-otlp-proto.ts",
-  "@opentelemetry/exporter-prometheus": "src/main/shims/pkg-stubs/opentelemetry-exporter-prometheus.ts",
-  "@opentelemetry/exporter-trace-otlp-grpc": "src/main/shims/pkg-stubs/opentelemetry-exporter-trace-otlp-grpc.ts",
-  "@opentelemetry/exporter-trace-otlp-http": "src/main/shims/pkg-stubs/opentelemetry-exporter-trace-otlp-http.ts",
-  "@opentelemetry/exporter-trace-otlp-proto": "src/main/shims/pkg-stubs/opentelemetry-exporter-trace-otlp-proto.ts"
+  "sharp": "src/main/shims/pkg-stubs/sharp.ts"
 }

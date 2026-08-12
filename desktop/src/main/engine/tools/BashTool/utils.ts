@@ -5,7 +5,7 @@ import type {
 } from '@anthropic-ai/sdk/resources/index.mjs'
 import { readFile, stat } from 'fs/promises'
 import { getOriginalCwd } from '../../state/state.js'
-import { logEvent } from '@anthropic/analytics/index.js'
+import { logEvent } from '../../analytics.js'
 import type { ToolPermissionContext } from '../../Tool.js'
 import { getCwd } from '../../utils/cwd.js'
 import { pathInAllowedWorkingPath } from '../../permissions/filesystem.js'

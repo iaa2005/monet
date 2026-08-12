@@ -93,7 +93,7 @@ import {
   type SystemPrompt,
 } from '@main/engine/utils/systemPromptType.js'
 import { tokenCountFromLastAPIResponse } from '@main/engine/utils/tokens.js'
-import { getDynamicConfig_BLOCKS_ON_INIT } from '../analytics/growthbook.js'
+import { getDynamicConfig_BLOCKS_ON_INIT } from '@main/engine/gates.js'
 import {
   currentLimits,
   extractQuotaStatusFromError,
@@ -144,7 +144,7 @@ import {
 import type { QuerySource } from '@main/engine/constants/querySource.js'
 import type { Notification } from '@main/engine/context/notifications.jsx'
 import { addToTotalSessionCost } from '@main/engine/cost-tracker.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '@main/engine/gates.js'
 import type { AgentId } from '@main/engine/types/ids.js'
 import {
   ADVISOR_TOOL_INSTRUCTIONS,
@@ -213,12 +213,12 @@ import {
   isBetaTracingEnabled,
   type LLMRequestNewContext,
   startLLMRequestSpan,
-} from '../analytics/telemetry/sessionTracing.js'
+} from '@main/engine/tracing.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '../analytics/index.js'
+} from '@main/engine/analytics.js'
 import {
   consumePendingCacheEdits,
   getPinnedCacheEdits,

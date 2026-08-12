@@ -1,10 +1,10 @@
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import * as React from 'react';
 import { extractTag } from '../../utils/messages.js';
-import { FallbackToolUseErrorMessage } from '@anthropic/cli/components/FallbackToolUseErrorMessage.js';
-import { FilePathLink } from '@anthropic/cli/components/FilePathLink.js';
-import { MessageResponse } from '@anthropic/cli/components/MessageResponse.js';
-import { Text } from '@anthropic/cli/ink.js';
+import { FallbackToolUseErrorMessage } from '../../stubs/cli/components/FallbackToolUseErrorMessage.js';
+import { FilePathLink } from '../../stubs/cli/components/FilePathLink.js';
+import { MessageResponse } from '../../stubs/cli/components/MessageResponse.js';
+import { Text } from '../../stubs/cli/ink.js';
 import { FILE_NOT_FOUND_CWD_NOTE, getDisplayPath } from '../../utils/file.js';
 import { formatFileSize } from '../../utils/format.js';
 import { getPlansDirectory } from '../../utils/plans.js';

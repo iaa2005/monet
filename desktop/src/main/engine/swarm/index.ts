@@ -54,8 +54,8 @@ import {
 import { sleep } from '../utils/sleep.js'
 import { jsonStringify } from '../utils/slowOperations.js'
 import { getClaudeCodeUserAgent } from '../utils/userAgent.js'
-import { logEvent } from '@anthropic/analytics/index.js'
-import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '@anthropic/analytics/metadata.js'
+import { logEvent } from '../analytics.js'
+import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../analytics.js'
 import { getRetryDelay } from '@anthropic/api/withRetry.js'
 import { scanForSecrets } from './secretScanner.js'
 import {

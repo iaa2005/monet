@@ -18,8 +18,8 @@ import last from 'lodash-es/last.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
-} from '@anthropic/analytics/index.js'
-import { sanitizeToolNameForAnalytics } from '@anthropic/analytics/metadata.js'
+} from '../analytics.js'
+import { sanitizeToolNameForAnalytics } from '../analytics.js'
 import type { AgentId } from '../types/ids.js'
 import { companionIntroText } from '../buddy/prompt.js'
 import { NO_CONTENT_MESSAGE } from '../constants/messages.js'
@@ -28,7 +28,7 @@ import { isAutoMemoryEnabled } from '../../memory/dir/paths.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
   getFeatureValue_CACHED_MAY_BE_STALE,
-} from '@anthropic/analytics/growthbook.js'
+} from '../gates.js'
 import {
   getImageTooLargeErrorMessage,
   getPdfInvalidErrorMessage,
@@ -120,7 +120,7 @@ import { GLOB_TOOL_NAME } from '../tools/GlobTool/prompt.js'
 import { GREP_TOOL_NAME } from '../tools/GrepTool/prompt.js'
 import type { DeepImmutable } from '../types/utils.js'
 import { getStrictToolResultPairing } from '../state/state.js'
-import type { SpinnerMode } from '@anthropic/cli/components/Spinner.js'
+import type { SpinnerMode } from '../stubs/cli/components/Spinner.js'
 import {
   COMMAND_ARGS_TAG,
   COMMAND_MESSAGE_TAG,

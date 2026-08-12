@@ -1,6 +1,6 @@
 import React from 'react';
-import { MessageResponse } from '@anthropic/cli/components/MessageResponse.js';
-import { Text } from '@anthropic/cli/ink.js';
+import { MessageResponse } from '../../stubs/cli/components/MessageResponse.js';
+import { Text } from '../../stubs/cli/ink.js';
 import { truncate } from '../../utils/format.js';
 import type { CreateOutput } from './CronCreateTool.js';
 import type { DeleteOutput } from './CronDeleteTool.js';

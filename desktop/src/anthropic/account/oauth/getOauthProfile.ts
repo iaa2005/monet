@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { getOauthConfig, OAUTH_BETA_HEADER } from '@main/engine/constants/oauth.js'
-import type { OAuthProfileResponse } from './types.js'
+import type { OAuthProfileResponse } from '@main/engine/stubs/account/oauth/types.js'
 import { getAnthropicApiKey } from '../auth.js'
 import { getGlobalConfig } from '@main/engine/utils/config.js'
 import { logError } from '@main/engine/utils/log.js'

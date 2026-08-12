@@ -1,7 +1,7 @@
 import { z } from 'zod/v4'
 import { getSessionId, setOriginalCwd } from '../../state/state.js'
 import { clearSystemPromptSections } from '../../constants/systemPromptSections.js'
-import { logEvent } from '@anthropic/analytics/index.js'
+import { logEvent } from '../../analytics.js'
 import type { Tool } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { clearMemoryFileCaches } from '../../utils/claudemd.js'

@@ -1,5 +1,5 @@
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '@anthropic/analytics/growthbook.js'
-import { logEvent } from '@anthropic/analytics/index.js'
+import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
+import { logEvent } from '../analytics.js'
 import type {
   ConnectedMCPServer,
   MCPServerConnection,

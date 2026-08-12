@@ -54,14 +54,14 @@ import {
 import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-} from '@anthropic/analytics/index.js'
-import { logOTelEvent } from '@anthropic/analytics/telemetry/events.js'
+} from '../analytics.js'
+import { logOTelEvent } from '../tracing.js'
 import { ALLOWED_OFFICIAL_MARKETPLACE_NAMES } from '../../plugins/schemas.js'
 import {
   startHookSpan,
   endHookSpan,
   isBetaTracingEnabled,
-} from '@anthropic/analytics/telemetry/sessionTracing.js'
+} from '../tracing.js'
 import {
   hookJSONOutputSchema,
   promptRequestSchema,

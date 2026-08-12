@@ -1,4 +1,4 @@
-import { useKeybindings } from '@anthropic/cli/keybindings/useKeybinding.js'
+import { useKeybindings } from '../../stubs/cli/keybindings/useKeybinding.js'
 import { type ExitState, useExitOnCtrlCD } from './useExitOnCtrlCD.js'
 
 export type { ExitState }

@@ -5,7 +5,7 @@ import { errorMessage } from '../../engine/utils/errors.js'
 import { execFileNoThrowWithCwd } from '../../engine/utils/execFileNoThrow.js'
 import { logError, logMCPDebug, logMCPError } from '../../engine/utils/log.js'
 import { jsonParse } from '../../engine/utils/slowOperations.js'
-import { logEvent } from '@anthropic/analytics/index.js'
+import { logEvent } from '../../engine/analytics.js'
 import type {
   McpHTTPServerConfig,
   McpSSEServerConfig,
