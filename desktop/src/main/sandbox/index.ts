@@ -40,13 +40,14 @@ export function mediaTypeOf(name: string): string {
 export async function runInSandbox(
   sessionId: string,
   code: string,
+  opts: { timeoutMs?: number } = {},
 ): Promise<SandboxRunResult> {
   const engine = getSessionEngine(sessionId);
   const raw =
     engine === "subprocess"
       ? await runSubprocess(sessionId, "python", code)
       : engine === "docker"
-        ? await runPodman(sessionId, code)
+        ? await runPodman(sessionId, code, opts)
         : await runPyodide(sessionId, code); // pyodide default
 
   const files = raw.files.map((f) => ({
@@ -81,8 +82,9 @@ export async function runCommandInSandbox(
   sessionId: string,
   command: string,
   signal?: AbortSignal,
+  opts: { timeoutMs?: number } = {},
 ): Promise<SandboxRunResult> {
-  const raw = await runPodmanCommand(sessionId, command, signal);
+  const raw = await runPodmanCommand(sessionId, command, signal, opts);
   const files = raw.files.map((f) => ({
     name: f.name,
     path: saveArtifactBuffer(sessionId, f.name, f.bytes),

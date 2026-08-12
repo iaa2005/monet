@@ -13,6 +13,7 @@ import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import { runInSandbox } from "../sandbox/index.js";
+import { timeoutFromSeconds } from "../sandbox/types.js";
 import { artifactReference } from "../ipc/artifacts.js";
 import { getSandboxConfig, type SandboxEngine } from "../sandbox/config.js";
 import { tunablePrompt } from "../prompts/index.js";
@@ -119,6 +120,12 @@ const PROMPT_PODMAN = [
 const inputSchema = lazySchema(() =>
   z.strictObject({
     code: z.string().describe("The Python source to execute."),
+    timeout: z
+      .number()
+      .optional()
+      .describe(
+        "Seconds to allow before the run is killed (default 300, max 1200). Raise it for an install or a download; for anything slower use RunCommandBackground instead of holding the turn open.",
+      ),
   }),
 );
 type InputSchema = ReturnType<typeof inputSchema>;
@@ -172,11 +179,13 @@ export const RunPythonTool = buildTool({
   async description() {
     return "Run Python in the isolated Home sandbox; returns stdout/stderr and saves any files the script writes.";
   },
-  async call({ code }: z.infer<InputSchema>, context: ToolUseContext) {
+  async call({ code, timeout }: z.infer<InputSchema>, context: ToolUseContext) {
     const sessionId =
       (context as { sessionId?: string }).sessionId || "default";
     try {
-      const r = await runInSandbox(sessionId, code);
+      const r = await runInSandbox(sessionId, code, {
+        timeoutMs: timeoutFromSeconds(timeout),
+      });
       const parts: string[] = [];
       if (r.stdout.trim()) parts.push(r.stdout.trimEnd());
       if (r.stderr.trim()) parts.push(`[stderr]\n${r.stderr.trimEnd()}`);

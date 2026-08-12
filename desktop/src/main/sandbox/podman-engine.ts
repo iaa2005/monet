@@ -130,7 +130,17 @@ function run(
     }
     const timer = setTimeout(() => {
       if (!done) {
-        stderrChunks.push(Buffer.from(`\n[sandbox] killed after ${(opts.timeoutMs ?? SANDBOX_TIMEOUT_MS) / 1000}s`, "utf8"));
+        // Say what to do about it. "killed after 60s" alone sent a run off
+        // inventing workarounds for what was only a deadline.
+        stderrChunks.push(
+          Buffer.from(
+            `\n[sandbox] killed after ${(opts.timeoutMs ?? SANDBOX_TIMEOUT_MS) / 1000}s. ` +
+              `If it just needs longer, pass timeout (seconds) on this tool; ` +
+              `for anything really slow use RunCommandBackground, which does ` +
+              `not hold the turn open.`,
+            "utf8",
+          ),
+        );
         child.kill();
       }
     }, opts.timeoutMs ?? SANDBOX_TIMEOUT_MS);
@@ -950,6 +960,7 @@ export async function runPodmanCommand(
   sessionId: string,
   command: string,
   signal?: AbortSignal,
+  opts: { timeoutMs?: number } = {},
 ): Promise<EngineResult> {
   const image = await ensureImage();
   if (!image.ok) return { ok: false, stdout: "", stderr: "", files: [], error: image.error };
@@ -966,7 +977,7 @@ export async function runPodmanCommand(
     "-e", "PYTHONPATH=/work/.pip",
     "-e", "PATH=/work/.pip/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "-w", "/work", IMAGE_TAG, "sh", "-lc", command,
-  ], { timeoutMs: RUN_COMMAND_TIMEOUT_MS, signal });
+  ], { timeoutMs: opts.timeoutMs ?? RUN_COMMAND_TIMEOUT_MS, signal });
   // Surface any files the command wrote into /work, same as RunPython — so
   // e.g. `python3 -c "...save('out.png')"` shows up as an artifact.
   const after = snapshotFiles(dir);
@@ -991,6 +1002,7 @@ export async function runPodmanCommand(
 export async function runPodman(
   sessionId: string,
   code: string,
+  opts: { timeoutMs?: number } = {},
 ): Promise<EngineResult> {
   const image = await ensureImage();
   if (!image.ok) {
@@ -1025,7 +1037,9 @@ export async function runPodman(
     IMAGE_TAG,
     "python",
     scriptName,
-  ]);
+    // Was omitted, so this fell to the 60s default while RunCommand beside it
+    // used five minutes — the asymmetry that killed installs mid-run.
+  ], { timeoutMs: opts.timeoutMs });
   if (result.spawnError) {
     return {
       ok: false,

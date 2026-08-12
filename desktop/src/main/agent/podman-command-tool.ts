@@ -4,12 +4,19 @@ import { buildTool, type ToolUseContext } from "@vendor/Tool.js";
 import { lazySchema } from "@vendor/utils/lazySchema.js";
 import { getSessionEngine } from "../sandbox/config.js";
 import { runCommandInSandbox } from "../sandbox/index.js";
+import { timeoutFromSeconds } from "../sandbox/types.js";
 import { artifactReference } from "../ipc/artifacts.js";
 import { tunablePrompt } from "../prompts/index.js";
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
     command: z.string().describe("The shell command to run inside the Podman sandbox."),
+    timeout: z
+      .number()
+      .optional()
+      .describe(
+        "Seconds to allow before the command is killed (default 300, max 1200). Raise it for an install or a download; for anything slower use RunCommandBackground, which does not hold the turn open.",
+      ),
   }),
 );
 
@@ -47,7 +54,7 @@ export const RunCommandTool = buildTool({
   async description() {
     return "Run a command inside the isolated Podman sandbox.";
   },
-  async call({ command }: z.infer<InputSchema>, context: ToolUseContext) {
+  async call({ command, timeout }: z.infer<InputSchema>, context: ToolUseContext) {
     const sessionId = (context as { sessionId?: string }).sessionId || "default";
     if (getSessionEngine(sessionId) !== "docker") {
       return { data: { text: "RunCommand is available only with the Podman sandbox.", isError: true } };
@@ -56,6 +63,7 @@ export const RunCommandTool = buildTool({
       sessionId,
       command,
       (context as { abortController?: AbortController }).abortController?.signal,
+      { timeoutMs: timeoutFromSeconds(timeout) },
     );
     const parts: string[] = [];
     if (r.stdout.trim()) parts.push(r.stdout.trimEnd());
