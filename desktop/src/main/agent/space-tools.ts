@@ -12,10 +12,9 @@
  * file access is scoped to the CHAT's sandbox via the Sandbox* tools. */
 export const HOME_TOOL_NAMES = new Set([
   "RunPython",
+  // Long installs and builds run detached via its run_in_background flag;
+  // the turn keeps thinking and the finish is announced on its own.
   "RunCommand",
-  // Long installs and builds run detached; the turn keeps thinking.
-  "RunCommandBackground",
-  "BackgroundOutput",
   "SandboxList",
   "SandboxRead",
   "SandboxWrite",
@@ -63,7 +62,6 @@ export const HOME_TOOL_NAMES = new Set([
   // Memory is about the USER, not the filesystem — it belongs in both spaces.
   "Remember",
   // Waiting touches nothing, so it is safe in the isolated space too.
-  "Sleep",
   // Coordinating THIS chat's own background agents crosses no boundary.
   "SendMessage",
   "TeamList",
@@ -73,8 +71,6 @@ export const HOME_TOOL_NAMES = new Set([
 export const SANDBOX_ONLY_NAMES = new Set([
   "RunPython",
   "RunCommand",
-  "RunCommandBackground",
-  "BackgroundOutput",
   "SandboxList",
   "SandboxRead",
   "SandboxWrite",

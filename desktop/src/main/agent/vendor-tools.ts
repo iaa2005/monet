@@ -49,10 +49,6 @@ import { WebFetchTool, WebSearchTool } from "./web-tools.js";
 import { RunPythonTool } from "./sandbox-tool.js";
 import { RunCommandTool } from "./podman-command-tool.js";
 import {
-  RunCommandBackgroundTool,
-  BackgroundOutputTool,
-} from "./bg-command-tool.js";
-import {
   ListMcpResourcesTool,
   ReadMcpResourceTool,
 } from "./mcp-resource-tools.js";
@@ -80,7 +76,6 @@ import {
   ExitPlanModeTool,
   UpdatePlanTool,
 } from "./plan-tool.js";
-import { SleepTool } from "./sleep-tool.js";
 import { SendMessageTool, TeamListTool } from "./team-tools.js";
 import { NotebookEditTool } from "../engine/tools/NotebookEditTool/NotebookEditTool.js";
 import { effectiveMode } from "./session-mode.js";
@@ -274,8 +269,6 @@ const ALL_TOOLS = [
   WebSearchTool,
   RunPythonTool,
   RunCommandTool,
-  RunCommandBackgroundTool,
-  BackgroundOutputTool,
   ListMcpResourcesTool,
   ReadMcpResourceTool,
   SandboxListTool,
@@ -304,7 +297,6 @@ const ALL_TOOLS = [
   EnterPlanModeTool,
   ExitPlanModeTool,
   UpdatePlanTool,
-  SleepTool,
   SendMessageTool,
   TeamListTool,
   NotebookEditTool,

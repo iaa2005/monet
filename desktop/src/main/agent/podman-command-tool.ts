@@ -1,9 +1,22 @@
+/**
+ * RunCommand — the one way to run a shell command in the sandbox.
+ *
+ * It used to be three tools: RunCommand, RunCommandBackground and
+ * BackgroundOutput, plus Sleep to wait between polls. Four names for one
+ * verb, and the model spent turns choosing between them. Now it is a flag,
+ * the way every agent CLI worth copying does it: `run_in_background: true`
+ * returns immediately with a task id and the path its output is being
+ * written to, the completion is announced in the chat on its own, and the
+ * interim output is read with the same Read as any other file.
+ */
+
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
 import { getSessionEngine } from "../sandbox/config.js";
 import { runCommandInSandbox } from "../sandbox/index.js";
+import { startBgCommand } from "../sandbox/bg-tasks.js";
 import { timeoutFromSeconds } from "../sandbox/types.js";
 import { artifactReference } from "../ipc/artifacts.js";
 import { tunablePrompt } from "../prompts/index.js";
@@ -15,7 +28,13 @@ const inputSchema = lazySchema(() =>
       .number()
       .optional()
       .describe(
-        "Seconds to allow before the command is killed (default 300, max 1200). Raise it for an install or a download; for anything slower use RunCommandBackground, which does not hold the turn open.",
+        "Seconds to allow before the command is killed (default 300, max 1200). Ignored when run_in_background is set — a background command has no timeout.",
+      ),
+    run_in_background: z
+      .boolean()
+      .optional()
+      .describe(
+        "Return immediately instead of waiting. Use it for anything that takes minutes — installs, builds, downloads. You are told in the chat when it finishes; do not wait for it.",
       ),
   }),
 );
@@ -48,16 +67,40 @@ export const RunCommandTool = buildTool({
         "node/npm, tectonic (LaTeX), DejaVu/Liberation fonts. pip works; do NOT",
         "apt/conda-install system packages (texlive, imagemagick) — they are",
         "unavailable. Files written to /work are attached to the chat automatically.",
+        "\n\nFor anything that takes minutes — an install, a build, a download —",
+        "set run_in_background. It returns at once with a task id and the file",
+        "its output is being written to, and you are TOLD in this chat when it",
+        "finishes. Do not wait for it and do not poll it: get on with something",
+        "else, or end your turn. Read the output file only if you need to see",
+        "progress before it is done. For a server that never ends, use",
+        "ServeSandbox instead.",
       ].join(" "),
     );
   },
   async description() {
-    return "Run a command inside the isolated Podman sandbox.";
+    return "Run a command inside the isolated Podman sandbox, in the foreground or detached.";
   },
-  async call({ command, timeout }: z.infer<InputSchema>, context: ToolUseContext) {
+  async call(
+    { command, timeout, run_in_background }: z.infer<InputSchema>,
+    context: ToolUseContext,
+  ) {
     const sessionId = (context as { sessionId?: string }).sessionId || "default";
     if (getSessionEngine(sessionId) !== "docker") {
       return { data: { text: "RunCommand is available only with the Podman sandbox.", isError: true } };
+    }
+    if (run_in_background) {
+      const r = await startBgCommand(sessionId, command);
+      if (!r.ok || !r.taskId)
+        return { data: { text: r.error ?? "Failed to start.", isError: true } };
+      return {
+        data: {
+          text:
+            `Command running in background with ID: ${r.taskId}. Output is ` +
+            `being written to: ${r.outputPath}. You will be notified when it ` +
+            `completes. To check interim output, use SandboxRead on that file ` +
+            `path.`,
+        },
+      };
     }
     const r = await runCommandInSandbox(
       sessionId,

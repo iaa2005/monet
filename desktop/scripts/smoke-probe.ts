@@ -403,23 +403,22 @@ async function main() {
     clearSessionEngine(serveSid)
   }
 
-  // 4e. Newly wired tools: Sleep (written here — the bundle ships only its
-  // prompt constants) and NotebookEdit (a real vendor tool that was never
-  // registered).
+  // 4e. The shell surface is ONE tool, and waiting is not a tool at all.
+  //
+  // Sleep, RunCommandBackground and BackgroundOutput were four names for one
+  // verb, and the model burned turns choosing between them — Sleep 20, check,
+  // Sleep 30, check. A background command now returns at once and announces
+  // its own finish, so there is nothing left to wait for. These assertions
+  // are the guard against any of them creeping back.
   {
-    check('Sleep tool present', tools.some(t => t.name === 'Sleep'))
+    const gone = ['Sleep', 'RunCommandBackground', 'BackgroundOutput']
+    for (const name of gone)
+      check(`${name} is gone`, !tools.some(t => t.name === name))
+    check('RunCommand is the only way to run a command', tools.some(t => t.name === 'RunCommand'))
+    const runCommand = tools.find(t => t.name === 'RunCommand')
+    const shape = runCommand ? JSON.stringify(runCommand.inputSchema ?? {}) : ''
+    check('…and it takes run_in_background', /run_in_background/.test(shape))
     check('NotebookEdit tool present', tools.some(t => t.name === 'NotebookEdit'))
-
-    const t0 = Date.now()
-    const slept = await run('Sleep', { seconds: 0.2, reason: 'smoke' })
-    const elapsed = Date.now() - t0
-    check('Sleep waits and reports', !slept.isError && /Waited/.test(slept.content), `${elapsed}ms`)
-    check('Sleep actually blocked for the duration', elapsed >= 150, `${elapsed}ms`)
-
-    // An over-long request is clamped, not obeyed.
-    const clampT0 = Date.now()
-    const clamped = await run('Sleep', { seconds: 0 })
-    check('Sleep with 0s returns immediately', !clamped.isError && Date.now() - clampT0 < 1_000)
 
     // NotebookEdit on a real notebook.
     const nb = join(dir, 'smoke.ipynb')
