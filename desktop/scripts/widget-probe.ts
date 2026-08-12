@@ -8,6 +8,7 @@
  */
 
 import { renderWidget, isWidgetLang, WIDGET_NAMES } from '../src/renderer/widgets/index.js'
+import { decimalsFor, niceTicks } from '../src/renderer/widgets/Chart.js'
 
 let failures = 0
 function check(label: string, ok: boolean, detail?: string): void {
@@ -159,6 +160,43 @@ check(
     'with nothing written yet there is no snapshot, and it falls back to live',
     pick(versions, 'tsla.json', 500) === undefined,
   )
+}
+
+// The y-axis has to survive both ends of the market. A fixed two decimals
+// turned a currency pair into "1.08 1.09 1.09 1.09 1.09" — five gridlines and
+// two distinct labels, an axis saying nothing — and did the same to a penny
+// stock. Precision comes from the ticks now, so these are the check.
+{
+  const ranges: [string, number, number][] = [
+    ['stock', 297, 406],
+    ['currency pair', 1.0851, 1.0873],
+    ['bitcoin', 61200, 71800],
+    ['penny stock', 0.0412, 0.0519],
+    ['index', 6820, 6910],
+    ['a percentage', -3.2, 8.7],
+  ]
+  for (const [name, lo, hi] of ranges) {
+    const pad = (hi - lo) * 0.08
+    const ticks = niceTicks(lo - pad, hi + pad)
+    const d = decimalsFor(ticks)
+    const labels = ticks.map(t => t.toFixed(d))
+    check(
+      `${name}: every gridline has its own label`,
+      new Set(labels).size === labels.length,
+      labels.join(' '),
+    )
+    check(
+      `${name}: enough gridlines to read against`,
+      ticks.length >= 3,
+      `${ticks.length} lines`,
+    )
+    check(
+      `${name}: the axis covers the data`,
+      ticks[0]! <= hi && ticks[ticks.length - 1]! >= lo,
+    )
+  }
+  // A flat series has no range at all — one line, and nothing to divide by.
+  check('a flat line does not divide by zero', niceTicks(100, 100).length === 1)
 }
 
 console.log(failures === 0 ? '\nA CHART DRAWS, AND A BROKEN ONE STAYS VISIBLE' : `\n${failures} FAILURES`)

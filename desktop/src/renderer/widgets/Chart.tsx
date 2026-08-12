@@ -63,6 +63,9 @@ export interface ChartSpec {
   src?: string;
 }
 
+// left is a floor, not the value: the real left pad is computed from the
+// widest y-axis label, because "62000.00" does not fit in 46px and clipping
+// the axis of a bitcoin chart is not a rounding error.
 const PAD = { top: 8, right: 8, bottom: 22, left: 46 };
 const W = 720;
 const H = 260;
@@ -122,12 +125,25 @@ function axisLabel(s: string): string {
  *  to "26-07-27 10", which reads as a different date. */
 const chipWidth = (text: string): number => text.length * 5.7 + 12;
 
-/** Axis and readout prices keep their cents. fmt() rounds anything over 100 to
- *  a whole number, which on a $300 stock hides the entire day's move. */
-function price(n: number): string {
-  const a = Math.abs(n);
-  if (a >= 1e6) return fmt(n);
-  return n.toFixed(2);
+/**
+ * How many decimals this axis needs.
+ *
+ * Two was wrong in both directions. A currency pair between 1.0851 and 1.0873
+ * came out as "1.08 1.09 1.09 1.09 1.09" — five gridlines and two distinct
+ * labels, an axis that says nothing. A penny stock did the same. So: the
+ * fewest decimals that keep every tick distinct, which is a property of the
+ * numbers rather than a guess about the instrument.
+ */
+export function decimalsFor(ticks: number[]): number {
+  for (let d = 0; d <= 8; d++)
+    if (new Set(ticks.map((t) => t.toFixed(d))).size === ticks.length) return d;
+  return 8;
+}
+
+/** A price at a chosen precision. Big numbers keep every digit — 62000.00
+ *  reads as a level, 62K does not — and the axis widens for them instead. */
+function price(n: number, decimals = 2): string {
+  return n.toFixed(decimals);
 }
 
 /**
@@ -140,7 +156,7 @@ function price(n: number): string {
  */
 const Y_TICKS = 7;
 
-function niceTicks(min: number, max: number, count = Y_TICKS): number[] {
+export function niceTicks(min: number, max: number, count = Y_TICKS): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max) || min === max)
     return [min];
   const span = max - min;
@@ -233,15 +249,24 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
       </div>
     );
 
-  const plotW = W - PAD.left - PAD.right;
+  // Ticks first: their labels decide both the precision everything else
+  // prints at and how much room the axis needs.
+  const ticks = niceTicks(min, max);
+  const decimals = decimalsFor(ticks);
+  const tickText = (v: number): string => price(v, decimals);
+  const padLeft = Math.max(
+    PAD.left,
+    Math.max(...ticks.map((t) => tickText(t).length)) * 5.7 + 12,
+  );
+
+  const plotW = W - padLeft - PAD.right;
   const plotH = H - PAD.top - PAD.bottom;
   const x = (i: number): number =>
-    n === 1 ? PAD.left + plotW / 2 : PAD.left + (i / (n - 1)) * plotW;
+    n === 1 ? padLeft + plotW / 2 : padLeft + (i / (n - 1)) * plotW;
   const y = (v: number): number =>
     PAD.top + plotH - ((v - min) / (max - min)) * plotH;
 
   const labels = spec.labels ?? [];
-  const ticks = niceTicks(min, max);
   const type = spec.type ?? "line";
   // Spacing from the WIDTH of the compacted labels, not a fixed count: an
   // hourly chart's "07/13 09:30" needs twice the room a daily "07/13" does,
@@ -260,6 +285,9 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
   const change =
     candle && prevClose !== undefined ? candle.c - prevClose : undefined;
   const up = (change ?? 0) >= 0;
+  // At least cents, more when the axis needed more: a currency pair reads
+  // 1.0856, a stock 327.51, and neither should be shown as the other.
+  const readout = (v: number): string => price(v, Math.max(2, decimals));
 
   return (
     <figure className="my-3 overflow-hidden rounded-xl border border-border bg-card">
@@ -295,7 +323,7 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
                     className="text-xl font-semibold tabular-nums"
                     style={{ color: up ? "hsl(152 62% 40%)" : "hsl(0 68% 52%)" }}
                   >
-                    {price(candle.c)}
+                    {readout(candle.c)}
                   </span>
                   {change !== undefined && (
                     <span
@@ -303,7 +331,7 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
                       style={{ color: up ? "hsl(152 62% 40%)" : "hsl(0 68% 52%)" }}
                     >
                       {up ? "+" : ""}
-                      {price(change)}({up ? "+" : ""}
+                      {readout(change)}({up ? "+" : ""}
                       {((change / (prevClose || 1)) * 100).toFixed(2)}%)
                     </span>
                   )}
@@ -318,10 +346,10 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
               <div className="flex shrink-0 gap-4 text-right">
                 {(
                   [
-                    ["Open", price(candle.o)],
+                    ["Open", readout(candle.o)],
                     ["Close", price(candle.c)],
-                    ["High", price(candle.h)],
-                    ["Low", price(candle.l)],
+                    ["High", readout(candle.h)],
+                    ["Low", readout(candle.l)],
                     ...(spec.volume?.[at] !== undefined
                       ? ([["Volume", fmt(spec.volume[at]!)]] as [string, string][])
                       : []),
@@ -357,14 +385,14 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
         >
           <defs>
             <clipPath id={clip}>
-              <rect x={PAD.left} y={PAD.top} width={plotW} height={plotH} />
+              <rect x={padLeft} y={PAD.top} width={plotW} height={plotH} />
             </clipPath>
           </defs>
 
           {ticks.map((t) => (
             <g key={t}>
               <line
-                x1={PAD.left}
+                x1={padLeft}
                 x2={W - PAD.right}
                 y1={y(t)}
                 y2={y(t)}
@@ -374,13 +402,13 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
                 opacity={t === 0 ? 0.9 : 0.5}
               />
               <text
-                x={PAD.left - 6}
+                x={padLeft - 6}
                 y={y(t) + 3.5}
                 textAnchor="end"
                 className="fill-muted-foreground"
                 style={{ fontSize: 10 }}
               >
-                {fmt(t)}
+                {tickText(t)}
               </text>
             </g>
           ))}
@@ -474,7 +502,7 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
               the y position has to be read too, and a strip only knows its
               own column. */}
           <rect
-            x={PAD.left}
+            x={padLeft}
             y={PAD.top}
             width={plotW}
             height={plotH}
@@ -489,7 +517,7 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
               const i =
                 n === 1
                   ? 0
-                  : Math.round(((px - PAD.left) / plotW) * (n - 1));
+                  : Math.round(((px - padLeft) / plotW) * (n - 1));
               setCursor({
                 i: Math.min(n - 1, Math.max(0, i)),
                 price: min + ((PAD.top + plotH - py) / plotH) * (max - min),
@@ -509,7 +537,7 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
               // Clamped so a chip at either end stays inside the plot.
               const half = label ? chipWidth(label) / 2 : 0;
               const cx = Math.min(
-                Math.max(x(hover), PAD.left + half),
+                Math.max(x(hover), padLeft + half),
                 W - PAD.right - half,
               );
               return (
@@ -527,7 +555,7 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
                   {yv !== null && (
                     <>
                       <line
-                        x1={PAD.left}
+                        x1={padLeft}
                         x2={W - PAD.right}
                         y1={yv}
                         y2={yv}
@@ -539,19 +567,19 @@ export function Chart({ spec }: { spec: ChartSpec }): JSX.Element {
                       <rect
                         x={2}
                         y={yv - 8}
-                        width={PAD.left - 6}
+                        width={padLeft - 6}
                         height={16}
                         rx={3}
                         className="fill-foreground"
                       />
                       <text
-                        x={PAD.left - 8}
+                        x={padLeft - 8}
                         y={yv + 3.5}
                         textAnchor="end"
                         className="fill-background"
                         style={{ fontSize: 10 }}
                       >
-                        {price(v as number)}
+                        {tickText(v as number)}
                       </text>
                     </>
                   )}
