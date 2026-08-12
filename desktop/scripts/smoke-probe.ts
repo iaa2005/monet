@@ -445,7 +445,18 @@ async function main() {
       const text = buildDirectives(space, undefined).join("\n\n")
       check(
         `the chart instruction is sent in ${space ?? 'no'} space`,
-        /language is .?chart/.test(text) && text.includes('ohlc'),
+        /language is chart/.test(text) && text.includes('ohlc'),
+      )
+      // The fence itself must be IN the example. It was not, and the model
+      // wrote bare JSON into its answer — it reproduced the shape it was
+      // shown, which was the payload without its delimiters.
+      check(
+        `…showing the fence, twice (${space ?? 'none'})`,
+        (text.match(/```chart/g) ?? []).length >= 2,
+      )
+      check(
+        `…and src, so the data is not retyped (${space ?? 'none'})`,
+        text.includes('src'),
       )
     }
     // The mode directive is the only thing the meter's list may lack.
