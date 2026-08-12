@@ -23,13 +23,9 @@ import { WorkingIndicator } from "./WorkingIndicator";
 import { StatsDashboard } from "@/components/StatsDashboard";
 import { WorkspacePicker } from "@/components/WorkspacePicker";
 import {
-  Bug,
   Check,
   Copy,
-  FileSearch,
-  FlaskConical,
   GitFork,
-  GitPullRequest,
   History,
   Loader2,
   Eye,
@@ -41,7 +37,6 @@ import {
   CornerDownLeft,
   Brain,
   X as XIcon,
-  type LucideIcon,
 } from "lucide-react";
 import { ArtifactsStrip } from "@/components/ArtifactsPanel";
 import { stripIndexes } from "./artifact-strips";
@@ -78,34 +73,6 @@ type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
-
-/** Home-screen suggestion chips (coding-agent flavored). Clicking one prefills
- * the composer via the store's composerDraft. */
-const IDEAS: { icon: LucideIcon; label: string; prompt: string }[] = [
-  {
-    icon: FileSearch,
-    label: "Explain this codebase",
-    prompt:
-      "Give me a high-level overview of this codebase — its structure, the main modules, and how they fit together.",
-  },
-  {
-    icon: Bug,
-    label: "Find and fix a bug",
-    prompt:
-      "Look through the code for a likely bug, fix it, and explain what was wrong.",
-  },
-  {
-    icon: FlaskConical,
-    label: "Write tests",
-    prompt: "Pick an important module and write unit tests for it.",
-  },
-  {
-    icon: GitPullRequest,
-    label: "Review my recent changes",
-    prompt:
-      "Review my most recent changes (git diff) for correctness, bugs, and quality.",
-  },
-];
 
 function WorkingRow({
   messages,
@@ -1149,7 +1116,6 @@ export function ChatView({
   const queue = useChatStore((s) => s.queue);
   const pendingInjections = useChatStore((s) => s.pendingInjections);
   const dequeueMessage = useChatStore((s) => s.dequeueMessage);
-  const setComposerDraft = useChatStore((s) => s.setComposerDraft);
   const isEmpty = messages.length === 0 && !error;
 
   const isFirstRun = useMemo(() => {
@@ -1375,9 +1341,9 @@ export function ChatView({
         </div>
       )}
       {isEmpty && home ? (
-        /* Home empty state: greeting + composer centered VERTICALLY, with the
-           idea chips under the input. No working directory here — Home is a
-           plain chat (markdown/formulas/tables), not an IDE. */
+        /* Home empty state: greeting + composer, centered VERTICALLY. No
+           working directory here — Home is a plain chat (markdown/formulas/
+           tables), not an IDE. */
         <div className="flex flex-1 flex-col items-center justify-center overflow-auto px-4 py-8">
           <div className="w-full max-w-2xl text-center">
             <h2 className="font-display text-3xl font-medium text-foreground text-left">
@@ -1423,24 +1389,6 @@ export function ChatView({
               </div>
             </div>
           )}
-          <div className="w-full max-w-2xl mt-4.5">
-            <div className="mb-2 text-left text-xs font-medium text-muted-foreground">
-              Ideas for you
-            </div>
-            <div className="grid grid-cols-2 flex-col gap-1.5">
-              {IDEAS.map((idea) => (
-                <button
-                  key={idea.label}
-                  type="button"
-                  onClick={() => setComposerDraft(idea.prompt)}
-                  className="glass-panel glass-hover flex items-center gap-3 rounded-xl border border-border bg-card px-3.5 py-3 text-left text-sm transition-colors cursor-pointer"
-                >
-                  <idea.icon className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="font-medium">{idea.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       ) : isEmpty ? (
         <div className="flex-1 overflow-auto">
