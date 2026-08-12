@@ -56,10 +56,20 @@ typecheck, and it is edited when editing is the right answer. What it brought
 with it is recorded rather than hidden — `scripts/typecheck-debt.json` holds a
 per-file allowance of type errors that may only shrink.
 
-`src/anthropic` is the part that served the original product and nothing here —
-its event pipeline, account and billing, terminal front-end, IDE and remote
-bridges. Still reachable, so still built, but gathered in one place so the
-remaining edges into it can be found and cut.
+The part that served the original product and nothing here — its event
+pipeline, account and billing, API client, terminal front-end, IDE and remote
+bridges — was gathered under `src/anthropic` so the edges into it could be
+found, and then cut one at a time until there were none. It is deleted. The
+app sends no analytics or telemetry anywhere, and talks only to the provider
+you configure.
+
+Where the engine still asks a question that used to have an Anthropic answer —
+is an IDE attached, is this a Max subscriber, is that feature gated on — the
+answer now comes from `engine/integrations.ts`, `engine/account.ts` and
+`engine/gates.ts`. The questions were left in place on purpose: where the
+engine asks is information, and those are the seams our own versions would
+fill. `MONET_TRACE_EVENTS=1` turns the engine's instrumentation into a local
+commentary on the turn; `MONET_GATES='{"some_gate":true}'` flips one.
 
 ## The agent loop
 
