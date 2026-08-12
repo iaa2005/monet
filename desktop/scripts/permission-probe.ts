@@ -437,7 +437,7 @@ check(
 // a page that has LEFT an allowed origin, and running JavaScript.
 
 const nav = stubTool({ name: 'BrowserNavigate' })
-const clickTool = stubTool({ name: 'BrowserClick' })
+const clickTool = stubTool({ name: 'BrowserInput' })
 const readPage = stubTool({ name: 'BrowserReadPage', readOnly: true })
 const evalTool = stubTool({ name: 'BrowserEval' })
 

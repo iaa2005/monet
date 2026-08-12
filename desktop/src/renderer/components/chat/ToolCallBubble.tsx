@@ -123,9 +123,7 @@ const HUMAN_NAMES: Record<string, string> = {
   RunPython: "Ran Python",
   BrowserNavigate: "Opened page",
   BrowserReadPage: "Read page",
-  BrowserClick: "Clicked",
-  BrowserType: "Typed",
-  BrowserScroll: "Scrolled",
+  BrowserInput: "Browser",
   BrowserScreenshot: "Screenshot",
   Computer: "Computer",
 };

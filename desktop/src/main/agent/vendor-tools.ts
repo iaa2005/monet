@@ -89,16 +89,13 @@ import {
 import { sessionSpace } from "./session-space.js";
 import { ensurePosixShell } from "./shell-env.js";
 import {
-  BrowserClickTool,
   BrowserEvalTool,
   BrowserLogsTool,
   BrowserNavigateTool,
   BrowserReadPageTool,
-  BrowserResizeTool,
+  BrowserInputTool,
   BrowserScreenshotTool,
-  BrowserScrollTool,
   BrowserTabsTool,
-  BrowserTypeTool,
 } from "./browser-tools.js";
 import { DevServerTool } from "./dev-server-tool.js";
 import { ServeSandboxTool } from "./serve-sandbox-tool.js";
@@ -115,13 +112,10 @@ import { HOME_TOOL_NAMES, SANDBOX_ONLY_NAMES, spaceAllows } from "./space-tools.
 const BROWSER_TOOL_NAMES = new Set([
   "BrowserNavigate",
   "BrowserReadPage",
-  "BrowserClick",
-  "BrowserType",
-  "BrowserScroll",
+  "BrowserInput",
   "BrowserScreenshot",
   "BrowserLogs",
   "BrowserEval",
-  "BrowserResize",
   "BrowserTabs",
   // Same gate: a tool that spawns processes belongs with the browser it exists
   // to serve, not on by default.
@@ -274,13 +268,9 @@ const ALL_TOOLS = [
   ReadMcpResourceTool,
   BrowserNavigateTool,
   BrowserReadPageTool,
-  BrowserClickTool,
-  BrowserTypeTool,
-  BrowserScrollTool,
   BrowserScreenshotTool,
   BrowserLogsTool,
   BrowserEvalTool,
-  BrowserResizeTool,
   BrowserTabsTool,
   DevServerTool,
   ServeSandboxTool,

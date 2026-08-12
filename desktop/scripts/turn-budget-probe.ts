@@ -234,8 +234,8 @@ check(
 )
 check(
   'the same tool on a different target is not',
-  callSignature('BrowserClick', { ref: 'a' }) !==
-    callSignature('BrowserClick', { ref: 'b' }),
+  callSignature('BrowserInput', { action: 'click', ref: 'a' }) !==
+    callSignature('BrowserInput', { action: 'click', ref: 'b' }),
 )
 
 check('a run doing new things is productive', isProductive(varied(20)))

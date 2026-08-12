@@ -321,96 +321,171 @@ export const BrowserReadPageTool = buildTool({
   },
 });
 
-// ─── BrowserClick ─────────────────────────────────────────────────────────
+// ─── BrowserInput ─────────────────────────────────────────────────────────
+//
+// Click, type, scroll and resize were four tools. They are one verb — do
+// something to the page — and the model spent turns choosing a name for it.
+// One tool with an `action`, the shape Claude Code's own `computer` tool uses.
+//
+// BrowserEval stays out of this on purpose. Typing into a field and running
+// arbitrary JavaScript on the page differ by more than a parameter: the
+// permission gate can allow the first and ask about the second only while
+// they are separate tools.
 
-const clickSchema = lazySchema(() =>
+/** Viewport emulation presets for action=resize. */
+const PRESETS: Record<string, { width: number; height: number; mobile: boolean }> = {
+  mobile: { width: 390, height: 844, mobile: true },
+  tablet: { width: 834, height: 1112, mobile: true },
+  desktop: { width: 1440, height: 900, mobile: false },
+};
+
+const inputSchema = lazySchema(() =>
   z.strictObject({
-    ref: z.string().describe("Element ref from BrowserReadPage (e.g. ref12)."),
-  }),
-);
-type ClickSchema = ReturnType<typeof clickSchema>;
-
-export const BrowserClickTool = buildTool({
-  name: "BrowserClick",
-  searchHint: "click an element in the browser page",
-  maxResultSizeChars: 4_000,
-  get inputSchema(): ClickSchema {
-    return clickSchema();
-  },
-  userFacingName() {
-    return "BrowserClick";
-  },
-  isReadOnly() {
-    return false;
-  },
-  isConcurrencySafe() {
-    return false;
-  },
-  async prompt() {
-    return [
-      "Click an element by its BrowserReadPage ref. Waits for the page to",
-      "settle afterwards. The click may have changed the page, so read it again",
-      "before the next ref-based call.",
-    ].join("\n");
-  },
-  async description() {
-    return "Click a page element by ref.";
-  },
-  async call({ ref }: z.infer<ClickSchema>) {
-    try {
-      const rect = await refRect(ref);
-      if (!rect) return stale(ref);
-      if (rect.w > 1 && rect.h > 1) {
-        // Real, human-paced mouse events (trusted input, pointer trail).
-        await new Promise((r) => setTimeout(r, 150 + Math.random() * 250));
-        const p = jitteredPoint(rect);
-        await pageClickAt(p.x, p.y);
-      } else {
-        // Invisible/zero-size target — fall back to a synthetic click.
-        await pageEvaluate(`
-          (() => {
-            const el = document.querySelector('[${REF_ATTR}=${JSON.stringify(ref)}]');
-            if (el) el.click();
-            return 'OK';
-          })()
-        `);
-      }
-      await pageSettle();
-      const info = await pageInfo();
-      return ok(`Clicked ${ref}. Now on "${info.title}" — ${info.url}${await traffic()}`);
-    } catch (err) {
-      return fail(err, "Click");
-    }
-  },
-  mapToolResultToToolResultBlockParam: mapResult,
-  renderToolUseMessage() {
-    return null;
-  },
-});
-
-// ─── BrowserType ──────────────────────────────────────────────────────────
-
-const typeSchema = lazySchema(() =>
-  z.strictObject({
-    ref: z.string().describe("Input/textarea ref from BrowserReadPage."),
-    text: z.string().describe("The text to enter (replaces current value)."),
+    action: z
+      .enum(["click", "type", "scroll", "resize"])
+      .describe("What to do to the page."),
+    ref: z
+      .string()
+      .optional()
+      .describe(
+        "Element ref from BrowserReadPage (e.g. ref12). Required for click and type; for scroll it brings that element into view.",
+      ),
+    text: z
+      .string()
+      .optional()
+      .describe("action=type: the text to enter (replaces the current value)."),
     submit: z
       .boolean()
       .optional()
-      .describe("Press Enter after typing (submit forms/search)."),
+      .describe("action=type: press Enter afterwards (submit forms/search)."),
+    direction: z
+      .enum(["down", "up", "top", "bottom"])
+      .optional()
+      .describe("action=scroll: default down. Ignored when ref is given."),
+    preset: z
+      .enum(["mobile", "tablet", "desktop", "reset"])
+      .optional()
+      .describe(
+        "action=resize: mobile 390x844, tablet 834x1112, desktop 1440x900, or reset.",
+      ),
+    width: z.number().optional().describe("action=resize: custom width in CSS pixels."),
+    height: z.number().optional().describe("action=resize: custom height in CSS pixels."),
   }),
 );
-type TypeSchema = ReturnType<typeof typeSchema>;
+type InputSchema = ReturnType<typeof inputSchema>;
 
-export const BrowserTypeTool = buildTool({
-  name: "BrowserType",
-  searchHint: "type into a browser input field",
+async function doClick(ref: string) {
+  const rect = await refRect(ref);
+  if (!rect) return stale(ref);
+  if (rect.w > 1 && rect.h > 1) {
+    // Real, human-paced mouse events (trusted input, pointer trail).
+    await new Promise((r) => setTimeout(r, 150 + Math.random() * 250));
+    const p = jitteredPoint(rect);
+    await pageClickAt(p.x, p.y);
+  } else {
+    // Invisible/zero-size target — fall back to a synthetic click.
+    await pageEvaluate(`
+      (() => {
+        const el = document.querySelector('[${REF_ATTR}=${JSON.stringify(ref)}]');
+        if (el) el.click();
+        return 'OK';
+      })()
+    `);
+  }
+  await pageSettle();
+  const info = await pageInfo();
+  return ok(`Clicked ${ref}. Now on "${info.title}" — ${info.url}${await traffic()}`);
+}
+
+async function doType(ref: string, text: string, submit?: boolean) {
+  const rect = await refRect(ref);
+  if (!rect) return stale(ref);
+  // Focus like a person: click into the field (fallback: JS focus).
+  if (rect.w > 1 && rect.h > 1) {
+    const p = jitteredPoint(rect);
+    await pageClickAt(p.x, p.y);
+  }
+  // Clear the existing value (React-compatible native setter), keep focus.
+  const cleared = await pageEvaluate(`
+    (() => {
+      const el = document.querySelector('[${REF_ATTR}=${JSON.stringify(ref)}]');
+      if (!el) return 'STALE';
+      el.focus();
+      if (el.isContentEditable) {
+        el.textContent = '';
+      } else {
+        const proto = el.tagName === 'TEXTAREA'
+          ? HTMLTextAreaElement.prototype
+          : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (setter && setter.set) setter.set.call(el, '');
+        else el.value = '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      return 'OK';
+    })()
+  `);
+  if (cleared.includes("STALE")) return stale(ref);
+  // Real per-key typing with human latency.
+  await new Promise((r) => setTimeout(r, 120 + Math.random() * 180));
+  await pageTypeText(text);
+  if (submit) {
+    await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
+    await pagePressEnter();
+    await pageSettle();
+  }
+  return ok(`Typed into ${ref}${submit ? " and pressed Enter" : ""}.${await traffic()}`);
+}
+
+async function doScroll(
+  direction: "down" | "up" | "top" | "bottom" | undefined,
+  ref: string | undefined,
+) {
+  if (ref) {
+    const rect = await refRect(ref);
+    if (!rect) return stale(ref);
+    return ok(`Scrolled ${ref} into view.`);
+  }
+  const dir = direction ?? "down";
+  if (dir === "top" || dir === "bottom") {
+    await pageEvaluate(
+      `(() => { scrollTo({top: ${dir === "top" ? 0 : "document.body.scrollHeight"}, behavior: 'instant'}); return 'OK'; })()`,
+    );
+    return ok(`Scrolled to the ${dir}.`);
+  }
+  const vh = Number(await pageEvaluate("String(innerHeight)")) || 800;
+  await pageScrollWheel(Math.round(vh * 0.85) * (dir === "down" ? 1 : -1));
+  return ok(`Scrolled ${dir}.`);
+}
+
+async function doResize(
+  preset: "mobile" | "tablet" | "desktop" | "reset" | undefined,
+  width?: number,
+  height?: number,
+) {
+  if (preset === "reset") {
+    await pageSetViewport(null);
+    return ok("Viewport back to the panel's own size.");
+  }
+  const size =
+    width && height
+      ? { width, height, mobile: width < 600 }
+      : PRESETS[preset ?? "desktop"]!;
+  await pageSetViewport(size);
+  return ok(
+    `Viewport is now ${size.width}x${size.height}${size.mobile ? " (mobile)" : ""}. Reset it when you are done.`,
+  );
+}
+
+export const BrowserInputTool = buildTool({
+  name: "BrowserInput",
+  searchHint: "click, type, scroll or resize in the browser page",
   maxResultSizeChars: 4_000,
-  get inputSchema(): TypeSchema {
-    return typeSchema();
+  get inputSchema(): InputSchema {
+    return inputSchema();
   },
   userFacingName() {
-    return "BrowserType";
+    return "BrowserInput";
   },
   isReadOnly() {
     return false;
@@ -420,122 +495,49 @@ export const BrowserTypeTool = buildTool({
   },
   async prompt() {
     return [
-      "Type into an input or textarea by ref: clicks the field, clears it, then",
-      "types with real key events. Pass submit=true to press Enter afterwards.",
+      "Act on the page in the browser panel. Pick an action:",
+      "",
+      "  click   — click the element at 'ref'. Waits for the page to settle;",
+      "            it may have changed, so read it again before the next",
+      "            ref-based call.",
+      "  type    — click into 'ref', clear it, and type 'text' with real key",
+      "            events. submit=true presses Enter afterwards.",
+      "  scroll  — one viewport 'direction' (down/up/top/bottom), or pass a",
+      "            'ref' to bring that element into view. Use it for content",
+      "            BrowserReadPage reported as below the fold.",
+      "  resize  — emulate a viewport for responsive checks. The panel does",
+      "            not change size; the PAGE is told it is that wide, which is",
+      "            what media queries read. Always reset when you are done, or",
+      "            every later screenshot is at the size you left behind.",
+      "",
+      "Refs come from BrowserReadPage and go stale as soon as the page changes.",
       "",
       "Never type credentials, card numbers or other secrets — ask the user to",
       "enter those themselves.",
     ].join("\n");
   },
   async description() {
-    return "Type text into a page input by ref (optionally submit).";
+    return "Click, type, scroll or resize in the browser page.";
   },
-  async call({ ref, text, submit }: z.infer<TypeSchema>) {
+  async call(input: z.infer<InputSchema>) {
+    const { action, ref, text, submit, direction, preset, width, height } = input;
     try {
-      const rect = await refRect(ref);
-      if (!rect) return stale(ref);
-      // Focus like a person: click into the field (fallback: JS focus).
-      if (rect.w > 1 && rect.h > 1) {
-        const p = jitteredPoint(rect);
-        await pageClickAt(p.x, p.y);
+      switch (action) {
+        case "click":
+          if (!ref) return fail(new Error("click needs a ref"), "Click");
+          return await doClick(ref);
+        case "type":
+          if (!ref) return fail(new Error("type needs a ref"), "Typing");
+          if (text === undefined)
+            return fail(new Error("type needs text"), "Typing");
+          return await doType(ref, text, submit);
+        case "scroll":
+          return await doScroll(direction, ref);
+        case "resize":
+          return await doResize(preset, width, height);
       }
-      // Clear the existing value (React-compatible native setter), keep focus.
-      const cleared = await pageEvaluate(`
-        (() => {
-          const el = document.querySelector('[${REF_ATTR}=${JSON.stringify(ref)}]');
-          if (!el) return 'STALE';
-          el.focus();
-          if (el.isContentEditable) {
-            el.textContent = '';
-          } else {
-            const proto = el.tagName === 'TEXTAREA'
-              ? HTMLTextAreaElement.prototype
-              : HTMLInputElement.prototype;
-            const setter = Object.getOwnPropertyDescriptor(proto, 'value');
-            if (setter && setter.set) setter.set.call(el, '');
-            else el.value = '';
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-          return 'OK';
-        })()
-      `);
-      if (cleared.includes("STALE")) return stale(ref);
-      // Real per-key typing with human latency.
-      await new Promise((r) => setTimeout(r, 120 + Math.random() * 180));
-      await pageTypeText(text);
-      if (submit) {
-        await new Promise((r) => setTimeout(r, 200 + Math.random() * 300));
-        await pagePressEnter();
-        await pageSettle();
-      }
-      return ok(`Typed into ${ref}${submit ? " and pressed Enter" : ""}.${await traffic()}`);
     } catch (err) {
-      return fail(err, "Typing");
-    }
-  },
-  mapToolResultToToolResultBlockParam: mapResult,
-  renderToolUseMessage() {
-    return null;
-  },
-});
-
-// ─── BrowserScroll ────────────────────────────────────────────────────────
-
-const scrollSchema = lazySchema(() =>
-  z.strictObject({
-    direction: z
-      .enum(["down", "up", "top", "bottom"])
-      .optional()
-      .describe("Scroll the page. Default: down."),
-    ref: z
-      .string()
-      .optional()
-      .describe("Scroll this element into view instead."),
-  }),
-);
-type ScrollSchema = ReturnType<typeof scrollSchema>;
-
-export const BrowserScrollTool = buildTool({
-  name: "BrowserScroll",
-  searchHint: "scroll the browser page",
-  maxResultSizeChars: 2_000,
-  get inputSchema(): ScrollSchema {
-    return scrollSchema();
-  },
-  userFacingName() {
-    return "BrowserScroll";
-  },
-  isReadOnly() {
-    return false;
-  },
-  isConcurrencySafe() {
-    return false;
-  },
-  async prompt() {
-    return "Scroll the page one viewport up or down, jump to top/bottom, or bring one element into view. Use it for lazy-loaded content that BrowserReadPage reported as below the fold.";
-  },
-  async description() {
-    return "Scroll the browser page.";
-  },
-  async call({ direction, ref }: z.infer<ScrollSchema>) {
-    try {
-      if (ref) {
-        const rect = await refRect(ref);
-        if (!rect) return stale(ref);
-        return ok(`Scrolled ${ref} into view.`);
-      }
-      const dir = direction ?? "down";
-      if (dir === "top" || dir === "bottom") {
-        await pageEvaluate(
-          `(() => { scrollTo({top: ${dir === "top" ? 0 : "document.body.scrollHeight"}, behavior: 'instant'}); return 'OK'; })()`,
-        );
-        return ok(`Scrolled to the ${dir}.`);
-      }
-      const vh = Number(await pageEvaluate("String(innerHeight)")) || 800;
-      await pageScrollWheel(Math.round(vh * 0.85) * (dir === "down" ? 1 : -1));
-      return ok(`Scrolled ${dir}.`);
-    } catch (err) {
-      return fail(err, "Scroll");
+      return fail(err, action);
     }
   },
   mapToolResultToToolResultBlockParam: mapResult,
@@ -767,79 +769,6 @@ export const BrowserEvalTool = buildTool({
       return ok(value === "" ? "(empty string)" : value);
     } catch (err) {
       return fail(err, "Evaluation");
-    }
-  },
-  mapToolResultToToolResultBlockParam: mapResult,
-  renderToolUseMessage() {
-    return null;
-  },
-});
-
-// ─── BrowserResize ────────────────────────────────────────────────────────
-
-const PRESETS: Record<string, { width: number; height: number; mobile: boolean }> = {
-  mobile: { width: 390, height: 844, mobile: true },
-  tablet: { width: 834, height: 1112, mobile: true },
-  desktop: { width: 1440, height: 900, mobile: false },
-};
-
-const resizeSchema = lazySchema(() =>
-  z.strictObject({
-    preset: z
-      .enum(["mobile", "tablet", "desktop", "reset"])
-      .optional()
-      .describe("mobile 390×844, tablet 834×1112, desktop 1440×900, or reset."),
-    width: z.number().optional().describe("Custom viewport width in CSS pixels."),
-    height: z.number().optional().describe("Custom viewport height in CSS pixels."),
-  }),
-);
-type ResizeSchema = ReturnType<typeof resizeSchema>;
-
-export const BrowserResizeTool = buildTool({
-  name: "BrowserResize",
-  searchHint: "change the browser viewport size",
-  maxResultSizeChars: 2_000,
-  get inputSchema(): ResizeSchema {
-    return resizeSchema();
-  },
-  userFacingName() {
-    return "BrowserResize";
-  },
-  isReadOnly() {
-    return false;
-  },
-  isConcurrencySafe() {
-    return false;
-  },
-  async prompt() {
-    return [
-      "Emulate a viewport size, for checking responsive layouts. The panel does",
-      "not change size — the PAGE is told it is that wide, which is what media",
-      "queries read.",
-      "",
-      "Always reset when you are done, or every later screenshot is at the size",
-      "you left behind.",
-    ].join("\n");
-  },
-  async description() {
-    return "Emulate a viewport size (responsive checks).";
-  },
-  async call({ preset, width, height }: z.infer<ResizeSchema>) {
-    try {
-      if (preset === "reset") {
-        await pageSetViewport(null);
-        return ok("Viewport back to the panel's own size.");
-      }
-      const size =
-        width && height
-          ? { width, height, mobile: width < 600 }
-          : PRESETS[preset ?? "desktop"]!;
-      await pageSetViewport(size);
-      return ok(
-        `Viewport is now ${size.width}×${size.height}${size.mobile ? " (mobile)" : ""}. Reset it when you are done.`,
-      );
-    } catch (err) {
-      return fail(err, "Resize");
     }
   },
   mapToolResultToToolResultBlockParam: mapResult,

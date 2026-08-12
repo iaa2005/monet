@@ -164,7 +164,7 @@ export function budgetWarning(left: number): string {
 
 /**
  * One call, as a comparable string. The input matters as much as the name:
- * ten `BrowserClick`s on ten different elements is work, ten on the same one
+ * ten `BrowserInput` clicks on ten different elements is work, ten on one
  * is a loop.
  */
 export function callSignature(
