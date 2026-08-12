@@ -12,6 +12,7 @@ import { ipcMain } from "electron";
 import { getCommands, getSkillToolCommands } from "@vendor/commands.js";
 import { getProjectRoot } from "@vendor/bootstrap/state.js";
 import type { Command } from "@vendor/types/command.js";
+import { rebrand } from "@shared/rebrand.js";
 import { initVendorRuntime } from "../agent/vendor-context.js";
 import { listSkillInfos } from "./skills.js";
 
@@ -25,7 +26,7 @@ function describe(c: Command): string {
     ("whenToUse" in c && c.whenToUse) ||
     ("description" in c && c.description) ||
     "";
-  return typeof raw === "string" ? raw : "";
+  return typeof raw === "string" ? rebrand(raw) : "";
 }
 
 function hidden(c: Command): boolean {

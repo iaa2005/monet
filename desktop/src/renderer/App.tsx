@@ -61,7 +61,7 @@ import { useViewerStore } from "@/stores/viewerStore";
 import { comboLabel, useHotkeys, type HotkeyDef } from "@/lib/hotkeys";
 import { HotkeysHelp } from "@/components/HotkeysHelp";
 import { DockArea } from "@/dock/DockArea";
-import { useDockStore } from "@/dock/dock-store";
+import { DOCK_PANEL_IDS, useDockStore } from "@/dock/dock-store";
 import type { DockPanelId } from "@/dock/dock-layout";
 import { SubAgentTranscript } from "@/components/chat/ToolCallBubble";
 import { WindowControls } from "@/components/WindowControls";
@@ -656,6 +656,35 @@ export default function App(): JSX.Element {
     setSettingsOpen(true);
     useChatStore.getState().requestOpenSettings(null);
   }, [openSettingsRequest]);
+
+  // A slash command asked for a panel by name. One place to map the names, so
+  // adding a command is a line in the composer's registry and a line here,
+  // rather than a new flag threaded through the store.
+  const openPanelRequest = useChatStore((s) => s.openPanelRequest);
+  useEffect(() => {
+    if (!openPanelRequest) return;
+    switch (openPanelRequest) {
+      case "hotkeys":
+        setHotkeysOpen(true);
+        break;
+      case "docs":
+        setDocsOpen(true);
+        break;
+      case "about":
+        setAboutOpen(true);
+        break;
+      case "directory":
+        setDirectoryOpen(true);
+        break;
+      default:
+        // The rest name dock panels directly — see DOCK_TITLES. Guarded so a
+        // typo in the composer's registry opens nothing instead of throwing.
+        if ((DOCK_PANEL_IDS as string[]).includes(openPanelRequest))
+          useDockStore.getState().openPanel(openPanelRequest as DockPanelId);
+        break;
+    }
+    useChatStore.getState().requestOpenPanel(null);
+  }, [openPanelRequest]);
 
   // GitCard's "+N −M" button asks to open the Changes tab.
   useEffect(() => {

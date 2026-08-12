@@ -375,6 +375,16 @@ export interface ChatStore {
   openChangesRequest: boolean;
   /** Open Settings at a section (the panel menu's "Manage allowed sites"). */
   openSettingsRequest: string | null;
+  /**
+   * A panel a slash command asked for, by name — "hotkeys", "export",
+   * "stats", "tasks", "docs".
+   *
+   * One request instead of a boolean per panel: every one of these already
+   * has its state in App.tsx, and adding a flag to the store for each would
+   * mean nine near-identical pairs kept in step by hand. The consumer clears
+   * it, exactly like openSettingsRequest.
+   */
+  openPanelRequest: string | null;
   /** Branch the chat from this user message. Consumed by App, which owns
    * session switching. */
   forkRequest: string | null;
@@ -434,6 +444,7 @@ export interface ChatStore {
   requestOpenFile: (path: string | null) => void;
   requestOpenChanges: () => void;
   requestOpenSettings: (section: string | null) => void;
+  requestOpenPanel: (panel: string | null) => void;
   requestFork: (messageId: string | null) => void;
   /** Hand a sent message back to the composer: sentence as text, references as
    * chips, files re-staged under `stagedKey`. Rewind-and-edit and Branch. */
@@ -937,6 +948,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     openFileRequest: null,
     openChangesRequest: false,
     openSettingsRequest: null,
+    openPanelRequest: null,
     forkRequest: null,
     expandedSubAgent: null,
     voiceModeOpen: false,
@@ -987,6 +999,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     requestOpenFile: (path) => set({ openFileRequest: path }),
     requestOpenChanges: () => set({ openChangesRequest: true }),
     requestOpenSettings: (section) => set({ openSettingsRequest: section }),
+    requestOpenPanel: (panel) => set({ openPanelRequest: panel }),
     requestFork: (messageId) => set({ forkRequest: messageId }),
     // Facade over viewerStore (tabs + VS Code preview idiom): every "open a
     // file" click in the app lands here, whatever surface it came from.

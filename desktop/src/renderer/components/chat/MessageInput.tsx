@@ -645,7 +645,11 @@ export function MessageInput({
   const hasUserTurns = useChatStore((s) =>
     s.messages.some((m) => m.role === "user"),
   );
+  // The CHECKPOINT picker (rewind). Named `pickerOpen` long before there
+  // were others; /model briefly pointed at it by mistake.
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [effortMenuOpen, setEffortMenuOpen] = useState(false);
 
   // Reasoning effort (Faster ↔ Smarter). A global composer preference, only
   // sent when the active model supports it. null = off (provider default).
@@ -1003,6 +1007,16 @@ export function MessageInput({
     {
       name: "model",
       description: "Switch the model for this chat",
+      run: () => setModelMenuOpen(true),
+    },
+    {
+      name: "effort",
+      description: "Set how hard the model thinks (faster ↔ smarter)",
+      run: () => setEffortMenuOpen(true),
+    },
+    {
+      name: "rewind",
+      description: "Roll the workspace back to an earlier checkpoint",
       run: () => setPickerOpen(true),
     },
     {
@@ -1024,6 +1038,74 @@ export function MessageInput({
       name: "memory",
       description: "Open the memory settings",
       run: () => useChatStore.getState().requestOpenSettings("memory"),
+    },
+    {
+      name: "tasks",
+      description: "Show background work running for this chat",
+      run: () => useChatStore.getState().requestOpenPanel("tasks"),
+    },
+    {
+      name: "plan",
+      description: "Open the plan for this chat",
+      run: () => useChatStore.getState().requestOpenPanel("plan"),
+    },
+    {
+      name: "vault",
+      description: "Open the vault graph",
+      run: () => useChatStore.getState().requestOpenPanel("vault"),
+    },
+    {
+      name: "files",
+      description: "Open this chat's files",
+      run: () => useChatStore.getState().requestOpenPanel("files"),
+    },
+    {
+      name: "artifacts",
+      description: "Open what this chat has produced",
+      run: () => useChatStore.getState().requestOpenPanel("artifacts"),
+    },
+    {
+      name: "browser",
+      description: "Open the browser panel",
+      run: () => useChatStore.getState().requestOpenPanel("browser"),
+    },
+    {
+      name: "terminal",
+      description: "Open the sandbox terminal",
+      run: () => useChatStore.getState().requestOpenPanel("terminal"),
+    },
+    {
+      name: "routines",
+      description: "Open scheduled routines",
+      run: () => useChatStore.getState().requestOpenPanel("routines"),
+    },
+    {
+      name: "docs",
+      description: "Open the built-in documentation",
+      run: () => useChatStore.getState().requestOpenPanel("docs"),
+    },
+    {
+      name: "keybindings",
+      description: "Show the keyboard shortcuts",
+      run: () => useChatStore.getState().requestOpenPanel("hotkeys"),
+    },
+    {
+      name: "skills",
+      description: "Browse and install skills",
+      run: () => useChatStore.getState().requestOpenPanel("directory"),
+    },
+    {
+      name: "branch",
+      description: "Branch this conversation from your last message",
+      run: () => {
+        const st = useChatStore.getState();
+        const last = [...st.messages].reverse().find((m) => m.role === "user");
+        if (!last) {
+          setNotice("Nothing to branch from yet — send a message first.");
+          return;
+        }
+        st.requestFork(last.id);
+      },
     },
     {
       name: "help",
@@ -1778,7 +1860,7 @@ export function MessageInput({
               )}
 
               {activeModel?.supportsEffort && (
-                <DropdownMenu>
+                <DropdownMenu open={effortMenuOpen} onOpenChange={setEffortMenuOpen}>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
@@ -1799,7 +1881,13 @@ export function MessageInput({
               )}
 
               {/* Model / provider */}
-              <DropdownMenu onOpenChange={(open) => { if (open) loadProviders(); }}>
+              <DropdownMenu
+                open={modelMenuOpen}
+                onOpenChange={(open) => {
+                  setModelMenuOpen(open);
+                  if (open) loadProviders();
+                }}
+              >
                 <DropdownMenuTrigger asChild>
                   <button type="button" className={pillBtn}>
                     <span className="max-w-[18ch] truncate">{modelLabel}</span>
