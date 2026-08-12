@@ -1,6 +1,6 @@
-import type { SDKMessage } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+import type { SDKMessage } from '../../../types/agentSdkTypes.js'
 import { checkGate_CACHED_OR_BLOCKING } from '../../../gates.js'
-import { isPolicyAllowed } from '@anthropic/account/policy-limits/index.js'
+import { isPolicyAllowed } from '../../../integrations.js'
 import { detectCurrentRepositoryWithHost } from '../../detectRepository.js'
 import { isEnvTruthy } from '../../envUtils.js'
 import type { TodoList } from '../../todo/types.js'

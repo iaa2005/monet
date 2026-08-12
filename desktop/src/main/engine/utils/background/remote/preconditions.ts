@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { getOauthConfig } from '../../../constants/oauth.js'
-import { getOrganizationUUID } from '@anthropic/account/oauth/client.js'
+import { getOrganizationUUID } from '../../../integrations.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../../gates.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
@@ -12,8 +12,8 @@ import { logForDebugging } from '../../debug.js'
 import { detectCurrentRepository } from '../../detectRepository.js'
 import { errorMessage } from '../../errors.js'
 import { findGitRoot, getIsClean } from '../../git.js'
-import { getOAuthHeaders } from '@anthropic/teleport/api.js'
-import { fetchEnvironments } from '@anthropic/teleport/environments.js'
+import { getOAuthHeaders } from '../../../integrations.js'
+import { fetchEnvironments } from '../../../integrations.js'
 
 /**
  * Checks if user needs to log in with Claude.ai

@@ -2,7 +2,7 @@ import type {
   AsyncHookJSONOutput,
   HookEvent,
   SyncHookJSONOutput,
-} from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+} from '../types/agentSdkTypes.js'
 import { logForDebugging } from '../utils/debug.js'
 import type { ShellCommand } from '../utils/ShellCommand.js'
 import { invalidateSessionEnvCache } from '../utils/sessionEnvironment.js'

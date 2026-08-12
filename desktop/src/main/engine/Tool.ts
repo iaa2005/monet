@@ -74,7 +74,7 @@ export type {
 
 import type { SpinnerMode } from './stubs/cli/components/Spinner.js'
 import type { QuerySource } from './constants/querySource.js'
-import type { SDKStatus } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+import type { SDKStatus } from './types/agentSdkTypes.js'
 import type { AppState } from './state/AppState.jsx'
 import type {
   HookProgress,

@@ -6,7 +6,7 @@
  * what to do with them (e.g., convert to SDK messages, log, etc.).
  */
 
-import { HOOK_EVENTS } from '@anthropic/cli/entrypoints/sdk/coreTypes.js'
+import { HOOK_EVENTS } from '../types/sdk/coreTypes.js'
 
 import { logForDebugging } from '../utils/debug.js'
 

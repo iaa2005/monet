@@ -1,4 +1,4 @@
-import { HOOK_EVENTS, type HookEvent } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+import { HOOK_EVENTS, type HookEvent } from '../types/agentSdkTypes.js'
 import type { AppState } from '../state/AppState.jsx'
 import type { Message } from '../types/message.js'
 import { logForDebugging } from '../utils/debug.js'

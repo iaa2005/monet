@@ -66,11 +66,9 @@ export function getRemoteSessionUrl(
   sessionId: string,
   ingressUrl?: string,
 ): string {
-  /* eslint-disable @typescript-eslint/no-require-imports */
-  const { toCompatSessionId } =
-    require('@anthropic/bridge/sessionIdCompat.js') as typeof import('@anthropic/bridge/sessionIdCompat.js')
-  /* eslint-enable @typescript-eslint/no-require-imports */
-  const compatId = toCompatSessionId(sessionId)
+  // toCompatSessionId re-tagged cse_* ids as session_* for their frontend's
+  // router. Nothing here talks to that frontend, so the id passes through.
+  const compatId = sessionId
   const baseUrl = getClaudeAiBaseUrl(compatId, ingressUrl)
   return `${baseUrl}/code/${compatId}`
 }

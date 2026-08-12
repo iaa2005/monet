@@ -70,7 +70,7 @@ import {
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from '../../engine/utils/errors.js'
 import { getMCPUserAgent } from '../../engine/utils/http.js'
-import { maybeNotifyIDEConnected } from '@anthropic/ide/ide.js'
+import { maybeNotifyIDEConnected } from '../../engine/integrations.js'
 import { maybeResizeAndDownsampleImageBuffer } from '../../engine/utils/imageResizer.js'
 import { logMCPDebug, logMCPError } from '../../engine/utils/log.js'
 import {
@@ -228,13 +228,9 @@ function getMcpToolTimeoutMs(): number {
   )
 }
 
-import { isClaudeInChromeMCPServer } from '@anthropic/claude-in-chrome/common.js'
+import { isClaudeInChromeMCPServer } from '../../engine/integrations.js'
 
-// Lazy: toolRendering.tsx pulls React/ink; only needed when Claude-in-Chrome MCP server is connected
 /* eslint-disable @typescript-eslint/no-require-imports */
-const claudeInChromeToolRendering =
-  (): typeof import('@anthropic/claude-in-chrome/toolRendering.jsx') =>
-    require('@anthropic/claude-in-chrome/toolRendering.jsx')
 // Lazy: wrapper.tsx → hostAdapter.ts → executor.ts pulls both native modules
 // (@ant/computer-use-input + @ant/computer-use-swift). Runtime-gated by
 // GrowthBook tengu_malort_pedway (see gates.ts).
@@ -902,26 +898,10 @@ export const connectToServer = memoize(
           transportOptions,
         )
         logMCPDebug(name, `claude.ai proxy transport created successfully`)
-      } else if (
-        (serverRef.type === 'stdio' || !serverRef.type) &&
-        isClaudeInChromeMCPServer(name)
-      ) {
-        // Run the Chrome MCP server in-process to avoid spawning a ~325 MB subprocess
-        const { createChromeContext } = await import(
-          '@anthropic/claude-in-chrome/mcpServer.js'
-        )
-        const { createClaudeForChromeMcpServer } = await import(
-          '@ant/claude-for-chrome-mcp'
-        )
-        const { createLinkedTransportPair } = await import(
-          './InProcessTransport.js'
-        )
-        const context = createChromeContext(serverRef.env)
-        inProcessServer = createClaudeForChromeMcpServer(context)
-        const [clientTransport, serverTransport] = createLinkedTransportPair()
-        await inProcessServer.connect(serverTransport)
-        transport = clientTransport
-        logMCPDebug(name, `In-process Chrome MCP server started`)
+      // Claude-in-Chrome used to get an in-process server here, to avoid
+      // spawning their ~325 MB subprocess. This app drives a browser through
+      // src/main/browser; that branch is gone with the rest of their
+      // integration.
       } else if (
         feature('CHICAGO_MCP') &&
         (serverRef.type === 'stdio' || !serverRef.type) &&
@@ -1974,12 +1954,6 @@ export const fetchToolsForClient = memoizeWithLRU(
               const displayName = tool.annotations?.title || tool.name
               return `${client.name} - ${displayName} (MCP)`
             },
-            ...(isClaudeInChromeMCPServer(client.name) &&
-            (client.config.type === 'stdio' || !client.config.type)
-              ? claudeInChromeToolRendering().getClaudeInChromeMCPToolOverrides(
-                  tool.name,
-                )
-              : {}),
             ...(feature('CHICAGO_MCP') &&
             (client.config.type === 'stdio' || !client.config.type) &&
             isComputerUseMCPServer!(client.name)

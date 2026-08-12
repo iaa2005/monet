@@ -1,5 +1,5 @@
 import { resolve } from 'path'
-import type { HookEvent } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+import type { HookEvent } from '../types/agentSdkTypes.js'
 import { getSessionId } from '../state/state.js'
 import type { AppState } from '../state/AppState.jsx'
 import type { EditableSettingSource } from '../../settings/constants.js'

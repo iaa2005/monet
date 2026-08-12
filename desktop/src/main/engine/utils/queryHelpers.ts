@@ -4,7 +4,7 @@ import {
   getSessionId,
   isSessionPersistenceDisabled,
 } from '../state/state.js'
-import type { SDKMessage } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+import type { SDKMessage } from '../types/agentSdkTypes.js'
 import type { CanUseToolFn } from '../hooks/react/useCanUseTool.jsx'
 import { runTools } from '../services/tools/toolOrchestration.js'
 import { findToolByName, type Tool, type Tools } from '../Tool.js'

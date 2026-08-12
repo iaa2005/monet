@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { HookEvent } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+import type { HookEvent } from '../types/agentSdkTypes.js'
 import { createCombinedAbortSignal } from '../utils/combinedAbortSignal.js'
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'

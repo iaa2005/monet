@@ -138,6 +138,18 @@ if (destination.size === 0) {
       );
     process.exit(1);
   }
+  // The same loss, one step further out: a destination that already exists on
+  // disk. The in-plan check above cannot see it, because the file being
+  // overwritten is not in the plan at all.
+  const occupied = [...destination].filter(
+    ([from, to]) => existsSync(to) && to !== from,
+  );
+  if (occupied.length) {
+    console.error(`${occupied.length} destination(s) already exist:`);
+    for (const [from, to] of occupied)
+      console.error(`  ${rel(from)}\n    -> ${relative(ROOT, to).replace(/\\/g, "/")} (occupied)`);
+    process.exit(1);
+  }
 }
 
 const moved = (f) => destination.get(f) ?? f;

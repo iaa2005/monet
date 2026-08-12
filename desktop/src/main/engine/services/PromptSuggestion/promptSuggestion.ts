@@ -23,7 +23,7 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../../analytics.js'
-import { currentLimits } from '@anthropic/account/claudeAiLimits.js'
+import { currentLimits } from '../../integrations.js'
 import { isSpeculationEnabled, startSpeculation } from './speculation.js'
 
 let currentAbortController: AbortController | null = null

@@ -6,8 +6,8 @@
 // Always validate against actual API responses before relying on this for production features.
 
 import type { SubscriptionType } from '../stubs/account/oauth/types.js'
-import { setMockBillingAccessOverride } from '@anthropic/account/billing.js'
-import type { OverageDisabledReason } from '@anthropic/account/claudeAiLimits.js'
+import { setMockBillingAccessOverride } from '../integrations.js'
+import type { OverageDisabledReason } from '../integrations.js'
 
 type MockHeaders = {
   'anthropic-ratelimit-unified-status'?:

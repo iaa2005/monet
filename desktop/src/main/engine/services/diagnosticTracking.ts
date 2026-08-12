@@ -4,7 +4,7 @@ import { callIdeRpc } from '../../mcp/protocol/client.js'
 import type { MCPServerConnection } from '../../mcp/protocol/types.js'
 import { ClaudeError } from '../utils/errors.js'
 import { normalizePathForComparison, pathsEqual } from '../utils/file.js'
-import { getConnectedIdeClient } from '@anthropic/ide/ide.js'
+import { getConnectedIdeClient } from '../integrations.js'
 import { jsonParse } from '../utils/slowOperations.js'
 
 class DiagnosticsTrackingError extends ClaudeError {}

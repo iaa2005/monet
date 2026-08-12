@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
-import { SandboxSettingsSchema } from '@anthropic/cli/entrypoints/sandboxTypes.js'
+import { SandboxSettingsSchema } from '../engine/types/sandboxTypes.js'
 import { isEnvTruthy } from '../engine/utils/envUtils.js'
 import { lazySchema } from '../engine/utils/lazySchema.js'
 import {

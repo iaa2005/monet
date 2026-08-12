@@ -2,7 +2,7 @@ import type { BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/m
 import { realpathSync } from 'fs'
 import sumBy from 'lodash-es/sumBy.js'
 import { cwd } from 'process'
-import type { HookEvent, ModelUsage } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+import type { HookEvent, ModelUsage } from '../types/agentSdkTypes.js'
 import type { AgentColorName } from '../tools/AgentTool/agentColorManager.js'
 import type { HookCallbackMatcher } from '../types/hooks.js'
 // Indirection for browser-sdk build (package.json "browser" field swaps

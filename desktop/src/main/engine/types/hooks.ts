@@ -6,12 +6,12 @@ import {
   HOOK_EVENTS,
   type HookInput,
   type PermissionUpdate,
-} from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+} from './agentSdkTypes.js'
 import type {
   HookJSONOutput,
   AsyncHookJSONOutput,
   SyncHookJSONOutput,
-} from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+} from './agentSdkTypes.js'
 import type { Message } from './message.js'
 import type { PermissionResult } from '../permissions/PermissionResult.js'
 import { permissionBehaviorSchema } from '../permissions/PermissionRule.js'

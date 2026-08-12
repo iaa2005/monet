@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import type { HookEvent } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+import type { HookEvent } from '../types/agentSdkTypes.js'
 import { query } from '../query.js'
 import { logEvent } from '../analytics.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../analytics.js'

@@ -1,5 +1,5 @@
 import memoize from 'lodash-es/memoize.js'
-import type { HookEvent } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+import type { HookEvent } from '../engine/types/agentSdkTypes.js'
 import {
   clearRegisteredPluginHooks,
   getRegisteredHooks,

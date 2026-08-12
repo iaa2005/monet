@@ -27,7 +27,7 @@ import {
   setCostStateForRestore,
   setHasUnknownModelCost,
 } from './state/state.js'
-import type { ModelUsage } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+import type { ModelUsage } from './types/agentSdkTypes.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,

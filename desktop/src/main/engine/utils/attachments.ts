@@ -35,7 +35,7 @@ import {
   isTodoV2Enabled,
 } from '../tasks/tasks.js'
 import { getPlanFilePath, getPlan } from './plans.js'
-import { getConnectedIdeName } from '@anthropic/ide/ide.js'
+import { getConnectedIdeName } from '../integrations.js'
 import {
   filterInjectedMemoryFiles,
   getManagedAndUserConditionalRules,
@@ -172,13 +172,13 @@ import {
   isMcpInstructionsDeltaEnabled,
   type ClientSideInstruction,
 } from './mcpInstructionsDelta.js'
-import { CLAUDE_IN_CHROME_MCP_SERVER_NAME } from '@anthropic/claude-in-chrome/common.js'
-import { CHROME_TOOL_SEARCH_INSTRUCTIONS } from '@anthropic/claude-in-chrome/prompt.js'
+import { CLAUDE_IN_CHROME_MCP_SERVER_NAME } from '../integrations.js'
+import { CHROME_TOOL_SEARCH_INSTRUCTIONS } from '../integrations.js'
 import type { MCPServerConnection } from '../../mcp/protocol/types.js'
 import type {
   HookEvent,
   SyncHookJSONOutput,
-} from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+} from '../types/agentSdkTypes.js'
 import {
   checkForAsyncHookResponses,
   removeDeliveredAsyncHooks,

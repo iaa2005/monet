@@ -2,7 +2,7 @@ import chalk from 'chalk'
 import { writeSync } from 'fs'
 import memoize from 'lodash-es/memoize.js'
 import { onExit } from 'signal-exit'
-import type { ExitReason } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+import type { ExitReason } from '../types/agentSdkTypes.js'
 import {
   getIsInteractive,
   getIsScrollDraining,

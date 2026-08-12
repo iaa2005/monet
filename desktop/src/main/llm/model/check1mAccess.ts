@@ -1,4 +1,4 @@
-import type { OverageDisabledReason } from '@anthropic/account/claudeAiLimits.js'
+import type { OverageDisabledReason } from '../../engine/integrations.js'
 import { isClaudeAISubscriber } from '../../engine/account.js'
 import { getGlobalConfig } from '../../engine/utils/config.js'
 import { is1mContextDisabled } from '../../engine/utils/context.js'

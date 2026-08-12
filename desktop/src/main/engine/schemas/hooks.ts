@@ -8,7 +8,7 @@
  * Both files now import from this shared location instead of each other.
  */
 
-import { HOOK_EVENTS, type HookEvent } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+import { HOOK_EVENTS, type HookEvent } from '../types/agentSdkTypes.js'
 import { z } from 'zod/v4'
 import { lazySchema } from '../utils/lazySchema.js'
 import { SHELL_TYPES } from '../shell/shellProvider.js'

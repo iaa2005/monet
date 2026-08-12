@@ -6,7 +6,7 @@ import { dirname, join, parse } from 'path'
 import { getPlatform } from '../../engine/utils/platform.js'
 import type { PluginError } from '../../engine/types/plugin.js'
 import { getPluginErrorMessage } from '../../engine/types/plugin.js'
-import { isClaudeInChromeMCPServer } from '@anthropic/claude-in-chrome/common.js'
+import { isClaudeInChromeMCPServer } from '../../engine/integrations.js'
 import {
   getCurrentProjectConfig,
   getGlobalConfig,

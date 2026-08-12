@@ -1,7 +1,7 @@
 import { homedir, platform } from 'os'
 import { join } from 'path'
 import { getFsImplementation } from './fsOperations.js'
-import type { IdeType } from '@anthropic/ide/ide.js'
+import type { IdeType } from '../integrations.js'
 
 const PLUGIN_PREFIX = 'claude-code-jetbrains-plugin'
 

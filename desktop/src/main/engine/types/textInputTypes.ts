@@ -1,7 +1,7 @@
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import type { UUID } from 'crypto'
 import type React from 'react'
-import type { PermissionResult } from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+import type { PermissionResult } from './agentSdkTypes.js'
 import type { Key } from '../stubs/cli/ink.js'
 import type { PastedContent } from '../utils/config.js'
 import type { ImageDimensions } from '../utils/imageResizer.js'

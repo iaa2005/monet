@@ -6,7 +6,7 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import { getAPIProvider } from '../../llm/model/providers.js'
 import { get3PModelCapabilityOverride } from '../../llm/model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
-import type { EffortLevel } from '@anthropic/cli/entrypoints/sdk/runtimeTypes.js'
+import type { EffortLevel } from '../types/sdk/runtimeTypes.js'
 
 export type { EffortLevel }
 

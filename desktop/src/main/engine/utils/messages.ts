@@ -102,7 +102,7 @@ import type {
 import type {
   HookEvent,
   SDKAssistantMessageError,
-} from '@anthropic/cli/entrypoints/agentSdkTypes.js'
+} from '../types/agentSdkTypes.js'
 import { EXPLORE_AGENT } from '../tools/AgentTool/built-in/exploreAgent.js'
 import { PLAN_AGENT } from '../tools/AgentTool/built-in/planAgent.js'
 import { areExplorePlanAgentsEnabled } from '../tools/AgentTool/builtInAgents.js'

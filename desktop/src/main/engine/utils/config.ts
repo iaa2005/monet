@@ -36,9 +36,6 @@ import type { ThemeSetting } from './theme.js'
 const teamMemPaths = feature('TEAMMEM')
   ? (require('../../memory/dir/teamMemPaths.js') as typeof import('../../memory/dir/teamMemPaths.js'))
   : null
-const ccrAutoConnect = feature('CCR_AUTO_CONNECT')
-  ? (require('@anthropic/bridge/bridgeEnabled.js') as typeof import('@anthropic/bridge/bridgeEnabled.js'))
-  : null
 
 /* eslint-enable @typescript-eslint/no-require-imports */
 import type { ImageDimensions } from './imageResizer.js'
@@ -1094,9 +1091,8 @@ export function getGlobalConfig(): GlobalConfig {
 export function getRemoteControlAtStartup(): boolean {
   const explicit = getGlobalConfig().remoteControlAtStartup
   if (explicit !== undefined) return explicit
-  if (feature('CCR_AUTO_CONNECT')) {
-    if (ccrAutoConnect?.getCcrAutoConnectDefault()) return true
-  }
+  // The default used to come from Anthropic's remote-control bridge, behind
+  // a feature flag that is off. There is no bridge to auto-connect to.
   return false
 }
 

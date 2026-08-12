@@ -19,7 +19,7 @@ export type {
 export * from './coreTypes.generated.js'
 
 // Re-export utility types that can't be expressed as Zod schemas
-export type { NonNullableUsage } from '@main/engine/stubs/cli/entrypoints/sdk/sdkUtilityTypes.js'
+export type { NonNullableUsage } from '../../stubs/cli/entrypoints/sdk/sdkUtilityTypes.js'
 
 // Const arrays for runtime usage
 export const HOOK_EVENTS = [

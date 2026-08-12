@@ -8,7 +8,7 @@ import type {
   BetaStopReason,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { AFK_MODE_BETA_HEADER } from '@main/engine/constants/betas.js'
-import type { SDKAssistantMessageError } from '../cli/entrypoints/agentSdkTypes.js'
+import type { SDKAssistantMessageError } from '@main/engine/types/agentSdkTypes.js'
 import type {
   AssistantMessage,
   Message,
