@@ -20,7 +20,13 @@
 
 import { appendFile, mkdir, readFile } from "fs/promises";
 import { join } from "path";
-import { podmanRaw, sandboxWorkDir, PIP_ENV_ARGS, IMAGE_TAG } from "./podman-engine.js";
+import {
+  podmanRaw,
+  sandboxWorkDir,
+  PIP_ENV_ARGS,
+  PIP_VOLUME_ARGS,
+  IMAGE_TAG,
+} from "./podman-engine.js";
 
 /** Where a task's output lands, relative to the chat's sandbox root. Dotted so
  *  it stays out of the artifacts the chat shows the user — a build log is not
@@ -74,8 +80,7 @@ export async function startBgCommand(
       container,
       "-v",
       `${dir}:/work`,
-      "-v",
-      "monet-pip-cache:/root/.cache/pip",
+      ...PIP_VOLUME_ARGS,
       ...PIP_ENV_ARGS,
       "-w",
       "/work",

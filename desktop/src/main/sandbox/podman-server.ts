@@ -31,6 +31,8 @@ import { createConnection } from "net";
 import {
   ensureSandboxImage,
   IMAGE_TAG,
+  PIP_ENV_ARGS,
+  PIP_VOLUME_ARGS,
   podmanExec,
   sandboxWorkDir,
 } from "./podman-engine.js";
@@ -128,14 +130,11 @@ export function serveArgs(opts: {
     // except through this publish.
     "-p",
     `127.0.0.1:${opts.hostPort}:${opts.containerPort}`,
-    // The same persistent pip target the run containers use: a server like
-    // `jupyter notebook` must see what a previous RunCommand pip-installed.
-    "-e",
-    "PIP_TARGET=/work/.pip",
-    "-e",
-    "PYTHONPATH=/work/.pip",
-    "-e",
-    "PATH=/work/.pip/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    // The same install layer the run containers use: a server like `jupyter
+    // notebook` must see what a previous RunCommand pip-installed — both the
+    // chat's own /work/.pip and the machine-wide shared one.
+    ...PIP_VOLUME_ARGS,
+    ...PIP_ENV_ARGS,
     IMAGE_TAG,
     "sh",
     "-lc",

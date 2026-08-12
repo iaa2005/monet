@@ -91,12 +91,25 @@ const PROMPT_PODMAN = [
   "  pandas, matplotlib, Pillow (PIL), fpdf2, python-docx, openpyxl; Node.js +",
   "  npm; `tectonic` (a self-contained XeTeX/LaTeX engine); and DejaVu +",
   "  Liberation fonts (full Cyrillic/Latin coverage).",
-  "- pip works and its cache is shared, so a genuinely missing wheel installs",
-  "  fast — put `pip install <name>` at the TOP of the script (installs do NOT",
-  "  persist between runs). Do NOT use apt/conda, and do NOT try to install a",
-  "  system TeX (texlive/xetex) or ImageMagick — they are unavailable and",
-  "  attempting it only wastes turns. Use tectonic for LaTeX and Pillow for",
-  "  image manipulation instead.",
+  // This block used to say installs do NOT persist, and told the model to put
+  // `pip install` at the top of every script. Both halves were wrong and the
+  // model obeyed them exactly: it ran pip through subprocess from inside
+  // RunPython, in the foreground, once per chat. Installs persist and are now
+  // shared machine-wide — see PIP_ENV_ARGS.
+  "- A missing package is installed ONCE, with RunCommand (`pip install",
+  "  yfinance`), and then simply imported here — the install persists and is",
+  "  shared with every other chat, so it is very often already there. TRY THE",
+  "  IMPORT FIRST. Never run pip from inside this script (no subprocess +",
+  "  pip): it holds the turn open for the whole download and installs nothing",
+  "  this script has not already loaded. Anything big (torch, a toolchain) goes",
+  "  through RunCommand with run_in_background.",
+  "- Need a different version from the shared one? `pip install --target",
+  "  /work/.pip name==X` — that copy wins in this chat and changes nothing",
+  "  anywhere else.",
+  "- Do NOT use apt/conda, and do NOT try to install a system TeX",
+  "  (texlive/xetex) or ImageMagick — they are unavailable and attempting it",
+  "  only wastes turns. Use tectonic for LaTeX and Pillow for image",
+  "  manipulation instead.",
   "- You are INSIDE that container. The host's podman/docker CLI is not there",
   "  and never will be — do not try to inspect or manage the sandbox from",
   "  within it; report what you observe instead.",

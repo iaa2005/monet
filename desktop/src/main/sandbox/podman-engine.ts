@@ -84,11 +84,38 @@ function decodeWindowsOutput(data: Buffer): string {
   return data.toString("utf8");
 }
 
-/** The persistent pip env every sandbox container shares — see RunCommand. */
+/**
+ * Where an installed package lives, and how long it lives there.
+ *
+ * Every run is a FRESH container from the image, so anything pip writes into
+ * the container's own site-packages is gone before the next call — the agent
+ * watching "Successfully installed" turn into "No module named" was this.
+ * Two volumes fix it, and they are different in kind:
+ *
+ *   /root/.cache/pip   the wheels, so a reinstall does not re-download
+ *   /opt/monet/pip     the INSTALL, shared by every chat on this machine
+ *
+ * The shared install is the one that matters day to day. It used to be
+ * /work/.pip — the chat's own folder — which meant yfinance was downloaded,
+ * unpacked and stored again in every new chat, and a 2 GB torch once per
+ * conversation. Now the first chat that installs it pays, and the rest import
+ * it.
+ *
+ * /work/.pip is still FIRST on PYTHONPATH, so a chat that needs its own
+ * version can still have one: `pip install --target /work/.pip pandas==1.5`
+ * shadows the shared copy for that chat and touches nobody else. Without that
+ * escape hatch a shared layer would be a version cartel.
+ */
+export const PIP_SHARED_DIR = "/opt/monet/pip";
+export const PIP_VOLUME_ARGS = [
+  "-v", "monet-pip-cache:/root/.cache/pip",
+  "-v", `monet-pip-lib:${PIP_SHARED_DIR}`,
+];
 export const PIP_ENV_ARGS = [
-  "-e", "PIP_TARGET=/work/.pip",
-  "-e", "PYTHONPATH=/work/.pip",
-  "-e", "PATH=/work/.pip/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+  "-e", `PIP_TARGET=${PIP_SHARED_DIR}`,
+  "-e", `PYTHONPATH=/work/.pip:${PIP_SHARED_DIR}`,
+  "-e",
+  `PATH=/work/.pip/bin:${PIP_SHARED_DIR}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
 ];
 
 /** Raw podman invocation — background tasks manage their own containers. */
@@ -967,15 +994,9 @@ export async function runPodmanCommand(
   const dir = sessionDir(sessionId);
   const before = snapshotFiles(dir);
   const result = await run([
-    "run", "--rm", "-v", `${dir}:/work`, "-v", "monet-pip-cache:/root/.cache/pip",
-    // pip installs land in /work/.pip: every RunCommand is a FRESH container
-    // from the image, so a plain `pip install` evaporated before the next
-    // call — the agent watched "Successfully installed" turn into "No module
-    // named". /work persists, and ServeSandbox mounts the same folder, so an
-    // install made here is visible to the server container too.
-    "-e", "PIP_TARGET=/work/.pip",
-    "-e", "PYTHONPATH=/work/.pip",
-    "-e", "PATH=/work/.pip/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "run", "--rm", "-v", `${dir}:/work`,
+    ...PIP_VOLUME_ARGS,
+    ...PIP_ENV_ARGS,
     "-w", "/work", IMAGE_TAG, "sh", "-lc", command,
   ], { timeoutMs: opts.timeoutMs ?? RUN_COMMAND_TIMEOUT_MS, signal });
   // Surface any files the command wrote into /work, same as RunPython — so
@@ -1019,21 +1040,15 @@ export async function runPodman(
     "--rm",
     "-v",
     `${dir}:/work`,
-    "-v",
-    "monet-pip-cache:/root/.cache/pip",
+    ...PIP_VOLUME_ARGS,
     "-w",
     "/work",
     "-e",
     "PYTHONIOENCODING=utf-8",
     "-e",
     "PYTHONUTF8=1",
-    // Same persistent pip target as RunCommand — see the note there.
-    "-e",
-    "PIP_TARGET=/work/.pip",
-    "-e",
-    "PYTHONPATH=/work/.pip",
-    "-e",
-    "PATH=/work/.pip/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    // The same shared install layer RunCommand uses — see PIP_ENV_ARGS.
+    ...PIP_ENV_ARGS,
     IMAGE_TAG,
     "python",
     scriptName,

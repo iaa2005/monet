@@ -69,8 +69,27 @@ const argv = args.join(" ");
 // ── 2. Only the chat's own folder is mounted ──────────────────────────
 {
   const mounts = args.filter((a, i) => args[i - 1] === "-v");
-  check("exactly one host path is mounted", mounts.length === 1, mounts.join(", "));
-  check("and it is the chat's sandbox folder", mounts[0] === `${DIR}:/work`, mounts[0]);
+  // Two kinds of -v, and only one of them is a hole in the wall. A HOST path
+  // exposes the user's disk; a named podman volume is storage the container
+  // runtime owns, with nothing of the user's in it — that is what carries the
+  // shared pip layer and the wheel cache into every sandbox.
+  const isHostPath = (m: string): boolean => /^([A-Za-z]:[\\/]|[\\/])/.test(m);
+  const hostMounts = mounts.filter(isHostPath);
+  check(
+    "exactly one host path is mounted",
+    hostMounts.length === 1,
+    hostMounts.join(", "),
+  );
+  check(
+    "and it is the chat's sandbox folder",
+    hostMounts[0] === `${DIR}:/work`,
+    hostMounts[0],
+  );
+  check(
+    "everything else mounted is a named volume, not the user's disk",
+    mounts.filter((m) => !isHostPath(m)).every((m) => /^[a-z0-9][\w.-]*:\//.test(m)),
+    mounts.filter((m) => !isHostPath(m)).join(", "),
+  );
   check("served with /work as the working directory", argv.includes("-w /work"));
   // A traversal out of /work reaches the container's own filesystem — never
   // the user's, because nothing else from the host is in there.

@@ -56,6 +56,17 @@ function resolveInWorkDir(sessionId: string, rel: string): string | null {
   return abs === root || abs.startsWith(root + sep) ? abs : null;
 }
 
+/**
+ * Machinery, not the user's files.
+ *
+ * `.pip` is the chat's private install layer — one `pip install yfinance` puts
+ * about 1500 files in it, and the Files panel (and the model's own Glob) then
+ * shows a folder of somebody else's package sources with the two files the
+ * chat actually made buried somewhere inside. Read still reaches anything
+ * here by path; this only decides what gets LISTED.
+ */
+const NOT_THE_USERS = new Set([".pip", "__pycache__"]);
+
 function walk(dir: string, root: string, out: SandboxFileInfo[]): void {
   let entries: string[];
   try {
@@ -64,6 +75,7 @@ function walk(dir: string, root: string, out: SandboxFileInfo[]): void {
     return;
   }
   for (const e of entries) {
+    if (NOT_THE_USERS.has(e)) continue;
     const full = join(dir, e);
     let st;
     try {
