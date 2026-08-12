@@ -1,7 +1,7 @@
 import type { Notification } from 'src/context/notifications.js'
 import type { TodoList } from 'src/utils/todo/types.js'
 import type { BridgePermissionCallbacks } from '@anthropic/bridge/bridgePermissionCallbacks.js'
-import type { Command } from '../commands.js'
+import type { Command } from '../types/command.js'
 import type { ChannelPermissionCallbacks } from '../services/mcp/channelPermissions.js'
 import type { ElicitationRequestEvent } from '../services/mcp/elicitationHandler.js'
 import type {

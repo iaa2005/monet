@@ -225,4 +225,31 @@ for (const [from, to] of destination) {
 for (const [from, to, content] of edits)
   if (content !== null) writeFileSync(to, content);
 
+// The typecheck debt is keyed by path, so a move that leaves it behind reads
+// as "146 files cleaned themselves and 146 new ones broke" — the gate would
+// fail on every moved file at once and the real count would be lost. Carry
+// the entries across; the totals must be identical afterwards.
+{
+  const DEBT = join(ROOT, "scripts/typecheck-debt.json");
+  if (existsSync(DEBT)) {
+    const debt = JSON.parse(readFileSync(DEBT, "utf8"));
+    const key = (p) => relative(ROOT, p).replace(/\\/g, "/");
+    const next = {};
+    let carried = 0;
+    for (const [k, v] of Object.entries(debt)) {
+      const abs = join(ROOT, k);
+      const dest = destination.get(abs);
+      if (dest) carried++;
+      next[key(dest ?? abs)] = v;
+    }
+    const sorted = Object.fromEntries(Object.entries(next).sort());
+    writeFileSync(DEBT, JSON.stringify(sorted, null, 2) + "\n");
+    const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
+    console.log(
+      `debt: ${carried} of ${Object.keys(debt).length} entries repathed, ` +
+        `total ${sum(debt)} -> ${sum(sorted)}`,
+    );
+  }
+}
+
 console.log(`\nmoved ${destination.size} files, rewrote ${rewritten} specifiers`);

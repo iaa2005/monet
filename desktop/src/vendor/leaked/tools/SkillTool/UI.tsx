@@ -4,7 +4,7 @@ import { SubAgentProvider } from '@anthropic/cli/components/CtrlOToExpand.js';
 import { FallbackToolUseErrorMessage } from '@anthropic/cli/components/FallbackToolUseErrorMessage.js';
 import { FallbackToolUseRejectedMessage } from '@anthropic/cli/components/FallbackToolUseRejectedMessage.js';
 import type { z } from 'zod/v4';
-import type { Command } from '../../commands.js';
+import type { Command } from '../../types/command.js';
 import { Byline } from '@anthropic/cli/components/design-system/Byline.js';
 import { Message as MessageComponent } from '@anthropic/cli/components/Message.js';
 import { MessageResponse } from '@anthropic/cli/components/MessageResponse.js';
