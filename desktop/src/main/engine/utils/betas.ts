@@ -22,7 +22,7 @@ import {
   WEB_SEARCH_BETA_HEADER,
 } from '../constants/betas.js'
 import { OAUTH_BETA_HEADER } from '../constants/oauth.js'
-import { isClaudeAISubscriber } from '@anthropic/account/auth.js'
+import { isClaudeAISubscriber } from '../account.js'
 import { has1mContext } from './context.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from '../../llm/model/model.js'

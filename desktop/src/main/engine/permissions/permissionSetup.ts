@@ -43,7 +43,7 @@ import {
 import {
   addDirHelpMessage,
   validateDirectoryForWorkspace,
-} from '@anthropic/cli/commands/add-dir/validation.js'
+} from '../commands/add-dir/validation.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,

@@ -16,10 +16,10 @@
  * Skill tool and the Skills section of the menu.
  *
  * The static half shrinks to the three prompt commands worth having (/init,
- * /commit, /review + /ultrareview). Dropped with it: /commit-push-pr and
- * /init-verifiers (Anthropic-internal), /insights and /statusline (already
- * filtered as inapplicable — see ipc/commands.ts), and every local-jsx command
- * whose whole body is a terminal dialog.
+ * /commit, /review). Dropped with it: /ultrareview, which ran on Anthropic's
+ * cloud and was local-jsx so the menu never showed it; /commit-push-pr and
+ * /init-verifiers (Anthropic-internal); /insights and /statusline (filtered as
+ * inapplicable — see ipc/commands.ts); and every command that is a dialog.
  */
 
 import memoize from "lodash-es/memoize.js";
@@ -41,9 +41,9 @@ import {
   getPluginSkills,
   clearPluginSkillsCache,
 } from "../plugins/loadPluginCommands.js";
-import commit from "@anthropic/cli/commands/commit.js";
-import init from "@anthropic/cli/commands/init.js";
-import review, { ultrareview } from "@anthropic/cli/commands/review.js";
+import commit from "../engine/commands/commit.js";
+import init from "../engine/commands/init.js";
+import review from "../engine/commands/review.js";
 
 export type {
   Command,
@@ -57,9 +57,9 @@ export { getCommandName, isCommandEnabled } from "../engine/types/command.js";
 
 /** The built-ins we keep. Declared as a function: their `isEnabled` reads
  *  config, which is not readable at module init. */
-const BUILTINS = (): Command[] => [init, commit, review, ultrareview];
+const BUILTINS = (): Command[] => [init, commit, review];
 
-const BUILTIN_NAMES = new Set(["init", "commit", "review", "ultrareview"]);
+const BUILTIN_NAMES = new Set(["init", "commit", "review"]);
 
 /**
  * Names that carry no context of their own. Session titling asks this before

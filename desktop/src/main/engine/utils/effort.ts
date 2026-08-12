@@ -1,7 +1,7 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { isUltrathinkEnabled } from './thinking.js'
 import { getInitialSettings } from '../../settings/settings.js'
-import { isProSubscriber, isMaxSubscriber, isTeamSubscriber } from '@anthropic/account/auth.js'
+import { isProSubscriber, isMaxSubscriber, isTeamSubscriber } from '../account.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import { getAPIProvider } from '../../llm/model/providers.js'
 import { get3PModelCapabilityOverride } from '../../llm/model/modelSupportOverrides.js'

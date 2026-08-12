@@ -9,7 +9,7 @@ import {
   getClaudeAIOAuthTokens,
   handleOAuth401Error,
   isClaudeAISubscriber,
-} from '@anthropic/account/auth.js'
+} from '../account.js'
 import { getClaudeCodeUserAgent } from './userAgent.js'
 import { getWorkload } from './workloadContext.js'
 

@@ -18,7 +18,7 @@ import {
   checkAndRefreshOAuthTokenIfNeeded,
   getClaudeAIOAuthTokens,
   isAnthropicAuthEnabled,
-} from '@anthropic/account/auth.js'
+} from '../account.js'
 import { logForDebugging } from '../utils/debug.js'
 import { getUserAgent } from '../utils/http.js'
 import { logError } from '../utils/log.js'

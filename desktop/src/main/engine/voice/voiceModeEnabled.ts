@@ -3,7 +3,7 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
 import {
   getClaudeAIOAuthTokens,
   isAnthropicAuthEnabled,
-} from '@anthropic/account/auth.js'
+} from '../account.js'
 
 /**
  * Kill-switch check for voice mode. Returns true unless the

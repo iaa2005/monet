@@ -1,5 +1,5 @@
 import memoize from 'lodash-es/memoize.js'
-import { refreshAndGetAwsCredentials } from '@anthropic/account/auth.js'
+import { refreshAndGetAwsCredentials } from '../../engine/account.js'
 import { getAWSRegion, isEnvTruthy } from '../../engine/utils/envUtils.js'
 import { logError } from '../../engine/utils/log.js'
 import { getAWSClientProxyConfig } from '../../engine/utils/proxy.js'

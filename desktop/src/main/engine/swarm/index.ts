@@ -43,7 +43,7 @@ import { count } from '../utils/array.js'
 import {
   checkAndRefreshOAuthTokenIfNeeded,
   getClaudeAIOAuthTokens,
-} from '@anthropic/account/auth.js'
+} from '../account.js'
 import { logForDebugging } from '../utils/debug.js'
 import { classifyAxiosError } from '../utils/errors.js'
 import { getGithubRepo } from '../utils/git.js'

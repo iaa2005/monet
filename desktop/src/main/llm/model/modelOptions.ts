@@ -4,7 +4,7 @@ import {
   isClaudeAISubscriber,
   isMaxSubscriber,
   isTeamPremiumSubscriber,
-} from '@anthropic/account/auth.js'
+} from '../../engine/account.js'
 import { getModelStrings } from './modelStrings.js'
 import {
   COST_TIER_3_15,

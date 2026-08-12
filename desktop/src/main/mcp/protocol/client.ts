@@ -60,7 +60,7 @@ import {
   checkAndRefreshOAuthTokenIfNeeded,
   getClaudeAIOAuthTokens,
   handleOAuth401Error,
-} from '@anthropic/account/auth.js'
+} from '../../engine/account.js'
 import { registerCleanup } from '../../engine/utils/cleanupRegistry.js'
 import { detectCodeIndexingFromMcpServerName } from '../../engine/utils/codeIndexing.js'
 import { logForDebugging } from '../../engine/utils/debug.js'

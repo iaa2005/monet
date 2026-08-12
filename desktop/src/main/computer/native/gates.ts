@@ -1,7 +1,7 @@
 import type { CoordinateMode, CuSubGates } from '@ant/computer-use-mcp/types'
 
 import { getDynamicConfig_CACHED_MAY_BE_STALE } from '../../engine/gates.js'
-import { getSubscriptionType } from '@anthropic/account/auth.js'
+import { getSubscriptionType } from '../../engine/account.js'
 import { isEnvTruthy } from '../../engine/utils/envUtils.js'
 
 type ChicagoConfig = CuSubGates & {

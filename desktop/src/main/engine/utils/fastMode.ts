@@ -15,7 +15,7 @@ import {
   getClaudeAIOAuthTokens,
   handleOAuth401Error,
   hasProfileScope,
-} from '@anthropic/account/auth.js'
+} from '../account.js'
 import { isInBundledMode } from './bundledMode.js'
 import { getGlobalConfig, saveGlobalConfig } from './config.js'
 import { logForDebugging } from './debug.js'

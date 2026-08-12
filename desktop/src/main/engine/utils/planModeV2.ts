@@ -1,5 +1,5 @@
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../gates.js'
-import { getRateLimitTier, getSubscriptionType } from '@anthropic/account/auth.js'
+import { getRateLimitTier, getSubscriptionType } from '../account.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from './envUtils.js'
 
 export function getPlanModeV2AgentCount(): number {
