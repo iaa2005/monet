@@ -28,6 +28,7 @@ import {
 import { activeModelAccepts } from "./model-modalities.js";
 import { getComputerConfig } from "../computer/config.js";
 import { touchComputerOverlay } from "../computer/overlay.js";
+import { visionScreenElements } from "../computer/vision.js";
 import { artifactReference, saveArtifactBuffer } from "../ipc/artifacts.js";
 
 // The transform from the most recent screenshot to virtual desktop pixels.
@@ -111,6 +112,24 @@ async function deniedGuard(action: string): Promise<string | null> {
   return null;
 }
 
+/** One element per line, centre coordinates ready to click. Coordinates are
+ * mapped through `toImg` when the caller's space is not screen pixels. */
+function formatElementLines(
+  els: { n: string; t: string; x: number; y: number; w: number; h: number }[],
+  toImg?: (x: number, y: number) => [number, number],
+): string {
+  return els
+    .slice(0, 120)
+    .map((e, i) => {
+      const cx = e.x + e.w / 2;
+      const cy = e.y + e.h / 2;
+      const [ix, iy] = toImg ? toImg(cx, cy) : [Math.round(cx), Math.round(cy)];
+      const label = e.n ? `"${e.n}"` : "(unnamed)";
+      return `${i + 1}. [${e.t}] ${label} — click at [${ix}, ${iy}]`;
+    })
+    .join("\n");
+}
+
 /** Blind-mode "screenshot": open windows + the foreground window's clickable
  * elements, coordinates in DIP screen pixels. */
 async function describeScreen(note: string): Promise<ComputerOutput> {
@@ -124,18 +143,24 @@ async function describeScreen(note: string): Promise<ComputerOutput> {
     .map((w) => `- "${w.title}" (${w.app})`);
   let body: string;
   if (scan.ok && (scan.elements?.length ?? 0) > 0) {
-    const lines = (scan.elements ?? []).slice(0, 120).map((e, i) => {
-      const label = e.n ? `"${e.n}"` : "(unnamed)";
-      return `${i + 1}. [${e.t}] ${label} — click at [${Math.round(e.x + e.w / 2)}, ${Math.round(e.y + e.h / 2)}]`;
-    });
     body =
       `Foreground window "${scan.title ?? ""}" — interactive elements (pass an element's [x, y] straight to a click action):\n` +
-      lines.join("\n");
+      formatElementLines(scan.elements ?? []);
   } else {
-    body =
-      `Foreground window "${scan.title ?? "?"}" exposed no accessibility elements` +
-      `${!scan.ok && scan.error ? ` (${scan.error})` : ""}. ` +
-      `Try focus_window to reach another app, drive it with key/type, or ask the user.`;
+    // No accessibility tree — parse the pixels instead (OmniParser + WinOCR).
+    const vis = await visionScreenElements();
+    if (vis.ok && (vis.elements?.length ?? 0) > 0) {
+      body =
+        `Foreground window "${scan.title ?? "?"}" exposes no accessibility tree — the SCREEN was parsed visually instead ` +
+        `(icon detector + OCR; boxes cover the WHOLE screen, not just one window). Elements:\n` +
+        formatElementLines(vis.elements ?? []);
+    } else {
+      body =
+        `Foreground window "${scan.title ?? "?"}" exposed no accessibility elements` +
+        `${!scan.ok && scan.error ? ` (${scan.error})` : ""}, and the visual parse ` +
+        `${vis.error ? `failed: ${vis.error}` : "found nothing"}. ` +
+        `Try focus_window to reach another app, drive it with key/type, or ask the user.`;
+    }
   }
   return {
     text:
@@ -207,9 +232,11 @@ export const ComputerTool = buildTool({
         "- key — text: a combo like 'ctrl+c', 'alt+Tab', 'Return', 'Escape'.",
         "- scroll — coordinate + scroll_direction (up/down) + scroll_amount.",
         "After every click the tool re-reads the tree and returns the updated",
-        "inventory — read it to verify the click did what you expected. Some",
-        "windows (games, canvas apps) expose no elements; tell the user instead",
-        "of clicking blindly. Move deliberately; actions can't always be undone.",
+        "inventory — read it to verify the click did what you expected. A",
+        "window with no accessibility tree (games, canvas apps) is parsed",
+        "VISUALLY instead — an icon detector plus OCR — automatically; those",
+        "labels come from OCR and can be imprecise, so double-check what a",
+        "click did. Move deliberately; actions can't always be undone.",
       ].join("\n");
     }
     return [
@@ -308,39 +335,42 @@ export const ComputerTool = buildTool({
           if (blind())
             lastTransform = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
           const scan = await listScreenElements();
-          if (!scan.ok)
-            return {
-              data: {
-                text: `UI element scan failed: ${scan.error ?? "unknown"}. Fall back to screenshot + visual coordinates.`,
-                isError: true,
-              },
-            };
-          const els = scan.elements ?? [];
-          if (els.length === 0)
-            return {
-              data: {
-                text:
-                  `No accessible elements found in "${scan.title ?? "the foreground window"}" — ` +
-                  `the app may not expose an accessibility tree. Use screenshot + visual coordinates.`,
-                isError: false,
-              },
-            };
+          const els = scan.ok ? (scan.elements ?? []) : [];
           // Report centres in the LAST screenshot's image space — the same
           // space click coordinates are given in (inverse of lastTransform).
           const toImg = (sx: number, sy: number): [number, number] => [
             Math.round((sx - lastTransform.offsetX) / (lastTransform.scaleX || 1)),
             Math.round((sy - lastTransform.offsetY) / (lastTransform.scaleY || 1)),
           ];
-          const lines = els.slice(0, 100).map((e, i) => {
-            const [ix, iy] = toImg(e.x + e.w / 2, e.y + e.h / 2);
-            const label = e.n ? `"${e.n}"` : "(unnamed)";
-            return `${i + 1}. [${e.t}] ${label} — click at [${ix}, ${iy}]`;
-          });
+          if (els.length === 0) {
+            // No accessibility tree — parse the pixels (OmniParser + WinOCR).
+            const vis = await visionScreenElements();
+            if (vis.ok && (vis.elements?.length ?? 0) > 0)
+              return {
+                data: {
+                  text:
+                    `"${scan.title ?? "The foreground window"}" exposes no accessibility tree — the SCREEN was parsed visually ` +
+                    `(icon detector + OCR; boxes cover the whole screen, not just one window). Coordinates are in the last ` +
+                    `screenshot's pixel space — pass them directly to click actions:\n` +
+                    formatElementLines(vis.elements ?? [], toImg),
+                  isError: false,
+                },
+              };
+            return {
+              data: {
+                text:
+                  `No accessible elements found in "${scan.title ?? "the foreground window"}"` +
+                  `${!scan.ok && scan.error ? ` (${scan.error})` : ""}, and the visual parse ` +
+                  `${vis.error ? `failed: ${vis.error}` : "found nothing"}. Use screenshot + visual coordinates.`,
+                isError: false,
+              },
+            };
+          }
           return {
             data: {
               text:
                 `UI elements of "${scan.title ?? ""}" (coordinates are in the last screenshot's pixel space — pass them directly to click actions):\n` +
-                lines.join("\n"),
+                formatElementLines(els, toImg),
               isError: false,
             },
           };

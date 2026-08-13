@@ -5,3 +5,4 @@
 models/
 out/
 __pycache__/
+testdata/
