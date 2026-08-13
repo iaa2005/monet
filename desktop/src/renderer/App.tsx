@@ -1743,7 +1743,7 @@ export default function App(): JSX.Element {
         className={cn(
           // 4px here, 4px on each card (dock.css) — 8px of air at the window
           // edge and 8px between any two panes, from one pair of numbers.
-          "flex min-h-0 flex-1 p-1",
+          "flex min-h-0 flex-1 p-1 pt-0",
           incognito && "text-card-foreground",
         )}
       >

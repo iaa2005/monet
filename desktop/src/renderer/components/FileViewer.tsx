@@ -264,8 +264,17 @@ export function FileViewer({
   // in a sandbox, not in the user's project.
   const space = useChatStore((s) => s.space);
   const truncated = !!content && /… \(truncated/.test(content.slice(-120));
-  const canEdit =
-    space === "code" && source === "file" && !!filePath && !isRich && !truncated;
+  /*
+   * A real file on disk is editable from either space.
+   *
+   * This used to read `space === "code" && …`, on the rule "Home reads, Code
+   * edits". That rule is about the WORKSPACE — Home has no project to edit —
+   * but Home does have a sandbox, its Files panel exists precisely to dig
+   * around in it, and a .csv sitting there was read-only for no reason anyone
+   * could act on. What still cannot be edited is an artifact: it is a record
+   * of what a turn produced, and there is no write path to it.
+   */
+  const canEdit = source === "file" && !!filePath && !isRich && !truncated;
 
   const [dirty, setDirty] = useState(false);
   /** Markdown reads better rendered and edits only as source. */
@@ -437,11 +446,7 @@ export function FileViewer({
    */
   const isLegacyXls = /\.xls$/i.test(displayName);
   const canEditSheet =
-    preview === "xlsx" &&
-    space === "code" &&
-    source === "file" &&
-    !!filePath &&
-    !isLegacyXls;
+    preview === "xlsx" && source === "file" && !!filePath && !isLegacyXls;
 
   // --- Load plain file content (text/markdown/code) ---
   useEffect(() => {
@@ -850,7 +855,7 @@ export function FileViewer({
               <NotebookViewer
                 text={artText}
                 // Same rule as any other file: Home reads, Code edits.
-                canEdit={space === "code" && source === "file" && !!filePath}
+                canEdit={source === "file" && !!filePath}
                 onDirtyChange={markDirty}
                 onSave={(serialized) => {
                   if (!filePath) return;
@@ -884,6 +889,14 @@ export function FileViewer({
                     )}
                   />
                 </div>
+              ) : isCsv && csvTable ? (
+                // An artifact CSV reaches the viewer as a rich item, not as a
+                // path, so it renders here rather than down the plain-file
+                // branch — and it was the one place the table never got
+                // wired, which is why a CSV in a Home chat still looked like
+                // a wall of commas. Read-only: this is a chat artifact, and
+                // Home does not edit files.
+                <CsvTable text={artText} canEdit={false} onChange={() => {}} />
               ) : (
                 <CodeEditor
                   value={artText}
