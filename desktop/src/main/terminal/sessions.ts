@@ -27,6 +27,9 @@ import {
   sandboxWorkDir,
 } from "../sandbox/podman-engine.js";
 import { getProjectRoot } from "../engine/state/state.js";
+import { addPodmanToPath, podmanBinDir } from "../sandbox/podman-binary.js";
+import { existsSync } from "fs";
+import { join } from "path";
 
 /**
  * How much output to keep per chat, for redrawing the screen on reattach.
@@ -66,6 +69,30 @@ const exitListeners = new Set<ExitListener>();
 export function onTerminalExit(fn: ExitListener): () => void {
   exitListeners.add(fn);
   return () => exitListeners.delete(fn);
+}
+
+/**
+ * The podman executable, by ABSOLUTE path.
+ *
+ * child_process.spawn("podman") works because it searches PATH. conpty does
+ * not: it hands the name to CreateProcess, whose search list is the app
+ * directory, the system directories and PATH — and the portable CLI lives in
+ * the app's data dir, which is on none of them until addPodmanToPath() has
+ * run. The failure is silent about its cause, because node-pty's own message
+ * is the literal string "File not found: " with the name left off, which is
+ * exactly what the user saw.
+ *
+ * So: patch PATH (podman's own helpers want it too), then hand over a full
+ * path rather than trusting the search.
+ */
+export function podmanExecutable(): string | null {
+  addPodmanToPath();
+  const dir = podmanBinDir();
+  const exe = process.platform === "win32" ? "podman.exe" : "podman";
+  if (dir && existsSync(join(dir, exe))) return join(dir, exe);
+  // A system-wide install: no directory of ours, but PATH may still have it.
+  // CreateProcess does search PATH, so this is worth trying before failing.
+  return null;
 }
 
 function hostShell(): { file: string; args: string[] } {
@@ -145,9 +172,9 @@ export async function openTerminal(
     const image = await ensureSandboxImage();
     if (!image.ok)
       return { ok: false, error: image.error ?? "The sandbox image is not ready." };
-    // By name, from PATH — the same way podman-engine invokes it, and
-    // ensureSandboxImage above has already put the portable CLI there.
-    file = "podman";
+    // Absolute where we can find it — see podmanExecutable for why a bare
+    // name is not enough here, even though it is everywhere else.
+    file = podmanExecutable() ?? "podman";
     args = sandboxShellArgs(sessionId);
     cwd = sandboxWorkDir(sessionId);
   } else if (space === "home" && engine === "subprocess") {
@@ -189,9 +216,14 @@ export async function openTerminal(
       } as Record<string, string>,
     });
   } catch (err) {
+    // node-pty's "File not found: " arrives with the name left off, so the
+    // one fact worth having is missing from it. Put it back.
+    const why = err instanceof Error ? err.message : String(err);
     return {
       ok: false,
-      error: `Could not start a shell: ${err instanceof Error ? err.message : String(err)}`,
+      error: /file not found/i.test(why)
+        ? `Could not start a shell: ${file} was not found.`
+        : `Could not start a shell: ${why}`,
     };
   }
 

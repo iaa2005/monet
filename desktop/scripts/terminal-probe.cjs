@@ -128,6 +128,45 @@ app.whenReady().then(async () => {
     args.filter((a) => a.includes(":/")).join(" "),
   );
 
+  // ── Finding podman at all ───────────────────────────────────────────
+  //
+  // child_process.spawn("podman") works because it searches PATH; conpty hands
+  // the name to CreateProcess, which does not look in the app's data dir where
+  // the portable CLI lives. It failed with node-pty's own message — the string
+  // "File not found: " with the name left off — so the terminal reported that
+  // nothing in particular was missing.
+  {
+    const pty = require("@homebridge/node-pty-prebuilt-multiarch");
+    let bareWorks = true;
+    try {
+      const t = pty.spawn("definitely-not-a-real-binary-xyz", [], {
+        name: "xterm-color",
+        cols: 80,
+        rows: 24,
+        cwd: process.cwd(),
+        env: process.env,
+      });
+      t.kill();
+    } catch (err) {
+      bareWorks = false;
+      check(
+        "node-pty still omits the name from 'File not found'",
+        /file not found:\s*$/i.test(String(err.message)),
+        JSON.stringify(String(err.message)),
+      );
+    }
+    check("a missing executable does throw", !bareWorks);
+
+    const exe = term.podmanExecutable();
+    check(
+      "podman resolves to an absolute path, or to nothing at all",
+      exe === null || path.isAbsolute(exe),
+      String(exe),
+    );
+    if (exe)
+      check("…and that path exists", require("fs").existsSync(exe), exe);
+  }
+
   off();
   console.log(failures === 0 ? "\nTHE SHELL STAYS, AND CTRL+C REACHES IT" : `\n${failures} FAILURES`);
   app.exit(failures ? 1 : 0);

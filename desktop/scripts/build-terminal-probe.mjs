@@ -64,6 +64,7 @@ writeFileSync(
   onTerminalData,
   onTerminalExit,
   sandboxShellArgs,
+  podmanExecutable,
 } from "../src/main/terminal/sessions.js";
 `,
   "utf-8",
