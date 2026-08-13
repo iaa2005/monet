@@ -37,7 +37,7 @@ import {
   ExternalLink,
   Monitor,
   ChevronRight,
-  Cpu,
+  Container,
   Check,
   type LucideIcon,
 } from "lucide-react";
@@ -1490,7 +1490,11 @@ export default function App(): JSX.Element {
                   aria-label="Sandbox engine for this chat"
                   className="app-no-drag flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
                 >
-                  <Cpu className="size-3.5" />
+                  {/* A container, because that is what the sandbox IS. The
+                      cpu here was reading as "processor", which is the one
+                      thing this control has nothing to do with — and Settings
+                      already draws the same choice with this glyph. */}
+                  <Container className="size-3.5" />
                   {ENGINE_LABEL[sessionEngine]}
                   <ChevronDown className="size-3" />
                 </button>
