@@ -11,7 +11,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import {
-  Zap,
+  AlarmClock,
   Plus,
   Brain,
   Blocks,
@@ -269,7 +269,7 @@ export function RoutinesSettings({
       <div className="flex items-start justify-between gap-4">
         <div>
           <SectionTitle className="flex items-center gap-2">
-            <Zap className="size-4" />
+            <AlarmClock className="size-4" />
             Routines
           </SectionTitle>
           <p className="mt-0.5 text-sm text-muted-foreground">

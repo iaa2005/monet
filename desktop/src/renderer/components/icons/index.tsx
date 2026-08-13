@@ -73,14 +73,15 @@ export function ArtifactIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
  *
  * The plusses are large and far apart, both learned at 16px: small ones close
  * into dots, and a pair with only their own width between them fuses into a
- * single ‡.
+ * single ‡. The C is as large as its opening allows — push the radius further
+ * and the arc's left edge leaves the box.
  */
 export function CppIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
   return (
     <Icon {...props}>
-      <path d="M12.5 8a5 5 0 1 0 0 8" />
-      <path d="M18 5.25v4.5M15.75 7.5h4.5" />
-      <path d="M18 14.25v4.5M15.75 16.5h4.5" />
+      <path d="M12.5 5.5a7 7 0 1 0 0 13" />
+      <path d="M18.25 5v5.5M15.5 7.75h5.5" />
+      <path d="M18.25 13.5v5.5M15.5 16.25h5.5" />
     </Icon>
   );
 }
@@ -110,13 +111,17 @@ export function RustIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
  *
  * The gopher was the first attempt: at this size it lost its teeth and turned
  * into an owl, and a face among glyphs reads as a mascot rather than a label.
- * The wordmark's G still says Go at 16px. Scaled 1.3 from the user's 16-box
- * drawing.
+ * The wordmark's G still says Go at 16px.
+ *
+ * The G is scaled 1.45 from the user's 16-box drawing; the speed lines are
+ * redrawn shorter rather than scaled with it. Scaling the pair together is
+ * what left the icon small: the drawing is half again as wide as it is tall,
+ * so the lines hit the edge while the G was still short of the top and bottom.
  */
 export function GoIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
   return (
     <Icon {...props}>
-      <path d="m21.72 11.43l-6.31.62m6.31-.62a6.47 6.47 0 0 1-5.9 7.05a6.5 6.5 0 1 1 3.84-11.26l-2.21 2.39a3.25 3.25 0 0 0-5.43 2.68c.07.74.39 1.43.9 1.96c.33.35 1.3 1.08 2.31 1.07c1.04-.03 2.05-.33 2.69-1.05c0 0 1.04-1.25.88-2.44M4.85 12l-2.6.01m1.95 2.6h1.95m-2.6-5.19l2.6-.03" />
+      <path d="m21.9 11.36l-7.03.7m7.03-.7a7.22 7.22 0 0 1-6.58 7.86a7.25 7.25 0 1 1 4.28-12.56l-2.47 2.67a3.63 3.63 0 0 0-6.06 2.99c.07.83.44 1.6 1 2.19c.36.39 1.45 1.2 2.58 1.19c1.16-.03 2.29-.36 3-1.17c0 0 1.16-1.39.99-2.73M6.5 9.1h-3M5 12H2M6.5 14.9H4.25" />
     </Icon>
   );
 }

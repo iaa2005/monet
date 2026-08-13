@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
-  Zap,
+  AlarmClock,
   ChevronDown,
   ChevronRight,
   MoreVertical,
@@ -136,7 +136,7 @@ export function RoutinesList({
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center gap-1.5 px-2 pb-1 pt-3 text-[11px] font-medium tracking-wide text-muted-foreground hover:text-foreground"
       >
-        <Zap className="size-3" />
+        <AlarmClock className="size-3" />
         Routines
         <span className="ml-auto tabular-nums text-muted-foreground/70">
           {chats.length}
