@@ -87,12 +87,6 @@ interface Draft {
   enabled: boolean;
 }
 
-const SUGGESTIONS = [
-  "Summarize my open PRs every weekday morning",
-  "Triage new issues and flag duplicates each morning",
-  "Draft release notes whenever a PR merges",
-];
-
 interface Template {
   icon: LucideIcon;
   name: string;
@@ -269,7 +263,7 @@ export function RoutinesSettings({
       <div className="flex items-start justify-between gap-4">
         <div>
           <SectionTitle className="flex items-center gap-2">
-            <AlarmClock className="size-4" />
+            <AlarmClock className="size-6" />
             Routines
           </SectionTitle>
           <p className="mt-0.5 text-sm text-muted-foreground">
@@ -296,19 +290,16 @@ export function RoutinesSettings({
           rows={2}
           className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
+        {/* No canned prompts. The templates below are the real answer to "what
+            can this do" — three examples about pull requests sitting above
+            them said this was a tool for one kind of work, and filled the box
+            with someone else's routine. */}
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setDesc(s)}
-              className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]"
-            >
-              {s}
-            </button>
-          ))}
           <div className="ml-auto flex items-center gap-1.5">
             <MicButton
+              // Down: this mic is near the top of the panel, and the default
+              // upward panel would open off the top of the screen.
+              side="bottom"
               onText={(t) =>
                 setDesc((prev) => (prev ? prev.trimEnd() + " " : "") + t)
               }

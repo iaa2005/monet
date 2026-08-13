@@ -181,9 +181,18 @@ interface MicButtonProps {
   /** Non-fatal problems (device/transcription errors).
    *  @deprecated Errors are now displayed inline near the mic button. */
   onError?: (message: string) => void;
+  /**
+   * Which way the panel opens. "top" (default) is the composer, where the
+   * button sits at the bottom of the window; "bottom" is for a mic near the
+   * top of a page, where opening upward runs the panel off the screen.
+   */
+  side?: "top" | "bottom";
 }
 
-export function MicButton({ onText }: MicButtonProps): JSX.Element {
+export function MicButton({
+  onText,
+  side = "top",
+}: MicButtonProps): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
@@ -232,9 +241,13 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
   /** Where the panel sits on screen. It is portalled to <body> and positioned
    * by hand: inside the composer it was clipped by the first ancestor with
    * `overflow: hidden` — the right half of it simply disappeared. */
-  const [anchor, setAnchor] = useState<{ left: number; bottom: number } | null>(
-    null,
-  );
+  /* One of the two edges is pinned, never both: `bottom` hangs the panel
+     above the button, `top` drops it below. */
+  const [anchor, setAnchor] = useState<{
+    left: number;
+    bottom?: number;
+    top?: number;
+  } | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -570,7 +583,11 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
         8,
         Math.min(r.left, window.innerWidth - PANEL_WIDTH - 8),
       );
-      setAnchor({ left, bottom: window.innerHeight - r.top + 6 });
+      setAnchor(
+        side === "bottom"
+          ? { left, top: r.bottom + 6 }
+          : { left, bottom: window.innerHeight - r.top + 6 },
+      );
     };
     place();
     window.addEventListener("resize", place);
@@ -580,7 +597,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [menuOpen]);
+  }, [menuOpen, side]);
 
   useEffect(() => {
     // Close on outside click.
@@ -704,7 +721,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
         // taller than the window and the top of it went off-screen.
         <div
           ref={panelRef}
-          style={{ left: anchor.left, bottom: anchor.bottom }}
+          style={{ left: anchor.left, bottom: anchor.bottom, top: anchor.top }}
           className="fixed z-[100] flex w-80 flex-col rounded-lg border border-border bg-card p-2 shadow-lg"
         >
           <div className="max-h-[70vh] overflow-y-auto overflow-x-hidden">
