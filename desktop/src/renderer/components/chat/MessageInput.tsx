@@ -1773,6 +1773,11 @@ export function MessageInput({
           {/* Controls inside the composer card */}
           <div className="mt-2.5 flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-1.5">
+              <PermissionModeMenu
+                mode={mode}
+                onChange={pickMode}
+                home={isHomeSpace}
+              />
               <button
                 type="button"
                 title="Attach files"
@@ -1781,11 +1786,6 @@ export function MessageInput({
               >
                 <Plus className="size-4" />
               </button>
-              <PermissionModeMenu
-                mode={mode}
-                onChange={pickMode}
-                home={isHomeSpace}
-              />
               <MicButton onText={appendDictated} />
               <button
                 type="button"
@@ -1848,38 +1848,7 @@ export function MessageInput({
                 </button>
               )}
 
-              {activeModel && (
-                <ContextMeter
-                  sessionId={currentSessionId ?? null}
-                  space={space}
-                  usedTokens={usedTokens}
-                  ctxWindow={ctxWindow}
-                  className={cn(pillBtn, "px-1")}
-                />
-              )}
 
-              {activeModel?.supportsEffort && (
-                <DropdownMenu open={effortMenuOpen} onOpenChange={setEffortMenuOpen}>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className={cn(pillBtn, effortBgClass(effort))}
-                      title="Reasoning effort (Faster ↔ Smarter)"
-                    >
-                      {/* No glyph: "Max" is the whole message, and a sparkle
-                          beside it only competed with the words for the eye.
-                          The colour still carries the level. */}
-                      <span className={cn("font-medium", effortTextClass(effort))}>
-                        {effortLabel(effort)}
-                      </span>
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="top" align="end" className="w-56">
-                    <DropdownMenuLabel>Reasoning effort</DropdownMenuLabel>
-                    <EffortSlider value={effort} onChange={setEffort} />
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
 
               {/* Model / provider */}
               <DropdownMenu
@@ -2012,6 +1981,39 @@ export function MessageInput({
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              {activeModel?.supportsEffort && (
+                <DropdownMenu open={effortMenuOpen} onOpenChange={setEffortMenuOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(pillBtn, effortBgClass(effort))}
+                      title="Reasoning effort (Faster ↔ Smarter)"
+                    >
+                      {/* No glyph: "Max" is the whole message, and a sparkle
+                          beside it only competed with the words for the eye.
+                          The colour still carries the level. */}
+                      <span className={cn("font-medium", effortTextClass(effort))}>
+                        {effortLabel(effort)}
+                      </span>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="top" align="end" className="w-56">
+                    <DropdownMenuLabel>Reasoning effort</DropdownMenuLabel>
+                    <EffortSlider value={effort} onChange={setEffort} />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
+              {activeModel && (
+                <ContextMeter
+                  sessionId={currentSessionId ?? null}
+                  space={space}
+                  usedTokens={usedTokens}
+                  ctxWindow={ctxWindow}
+                  className={cn(pillBtn, "px-1")}
+                />
+              )}
             </div>
           </div>
         </div>
