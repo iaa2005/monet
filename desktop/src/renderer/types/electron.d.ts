@@ -1261,6 +1261,21 @@ export interface ElectronAPI {
     checkPodman: () => Promise<{ ok: boolean; error?: string; needsWsl?: boolean }>;
     isPodmanReady: () => Promise<{ ok: boolean }>;
     warmPodman: (sessionId?: string) => Promise<{ ok: boolean }>;
+    /** A live shell for this chat, in a pty — outlives the panel. */
+    terminal: {
+      open: (
+        sessionId: string,
+        space: string | undefined,
+        cols?: number,
+        rows?: number,
+      ) => Promise<{ ok: boolean; buffer?: string; error?: string }>;
+      write: (sessionId: string, data: string) => void;
+      resize: (sessionId: string, cols: number, rows: number) => void;
+      close: (sessionId: string) => Promise<void>;
+      has: (sessionId: string) => Promise<{ ok: boolean }>;
+      onData: (fn: (sessionId: string, data: string) => void) => () => void;
+      onExit: (fn: (sessionId: string, code: number) => void) => () => void;
+    };
     /** Toolchains built on top of the base sandbox image. */
     image: {
       get: () => Promise<{

@@ -75,16 +75,12 @@ export interface DockAreaContext {
   openBackgroundTask: (id: string) => void;
   /** Open a chat by id — routines link to the sessions they started. */
   openChat: (id: string) => void;
-  sandboxRunner: (
-    command: string,
-  ) => Promise<{ output?: string; error?: string }>;
 }
 
 let latest: DockAreaContext = {
   space: "code",
   openBackgroundTask: () => {},
   openChat: () => {},
-  sandboxRunner: async () => ({ error: "not ready" }),
 };
 
 /** A panel that crashes stays a broken tab, not a broken desk. */
@@ -279,17 +275,13 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
               </div>
             }
           >
-            {home ? (
-              <Terminal
-                runner={(cmd: string) => latest.sandboxRunner(cmd)}
-                intro={[
-                  "Home sandbox — commands run inside this chat's sandbox, not on your machine.",
-                  "Files you create show up in the Files panel. Shell state (cwd, env) resets each command.",
-                ]}
-              />
-            ) : (
-              <Terminal />
-            )}
+            {/* Keyed by chat AND space: a different chat is a different
+                shell, and the component attaches to whichever it is given. */}
+            <Terminal
+              key={`${latest.currentSessionId ?? "default"}:${home ? "home" : "code"}`}
+              sessionId={latest.currentSessionId ?? "default"}
+              space={home ? "home" : "code"}
+            />
           </Suspense>
         </PanelBoundary>
       </div>

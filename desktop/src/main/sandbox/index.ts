@@ -107,17 +107,21 @@ export function sandboxSupportsShell(sessionId: string): boolean {
 }
 
 /**
- * Run an interactive-terminal command in the chat's sandbox (the Home shell).
+ * Run ONE command in the chat's sandbox and return its output.
  *
  * Podman  → a fresh container over the chat's /work mount (isolated).
  * Subprocess → a host shell scoped to the chat's folder (weak isolation).
  * Pyodide → no shell; returns an error telling the user to switch engines.
  *
  * Each command runs independently — shell state (cwd, env, background jobs)
- * does NOT persist between commands; only files written into the folder do
- * (they show up in Home's Files panel). We don't copy them into Artifacts here,
- * to avoid flooding it on every `ls`/build; the sandbox folder is the source of
+ * does NOT persist between calls; only files written into the folder do (they
+ * show up in Home's Files panel). We don't copy them into Artifacts here, to
+ * avoid flooding it on every `ls`/build; the sandbox folder is the source of
  * truth the Files panel already reads.
+ *
+ * This is NOT what the Terminal panel uses. That forgetfulness is exactly what
+ * made a terminal built on this unusable — `cd` lasted one line — so the panel
+ * holds a live pty instead; see terminal/sessions.ts.
  */
 export async function runShellInSandbox(
   sessionId: string,

@@ -863,17 +863,6 @@ export default function App(): JSX.Element {
     [currentSessionId],
   );
 
-  // Runner for the Home terminal: execute inside the current chat's sandbox.
-  const sandboxRunner = useCallback(
-    async (command: string) => {
-      const sid = currentSessionId;
-      if (!sid) return { error: "Open or start a Home chat first." };
-      const r = await api()?.sandbox.shellRun(sid, command);
-      return r ?? { error: "Sandbox unavailable." };
-    },
-    [currentSessionId],
-  );
-
   // Auto-title from main (first completed exchange names the chat) — update
   // the header when it's the visible chat, refresh the sidebar always.
   useEffect(() => {
@@ -1856,7 +1845,6 @@ export default function App(): JSX.Element {
               currentSessionId={currentSessionId}
               openBackgroundTask={openBackgroundTask}
               openChat={openChatById}
-              sandboxRunner={sandboxRunner}
             />
             {mainHost &&
               createPortal(

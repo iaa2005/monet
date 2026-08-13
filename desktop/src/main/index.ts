@@ -604,6 +604,12 @@ app.on("will-quit", () => {
   void import("./agent/lsp/manager.js")
     .then((m) => m.stopAllLsp())
     .catch(() => {});
+  // The chats' shells. They are built to outlive their panel and the chat
+  // switch, which means nothing else ever ends them — a `podman run -it` left
+  // behind holds the chat's folder open.
+  void import("./terminal/sessions.js")
+    .then((m) => m.closeAllTerminals())
+    .catch(() => {});
 });
 
 app.on("window-all-closed", () => {

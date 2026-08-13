@@ -1293,6 +1293,40 @@ const electronAPI = {
       ipcRenderer.invoke("sandbox:isPodmanReady"),
     warmPodman: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("sandbox:warmPodman", sessionId),
+    /**
+     * A live shell for this chat, in a pty. It outlives the panel and the chat
+     * switch — `open` on an existing session redraws from its buffer.
+     */
+    terminal: {
+      open: (
+        sessionId: string,
+        space: string | undefined,
+        cols?: number,
+        rows?: number,
+      ): Promise<{ ok: boolean; buffer?: string; error?: string }> =>
+        ipcRenderer.invoke("terminal:open", sessionId, space, cols, rows),
+      write: (sessionId: string, data: string): void =>
+        ipcRenderer.send("terminal:write", sessionId, data),
+      resize: (sessionId: string, cols: number, rows: number): void =>
+        ipcRenderer.send("terminal:resize", sessionId, cols, rows),
+      close: (sessionId: string): Promise<void> =>
+        ipcRenderer.invoke("terminal:close", sessionId),
+      has: (sessionId: string): Promise<{ ok: boolean }> =>
+        ipcRenderer.invoke("terminal:has", sessionId),
+      /** Output as it happens. Returns an unsubscribe. */
+      onData: (fn: (sessionId: string, data: string) => void): (() => void) => {
+        const h = (_e: unknown, sessionId: string, data: string): void =>
+          fn(sessionId, data);
+        ipcRenderer.on("terminal:data", h);
+        return () => ipcRenderer.removeListener("terminal:data", h);
+      },
+      onExit: (fn: (sessionId: string, code: number) => void): (() => void) => {
+        const h = (_e: unknown, sessionId: string, code: number): void =>
+          fn(sessionId, code);
+        ipcRenderer.on("terminal:exit", h);
+        return () => ipcRenderer.removeListener("terminal:exit", h);
+      },
+    },
     /** The toolchains added on top of the base image — see image-extras.ts. */
     image: {
       get: (): Promise<{

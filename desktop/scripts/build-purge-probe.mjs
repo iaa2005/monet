@@ -81,8 +81,15 @@ await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  // Electron and the native sqlite binding come from the runtime.
-  external: ["electron", "better-sqlite3", "node:sqlite"],
+  // Electron and the native bindings come from the runtime. node-pty arrived
+  // here through purge → terminal/sessions (deleting a chat kills its shell);
+  // bundling a .node binding is not something esbuild can do.
+  external: [
+    "electron",
+    "better-sqlite3",
+    "node:sqlite",
+    "@homebridge/node-pty-prebuilt-multiarch",
+  ],
   plugins: [
     {
       name: "probe-stubs",

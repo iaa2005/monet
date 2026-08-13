@@ -1,5 +1,18 @@
 /**
- * Terminal — xterm.js with theme-aware colors, Cyrillic support, Consolas Powerline.
+ * Terminal — xterm.js attached to a live pty in main.
+ *
+ * This used to be a REPL pretending to be a terminal: it collected a line,
+ * sent it off as one command, waited for the process to exit and printed the
+ * result. Everything a terminal is for fell out of that — `cd` was forgotten
+ * by the next line, `npm run dev` showed nothing until the five-minute timeout
+ * killed it, Ctrl+C printed "^C" and killed nothing, and the output was
+ * monochrome because a program with no tty turns its own colours off.
+ *
+ * Now the shell lives in main (terminal/sessions.ts) and this is a view onto
+ * it. Which means the component owns almost nothing: keystrokes go straight
+ * out, bytes come straight in, and unmounting closes NOTHING — leave the chat
+ * with a build running and it is still running when you come back, with its
+ * scrollback redrawn from the buffer main kept.
  */
 
 import { useEffect, useRef } from "react";
@@ -60,37 +73,26 @@ function isDark(): boolean {
   return document.documentElement.classList.contains("dark");
 }
 
-export interface TerminalRunResult {
-  stdout?: string;
-  stderr?: string;
-  error?: string;
+function api(): ElectronAPI | undefined {
+  return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
 interface TerminalProps {
-  /** Command runner. Defaults to the host shell (`electronAPI.shell.run`).
-   * Home passes a runner that executes inside the chat's sandbox. */
-  runner?: (command: string) => Promise<TerminalRunResult>;
-  /** Header lines printed on open (before the first prompt). */
-  intro?: string[];
+  /** Whose shell this is. Sessions are keyed by chat, so two chats have two. */
+  sessionId: string;
+  /** "home" runs inside the chat's container; anything else is the host. */
+  space: string;
 }
 
-export function Terminal({ runner, intro }: TerminalProps = {}): JSX.Element {
+export function Terminal({ sessionId, space }: TerminalProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<XTerm | null>(null);
-  const fitRef = useRef<FitAddon | null>(null);
-  const inputBuffer = useRef("");
   const themeRef = useRef(isDark());
-  // Keep the latest runner/intro without re-initializing xterm on every render.
-  const runnerRef = useRef(runner);
-  runnerRef.current = runner;
-  const introRef = useRef(intro);
-  introRef.current = intro;
 
   useEffect(() => {
     if (!containerRef.current) return;
+    const bridge = api();
 
     const theme = isDark() ? { ...DARK_THEME } : { ...LIGHT_THEME };
-    // Blend terminal background with card background
     const cardBg =
       getComputedStyle(document.documentElement)
         .getPropertyValue("--card")
@@ -103,21 +105,23 @@ export function Terminal({ runner, intro }: TerminalProps = {}): JSX.Element {
         '"Consolas", "Consolas Powerline", "Cascadia Code", ui-monospace, monospace',
       theme,
       allowProposedApi: true,
-      cols: 80,
-      rows: 24,
+      // What a shell keeps of what scrolled past. The pty has no memory of it
+      // and main's buffer is the reload copy; this is the one you can scroll.
+      scrollback: 10_000,
     });
 
-    // Ctrl+Shift+C/V for copy/paste (Ctrl+C reserved for SIGINT)
+    // Ctrl+Shift+C/V for copy/paste — Ctrl+C belongs to the process now, and
+    // sending SIGINT is the whole reason it does.
     term.attachCustomKeyEventHandler((e) => {
       if (e.ctrlKey && e.shiftKey && e.key === "C") {
         const sel = term.getSelection();
         if (sel) {
-          navigator.clipboard.writeText(sel);
+          void navigator.clipboard.writeText(sel);
           return false;
         }
       }
       if (e.ctrlKey && e.shiftKey && e.key === "V") {
-        navigator.clipboard.readText().then((t) => {
+        void navigator.clipboard.readText().then((t) => {
           if (t) term.paste(t);
         });
         return false;
@@ -129,58 +133,35 @@ export function Terminal({ runner, intro }: TerminalProps = {}): JSX.Element {
     term.loadAddon(fit);
     term.open(containerRef.current);
     fit.fit();
-    fitRef.current = fit;
 
-    termRef.current = term;
-
-    const introLines = introRef.current ?? [
-      "Code Monet — Terminal",
-      "Type commands, Enter to run, Ctrl+C to cancel.",
-    ];
-    for (const line of introLines) term.writeln(line);
-    term.write("\r\n$ ");
-
-    const api = (window as unknown as { electronAPI: ElectronAPI }).electronAPI;
-
-    term.onData(async (data) => {
-      if (data === "\r") {
-        const cmd = inputBuffer.current.trim();
-        term.write("\r\n");
-
-        if (cmd === "clear" || cmd === "cls") {
-          term.clear();
-        } else if (cmd) {
-          try {
-            const run = runnerRef.current;
-            const result = run ? await run(cmd) : await api.shell.run(cmd);
-            // Normalize CR/LF so xterm advances lines instead of overwriting.
-            const write = (s: string): void =>
-              term.write(s.replace(/\r?\n/g, "\r\n"));
-            if (result.stdout) write(result.stdout);
-            if (result.stderr) write(result.stderr);
-            if (result.error) term.write(`\x1b[31m${result.error}\x1b[0m`);
-          } catch (err) {
-            term.write(`\x1b[31mError: ${err}\x1b[0m`);
-          }
-        }
-
-        inputBuffer.current = "";
-        term.write("\r\n$ ");
-      } else if (data === "\x7f") {
-        if (inputBuffer.current.length > 0) {
-          inputBuffer.current = inputBuffer.current.slice(0, -1);
-          term.write("\b \b");
-        }
-      } else if (data === "\x03") {
-        term.write("^C\r\n$ ");
-        inputBuffer.current = "";
-      } else if (data >= " ") {
-        inputBuffer.current += data;
-        term.write(data);
-      }
+    let alive = true;
+    // Only this chat's bytes. One window, several chats, one channel: without
+    // the filter a background build would type into whichever terminal is on
+    // screen.
+    const offData = bridge?.sandbox.terminal.onData((id, data) => {
+      if (id === sessionId) term.write(data);
     });
+    const offExit = bridge?.sandbox.terminal.onExit(() => {});
 
-    // Listen for theme changes
+    void (async () => {
+      const r = await bridge?.sandbox.terminal.open(
+        sessionId,
+        space,
+        term.cols,
+        term.rows,
+      );
+      if (!alive) return;
+      if (!r?.ok) {
+        term.write(`\x1b[31m${r?.error ?? "Could not start a shell."}\x1b[0m\r\n`);
+        return;
+      }
+      // Reattaching: everything main saw while the panel was gone. Written
+      // before the input is wired up so a keystroke cannot land mid-redraw.
+      if (r.buffer) term.write(r.buffer);
+      term.onData((data) => bridge?.sandbox.terminal.write(sessionId, data));
+      term.focus();
+    })();
+
     const observer = new MutationObserver(() => {
       const dark = isDark();
       if (dark !== themeRef.current) {
@@ -199,15 +180,25 @@ export function Terminal({ runner, intro }: TerminalProps = {}): JSX.Element {
       attributeFilter: ["class"],
     });
 
-    const ro = new ResizeObserver(() => fit.fit());
+    // The pty has to be told the size, or a full-screen program draws for the
+    // wrong window and progress bars wrap.
+    const ro = new ResizeObserver(() => {
+      fit.fit();
+      bridge?.sandbox.terminal.resize(sessionId, term.cols, term.rows);
+    });
     ro.observe(containerRef.current);
 
     return () => {
+      alive = false;
+      offData?.();
+      offExit?.();
       observer.disconnect();
       ro.disconnect();
+      // Disposes the VIEW. The shell in main keeps running — see the note at
+      // the top: that is the feature, not an oversight.
       term.dispose();
     };
-  }, []);
+  }, [sessionId, space]);
 
   return (
     <div className="h-full w-full overflow-hidden p-2">

@@ -3,7 +3,16 @@
  * (Code execution wiring is added in a later stage.)
  */
 
-import { ipcMain } from "electron";
+import { BrowserWindow, ipcMain } from "electron";
+import {
+  closeTerminal,
+  hasTerminal,
+  onTerminalData,
+  onTerminalExit,
+  openTerminal,
+  resizeTerminal,
+  writeTerminal,
+} from "../terminal/sessions.js";
 import {
   getSandboxConfig,
   setSandboxConfig,
@@ -228,8 +237,9 @@ export function registerSandboxIPC(): void {
     ok: sandboxSupportsShell(sessionId || "default"),
   }));
 
-  // Run one command in the chat's sandbox — the Home terminal. Podman/subprocess
-  // only; Pyodide returns an error result (guarded in runShellInSandbox).
+  // Run one command in the chat's sandbox. Kept for callers that want a single
+  // command and its result — the TERMINAL no longer goes through here; it holds
+  // a live pty (see terminal/sessions.ts).
   ipcMain.handle(
     "sandbox:shellRun",
     (
@@ -239,4 +249,51 @@ export function registerSandboxIPC(): void {
     ): Promise<{ ok: boolean; stdout: string; stderr: string; error?: string }> =>
       runShellInSandbox(sessionId || "default", command),
   );
+
+  // ── The terminal: one live shell per chat ────────────────────────────
+
+  ipcMain.handle(
+    "terminal:open",
+    (
+      _e,
+      sessionId: string,
+      space: string | undefined,
+      cols?: number,
+      rows?: number,
+    ): Promise<{ ok: boolean; buffer?: string; error?: string }> =>
+      openTerminal(sessionId || "default", space, cols, rows),
+  );
+
+  ipcMain.on("terminal:write", (_e, sessionId: string, data: string): void => {
+    // `on`, not `handle`: keystrokes are a stream, and a round trip per
+    // character would put the renderer's event loop in the middle of typing.
+    writeTerminal(sessionId || "default", data);
+  });
+
+  ipcMain.on(
+    "terminal:resize",
+    (_e, sessionId: string, cols: number, rows: number): void => {
+      resizeTerminal(sessionId || "default", cols, rows);
+    },
+  );
+
+  ipcMain.handle("terminal:close", (_e, sessionId: string): void => {
+    closeTerminal(sessionId || "default");
+  });
+
+  ipcMain.handle("terminal:has", (_e, sessionId: string): { ok: boolean } => ({
+    ok: hasTerminal(sessionId || "default"),
+  }));
+
+  // Output goes to every window: there is one, and a session is not owned by
+  // a particular renderer — the panel can be closed and reopened while the
+  // shell carries on.
+  onTerminalData((sessionId, data) => {
+    for (const w of BrowserWindow.getAllWindows())
+      w.webContents.send("terminal:data", sessionId, data);
+  });
+  onTerminalExit((sessionId, code) => {
+    for (const w of BrowserWindow.getAllWindows())
+      w.webContents.send("terminal:exit", sessionId, code);
+  });
 }
