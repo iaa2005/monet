@@ -111,6 +111,26 @@ export function registerFilesIPC(): void {
     },
   );
 
+  /**
+   * The binary counterpart of files:write — base64 in, bytes on disk.
+   *
+   * A spreadsheet edited in the viewer has to go back as a workbook, and
+   * `files:write` is utf-8: handing it the bytes of an .xlsx corrupts every
+   * one of them that is not valid UTF-8, which is most of them.
+   */
+  ipcMain.handle(
+    "files:writeBytes",
+    async (_event, filePath: string, base64: string) => {
+      try {
+        await writeFile(normPath(filePath), Buffer.from(base64, "base64"));
+        return { ok: true };
+      } catch (err) {
+        logFilesError("writeBytes", err);
+        throw publicError("Write file", filePath, err);
+      }
+    },
+  );
+
   ipcMain.handle("files:list", async (_event, dirPath: string) => {
     const p = normPath(dirPath);
     try {

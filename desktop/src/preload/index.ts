@@ -176,6 +176,9 @@ const electronAPI = {
       ipcRenderer.invoke("files:read", path),
     write: (path: string, content: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("files:write", path, content),
+    /** Bytes, not text — a workbook cannot survive a utf-8 round trip. */
+    writeBytes: (path: string, base64: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("files:writeBytes", path, base64),
     list: (
       dirPath: string,
     ): Promise<

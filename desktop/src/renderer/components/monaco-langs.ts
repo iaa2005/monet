@@ -25,6 +25,10 @@ import { canHighlight, tokenizeLines } from "./chat/highlight";
 
 /** Extensions worth colouring, with the refractor language that does it. */
 const CANDIDATES: { lang: string; extensions: string[] }[] = [
+  // Delimited text. The colouring is modest by design — quoted fields and
+  // the separators — but it is the difference between reading a CSV and
+  // counting commas, which is the whole job in text mode.
+  { lang: "csv", extensions: [".csv", ".tsv"] },
   { lang: "latex", extensions: [".tex", ".sty", ".cls", ".bib", ".ltx"] },
   { lang: "toml", extensions: [".toml"] },
   { lang: "diff", extensions: [".diff", ".patch"] },

@@ -31,9 +31,11 @@ import { NotebookViewer } from "./NotebookViewer";
 import { codeRef, selectionLineRange } from "@/lib/refs";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
+import { CsvTable } from "@/components/sheet/CsvTable";
+import { SheetEditor, type SheetData } from "@/components/sheet/SheetEditor";
 import { useViewerStore } from "@/stores/viewerStore";
 import { useDockStore } from "@/dock/dock-store";
-import { MessageSquarePlus, Waypoints } from "lucide-react";
+import { MessageSquarePlus, Table2, Type, Waypoints } from "lucide-react";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -240,11 +242,19 @@ export function FileViewer({
   const [nonce, setNonce] = useState(0);
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [sheetHtml, setSheetHtml] = useState<string | null>(null);
+  const [sheets, setSheets] = useState<SheetData[] | null>(null);
+  const wbRef = useRef<import("xlsx").WorkBook | null>(null);
+  /* A CSV is a text file AND a table. Table first, because that is the
+     shape the data has; the Text tab is one click away and shows exactly
+     the bytes that will be written. */
+  const [csvTable, setCsvTable] = useState(true);
   const [artText, setArtText] = useState<string | null>(null);
   const docxRef = useRef<HTMLDivElement>(null);
 
   const isMd = /\.(md|markdown)$/i.test(displayName);
+  // Delimited text: a text file by storage and a table by meaning, so it gets
+  // both faces and a switch between them.
+  const isCsv = /\.(csv|tsv)$/i.test(displayName);
 
   // ── Editing ────────────────────────────────────────────────────────
   //
@@ -284,6 +294,68 @@ export function FileViewer({
         }
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  };
+
+  /**
+   * Write the workbook back.
+   *
+   * The edits go into the SHEET the file was read from, not into a fresh one:
+   * a rebuilt workbook would keep the numbers and lose everything else the
+   * file carries — the sheets past the eighth, column widths, merges, the
+   * formatting that made it a spreadsheet rather than a table of strings.
+   *
+   * A cell that was a number and still reads as one goes back as a number.
+   * Everything else goes back as text, because the grid only ever knew the
+   * text: guessing a type from a string is how "007" becomes 7 and a phone
+   * number becomes scientific notation.
+   */
+  const saveWorkbook = async (): Promise<void> => {
+    const wb = wbRef.current;
+    if (!wb || !sheets || !filePath) return;
+    try {
+      const XLSX = await import("xlsx");
+      for (const sheet of sheets) {
+        const ws = wb.Sheets[sheet.name];
+        if (!ws) continue;
+        const range = ws["!ref"]
+          ? XLSX.utils.decode_range(ws["!ref"])
+          : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
+        sheet.rows.forEach((row, r) => {
+          row.forEach((value, c) => {
+            const addr = XLSX.utils.encode_cell({
+              r: range.s.r + r,
+              c: range.s.c + c,
+            });
+            const prev = ws[addr] as { t?: string; v?: unknown } | undefined;
+            if (value === "") {
+              delete ws[addr];
+              return;
+            }
+            const asNumber = Number(value);
+            const wasNumber = prev?.t === "n";
+            ws[addr] =
+              wasNumber && value.trim() !== "" && !Number.isNaN(asNumber)
+                ? { ...prev, t: "n", v: asNumber, w: value }
+                : { t: "s", v: value };
+          });
+        });
+        // Rows and columns added in the grid have to be inside !ref, or the
+        // writer simply will not see them.
+        const width = sheet.rows.reduce((w, r) => Math.max(w, r.length), 1);
+        ws["!ref"] = XLSX.utils.encode_range({
+          s: range.s,
+          e: {
+            r: Math.max(range.e.r, range.s.r + sheet.rows.length - 1),
+            c: Math.max(range.e.c, range.s.c + width - 1),
+          },
+        });
+      }
+      const b64 = XLSX.write(wb, { type: "base64", bookType: "xlsx" });
+      await api()?.files.writeBytes(filePath, b64);
+      markDirty(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   // A card closed with unsaved edits writes them. The alternative is a modal
@@ -353,6 +425,24 @@ export function FileViewer({
   };
   const preview: PreviewKind = eff ? previewKindOf(eff) : "none";
 
+  /*
+   * A workbook is "rich" — bytes, not text — so `canEdit` (which requires the
+   * text path) says no to it. It is still editable: the grid writes it back
+   * through files:writeBytes.
+   *
+   * `.xls` is the exception, and deliberately view-only. SheetJS reads the old
+   * BIFF format happily but writing it back is not something to gamble a
+   * spreadsheet on; saving it as .xlsx bytes under an .xls name would produce
+   * a file that lies about what it is.
+   */
+  const isLegacyXls = /\.xls$/i.test(displayName);
+  const canEditSheet =
+    preview === "xlsx" &&
+    space === "code" &&
+    source === "file" &&
+    !!filePath &&
+    !isLegacyXls;
+
   // --- Load plain file content (text/markdown/code) ---
   useEffect(() => {
     if (isRich || !path) return;
@@ -381,7 +471,7 @@ export function FileViewer({
   useEffect(() => {
     if (!eff) return;
     setImgUrl(null);
-    setSheetHtml(null);
+    setSheets(null);
     setArtText(null);
     setError(null);
     setLoading(true);
@@ -454,7 +544,11 @@ export function FileViewer({
           if (b64 && alive) {
             const XLSX = await import("xlsx");
             const wb = XLSX.read(b64ToBytes(b64), { type: "array" });
-            const parts: string[] = [];
+            // The workbook is kept whole so a save writes back the FILE, not
+            // just the cells drawn here: other sheets, and everything the grid
+            // cannot show, survive the round trip.
+            wbRef.current = wb;
+            const next: SheetData[] = [];
             for (const sheetName of wb.SheetNames.slice(0, 8)) {
               const sheet = wb.Sheets[sheetName];
               const sourceRange = sheet["!ref"]
@@ -462,32 +556,30 @@ export function FileViewer({
                 : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
               const sourceRows = sourceRange.e.r - sourceRange.s.r + 1;
               const sourceCols = sourceRange.e.c - sourceRange.s.c + 1;
-              const rows = Math.min(sourceRows, MAX_XLSX_ROWS);
-              const cols = Math.min(
+              const rowCount = Math.min(sourceRows, MAX_XLSX_ROWS);
+              const colCount = Math.min(
                 sourceCols,
-                Math.max(1, Math.floor(MAX_XLSX_CELLS / rows)),
+                Math.max(1, Math.floor(MAX_XLSX_CELLS / rowCount)),
               );
-              const range = {
-                s: sourceRange.s,
-                e: {
-                  r: sourceRange.s.r + rows - 1,
-                  c: sourceRange.s.c + cols - 1,
-                },
-              };
-              const truncated = rows < sourceRows || cols < sourceCols;
-              const previewSheet = {
-                ...sheet,
-                "!ref": XLSX.utils.encode_range(range),
-              };
-              parts.push(
-                `<h3 class="sheet-name">${sheetName}</h3>` +
-                  XLSX.utils.sheet_to_html(previewSheet, { header: "", footer: "" }) +
-                  (truncated
-                    ? `<p class="sheet-truncated">… preview capped at ${rows} rows / ${rows * cols} cells</p>`
-                    : ""),
-              );
+              // Formatted text (`w`), not the raw value: a date is a serial
+              // number underneath, and 45678 in place of 2025-01-15 is not a
+              // preview anyone recognises as their file.
+              const rows: string[][] = [];
+              for (let r = 0; r < rowCount; r++) {
+                const row: string[] = [];
+                for (let c = 0; c < colCount; c++) {
+                  const addr = XLSX.utils.encode_cell({
+                    r: sourceRange.s.r + r,
+                    c: sourceRange.s.c + c,
+                  });
+                  const cell = sheet[addr] as { w?: string; v?: unknown } | undefined;
+                  row.push(cell ? String(cell.w ?? cell.v ?? "") : "");
+                }
+                rows.push(row);
+              }
+              next.push({ name: sheetName, rows });
             }
-            if (alive) setSheetHtml(parts.join("\n"));
+            if (alive) setSheets(next);
           }
         } else if (preview === "notebook") {
           // Read as BYTES, not text: files.read truncates at 400KB and a
@@ -571,6 +663,18 @@ export function FileViewer({
     <div className="flex h-full flex-col">
       {/* Actions only: the dock tab already names the file and closes it. */}
       <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border px-2 py-1">
+        {isCsv && (
+          <IconBtn
+            title={csvTable ? "Show the raw text" : "Show as a table"}
+            onClick={() => setCsvTable((v) => !v)}
+          >
+            {csvTable ? (
+              <Type className="size-3.5" />
+            ) : (
+              <Table2 className="size-3.5" />
+            )}
+          </IconBtn>
+        )}
         {canEdit && isMd && (
           <IconBtn
             title={mdEdit ? "Preview (rendered)" : "Edit source"}
@@ -579,10 +683,13 @@ export function FileViewer({
             {mdEdit ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
           </IconBtn>
         )}
-        {canEdit && (
+        {(canEdit || canEditSheet) && (
           <IconBtn
             title={dirty ? "Save — Ctrl+S" : "Saved"}
-            onClick={() => pending.current != null && save(pending.current)}
+            onClick={() => {
+              if (canEditSheet) void saveWorkbook();
+              else if (pending.current != null) save(pending.current);
+            }}
           >
             <Save className={cn("size-3.5", dirty && "text-brand")} />
           </IconBtn>
@@ -687,10 +794,55 @@ export function FileViewer({
               }
             />
 
-            {!error && preview === "xlsx" && sheetHtml && (
-              <div
-                className="p-4 text-[13px] [&_.sheet-name]:mb-1 [&_.sheet-name]:mt-4 [&_.sheet-name]:font-semibold [&_.sheet-name]:first:mt-0 [&_.sheet-truncated]:mt-2 [&_.sheet-truncated]:text-xs [&_.sheet-truncated]:text-muted-foreground [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1"
-                dangerouslySetInnerHTML={{ __html: sheetHtml }}
+            {!error && preview === "xlsx" && sheets && (
+              <SheetEditor
+                sheets={sheets}
+                canEdit={canEditSheet}
+                onCellCommit={(s, r, c, value) => {
+                  setSheets((prev) => {
+                    if (!prev) return prev;
+                    const next = prev.map((sh, i) =>
+                      i === s
+                        ? { ...sh, rows: sh.rows.map((row) => row.slice()) }
+                        : sh,
+                    );
+                    const rows = next[s].rows;
+                    while (rows.length <= r) rows.push([]);
+                    while (rows[r].length <= c) rows[r].push("");
+                    rows[r][c] = value;
+                    return next;
+                  });
+                  markDirty(true);
+                }}
+                onAddRow={(s) => {
+                  setSheets((prev) => {
+                    if (!prev) return prev;
+                    const next = prev.map((sh, i) =>
+                      i === s
+                        ? { ...sh, rows: sh.rows.map((row) => row.slice()) }
+                        : sh,
+                    );
+                    const width = next[s].rows.reduce(
+                      (w, r) => Math.max(w, r.length),
+                      1,
+                    );
+                    next[s].rows.push(Array(width).fill(""));
+                    return next;
+                  });
+                  markDirty(true);
+                }}
+                onAddColumn={(s) => {
+                  setSheets((prev) =>
+                    prev
+                      ? prev.map((sh, i) =>
+                          i === s
+                            ? { ...sh, rows: sh.rows.map((row) => [...row, ""]) }
+                            : sh,
+                        )
+                      : prev,
+                  );
+                  markDirty(true);
+                }}
               />
             )}
 
@@ -775,6 +927,15 @@ export function FileViewer({
               )}
             />
           </div>
+        ) : isCsv && csvTable ? (
+          <CsvTable
+            text={content}
+            canEdit={canEdit}
+            onChange={(next) => {
+              pending.current = next;
+              markDirty(next != null);
+            }}
+          />
         ) : (
           <CodeEditor
             value={content}

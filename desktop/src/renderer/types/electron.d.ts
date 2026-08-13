@@ -476,6 +476,7 @@ export interface ElectronAPI {
   files: {
     read: (path: string) => Promise<string>;
     write: (path: string, content: string) => Promise<{ ok: boolean }>;
+    writeBytes: (path: string, base64: string) => Promise<{ ok: boolean }>;
     list: (
       dirPath: string,
     ) => Promise<

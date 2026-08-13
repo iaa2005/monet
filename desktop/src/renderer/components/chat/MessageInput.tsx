@@ -1558,7 +1558,7 @@ export function MessageInput({
         
         <div
           className={cn(
-            "relative mb-1.5 glass-panel p-3 rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25",
+            "relative mb-1.5 glass-panel p-2 rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25",
             resizing && "border-foreground/25",
           )}
           // Ctrl+V with a screenshot, an image or a copied media file lands
