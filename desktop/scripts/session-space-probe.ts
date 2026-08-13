@@ -16,7 +16,10 @@
  */
 
 import { getSessionStore } from '../src/main/session/store.js'
-import { getVendorToolsForSpace } from '../src/main/agent/vendor-tools.js'
+import {
+  getVendorToolsForSpace,
+  toolForExecution,
+} from '../src/main/agent/vendor-tools.js'
 import { sessionSpace } from '../src/main/agent/session-space.js'
 
 let failures = 0
@@ -29,6 +32,9 @@ const tools = (space: string | undefined, sid?: string): { name: string; searchH
   getVendorToolsForSpace(space, sid) as unknown as { name: string; searchHint?: string }[]
 const readOf = (space: string | undefined, sid?: string) =>
   tools(space, sid).find(t => t.name === 'Read')
+/** The tool of that name in the ADVERTISED set — what execution must match. */
+const readLike = (name: string, space: string | undefined, sid?: string): unknown =>
+  getVendorToolsForSpace(space, sid).find(t => t.name === name)
 const isSandbox = (t: { searchHint?: string } | undefined): boolean =>
   /sandbox/i.test(t?.searchHint ?? '')
 
@@ -64,6 +70,45 @@ async function main(): Promise<void> {
     isSandbox(readOf('home')) && !isSandbox(readOf('code')),
   )
   check('an unknown session id falls back the same way', sessionSpace('nope', 'home') === 'home')
+
+  // ── What actually RUNS ────────────────────────────────────────────
+  //
+  // Everything above is about the toolset the model is SHOWN. Execution
+  // resolved the name against the full registry instead, and the sandbox
+  // tools are not in it — they share their names with the disk ones — so a
+  // Home chat was shown the sandbox Read and ran the disk one, rooted at the
+  // user's workspace. The two answers have to be the same tool.
+  const params = (t: unknown): string[] => {
+    const shape = (t as { inputSchema?: { shape?: Record<string, unknown> } })
+      ?.inputSchema?.shape
+    return shape ? Object.keys(shape) : []
+  }
+  for (const name of ['Read', 'Write', 'Edit', 'Glob']) {
+    check(
+      `${name} RUNS as the same tool Home was shown`,
+      toolForExecution(name, 'home', home.id) === readLike(name, 'home', home.id),
+      `${params(toolForExecution(name, 'home', home.id)).join(',')}`,
+    )
+  }
+  check(
+    "the Home reader takes a sandbox name, not a host path — that mismatch is what gave the game away",
+    params(toolForExecution('Read', 'home', home.id)).includes('name'),
+    params(toolForExecution('Read', 'home', home.id)).join(','),
+  )
+  check(
+    'the Code reader still takes a host path',
+    params(toolForExecution('Read', 'code', code.id)).includes('file_path'),
+    params(toolForExecution('Read', 'code', code.id)).join(','),
+  )
+  check(
+    'and a Home chat told it is Code still RUNS the sandbox reader',
+    params(toolForExecution('Read', 'code', home.id)).includes('name'),
+    params(toolForExecution('Read', 'code', home.id)).join(','),
+  )
+  check(
+    'a tool the space forbids does not resolve at all',
+    toolForExecution('Bash', 'code', home.id) === undefined,
+  )
 
   console.log(failures === 0 ? '\nSPACE IS THE SESSION’S, NOT THE CALLER’S' : `\n${failures} FAILURES`)
   // Explicit: the session store keeps a SQLite handle open, so the process

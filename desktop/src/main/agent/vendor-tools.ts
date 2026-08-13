@@ -456,6 +456,33 @@ const SANDBOX_FILE_TOOLS = [
 
 const SANDBOX_FILE_TOOL_NAMES = new Set(SANDBOX_FILE_TOOLS.map((t) => t.name));
 
+/**
+ * The tool a name RUNS as — the other half of getVendorToolsForSpace.
+ *
+ * Home and Code both call their file tools Read/Write/Edit/Glob, and which
+ * filesystem those reach is decided by the function below, from the session's
+ * own row, so nothing the renderer passes can move a chat out of its sandbox.
+ * That was true of what the model was SHOWN. Execution looked the name up in
+ * the full registry — where the sandbox tools do not appear at all, since they
+ * share their names with the disk ones — so every Read in a Home chat ran the
+ * DISK reader, rooted at the user's workspace.
+ *
+ * Seen in a live chat: the model called Read{name}, correct for the tool it
+ * had been given, and got a validation error demanding file_path — the disk
+ * tool's parameter. It obligingly switched, and was reading the user's machine
+ * from inside the isolated space.
+ *
+ * Exported so a probe can ask the question execution asks, rather than the one
+ * advertisement asks; the two coming apart is the whole bug.
+ */
+export function toolForExecution(
+  name: string,
+  space?: string,
+  sessionId?: string,
+): Tool | undefined {
+  return findToolByName(getVendorToolsForSpace(space, sessionId), name);
+}
+
 export function getVendorToolsForSpace(space?: string, sessionId?: string): Tools {
   const resolved = sessionSpace(sessionId, space);
   const base = getVendorTools().filter((t) =>
@@ -744,8 +771,8 @@ export async function executeVendorTool(opts: {
 
   // Point the vendor tools' checkPermissions() at the selected mode.
   setVendorPermissionMode(VENDOR_MODE_FOR[permissionMode]);
-  const tools = getVendorTools();
-  const found = findToolByName(tools, name);
+  const tools = getVendorToolsForSpace(space, sessionId);
+  const found = toolForExecution(name, space, sessionId);
   if (!found) {
     return { content: `Unknown tool: ${name}`, isError: true };
   }

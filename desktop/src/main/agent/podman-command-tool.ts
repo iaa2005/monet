@@ -73,13 +73,14 @@ export const RunCommandTool = buildTool({
         "copy here and changes nothing elsewhere. Do NOT apt/conda-install system",
         "packages (texlive, imagemagick) — they are unavailable.",
         "Files written to /work are attached to the chat automatically.",
-        "\n\nFor anything that takes minutes — an install, a build, a download —",
-        "set run_in_background. It returns at once with a task id and the file",
-        "its output is being written to, and you are TOLD in this chat when it",
-        "finishes. Do not wait for it and do not poll it: get on with something",
-        "else, or end your turn. Read the output file only if you need to see",
-        "progress before it is done. For a server that never ends, use",
-        "ServeSandbox instead.",
+        "\n\nrun_in_background is for work whose RESULT YOU DO NOT NEED NEXT.",
+        "It returns at once and you are told in this chat when it finishes —",
+        "there is no way to wait for it, and nothing to poll. If your very next",
+        "step needs what the command produces (installing a package you are",
+        "about to import, building something you are about to run), run it in",
+        "the FOREGROUND and raise the timeout: a pip install takes seconds, and",
+        "a background one you cannot wait for ends with you installing it twice.",
+        "For a server that never ends, use ServeSandbox instead.",
       ].join(" "),
     );
   },
@@ -102,9 +103,10 @@ export const RunCommandTool = buildTool({
         data: {
           text:
             `Command running in background with ID: ${r.taskId}. Output is ` +
-            `being written to: ${r.outputPath}. You will be notified when it ` +
-            `completes. To check interim output, use Read on that file ` +
-            `path.`,
+            `being written to: ${r.outputPath}. You will be notified in this ` +
+            `chat when it completes — there is nothing to wait on, so carry ` +
+            `on with something else or end your turn. To see progress before ` +
+            `then, Read that path.`,
         },
       };
     }
