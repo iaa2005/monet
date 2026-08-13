@@ -1159,10 +1159,11 @@ export default function App(): JSX.Element {
       action: () => toggleDock("vault"),
     },
     {
-      // Ctrl+Shift+N is every browser's private window, and it is already
-      // taken here for a new chat's neighbour — mod+n. I is for incognito and
-      // is free in both spaces.
-      combo: "mod+shift+i",
+      // Every browser's private-window shortcut, and it means the same thing
+      // here. It was mod+shift+I for one commit, which is DevTools — the
+      // keymap preventDefaults, so the browser's own binding never fired and
+      // opening an incognito chat was what you got instead of an inspector.
+      combo: "mod+shift+n",
       label: "Incognito mode",
       section: "General",
       action: toggleIncognito,
@@ -1602,7 +1603,7 @@ export default function App(): JSX.Element {
           )}
           {appMode === "home" && (
             <IconBtn
-              title={`${incognito ? "Exit incognito" : "Incognito mode"} — ${comboLabel("mod+shift+i")}`}
+              title={`${incognito ? "Exit incognito" : "Incognito mode"} — ${comboLabel("mod+shift+n")}`}
               active={incognito}
               onClick={toggleIncognito}
             >
