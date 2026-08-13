@@ -215,7 +215,7 @@ export function ReflectSettings(): JSX.Element {
 
       {digest && (
         <>
-          <h2 className="mt-6 font-display text-2xl font-semibold leading-snug">
+          <h2 className="mt-6 font-display text-2xl font-normal leading-snug">
             {digest.headline}
           </h2>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
@@ -314,7 +314,7 @@ export function ReflectSettings(): JSX.Element {
                 />
                 <div className="min-w-0">
                   <div className="flex items-baseline justify-between gap-3">
-                    <span className="font-display text-sm font-semibold">
+                    <span className="font-display text-sm font-normal">
                       {c.name}
                     </span>
                     <span className="text-xs tabular-nums text-muted-foreground">
@@ -351,7 +351,7 @@ export function ReflectSettings(): JSX.Element {
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                     {label(title)}
                   </div>
-                  <div className="mt-1.5 font-display text-sm font-semibold leading-snug">
+                  <div className="mt-1.5 font-display text-sm font-normal leading-snug">
                     {s.title}
                   </div>
                   <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">

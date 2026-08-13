@@ -20,6 +20,7 @@ import {
   FolderOpen,
   FolderPlus,
   GitBranch,
+  RefreshCw,
   Pencil,
   Scissors,
   Trash2,
@@ -57,6 +58,10 @@ interface FileTreeProps {
   rootPath?: string;
   /** Message shown when the root is empty (no files yet). */
   emptyLabel?: string;
+  /** Reload the tree. Given, it puts a refresh button beside the hidden-files
+   * toggle — the two controls for this view belong on the same row, not one
+   * here and one in a caption bar above. */
+  onRefresh?: () => void;
 }
 
 function LargeFileDialog({
@@ -423,6 +428,7 @@ export function FileTree({
   onOpenFile,
   rootPath,
   emptyLabel,
+  onRefresh,
 }: FileTreeProps): JSX.Element {
   const [root, setRoot] = useState<FileEntry | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -751,14 +757,21 @@ export function FileTree({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center border-b">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search files…"
-          className="min-w-0 flex-1 bg-transparent px-2 py-1 text-xs outline-none"
-        />
+      {/* Search is a field, not a strip: a bordered pill with the view's two
+          toggles beside it. It used to be a bare input divided from the tree
+          by a rule, which read as a header rather than as something to type
+          in — and the rule was the only line left on a panel that no longer
+          draws any. */}
+      <div className="flex items-center gap-1.5 p-1.5">
+        <div className="flex h-[26px] min-w-0 flex-1 items-center rounded-md border border-input px-2">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search files…"
+            className="min-w-0 flex-1 bg-transparent text-[13px] font-medium outline-none placeholder:text-muted-foreground"
+          />
+        </div>
         {/* Dot-files are hidden by default because a project root is mostly
             tooling; the toggle is here rather than in Settings because it is
             a property of THIS view, and it is remembered. */}
@@ -773,7 +786,7 @@ export function FileTree({
           aria-label={showHidden ? "Hide hidden files" : "Show hidden files"}
           aria-pressed={showHidden}
           className={cn(
-            "mr-1 shrink-0 rounded p-1 transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]",
+            "flex size-[26px] shrink-0 items-center justify-center rounded-md transition-colors hover:bg-black/[0.06] dark:hover:bg-white/[0.08]",
             showHidden ? "text-foreground" : "text-muted-foreground",
           )}
         >
@@ -783,6 +796,17 @@ export function FileTree({
             <EyeOff className="size-3.5" />
           )}
         </button>
+        {onRefresh && (
+          <button
+            type="button"
+            onClick={onRefresh}
+            title="Refresh"
+            aria-label="Refresh"
+            className="flex size-[26px] shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+          >
+            <RefreshCw className="size-3.5" />
+          </button>
+        )}
       </div>
 
       <div

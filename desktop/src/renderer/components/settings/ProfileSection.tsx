@@ -150,7 +150,7 @@ function MonetPicker({
         <div className="min-w-0 text-sm">
           {cur ? (
             <>
-              <span className="font-display font-semibold">{cur.title}</span>
+              <span className="font-display font-normal">{cur.title}</span>
               {cur.year && <span className="text-white/60"> · {cur.year}</span>}
               <span className="ml-3 text-white/50">
                 {idx + 1} / {paintings?.length ?? 0} · hover the painting, click

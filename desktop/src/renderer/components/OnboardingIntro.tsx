@@ -431,7 +431,7 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
         <div className="shrink-0 px-6 pt-10">
           <div className="mx-auto w-full max-w-2xl">
             <div className="flex items-baseline justify-between gap-4">
-              <h2 className="font-display text-2xl font-semibold tracking-tight">
+              <h2 className="font-display text-2xl font-normal tracking-tight">
                 {spec.title}
               </h2>
               {label && (
@@ -463,7 +463,7 @@ export function OnboardingIntro({ onDone }: { onDone: () => void }): JSX.Element
         {step === "welcome" ? (
           <div className="animate-in fade-in duration-500">
             <div className="text-left">
-              <h1 className="font-display text-6xl font-semibold tracking-tight text-foreground">
+              <h1 className="font-display text-6xl font-normal tracking-tight text-foreground">
                 Code Monet
               </h1>
               <p className="mr-auto mt-4 max-w-md text-[15px] leading-relaxed text-muted-foreground">

@@ -37,19 +37,10 @@ export function SandboxFilesPanel(): JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border px-2 py-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Sandbox files
-        </span>
-        <button
-          type="button"
-          onClick={() => setRefreshKey((k) => k + 1)}
-          title="Refresh"
-          className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
-        >
-          <RefreshCw className="size-3.5" />
-        </button>
-      </div>
+      {/* No caption bar. The tab already says Files, and inside a card a second
+          title in small caps is a header for a header — its only other job was
+          holding the refresh button, which now sits with the view's other
+          toggle in the search row. */}
       <div className="min-h-0 flex-1">
         {workDir ? (
           <FileTree
@@ -59,6 +50,7 @@ export function SandboxFilesPanel(): JSX.Element {
               const name = p.split(/[/\\]/).pop() || p;
               openViewer({ name, path: p, mediaType: "application/octet-stream", kind: "file", source: "file" });
             }}
+            onRefresh={() => setRefreshKey((k) => k + 1)}
             emptyLabel="No files in this chat's sandbox yet. Files you attach and files RunPython/RunCommand write appear here."
           />
         ) : (

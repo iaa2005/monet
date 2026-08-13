@@ -210,7 +210,7 @@
     --warn: hsl(38 92% 58%);
 
     /* Same two roles, mixed against the deep surface instead of paper. */
-    --brand-wash: hsl(var(--brand-hue) 46% 20%);
+    --brand-wash: hsl(var(--brand-hue) 15% 15%);
     --brand-edge: hsl(var(--brand-hue) 50% 34%);
 
     /* Status colours from the same family as the syntax palette below:
