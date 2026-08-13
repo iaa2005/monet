@@ -475,7 +475,7 @@ function DockTab(props: IDockviewPanelHeaderProps): JSX.Element {
     >
       {props.api.id === "vault" ? (
         // The stone, and the vault's name — set by the panel once it knows.
-        <ObsidianIcon className="size-3.5 shrink-0 text-brand" />
+        <ObsidianIcon className="size-3.5 shrink-0" />
       ) : (
         doc && (
           <img

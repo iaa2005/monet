@@ -9,7 +9,6 @@ import { useState } from "react";
 import {
   AlertTriangle,
   Check,
-  ChevronDown,
   ClipboardList,
   FileCheck,
   Hand,
@@ -149,8 +148,19 @@ export function PermissionModeMenu({
     onChange(m.id);
   };
 
+  /*
+   * The label alone, and a badge when the mode is dangerous.
+   *
+   * The icon and the chevron were saying what the words already say — a
+   * warning triangle beside "Skip all approvals" is the same sentence twice,
+   * and every control on this row opens a menu, so a caret on one of them
+   * marks nothing. What DOES need marking is bypass: it stops being a setting
+   * you chose and becomes a state you are in, so it takes a filled badge
+   * rather than coloured text a glance can slide past.
+   */
+  const danger = mode === "bypassPermissions";
   const pillBtn =
-    "flex h-7 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]";
+    "flex h-7 items-center rounded-md px-2 text-xs font-medium transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]";
 
   return (
     <>
@@ -158,12 +168,15 @@ export function PermissionModeMenu({
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className={cn(pillBtn, current.tone)}
+            className={cn(
+              pillBtn,
+              danger
+                ? "bg-red-bg text-red-text hover:bg-red-bg hover:text-red-text"
+                : current.tone,
+            )}
             title={`Permission mode: ${current.label}`}
           >
-            <current.icon className="size-3.5" />
             {current.label}
-            <ChevronDown className="size-3" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="start" className="w-72">

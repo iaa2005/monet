@@ -811,7 +811,7 @@ export function FileTree({
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-auto"
+        className="flex-1 overflow-auto px-1.5"
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
         onContextMenu={(e) => {
           // Rows stopPropagation, so reaching here means the empty area —

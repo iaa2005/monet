@@ -13,7 +13,6 @@ import {
   Gauge,
   History,
   Loader2,
-  Sparkles,
   ListEnd,
   CornerDownLeft,
 } from "lucide-react";
@@ -1867,7 +1866,9 @@ export function MessageInput({
                       className={cn(pillBtn, effortBgClass(effort))}
                       title="Reasoning effort (Faster ↔ Smarter)"
                     >
-                      <Sparkles className={cn("size-3", effortTextClass(effort))} />
+                      {/* No glyph: "Max" is the whole message, and a sparkle
+                          beside it only competed with the words for the eye.
+                          The colour still carries the level. */}
                       <span className={cn("font-medium", effortTextClass(effort))}>
                         {effortLabel(effort)}
                       </span>
