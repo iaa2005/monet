@@ -30,7 +30,7 @@ export function Switch({
         // when it is doing nothing. On fills the edge in.
         checked
           ? "border-brand bg-brand"
-          : "border-brand/60 bg-accent",
+          : "border-brand/60 bg-brand-wash",
         disabled && "opacity-50",
         className,
       )}

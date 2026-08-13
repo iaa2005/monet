@@ -61,11 +61,12 @@
     --bg-000: 0 0% 100%;
     --bg-100: 0 0% 97.6%;
     --bg-200: 220 4% 97%;
-    /* Selection, not a grey step. The design makes the selected thing — the
-       open chat, the lit dock toggle, the current tab — carry a wash of the
-       brand rather than a darker neutral, so this tier IS the brand at 6%
-       saturation-weight. Hover borrows it too: one accent for "this one". */
-    --bg-300: var(--brand-hue) 93% 94.3%;
+    /* Hover, and nothing more. This tier was briefly the brand wash, on the
+       reasoning that selection and hover could share one accent — but
+       `--accent` is what every menu, dropdown and list row uses for the row
+       under the cursor, so every one of them lit up brand-blue just for being
+       pointed at. Selection asks for --brand-wash by name instead. */
+    --bg-300: 220 4% 95%;
     --bg-400: 220 3% 92%;
 
     --text-000: 210 2.6% 7.6%;
@@ -165,12 +166,7 @@
     --bg-000: 0 0% 7.1%;
     --bg-100: 0 0% 9.4%;
     --bg-200: 0 0% 12.2%;
-    /* Selection is branded in dark too. This tier was left a neutral grey when
-       the light one turned blue, so every selected chip and the toggle lost
-       their fill the moment the app went dark — lit and unlit looked the
-       same. Deep enough to sit under #d4d4d4 text, blue enough to read as
-       chosen against the #121212 sheet. */
-    --bg-300: var(--brand-hue) 46% 20%;
+    --bg-300: 0 0% 14.9%;
     --bg-400: 0 0% 19.6%;
 
     /* #d4d4d4 — soft white, not paper white. */

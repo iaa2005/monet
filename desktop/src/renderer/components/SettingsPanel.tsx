@@ -558,7 +558,7 @@ export function SettingsPanel({
                   // this is a list of places to go, none of them disabled.
                   "flex h-8 w-full items-center gap-[9px] rounded-md px-2.5 text-[13px] font-medium transition-colors",
                   section === it.id
-                    ? "border border-brand/50 bg-accent text-brand"
+                    ? "border border-brand/50 bg-brand-wash text-brand"
                     : "border border-transparent text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
                 )}
               >
