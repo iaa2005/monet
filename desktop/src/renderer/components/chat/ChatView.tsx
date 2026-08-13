@@ -1347,7 +1347,7 @@ export function ChatView({
            tables), not an IDE. */
         <div className="flex flex-1 flex-col items-center justify-center overflow-auto px-4 py-8">
           <div className="w-full max-w-2xl text-center">
-            <h2 className="font-display text-3xl font-medium text-foreground text-left">
+            <h2 className="font-display text-3xl font-normal text-foreground text-left">
               {greeting.title}
             </h2>
             <p className="w-full mt-2 text-base text-left leading-relaxed text-muted-foreground">
@@ -1394,7 +1394,7 @@ export function ChatView({
       ) : isEmpty ? (
         <div className="flex-1 overflow-auto">
           <div className="mx-auto flex w-full max-w-3xl flex-col items-center px-4 pt-16 text-left">
-            <h2 className="font-display w-full text-3xl font-medium text-foreground">
+            <h2 className="font-display w-full text-3xl font-normal text-foreground">
               {greeting.title}
             </h2>
             <p className="mt-2 w-full text-base leading-relaxed text-muted-foreground">

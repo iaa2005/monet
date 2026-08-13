@@ -152,6 +152,21 @@
   border-radius: 6px;
 }
 
+/*
+ * A <webview> is an out-of-process frame, and Chromium does NOT clip one to an
+ * ancestor's border-radius — the card's `overflow: hidden` has no say over it.
+ * So the browser pane squared off the bottom two corners of its card while
+ * every other panel curved. The radius has to be on the element itself.
+ *
+ * Bottom corners only: the top of the pane sits under the tab strip and the
+ * address bar, where the card's own corner has already been drawn.
+ */
+.monet-dock webview {
+  border-bottom-left-radius: var(--radius);
+  border-bottom-right-radius: var(--radius);
+  overflow: hidden;
+}
+
 /* No hairline under the tabs: inside a card the strip is just the top band. */
 .monet-dock .dv-tabs-and-actions-container {
   border-bottom: none;
