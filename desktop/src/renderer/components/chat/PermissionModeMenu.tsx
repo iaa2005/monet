@@ -185,7 +185,7 @@ export function PermissionModeMenu({
    * hover would be saying something about the mode, and nothing has changed.
    */
   const pillBtn =
-    "flex h-7 items-center rounded-md px-2 text-xs font-medium transition-opacity hover:opacity-80";
+    "flex h-6 items-center rounded-md px-2 text-xs font-medium transition-opacity hover:opacity-80";
 
   return (
     <>

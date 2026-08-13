@@ -650,7 +650,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
         onClick={() => (recording ? stopRecording() : void startRecording())}
         disabled={draining}
         className={cn(
-          "flex size-7 items-center justify-center rounded-md transition-colors",
+          "flex size-6 items-center justify-center rounded-md transition-colors",
           recording
             ? "animate-pulse bg-destructive/15 text-destructive"
             : "text-muted-foreground hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]",
@@ -673,7 +673,7 @@ export function MicButton({ onText }: MicButtonProps): JSX.Element {
         aria-label="Microphone settings"
         onClick={() => (menuOpen ? closeMenu() : void openMenu())}
         className={cn(
-          "flex h-7 w-3.5 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover/mic:opacity-100",
+          "flex h-6 w-3.5 items-center justify-center rounded-md text-muted-foreground transition-opacity hover:text-foreground hover:bg-black/[0.06] dark:hover:bg-white/[0.08]",
           menuOpen && "opacity-100",
         )}
       >

@@ -1387,7 +1387,7 @@ export function MessageInput({
   };
 
   const pillBtn =
-    "flex h-7 items-center gap-1 rounded-md px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]";
+    "flex h-6 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]";
 
   return (
     <div className="">
@@ -1772,12 +1772,12 @@ export function MessageInput({
 
           {/* Controls inside the composer card */}
           <div className="mt-2.5 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 title="Attach files"
                 onClick={() => fileRef.current?.click()}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
+                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
               >
                 <Plus className="size-4" />
               </button>
@@ -1816,7 +1816,7 @@ export function MessageInput({
                     useChatStore.getState().setVoiceModeOpen(true);
                   })();
                 }}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground disabled:opacity-40 dark:hover:bg-white/[0.08]"
+                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground disabled:opacity-40 dark:hover:bg-white/[0.08]"
               >
                 <AudioLines className="size-4" />
               </button>
@@ -1842,7 +1842,7 @@ export function MessageInput({
                   type="button"
                   title="Rewind to a checkpoint"
                   onClick={() => setPickerOpen(true)}
-                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
+                  className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
                 >
                   <History className="size-4" />
                 </button>
@@ -1854,7 +1854,7 @@ export function MessageInput({
                   space={space}
                   usedTokens={usedTokens}
                   ctxWindow={ctxWindow}
-                  className={pillBtn}
+                  className={cn(pillBtn, "px-1")}
                 />
               )}
 
