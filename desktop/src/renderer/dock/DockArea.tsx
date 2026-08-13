@@ -62,6 +62,7 @@ import { fallbackIcon, resolveIcon } from "@/components/icon-resolver";
 import { closeViewerPane, openViewerPane } from "@/dock/dock-store";
 import { cn, midEllipsis } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
+import { APP_NAME } from "@shared/brand";
 import { isApplyingDesk, popoutPageUrl, useDockStore } from "./dock-store";
 
 const TerminalPanel = lazy(() =>
@@ -306,23 +307,50 @@ const popoutUrl = (): string => new URL("popout.html", location.href).toString()
  * `monet-glass` is deliberately dropped: the painted backdrop lives in the
  * main window, and glass over nothing is a white sheet.
  */
-function dressPopout(w: Window): void {
+function dressPopout(w: Window, titleOf: () => string): void {
   // NOT unload-based cleanup: window.open starts on about:blank and the
   // navigation to popout.html fires an unload of its own — an observer
   // disconnected there went deaf before the window even finished opening
   // (caught by the click probe: theme changes never reached the popout).
   const obs = new MutationObserver(() => sync());
+  let titleObs: MutationObserver | null = null;
   const sync = (): void => {
     if (w.closed) {
       obs.disconnect();
+      titleObs?.disconnect();
       return;
     }
     try {
-      w.document.documentElement.className = document.documentElement.className
+      // `monet-dock` rides along too. Every rule that shapes the dock — the
+      // card, the tab chips, the sash pill — is scoped under that class, and
+      // the popout's own dockview root does not carry it, so a detached group
+      // came out in stock dockview chrome on a stock background.
+      const classes = document.documentElement.className
         .split(/\s+/)
-        .filter((c) => c && c !== "monet-glass")
-        .join(" ");
+        .filter((c) => c && c !== "monet-glass");
+      if (!classes.includes("monet-dock")) classes.push("monet-dock");
+      w.document.documentElement.className = classes.join(" ");
       w.document.body.style.background = "var(--background)";
+
+      // dockview names the window after the group, and that id is what the OS
+      // shows in the title bar — "Code Monet — 12fafa31-…". It is set after
+      // our load handler runs, so the title is both set here and defended:
+      // the observer puts the panel's name back whenever something rewrites
+      // it. The equality check is what keeps that from looping.
+      const want = titleOf();
+      if (w.document.title !== want) w.document.title = want;
+      if (!titleObs && w.document.head) {
+        titleObs = new MutationObserver(() => {
+          if (w.closed) return;
+          const t = titleOf();
+          if (w.document.title !== t) w.document.title = t;
+        });
+        titleObs.observe(w.document.head, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+        });
+      }
     } catch {
       /* mid-navigation; the load listener below runs it again */
     }
@@ -396,7 +424,12 @@ function GroupActions(props: IDockviewHeaderActionsProps): JSX.Element {
           onClick={() =>
             void containerApi.addPopoutGroup(group, {
               popoutUrl: popoutUrl(),
-              onDidOpen: ({ window: w }) => dressPopout(w),
+              onDidOpen: ({ window: w }) =>
+                dressPopout(
+                  w,
+                  () =>
+                    `${group.activePanel?.title ?? "Panel"} — ${APP_NAME}`,
+                ),
             })
           }
         >
@@ -587,11 +620,15 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
               cb: (e: { location: { type: string; getWindow?: () => Window } }) => void,
             ) => unknown;
           };
+          activePanel?: { title?: string } | null;
         }): void => {
           const wear = (loc: { type: string; getWindow?: () => Window }): void => {
             if (loc.type !== "popout" || !loc.getWindow) return;
             try {
-              dressPopout(loc.getWindow());
+              dressPopout(
+                loc.getWindow(),
+                () => `${g.activePanel?.title ?? "Panel"} — ${APP_NAME}`,
+              );
             } catch {
               /* the window may already be closing — nothing to dress */
             }

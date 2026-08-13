@@ -343,49 +343,13 @@ export default function App(): JSX.Element {
     [],
   );
 
-  /*
-   * Tool file links ask to open a file in the in-app viewer.
-   *
-   * What a tool link carries is usually the file's NAME — `bg-1-….output` —
-   * because that is what the tool was called with. The file itself lives in
-   * the chat's sandbox, and a background task's output lives one level down
-   * again, in `.tasks/`. Handing the bare name to the viewer produced
-   * "Read file: … not found" for exactly the files this link exists to open,
-   * while the same file opened fine from the Files panel — that panel walks a
-   * tree and already holds full paths.
-   *
-   * So a name with no separator in it is resolved against the sandbox before
-   * the viewer sees it: work dir first, then `.tasks/`. The probe is a read,
-   * because that is the operation that has to succeed anyway.
-   */
+  // Tool file links ask to open a file in the in-app viewer. A bare filename
+  // is resolved against the sandbox by the viewer itself (readResolving in
+  // FileViewer), so a tab restored from a saved layout gets the same
+  // treatment as a fresh click.
   useEffect(() => {
-    if (!openFileRequest) return;
-    const raw = openFileRequest;
-    useChatStore.getState().requestOpenFile(null);
-
-    void (async () => {
-      let path = raw;
-      const bare = !/[/\\]/.test(raw);
-      if (bare) {
-        const sid = useChatStore.getState().currentSessionId ?? "default";
-        const work = await api()?.sandbox.workDir(sid).catch(() => null);
-        if (work) {
-          const sep = work.includes("\\") ? "\\" : "/";
-          for (const candidate of [
-            `${work}${sep}${raw}`,
-            `${work}${sep}.tasks${sep}${raw}`,
-          ]) {
-            const ok = await api()
-              ?.files.read(candidate)
-              .then(() => true)
-              .catch(() => false);
-            if (ok) {
-              path = candidate;
-              break;
-            }
-          }
-        }
-      }
+    if (openFileRequest) {
+      const path = openFileRequest;
       useChatStore.getState().openViewer({
         name: path.split(/[/\\]/).pop() || path,
         path,
@@ -393,7 +357,8 @@ export default function App(): JSX.Element {
         kind: "file",
         source: "file",
       });
-    })();
+      useChatStore.getState().requestOpenFile(null);
+    }
   }, [openFileRequest]);
 
   // Something asked for a tab: the agent's BrowserNavigate with nothing open,

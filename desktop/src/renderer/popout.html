@@ -14,12 +14,16 @@
       body {
         margin: 0;
         height: 100%;
-        background: #f7f6f1;
+        /* --bg-100 in globals.css. Hardcoded because this page loads before
+           any stylesheet is copied in; dressPopout swaps it for the real
+           token the moment the window is dressed. These were two hexes from
+           a palette the app stopped using, so the flash was cream. */
+        background: #f9f9f9;
       }
       @media (prefers-color-scheme: dark) {
         html,
         body {
-          background: #1d1e1f;
+          background: #181818;
         }
       }
     </style>

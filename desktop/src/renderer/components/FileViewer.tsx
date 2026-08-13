@@ -40,6 +40,44 @@ function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
+/**
+ * Read a file, resolving a bare NAME against the chat's sandbox first.
+ *
+ * A tool link carries the name the tool was called with — `bg-1-….output` —
+ * not a path, and a background task's output lives one level down again, in
+ * `.tasks/`. Reading the name as given fails for exactly the files those links
+ * exist to open, while the Files panel opens the same file happily: its tree
+ * walks the sandbox and already holds full paths.
+ *
+ * So a failed read of a separator-less name is retried where the file actually
+ * is. Here rather than at the click, because a viewer tab restored from a
+ * saved layout comes back with the same bare path and would fail again.
+ */
+async function readResolving(path: string): Promise<string> {
+  const bridge = api();
+  if (!bridge) throw new Error("Bridge unavailable");
+  try {
+    return await bridge.files.read(path);
+  } catch (first) {
+    if (/[/\\]/.test(path)) throw first;
+    const sid = useChatStore.getState().currentSessionId ?? "default";
+    const work = await bridge.sandbox.workDir(sid).catch(() => null);
+    if (!work) throw first;
+    const sep = work.includes("\\") ? "\\" : "/";
+    for (const candidate of [
+      `${work}${sep}${path}`,
+      `${work}${sep}.tasks${sep}${path}`,
+    ]) {
+      try {
+        return await bridge.files.read(candidate);
+      } catch {
+        /* not here either — try the next place, then report the first error */
+      }
+    }
+    throw first;
+  }
+}
+
 /** Public shape for artifacts passed from chatStore.viewer. */
 export type FileViewerItem = {
   name: string;
@@ -322,11 +360,9 @@ export function FileViewer({
     setLoading(true);
     setContent(null);
     setError(null);
-    api()
-      ?.files.read(path)
+    readResolving(path)
       .then((c) => {
-        if (!cancelled)
-          setContent(truncateText(c));
+        if (!cancelled) setContent(truncateText(c));
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
