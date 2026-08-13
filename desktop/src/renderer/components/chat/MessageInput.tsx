@@ -1703,21 +1703,19 @@ export function MessageInput({
               }}
             />
 {isStreaming ? (
-              // One control, not three. Rounded on the outside only, with hairline
-              // dividers where the cells meet, so the group reads as a single
-              // segmented button rather than three pills that happen to be near
-              // each other.
-              // Nearly the composer's own surface rather than a black slab on it: `muted`
-              // sits one step under `card` in both themes, so the group reads as an
-              // inset control instead of a hole punched in the input.
-              <div className="inline-flex shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
+              // Three bare glyphs, not a segmented control. Inside the field
+              // the group was a filled, outlined slab sitting in the corner of
+              // something you type in; the icons alone say the same thing and
+              // leave the box looking like a box. Stop keeps its red, because
+              // it is the one cell you cannot take back.
+              <div className="inline-flex shrink-0 items-center gap-0.5">
                 <button
                   type="button"
                   onClick={() => void injectNow()}
                   disabled={!input.trim() && files.length === 0}
                   title="Send into the running turn (Ctrl+S) — the model sees it before its next step"
                   className={cn(
-                    "flex size-8 items-center justify-center text-muted-foreground transition-colors",
+                    "flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors",
                     input.trim() || files.length > 0
                       ? "hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
                       : "opacity-35",
@@ -1731,7 +1729,7 @@ export function MessageInput({
                   disabled={!input.trim() && files.length === 0}
                   title="Queue message (send after generation)"
                   className={cn(
-                    "flex size-8 items-center justify-center border-x border-border text-muted-foreground transition-colors",
+                    "flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors",
                     input.trim() || files.length > 0
                       ? "hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
                       : "opacity-35",
@@ -1746,7 +1744,7 @@ export function MessageInput({
                   // Red because it is the only cell that is always live, and the
                   // only one you cannot take back. Soft red, not a warning: it is
                   // an ordinary thing to do, just not an accident to make.
-                  className="flex size-8 items-center justify-center bg-red-bg text-red-text transition-colors hover:brightness-95 dark:hover:brightness-110"
+                  className="flex size-8 items-center justify-center rounded-lg text-red-text transition-colors hover:bg-red-bg"
                 >
                   <Square className="size-3.5 fill-current" />
                 </button>
@@ -1758,11 +1756,15 @@ export function MessageInput({
                 disabled={!input.trim()}
                 title="Send"
                 className={cn(
-                  // The primary action keeps the accent fill; the streaming group
-                  // is deliberately quieter. Same size and radius as a cell, so
-                  // the row does not change height when a turn starts.
-                  "flex size-8 items-center justify-center rounded-lg bg-foreground text-background transition-opacity",
-                  input.trim() ? "hover:opacity-90" : "opacity-30",
+                  // A glyph, not a filled key. The black slab was the heaviest
+                  // thing on the screen for an action Enter already performs,
+                  // and it sat inside the field it was meant to submit. Same
+                  // size as a streaming cell, so the row does not change height
+                  // when a turn starts.
+                  "flex size-8 items-center justify-center rounded-lg text-foreground transition-colors",
+                  input.trim()
+                    ? "hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                    : "opacity-30",
                 )}
               >
                 <ArrowUp className="size-4" />
