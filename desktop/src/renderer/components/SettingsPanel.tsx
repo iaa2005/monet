@@ -103,22 +103,35 @@ function StorageSection(): JSX.Element {
   );
 }
 
-type Section =
-  | "general"
-  | "editor"
-  | "voice"
-  | "providers"
-  | "sandbox"
-  | "automation"
-  | "memory"
-  | "reflect"
-  | "advanced"
-  | "skills"
-  | "agents"
-  | "services"
-  | "connectors"
-  | "obsidian"
-  | "ocr";
+/**
+ * Every section, as a value — because callers need to CHECK one at runtime.
+ *
+ * This was a bare union, and App kept its own hand-written list of the
+ * sections a `requestOpenSettings` may name. The two drifted: "voice" was
+ * added here and not there, so the mic's "Voice settings" opened the dialog
+ * on whatever section was last shown. A list a second file has to mirror is a
+ * list that will fall behind; this one is the single source, and the union
+ * below is derived from it.
+ */
+export const SETTINGS_SECTIONS = [
+  "general",
+  "editor",
+  "voice",
+  "providers",
+  "sandbox",
+  "automation",
+  "memory",
+  "reflect",
+  "advanced",
+  "skills",
+  "agents",
+  "services",
+  "connectors",
+  "obsidian",
+  "ocr",
+] as const;
+
+type Section = (typeof SETTINGS_SECTIONS)[number];
 
 const NAV: {
   group: string;

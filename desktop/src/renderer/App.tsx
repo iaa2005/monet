@@ -39,6 +39,7 @@ import {
   ChevronRight,
   Container,
   Check,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 import { ArtifactIcon, FileIcon, GlobeIcon } from "@/components/icons";
@@ -70,7 +71,7 @@ import { AccountMenu } from "@/components/AccountMenu";
 import { DocsPanel } from "@/components/docs/DocsPanel";
 import { DirectoryModal } from "@/components/directory/DirectoryModal";
 import { AboutPanel } from "@/components/AboutPanel";
-import { SettingsPanel } from "@/components/SettingsPanel";
+import { SETTINGS_SECTIONS, SettingsPanel } from "@/components/SettingsPanel";
 import { OnboardingIntro } from "@/components/OnboardingIntro";
 import { ConnectorAuthToast } from "@/components/ConnectorAuthToast";
 import { Modal } from "@/components/ui/modal";
@@ -248,9 +249,10 @@ export default function App(): JSX.Element {
   const [sessionTitle, setSessionTitle] = useState("New session");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<
-    "general" | "sandbox" | "providers" | "automation" | "memory" | "connectors"
-  >("general");
+  // The panel's own union, not a subset of it: this used to list six sections
+  // and silently ignored every other one asked for.
+  const [settingsSection, setSettingsSection] =
+    useState<(typeof SETTINGS_SECTIONS)[number]>("general");
   // A settings page opened a dock panel (e.g. Obsidian → Open graph): the
   // panel lands BEHIND the dialog, so the page asks the dialog to close.
   useEffect(() => {
@@ -680,15 +682,12 @@ export default function App(): JSX.Element {
   const openSettingsRequest = useChatStore((s) => s.openSettingsRequest);
   useEffect(() => {
     if (!openSettingsRequest) return;
-    if (
-      openSettingsRequest === "general" ||
-      openSettingsRequest === "sandbox" ||
-      openSettingsRequest === "providers" ||
-      openSettingsRequest === "automation" ||
-      openSettingsRequest === "memory" ||
-      openSettingsRequest === "connectors"
-    )
-      setSettingsSection(openSettingsRequest);
+    // Checked against the panel's own list, not a copy of it — see
+    // SETTINGS_SECTIONS.
+    if ((SETTINGS_SECTIONS as readonly string[]).includes(openSettingsRequest))
+      setSettingsSection(
+        openSettingsRequest as (typeof SETTINGS_SECTIONS)[number],
+      );
     setSettingsOpen(true);
     useChatStore.getState().requestOpenSettings(null);
   }, [openSettingsRequest]);
@@ -1426,7 +1425,7 @@ export default function App(): JSX.Element {
         )}
 
         <div className="app-no-drag flex items-center gap-2">
-          <div className="relative">
+          <div className="relative flex items-center">
             <button
               type="button"
               onClick={toggleBg}
@@ -1519,6 +1518,18 @@ export default function App(): JSX.Element {
                     </div>
                   </DropdownMenuItem>
                 ))}
+                {/* The picker chooses an engine; everything else about the
+                    sandbox — the image, the toolchains, WSL — lives in
+                    Settings, and this is where you are when you want it. */}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() =>
+                    useChatStore.getState().requestOpenSettings("sandbox")
+                  }
+                >
+                  <Settings className="size-4 shrink-0" />
+                  Sandbox settings
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
