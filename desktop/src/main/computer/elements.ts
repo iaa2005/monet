@@ -68,17 +68,32 @@ $res = @{ title = $title; elements = $out }
 [Console]::Out.WriteLine(($res | ConvertTo-Json -Compress -Depth 4))
 `;
 
-export function listScreenElements(): Promise<UiElementsResult> {
+/** Run a PowerShell script and parse its last non-empty stdout line as JSON
+ * (Add-Type may chat on earlier lines). */
+function runJsonPs<T>(
+  script: string,
+  timeoutMs: number,
+): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
   return new Promise((resolve) => {
+    // -EncodedCommand, NOT `-Command -` + stdin — the stdin path silently
+    // executes nothing for multi-line scripts (see input.ts ps()).
     const child = spawn(
       "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-STA", "-Command", "-"],
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-STA",
+        "-EncodedCommand",
+        Buffer.from(script, "utf16le").toString("base64"),
+      ],
       { windowsHide: true },
     );
     let stdout = "";
     let stderr = "";
     let done = false;
-    const finish = (r: UiElementsResult): void => {
+    const finish = (
+      r: { ok: true; value: T } | { ok: false; error: string },
+    ): void => {
       if (!done) {
         done = true;
         resolve(r);
@@ -86,8 +101,8 @@ export function listScreenElements(): Promise<UiElementsResult> {
     };
     const timer = setTimeout(() => {
       child.kill();
-      finish({ ok: false, error: "UI element scan timed out (15s)" });
-    }, 15_000);
+      finish({ ok: false, error: `scan timed out (${timeoutMs / 1000}s)` });
+    }, timeoutMs);
     child.stdout.on("data", (d) => (stdout += d.toString("utf8")));
     child.stderr.on("data", (d) => (stderr += d.toString("utf8")));
     child.on("error", (e) => {
@@ -97,26 +112,13 @@ export function listScreenElements(): Promise<UiElementsResult> {
     child.on("close", () => {
       clearTimeout(timer);
       try {
-        // The JSON is the last non-empty stdout line (Add-Type may chat).
         const line = stdout
           .split("\n")
           .map((l) => l.trim())
           .filter(Boolean)
           .pop();
         if (!line) return finish({ ok: false, error: stderr || "no output" });
-        const parsed = JSON.parse(line) as {
-          error?: string;
-          title?: string;
-          elements?: UiElement[] | UiElement | null;
-        };
-        if (parsed.error) return finish({ ok: false, error: parsed.error });
-        // ConvertTo-Json collapses a 1-element list to a bare object.
-        const els = Array.isArray(parsed.elements)
-          ? parsed.elements
-          : parsed.elements
-            ? [parsed.elements]
-            : [];
-        finish({ ok: true, title: parsed.title, elements: els });
+        finish({ ok: true, value: JSON.parse(line) as T });
       } catch (e) {
         finish({
           ok: false,
@@ -124,7 +126,47 @@ export function listScreenElements(): Promise<UiElementsResult> {
         });
       }
     });
-    child.stdin.write(SCRIPT);
-    child.stdin.end();
   });
+}
+
+export async function listScreenElements(): Promise<UiElementsResult> {
+  const r = await runJsonPs<{
+    error?: string;
+    title?: string;
+    elements?: UiElement[] | UiElement | null;
+  }>(SCRIPT, 15_000);
+  if (!r.ok) return { ok: false, error: r.error };
+  if (r.value.error) return { ok: false, error: r.value.error };
+  // ConvertTo-Json collapses a 1-element list to a bare object.
+  const els = Array.isArray(r.value.elements)
+    ? r.value.elements
+    : r.value.elements
+      ? [r.value.elements]
+      : [];
+  return { ok: true, title: r.value.title, elements: els };
+}
+
+export interface TopWindow {
+  /** Process name, e.g. "chrome". */
+  app: string;
+  title: string;
+}
+
+const WINDOWS_SCRIPT = `
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$list = @(Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object {
+  @{ app = $_.ProcessName; title = $_.MainWindowTitle }
+})
+ConvertTo-Json -Compress -InputObject $list
+`;
+
+/** Every process with a visible top-level window — the app-switching map for
+ * a model that cannot see the taskbar. */
+export async function listTopWindows(): Promise<TopWindow[]> {
+  const r = await runJsonPs<TopWindow[] | TopWindow | null>(
+    WINDOWS_SCRIPT,
+    10_000,
+  );
+  if (!r.ok) return [];
+  return Array.isArray(r.value) ? r.value : r.value ? [r.value] : [];
 }

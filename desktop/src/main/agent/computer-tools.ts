@@ -14,16 +14,18 @@ import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
 import { captureScreen, toScreenCoord } from "../computer/screen.js";
-import { listScreenElements } from "../computer/elements.js";
+import { listScreenElements, listTopWindows } from "../computer/elements.js";
 import {
   click,
   cursorPosition,
+  focusWindow,
   foregroundApp,
   moveMouse,
   pressKey,
   scroll,
   typeText,
 } from "../computer/input.js";
+import { activeModelAccepts } from "./model-modalities.js";
 import { getComputerConfig } from "../computer/config.js";
 import { touchComputerOverlay } from "../computer/overlay.js";
 import { artifactReference, saveArtifactBuffer } from "../ipc/artifacts.js";
@@ -49,6 +51,7 @@ const schema = lazySchema(() =>
       .enum([
         "screenshot",
         "list_elements",
+        "focus_window",
         "left_click",
         "right_click",
         "middle_click",
@@ -67,7 +70,9 @@ const schema = lazySchema(() =>
     text: z
       .string()
       .optional()
-      .describe("Text to type (action=type) or a key combo like 'ctrl+c', 'Return' (action=key)."),
+      .describe(
+        "Text to type (action=type), a key combo like 'ctrl+c', 'Return' (action=key), or part of a window title (action=focus_window).",
+      ),
     scroll_direction: z.enum(["up", "down"]).optional(),
     scroll_amount: z.number().optional().describe("Wheel clicks (default 3)."),
     region: z
@@ -78,12 +83,21 @@ const schema = lazySchema(() =>
 );
 type Schema = ReturnType<typeof schema>;
 
-/** Refuse to act on a denied foreground app (screenshots/reads are exempt). */
+/** Whether the active model can see images. Without vision the tool switches
+ * to BLIND mode: "screenshot" returns the accessibility-tree inventory as
+ * text, and every coordinate is a DIP screen pixel (identity transform). */
+function blind(): boolean {
+  return !activeModelAccepts("image");
+}
+
+/** Refuse to act on a denied foreground app (screenshots/reads are exempt,
+ * and focus_window is how the agent LEAVES a denied app). */
 async function deniedGuard(action: string): Promise<string | null> {
   if (
     action === "screenshot" ||
     action === "cursor_position" ||
-    action === "list_elements"
+    action === "list_elements" ||
+    action === "focus_window"
   )
     return null;
   const denied = getComputerConfig().deniedApps.map((a) =>
@@ -95,6 +109,41 @@ async function deniedGuard(action: string): Promise<string | null> {
     return `The foreground app "${app}" is on the Denied apps list — action refused. Ask the user to switch focus or remove it from Settings → Automation.`;
   }
   return null;
+}
+
+/** Blind-mode "screenshot": open windows + the foreground window's clickable
+ * elements, coordinates in DIP screen pixels. */
+async function describeScreen(note: string): Promise<ComputerOutput> {
+  lastTransform = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
+  const [wins, scan] = await Promise.all([
+    listTopWindows(),
+    listScreenElements(),
+  ]);
+  const winLines = wins
+    .slice(0, 40)
+    .map((w) => `- "${w.title}" (${w.app})`);
+  let body: string;
+  if (scan.ok && (scan.elements?.length ?? 0) > 0) {
+    const lines = (scan.elements ?? []).slice(0, 120).map((e, i) => {
+      const label = e.n ? `"${e.n}"` : "(unnamed)";
+      return `${i + 1}. [${e.t}] ${label} — click at [${Math.round(e.x + e.w / 2)}, ${Math.round(e.y + e.h / 2)}]`;
+    });
+    body =
+      `Foreground window "${scan.title ?? ""}" — interactive elements (pass an element's [x, y] straight to a click action):\n` +
+      lines.join("\n");
+  } else {
+    body =
+      `Foreground window "${scan.title ?? "?"}" exposed no accessibility elements` +
+      `${!scan.ok && scan.error ? ` (${scan.error})` : ""}. ` +
+      `Try focus_window to reach another app, drive it with key/type, or ask the user.`;
+  }
+  return {
+    text:
+      `${note}\n` +
+      `Open windows (switch with focus_window):\n${winLines.join("\n")}\n\n` +
+      body,
+    isError: false,
+  };
 }
 
 async function takeScreenshot(
@@ -142,12 +191,34 @@ export const ComputerTool = buildTool({
     return false;
   },
   async prompt() {
+    if (blind()) {
+      return [
+        "Control the user's desktop through the Windows accessibility tree —",
+        "no vision needed. FIRST call action='screenshot': instead of an image",
+        "it returns TEXT — the list of open windows and every interactive",
+        "element of the foreground window (buttons, fields, links…) with its",
+        "name and [x, y] click point in screen pixels. Then act:",
+        "- left_click / right_click / middle_click / double_click / mouse_move —",
+        "  coordinate: [x, y] copied from an element's reported click point.",
+        "- focus_window — text: part of a window title; brings that app to the",
+        "  front. Use it to switch between the windows the screenshot listed.",
+        "- type — text: the text to type (pastes via clipboard; Unicode ok).",
+        "  Click the target field first.",
+        "- key — text: a combo like 'ctrl+c', 'alt+Tab', 'Return', 'Escape'.",
+        "- scroll — coordinate + scroll_direction (up/down) + scroll_amount.",
+        "After every click the tool re-reads the tree and returns the updated",
+        "inventory — read it to verify the click did what you expected. Some",
+        "windows (games, canvas apps) expose no elements; tell the user instead",
+        "of clicking blindly. Move deliberately; actions can't always be undone.",
+      ].join("\n");
+    }
     return [
       "Control the user's desktop visually. FIRST call action='screenshot' to",
       "see the screen; it returns an image — read it and give coordinates in",
       "that image's pixel space. Then act:",
       "- left_click / right_click / middle_click / double_click / mouse_move —",
       "  with coordinate: [x, y].",
+      "- focus_window — text: part of a window title; brings that app to the front.",
       "- type — text: the text to type (pastes via clipboard; Unicode ok).",
       "- key — text: a combo like 'ctrl+c', 'alt+Tab', 'Return', 'Escape'.",
       "- scroll — coordinate + scroll_direction (up/down) + scroll_amount.",
@@ -207,8 +278,35 @@ export const ComputerTool = buildTool({
     try {
       switch (action) {
         case "screenshot":
+          if (blind())
+            return {
+              data: await describeScreen("Screen read (accessibility tree)."),
+            };
           return { data: await takeScreenshot(sessionId, "Screenshot taken.", region) };
+        case "focus_window": {
+          if (!text)
+            return {
+              data: { text: "focus_window needs part of a window title in text.", isError: true },
+            };
+          const matched = await focusWindow(text);
+          if (!matched)
+            return {
+              data: {
+                text: `No open window title contains "${text}". Call screenshot to list the open windows.`,
+                isError: true,
+              },
+            };
+          await new Promise((r) => setTimeout(r, 400));
+          return {
+            data: blind()
+              ? await describeScreen(`Focused "${matched}".`)
+              : await takeScreenshot(sessionId, `Focused "${matched}".`),
+          };
+        }
         case "list_elements": {
+          // Blind mode has no screenshot space — coordinates ARE screen pixels.
+          if (blind())
+            lastTransform = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
           const scan = await listScreenElements();
           if (!scan.ok)
             return {
@@ -265,13 +363,16 @@ export const ComputerTool = buildTool({
                 ? "middle"
                 : "left";
           await click(sx, sy, button, action === "double_click");
-          // Auto-screenshot so the model sees the result immediately.
+          // Auto-verify so the model sees the result immediately: a fresh
+          // screenshot, or in blind mode a fresh accessibility inventory.
           await new Promise((r) => setTimeout(r, 500));
           return {
-            data: await takeScreenshot(
-              sessionId,
-              `${action} at ${coordinate?.join(", ")}.`,
-            ),
+            data: blind()
+              ? await describeScreen(`${action} at ${coordinate?.join(", ")}.`)
+              : await takeScreenshot(
+                  sessionId,
+                  `${action} at ${coordinate?.join(", ")}.`,
+                ),
           };
         }
         case "type":

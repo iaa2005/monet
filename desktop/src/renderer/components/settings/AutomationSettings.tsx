@@ -430,7 +430,7 @@ export function AutomationSettings(): JSX.Element {
       <section className="pt-5">
         <SectionHeader
           title="Computer use"
-          description="The agent can take screenshots of your screen and control your mouse and keyboard. Needs a multimodal model (text + images). Some actions cannot be undone; close anything sensitive — the agent can see your screen."
+          description="The agent can take screenshots of your screen and control your mouse and keyboard. A multimodal model works from screenshots; a text-only model drives through the Windows accessibility tree. Some actions cannot be undone; close anything sensitive — the agent can see your screen."
           control={<Switch checked={computerOn} onChange={toggleComputer} />}
         />
         {computerOn && (

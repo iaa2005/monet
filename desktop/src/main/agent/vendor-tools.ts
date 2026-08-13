@@ -334,10 +334,9 @@ function activeModelSeesImages(): boolean {
 
 /**
  * Whether a tool may be advertised AND executed in a space. Browser Use and
- * Computer Use work in BOTH Home and Code when the user enabled them (Computer
- * Use also needs a multimodal model — it reads screenshots). Everything else
- * follows the space: Home = the sandbox subset only (no MCP, no shell/fs);
- * Code = everything except the sandbox-scoped tools.
+ * Computer Use work in BOTH Home and Code when the user enabled them.
+ * Everything else follows the space: Home = the sandbox subset only (no MCP,
+ * no shell/fs); Code = everything except the sandbox-scoped tools.
  */
 export function isSpaceToolAllowed(
   name: string,
@@ -414,8 +413,10 @@ export function isSpaceToolAllowed(
   if (name === "DevServer")
     return space !== "home" && getBrowserConfig().enabled;
   if (BROWSER_TOOL_NAMES.has(name)) return getBrowserConfig().enabled;
-  if (name === "Computer")
-    return getComputerConfig().enabled && activeModelSeesImages();
+  // Computer Use no longer requires a multimodal model: a text-only model
+  // drives the desktop through the accessibility tree (the tool's "screenshot"
+  // returns an element inventory instead of pixels — see computer-tools.ts).
+  if (name === "Computer") return getComputerConfig().enabled;
   return spaceAllows(name, space);
 }
 
@@ -519,7 +520,10 @@ export async function getVendorApiTools(
   const sandboxEngine = sessionId
     ? getSessionEngine(sessionId)
     : getSandboxConfig().engine;
-  const cacheKey = `${sandboxEngine}::${tools.map((t) => t.name).join(",")}`;
+  // The Computer tool's prompt differs for vision vs text-only models, so the
+  // same tool-name set can yield different text — key by modality too.
+  const modality = activeModelSeesImages() ? "v" : "t";
+  const cacheKey = `${sandboxEngine}:${modality}:${tools.map((t) => t.name).join(",")}`;
   let base = apiToolsCache.get(cacheKey);
   if (!base) {
     const promptOptions = {

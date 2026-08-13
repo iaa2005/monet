@@ -12,9 +12,20 @@ import { spawn } from "child_process";
 
 function ps(script: string): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
+    // -EncodedCommand, NOT `-Command -` + stdin: the stdin path parses the
+    // script REPL-style, and a multi-line body (every script here — the WIN32
+    // Add-Type block spans lines) silently runs NOTHING and exits 0. Verified
+    // live: `Write-Output 'hi'` came through, any multi-line script came back
+    // empty. Encoded, the whole script is one command and multi-line just works.
     const child = spawn(
       "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-STA", "-Command", "-"],
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-STA",
+        "-EncodedCommand",
+        Buffer.from(script, "utf16le").toString("base64"),
+      ],
       { windowsHide: true },
     );
     let stdout = "";
@@ -25,8 +36,6 @@ function ps(script: string): Promise<{ ok: boolean; stdout: string; stderr: stri
     child.on("close", (code) =>
       resolve({ ok: code === 0, stdout: stdout.trim(), stderr: stderr.trim() }),
     );
-    child.stdin.write(script);
-    child.stdin.end();
   });
 }
 
@@ -41,6 +50,9 @@ public class MonetInput {
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint data, IntPtr extra);
   [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
   [StructLayout(LayoutKind.Sequential)] public struct P { public int X; public int Y; }
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out P p);
@@ -167,6 +179,31 @@ export async function cursorPosition(): Promise<{ x: number; y: number }> {
   );
   const [x, y] = r.stdout.split(",").map((n) => parseInt(n, 10));
   return { x: x || 0, y: y || 0 };
+}
+
+/** Bring the first window whose title contains `title` (case-insensitive) to
+ * the foreground, restoring it if minimized. Returns the matched full title,
+ * or null when nothing matched. */
+export async function focusWindow(title: string): Promise<string | null> {
+  const b64 = Buffer.from(title, "utf-8").toString("base64");
+  const r = await ps(
+    `${WIN32}
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}')).ToLower()
+$p = Get-Process | Where-Object { $_.MainWindowTitle -and $_.MainWindowTitle.ToLower().Contains($t) } | Select-Object -First 1
+if (-not $p) { Write-Output '<<NOTFOUND>>'; exit 0 }
+$h = $p.MainWindowHandle
+if ([MonetInput]::IsIconic($h)) { [MonetInput]::ShowWindow($h, 9) | Out-Null }
+# A background process may not steal focus; a synthetic Alt tap lifts the
+# foreground lock (the classic SetForegroundWindow workaround).
+[MonetInput]::keybd_event(0xA4,0,0,[UIntPtr]::Zero)
+[MonetInput]::keybd_event(0xA4,0,2,[UIntPtr]::Zero)
+[MonetInput]::SetForegroundWindow($h) | Out-Null
+Write-Output $p.MainWindowTitle`,
+  );
+  const out = r.stdout.trim();
+  if (!r.ok || !out || out.includes("<<NOTFOUND>>")) return null;
+  return out.split("\n").pop()!.trim();
 }
 
 /** Foreground window's process name (lower-case, no extension), for the
