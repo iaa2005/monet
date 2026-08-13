@@ -24,18 +24,21 @@ export function Switch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative h-6 w-10 shrink-0 rounded-full transition-colors",
-        // The accent, same orange as links and focus rings — this used to be
-        // a hardcoded blue that belonged to no palette.
-        checked ? "bg-brand" : "bg-black/[0.15] dark:bg-white/[0.2]",
+        "relative h-[22px] w-10 shrink-0 rounded-full border transition-colors",
+        // Off is not a grey slab: it is the same wash-inside-an-edge the rest
+        // of the app uses, so the control reads as part of the design even
+        // when it is doing nothing. On fills the edge in.
+        checked
+          ? "border-brand bg-brand"
+          : "border-brand/60 bg-accent",
         disabled && "opacity-50",
         className,
       )}
     >
       <span
         className={cn(
-          "absolute top-0.5 size-5 rounded-full bg-white shadow transition-all",
-          checked ? "left-[18px]" : "left-0.5",
+          "absolute top-[1px] size-[18px] rounded-full bg-white shadow transition-all",
+          checked ? "left-[19px]" : "left-[1px]",
         )}
       />
     </button>

@@ -7,9 +7,10 @@
  * screen, which is what "make the titles the same" means: not a sweep, a
  * component, so the next section cannot invent a fourth.
  *
- * The size and weight match the wordmark in the header (`font-display
- * text-[15px] font-semibold tracking-tight`) — the app already had exactly one
- * display convention, so this is it rather than a new number.
+ * The size and weight match the wordmark in the header — the app has exactly
+ * one display convention, so this is it rather than a new number. Bounded at
+ * Regular and 24/32: the face is drawn to be large and light, and settings is
+ * the one screen with room for it.
  *
  * Sub-headings inside a section are NOT this: the code-theme picker's
  * Light/Dark and the uppercase group labels are deliberately smaller and stay
@@ -30,7 +31,7 @@ export function SectionTitle({
   return (
     <h3
       className={cn(
-        "font-display text-[15px] font-semibold tracking-tight text-foreground",
+        "font-display text-[24px] font-normal leading-8 tracking-[-0.01em] text-foreground",
         className,
       )}
     >
@@ -57,7 +58,7 @@ export function SectionDescription({
   return (
     <p
       className={cn(
-        "mt-1 text-[13px] leading-relaxed text-muted-foreground",
+        "mt-1 text-[13px] font-medium leading-5 text-muted-foreground",
         className,
       )}
     >

@@ -1,0 +1,14 @@
+{
+  "name": "Code Monet → Figma",
+  "id": "code-monet-figma-build",
+  "api": "1.0.0",
+  "main": "code.js",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": { "allowedDomains": ["none"] },
+  "menu": [
+    { "name": "Экраны чата (1–3)", "command": "app" },
+    { "name": "Экраны настроек (4–5)", "command": "settings" },
+    { "name": "Выгрузить выделенное в буфер", "command": "dump" }
+  ]
+}

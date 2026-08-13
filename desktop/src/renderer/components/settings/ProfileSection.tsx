@@ -20,7 +20,7 @@ function api(): ElectronAPI | undefined {
 }
 
 const ROW_INPUT =
-  "w-64 rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-foreground/20";
+  "h-8 w-[258px] rounded-lg border border-input bg-transparent px-2.5 text-[13px] font-medium outline-none focus:ring-1 focus:ring-foreground/20";
 
 const WORK_OPTIONS = [
   "", "Engineering", "Student", "Research", "Design", "Writing", "Data", "Other",
@@ -36,9 +36,11 @@ function Row({
   label: string;
   children: React.ReactNode;
 }): JSX.Element {
+  // No rule between rows: the label/control pairing already separates them,
+  // and a hairline every 48px turned a short form into a table.
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
-      <span className="text-sm">{label}</span>
+    <div className="flex items-center justify-between gap-3 py-3.5">
+      <span className="text-[13px] font-medium">{label}</span>
       {children}
     </div>
   );

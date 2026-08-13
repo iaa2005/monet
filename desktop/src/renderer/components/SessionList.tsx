@@ -287,8 +287,14 @@ export function SessionList({
               <div
                 key={s.id}
                 className={cn(
-                  "group relative flex cursor-pointer items-center gap-2 px-3 py-1 transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
-                  active && "bg-black/[0.06] dark:bg-white/[0.08]",
+                  // The open chat is branded like every other current thing —
+                  // wash behind, brand ink on the title (see the header
+                  // toggles and the dock's open tab).
+                  "group relative mx-1 flex cursor-pointer items-center gap-[9px] rounded-md px-[9px] py-1 transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
+                  // Wash only — no text colour. The row's context menu renders
+                  // inside it, and a `text-brand` here came out as a menu with
+                  // every item in blue. The title sets its own colour anyway.
+                  active && "bg-brand-wash hover:bg-brand-wash",
                 )}
                 onContextMenu={(e) => {
                   e.preventDefault();
@@ -317,8 +323,15 @@ export function SessionList({
                   <span className="min-w-0 flex-1">
                     <span
                       className={cn(
-                        "flex items-center gap-1 truncate text-[13px]",
-                        active ? "text-foreground" : "text-muted-foreground",
+                        // The title carries the brand when this is the open
+                        // chat. It sets its own colour, so the wash on the row
+                        // is not enough — this is the line that decides.
+                        "flex items-center gap-1 truncate text-[13px] font-medium",
+                        // group-hover, because the title sets its own colour:
+                        // the wash on the row cannot pull it to plain ink.
+                        active
+                          ? "text-brand group-hover:text-foreground"
+                          : "text-foreground",
                       )}
                     >
                       {voiceSessionId === s.id && (

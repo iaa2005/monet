@@ -10,7 +10,7 @@
  * across chat switches and stays live through a session (never disappears).
  */
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Gauge } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -59,6 +59,57 @@ const COLORS: Record<string, string> = {
   free: "#cbd5e1",
 };
 const colorOf = (key: string): string => COLORS[key] ?? "#94a3b8";
+
+/**
+ * The gauge itself: a ring that fills as the window does.
+ *
+ * A number needs reading; a ring is read at a glance, which is all this
+ * control is for — the figures live one click away in the breakdown. The
+ * colour is the whole message: brand while there is room, amber past 70%,
+ * destructive past 90%. Those two thresholds are the only thing to change if
+ * the warning should come earlier.
+ */
+const WARN_AT = 70;
+const DANGER_AT = 90;
+
+function UsageRing({ pct }: { pct: number }): JSX.Element {
+  const r = 5.5;
+  const circumference = 2 * Math.PI * r;
+  const tone =
+    pct >= DANGER_AT
+      ? "var(--destructive)"
+      : pct >= WARN_AT
+        ? "var(--warn)"
+        : "hsl(var(--brand))";
+  return (
+    <svg viewBox="0 0 14 14" className="size-3.5 shrink-0" aria-hidden>
+      {/* The track is currentColor, so it sits at whatever weight the row
+          around it has instead of needing a colour of its own. */}
+      <circle
+        cx="7"
+        cy="7"
+        r={r}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        opacity="0.25"
+      />
+      <circle
+        cx="7"
+        cy="7"
+        r={r}
+        fill="none"
+        stroke={tone}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - Math.min(100, Math.max(0, pct)) / 100)}
+        transform="rotate(-90 7 7)"
+        style={{ transition: "stroke-dashoffset 0.3s ease, stroke 0.3s ease" }}
+      />
+    </svg>
+  );
+}
 
 
 export function ContextMeter({
@@ -160,10 +211,9 @@ export function ContextMeter({
         <button
           type="button"
           className={className}
-          title="Context window — click for a breakdown"
+          title={`Context window — ${fmt(used)} / ${fmt(budget)} (${pct}%). Click for a breakdown.`}
         >
-          <Gauge className="size-3" />
-          {fmt(used)} · {pct}%
+          <UsageRing pct={pct} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="end" className="w-80 p-3">

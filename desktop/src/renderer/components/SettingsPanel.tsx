@@ -402,10 +402,12 @@ function KeepAwakeSection(): JSX.Element {
         title="Power"
         description="How this device behaves while Code Monet is running."
       />
-      <div className="mt-4 flex items-start justify-between gap-4 rounded-xl border border-border p-3">
+      {/* A filled card, not an outlined one: on a white sheet the surface
+          change is the edge, and one less hairline on the screen. */}
+      <div className="mt-3 flex items-start justify-between gap-3.5 rounded-[var(--radius)] bg-muted px-3.5 py-3">
         <div className="min-w-0">
-          <div className="text-sm font-medium">Keep awake</div>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">
+          <div className="text-[13px] font-medium">Keep awake</div>
+          <p className="mt-0.5 text-[13px] font-medium leading-5 text-muted-foreground">
             Stop this computer going to sleep on its own, so a long run isn&apos;t
             cut off mid-task and a scheduled routine actually fires. The screen
             still turns off as usual. It can&apos;t wake a sleeping machine, and
@@ -446,15 +448,18 @@ function GeneralSection({
               type="button"
               onClick={() => setTheme(t)}
               className={cn(
-                "rounded-xl border p-3 text-left transition-colors",
+                // Chosen = the brand wash inside a brand edge, the same pair
+                // the whole app uses for "this one". A ring plus a darker
+                // border was a third way of saying selected.
+                "rounded-[var(--radius)] border px-3 pb-3 pt-2.5 text-left transition-colors",
                 theme === t
-                  ? "border-foreground/40 ring-1 ring-foreground/20"
+                  ? "border-brand-edge bg-brand-wash"
                   : "border-border hover:bg-black/[0.03] dark:hover:bg-white/[0.04]",
               )}
             >
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-medium capitalize">{t}</span>
-                {theme === t && <Check className="size-4" />}
+                <span className="text-[13px] font-medium capitalize">{t}</span>
+                {theme === t && <Check className="size-[15px] text-brand" />}
               </div>
               {/* A miniature of the real thing: chrome, sidebar, canvas.
                   These were four warm hexes from an earlier palette and
@@ -517,7 +522,10 @@ export function SettingsPanel({
 
   return (
     <div className="flex h-full min-h-0">
-      <nav className="w-52 shrink-0 overflow-y-auto border-r border-border bg-sidebar/60 p-3">
+      {/* One sheet, not two panes: no rule down the middle and no surface of
+          its own. The selected chip is what marks the column, and the dialog's
+          own edge is the only border on the screen. */}
+      <nav className="w-52 shrink-0 overflow-y-auto p-3">
         {/* Search instead of the old "Settings" heading. */}
         <div className="mb-3 flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1.5">
           <Search className="size-3.5 shrink-0 text-muted-foreground" />
@@ -535,7 +543,7 @@ export function SettingsPanel({
         )}
         {groups.map((g) => (
           <div key={g.group} className="mb-3">
-            <div className="px-2 py-1 text-[11px] font-medium tracking-wide text-muted-foreground">
+            <div className="pb-1 pl-1 pt-4 text-[12px] font-medium text-muted-foreground">
               {g.group}
             </div>
             {g.items.map((it) => (
@@ -544,13 +552,17 @@ export function SettingsPanel({
                 type="button"
                 onClick={() => setSection(it.id)}
                 className={cn(
-                  "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",
+                  // The open section is branded like every other current thing,
+                  // and carries a hairline of brand so it reads as a chip and
+                  // not just a tint. Unselected rows are plain ink, not muted:
+                  // this is a list of places to go, none of them disabled.
+                  "flex h-8 w-full items-center gap-[9px] rounded-md px-2.5 text-[13px] font-medium transition-colors",
                   section === it.id
-                    ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                    : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
+                    ? "border border-brand/50 bg-accent text-brand"
+                    : "border border-transparent text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
                 )}
               >
-                <it.icon className="size-4 shrink-0" />
+                <it.icon className="size-[15px] shrink-0" />
                 {it.label}
               </button>
             ))}
@@ -558,9 +570,10 @@ export function SettingsPanel({
         ))}
       </nav>
 
-      {/* Extra top padding keeps the first title/buttons clear of the
-          dialog's close button in the top-right corner. */}
-      <div className="min-w-0 flex-1 overflow-y-auto px-6 pb-6 pt-12">
+      {/* Top padding keeps the first title clear of the dialog's close button
+          in the corner; the sides are narrow because the nav beside it already
+          holds the content off the edge. */}
+      <div className="min-w-0 flex-1 overflow-y-auto px-3 pb-6 pt-6">
         {section === "general" && (
           <GeneralSection theme={theme} setTheme={setTheme} />
         )}

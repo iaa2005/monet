@@ -156,8 +156,14 @@ function IconBtn({
         aria-label={label ?? title}
         onClick={onClick}
         className={cn(
+          // Lit means branded: the wash behind AND the glyph itself, which is
+          // what tells a row of nine toggles apart at a glance. A grey box
+          // behind a grey glyph reads as "disabled", not "open".
           "app-no-drag relative flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]",
-          active && "bg-black/[0.06] text-foreground dark:bg-white/[0.08]",
+          // Hovering a lit toggle takes the glyph to plain ink, not deeper
+          // brand: the brand already says "open", so the hover has to say
+          // something else — that you are about to close it.
+          active && "bg-brand-wash text-brand hover:bg-brand-wash hover:text-foreground",
         )}
       >
         {children}
@@ -200,8 +206,11 @@ function NavRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex h-7 w-full items-center gap-2.5 px-3 text-[13px] text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]",
-        active && "bg-black/[0.06] text-foreground dark:bg-white/[0.08]",
+        // Inset and rounded like the recents rows beside it — a highlight that
+        // runs edge to edge belongs to a sidebar with its own surface, and
+        // this one no longer has any.
+        "mx-1 flex h-7 items-center gap-2.5 rounded-md px-[9px] text-[13px] font-medium text-foreground transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
+        active && "bg-brand-wash text-brand hover:bg-brand-wash hover:text-foreground",
       )}
     >
       <Icon className="size-4 shrink-0" />
@@ -334,10 +343,49 @@ export default function App(): JSX.Element {
     [],
   );
 
-  // Tool file links ask to open a file in the in-app viewer.
+  /*
+   * Tool file links ask to open a file in the in-app viewer.
+   *
+   * What a tool link carries is usually the file's NAME — `bg-1-….output` —
+   * because that is what the tool was called with. The file itself lives in
+   * the chat's sandbox, and a background task's output lives one level down
+   * again, in `.tasks/`. Handing the bare name to the viewer produced
+   * "Read file: … not found" for exactly the files this link exists to open,
+   * while the same file opened fine from the Files panel — that panel walks a
+   * tree and already holds full paths.
+   *
+   * So a name with no separator in it is resolved against the sandbox before
+   * the viewer sees it: work dir first, then `.tasks/`. The probe is a read,
+   * because that is the operation that has to succeed anyway.
+   */
   useEffect(() => {
-    if (openFileRequest) {
-      const path = openFileRequest;
+    if (!openFileRequest) return;
+    const raw = openFileRequest;
+    useChatStore.getState().requestOpenFile(null);
+
+    void (async () => {
+      let path = raw;
+      const bare = !/[/\\]/.test(raw);
+      if (bare) {
+        const sid = useChatStore.getState().currentSessionId ?? "default";
+        const work = await api()?.sandbox.workDir(sid).catch(() => null);
+        if (work) {
+          const sep = work.includes("\\") ? "\\" : "/";
+          for (const candidate of [
+            `${work}${sep}${raw}`,
+            `${work}${sep}.tasks${sep}${raw}`,
+          ]) {
+            const ok = await api()
+              ?.files.read(candidate)
+              .then(() => true)
+              .catch(() => false);
+            if (ok) {
+              path = candidate;
+              break;
+            }
+          }
+        }
+      }
       useChatStore.getState().openViewer({
         name: path.split(/[/\\]/).pop() || path,
         path,
@@ -345,8 +393,7 @@ export default function App(): JSX.Element {
         kind: "file",
         source: "file",
       });
-      useChatStore.getState().requestOpenFile(null);
-    }
+    })();
   }, [openFileRequest]);
 
   // Something asked for a tab: the agent's BrowserNavigate with nothing open,
@@ -1419,7 +1466,10 @@ export default function App(): JSX.Element {
               type="button"
               onClick={toggleBg}
               onContextMenu={(e) => { e.preventDefault(); setRotateMenuOpen((o) => !o); }}
-              className="font-display text-[15px] font-semibold tracking-tight text-foreground cursor-pointer hover:opacity-80 transition-opacity"
+              // Bounded at Regular: the face carries the wordmark on its own
+              // shapes, and semibold was thickening a display face that was
+              // never drawn to be pushed.
+              className="font-display text-[17px] font-normal tracking-tight text-foreground cursor-pointer hover:opacity-80 transition-opacity"
             >
               Code Monet
             </button>
@@ -1704,11 +1754,17 @@ export default function App(): JSX.Element {
         <WindowControls />
       </header>
 
-      {/* ── Body ── */}
+      {/* ── Body ──
+          The panes are cards floating on the window's background now, not
+          regions divided by hairlines: 8px of air around the whole body and
+          8px between panes (the resize handle IS that gutter). Nothing here
+          draws a border — the surface change carries the edge. */}
       <div
         className={cn(
-          "flex min-h-0 flex-1 border-t border-border",
-          incognito && "bg-card text-card-foreground",
+          // 4px here, 4px on each card (dock.css) — 8px of air at the window
+          // edge and 8px between any two panes, from one pair of numbers.
+          "flex min-h-0 flex-1 p-1",
+          incognito && "text-card-foreground",
         )}
       >
         <ResizablePanelGroup
@@ -1721,26 +1777,34 @@ export default function App(): JSX.Element {
                 defaultSize={18}
                 minSize={14}
                 maxSize={38}
-                className="min-w-[280px]"
+                // The sidebar's half of the gutter lives on the panel, not on
+                // the <aside>: a margin would add to a panel whose width is
+                // already fixed, and the overflow shows up as scrollbars.
+                className="min-w-[280px] p-1"
                 style={{ overflow: "visible" }}
               >
-                <aside className="glass-panel flex h-full flex-col bg-sidebar">
-                  {/* Home / Code: flush tabs sharing the sidebar's edge. */}
-                  <div className="flex h-8 shrink-0 items-stretch border-b border-border">
-                    <div className="flex flex-1 items-stretch">
+                {/* No surface of its own: the sidebar sits directly on the
+                    window background, so the cards beside it are what read as
+                    raised. */}
+                <aside className="flex h-full flex-col">
+                  {/* Home / Code: two cards, not flush tabs. The mode you ARE
+                      in wears the brand, like every other selected thing in
+                      the app; the other one is a plain sheet. */}
+                  <div className="flex h-8 shrink-0 items-stretch">
+                    <div className="flex flex-1 items-stretch gap-2">
                       <button
                         onClick={() => {
                           setAppMode("home");
                           setView("chat");
                         }}
                         className={cn(
-                          "flex flex-1 items-center justify-center gap-1.5 border-r border-border text-xs font-medium transition-colors last:border-r-0",
+                          "flex flex-1 items-center justify-center gap-[7px] rounded-[var(--radius)] text-[13px] font-medium transition-colors",
                           appMode === "home"
-                            ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                            : "text-muted-foreground hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.04]",
+                            ? "border border-brand/50 bg-brand-wash text-brand"
+                            : "bg-popover text-foreground",
                         )}
                       >
-                        <Home className="size-3" />
+                        <Home className="size-3.5" />
                         Home
                       </button>
                       <button
@@ -1749,13 +1813,13 @@ export default function App(): JSX.Element {
                           setView("chat");
                         }}
                         className={cn(
-                          "flex flex-1 items-center justify-center gap-1.5 border-r border-border text-xs font-medium transition-colors last:border-r-0",
+                          "flex flex-1 items-center justify-center gap-[7px] rounded-[var(--radius)] text-[13px] font-medium transition-colors",
                           appMode === "code"
-                            ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                            : "text-muted-foreground hover:bg-black/[0.03] hover:text-foreground dark:hover:bg-white/[0.04]",
+                            ? "border border-brand/50 bg-brand-wash text-brand"
+                            : "bg-popover text-foreground",
                         )}
                       >
-                        <Code className="size-3" />
+                        <Code className="size-3.5" />
                         Code
                       </button>
                     </div>
@@ -1823,7 +1887,9 @@ export default function App(): JSX.Element {
                     </div>
                   </div>
 
-                  <div className="border-t border-border">
+                  {/* A card like the tabs at the other end, not a strip
+                      hanging off a divider. */}
+                  <div className="rounded-[var(--radius)] bg-popover">
                     <AccountMenu
                       onOpenSettings={() => setSettingsOpen(true)}
                       onOpenAbout={() => setAboutOpen(true)}

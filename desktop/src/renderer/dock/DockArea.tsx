@@ -360,7 +360,7 @@ function GroupActions(props: IDockviewHeaderActionsProps): JSX.Element {
     "flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]";
 
   return (
-    <div className="flex h-full items-center gap-0.5 px-1">
+    <div className="flex h-full items-center gap-0.5">
       {location === "grid" && (
         <button
           type="button"
@@ -475,7 +475,10 @@ function DockTab(props: IDockviewPanelHeaderProps): JSX.Element {
         <button
           type="button"
           aria-label="Close panel"
-          className="dv-default-tab-action -mr-1 flex size-4 items-center justify-center rounded text-muted-foreground hover:bg-black/[0.08] hover:text-foreground dark:hover:bg-white/[0.10]"
+          // text-current, not a colour of its own: the × follows whatever the
+          // tab is wearing, so it goes brand on the open tab and stays quiet
+          // on the rest. A fixed muted grey ignored the tab entirely.
+          className="dv-default-tab-action -mr-1 flex size-4 items-center justify-center rounded text-current hover:bg-black/[0.08] hover:text-foreground dark:hover:bg-white/[0.10]"
           onPointerDown={(e) => e.preventDefault()}
           onClick={(e) => {
             e.stopPropagation();

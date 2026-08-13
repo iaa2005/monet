@@ -43,10 +43,14 @@
  * — mark, links, rings, selection — is `--brand-hue` and nothing else.
  */
 :root {
-    /* Strict corners, Cursor-style: everything in the app derives from this
-       one number (see the --radius-* scale below), so 5px turns every card,
-       menu, button and input from soft to precise in one place. */
-    --radius: 5px;
+    /* Everything in the app derives from this one number (see the --radius-*
+       scale below), so one edit turns every card, menu, button and input from
+       precise to soft.
+       12px is the design file's `radius/base`; the scale under @theme is built
+       so that `md` lands on its `radius/md` = 8. Those two are the only radii
+       the design actually uses — the rest of the ramp is derived from the same
+       ratios so nothing in the app is left without a value. */
+    --radius: 12px;
 
     /* The title bar's height, in ONE place: the header lays it out and the
        window buttons are a FIXED layer that has to cover exactly the same
@@ -55,9 +59,13 @@
     --titlebar-h: 36px;
 
     --bg-000: 0 0% 100%;
-    --bg-100: 220 5% 99%;
+    --bg-100: 0 0% 97.6%;
     --bg-200: 220 4% 97%;
-    --bg-300: 220 4% 95%;
+    /* Selection, not a grey step. The design makes the selected thing — the
+       open chat, the lit dock toggle, the current tab — carry a wash of the
+       brand rather than a darker neutral, so this tier IS the brand at 6%
+       saturation-weight. Hover borrows it too: one accent for "this one". */
+    --bg-300: var(--brand-hue) 93% 94.3%;
     --bg-400: 220 3% 92%;
 
     --text-000: 210 2.6% 7.6%;
@@ -105,8 +113,18 @@
     --accent: hsl(var(--bg-300));
     --accent-foreground: hsl(var(--text-000));
 
-    --destructive: hsl(0 56.2% 45.4%);
+    --destructive: hsl(0 79% 55.3%);
     --destructive-foreground: hsl(0 0% 100%);
+
+    /* The brand, pre-mixed against the surface behind it. A wash for fills and
+       an edge for the 1px outline of a selected card — spelled out rather than
+       written as an opacity, so both stay one value to change. */
+    --brand-wash: hsl(var(--brand-hue) 93% 94.3%);
+    --brand-edge: hsl(var(--brand-hue) 91% 83.5%);
+
+    /* The middle step of a three-tone gauge: fine, getting full, nearly out.
+       Amber rather than the green/red pair below, which mean pass/fail. */
+    --warn: hsl(38 92% 45%);
 
     /* Status colors — one place to change them app-wide */
     --green-bg: hsl(100 84% 42% / 0.12);
@@ -147,7 +165,12 @@
     --bg-000: 0 0% 7.1%;
     --bg-100: 0 0% 9.4%;
     --bg-200: 0 0% 12.2%;
-    --bg-300: 0 0% 14.9%;
+    /* Selection is branded in dark too. This tier was left a neutral grey when
+       the light one turned blue, so every selected chip and the toggle lost
+       their fill the moment the app went dark — lit and unlit looked the
+       same. Deep enough to sit under #d4d4d4 text, blue enough to read as
+       chosen against the #121212 sheet. */
+    --bg-300: var(--brand-hue) 46% 20%;
     --bg-400: 0 0% 19.6%;
 
     /* #d4d4d4 — soft white, not paper white. */
@@ -183,6 +206,12 @@
 
     --destructive: hsl(0 67% 59.6%);
     --destructive-foreground: hsl(0 0% 100%);
+
+    --warn: hsl(38 92% 58%);
+
+    /* Same two roles, mixed against the deep surface instead of paper. */
+    --brand-wash: hsl(var(--brand-hue) 46% 20%);
+    --brand-edge: hsl(var(--brand-hue) 50% 34%);
 
     /* Status colours from the same family as the syntax palette below:
        #6a9955 added / #f14c4c deleted. Both measured at 5.6:1 and 5.2:1 on
@@ -236,6 +265,9 @@
     --color-input: var(--input);
     --color-ring: var(--ring);
     --color-brand: hsl(var(--brand));
+    --color-warn: var(--warn);
+    --color-brand-wash: var(--brand-wash);
+    --color-brand-edge: var(--brand-edge);
     --color-link: hsl(var(--link));
     --color-sidebar: var(--sidebar);
     --color-sidebar-foreground: var(--sidebar-foreground);
@@ -255,12 +287,17 @@
         ui-monospace, "SFMono-Regular", "Cascadia Code", "Segoe UI Mono", Menlo,
         Consolas, monospace;
 
-    --radius-sm: calc(var(--radius) * 0.5);
-    --radius-md: calc(var(--radius) * 0.833);
-    --radius-lg: calc(var(--radius) * 1.167);
-    --radius-xl: calc(var(--radius) * 1.5);
-    --radius-2xl: calc(var(--radius) * 2);
-    --radius-3xl: calc(var(--radius) * 3);
+    /* The design names two radii and only two: md (8) and base (12). So the
+       ramp rises to 12 and stops — lg/xl/2xl/3xl all resolve to --radius
+       rather than carrying on to 16, 20, 24, 32. Nothing in the app is then
+       rounder than a card, whichever step a component happened to ask for,
+       and the steps stay in place for the day a third radius is wanted. */
+    --radius-sm: calc(var(--radius) * 0.333);
+    --radius-md: calc(var(--radius) * 0.667);
+    --radius-lg: var(--radius);
+    --radius-xl: var(--radius);
+    --radius-2xl: var(--radius);
+    --radius-3xl: var(--radius);
 }
 
 @layer base {
