@@ -48,6 +48,8 @@ interface Preset {
   category: string;
   size: string;
   provides: string;
+  /** Already in the base image — shown ticked, and not a choice. */
+  builtin?: boolean;
 }
 
 /** One glyph per shelf — the row is findable by eye before it is read. */
@@ -179,13 +181,22 @@ export function SandboxImageSettings({
               icon={ENTRY_ICON[p.id] ?? SHELF_ICON[p.category]}
               title={p.label}
               badge={
-                <span className="rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground dark:bg-white/[0.08]">
+                <span
+                  className={
+                    p.builtin
+                      ? "rounded-full bg-brand/10 px-1.5 py-0.5 text-[10px] text-brand"
+                      : "rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground dark:bg-white/[0.08]"
+                  }
+                >
                   {p.size}
                 </span>
               }
               description={p.provides}
-              selected={chosen.includes(p.id)}
-              onClick={() => toggle(p.id)}
+              // Already in the base image: ticked, and with no onClick, so the
+              // card carries the tick without offering a choice that does not
+              // exist. Removing one would mean rebuilding the base.
+              selected={p.builtin || chosen.includes(p.id)}
+              onClick={p.builtin ? undefined : () => toggle(p.id)}
             />
           ))}
         </div>

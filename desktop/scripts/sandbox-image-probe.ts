@@ -167,17 +167,25 @@ check(
       p.lines.some((l) => /rm -rf \/var\/lib\/apt\/lists/.test(l)),
   ),
 );
+// The installable ones. Built-ins are covered separately below: they have no
+// size to warn about and no lines to run, which is the point of them.
+const ADDABLE = IMAGE_PRESETS.filter((p) => !p.builtin);
+
 check(
-  "every preset has a size to show before a multi-minute build",
-  IMAGE_PRESETS.every((p) => /\d/.test(p.size)),
+  "every entry you can add has a size to show before a multi-minute build",
+  ADDABLE.every((p) => /\d/.test(p.size)),
+  ADDABLE.filter((p) => !/\d/.test(p.size)).map((p) => p.id).join(", "),
 );
 check(
   "every preset says what it provides, so a tool result can name it",
   IMAGE_PRESETS.every((p) => p.provides.trim().length > 0),
 );
 check(
-  "every preset is at least one Containerfile instruction",
-  IMAGE_PRESETS.every((p) => p.lines.some((l) => /^(RUN|ENV|ARG)\b/.test(l))),
+  "every entry you can add is at least one Containerfile instruction",
+  ADDABLE.every((p) => p.lines.some((l) => /^(RUN|ENV|ARG)\b/.test(l))),
+  ADDABLE.filter((p) => !p.lines.some((l) => /^(RUN|ENV|ARG)\b/.test(l)))
+    .map((p) => p.id)
+    .join(", "),
 );
 check(
   "preset ids are unique — the tag would be ambiguous otherwise",
@@ -187,6 +195,41 @@ check(
   "an unknown preset id contributes nothing",
   imageTagFor(extras(["nope-not-a-preset"])) === BASE_IMAGE_TAG,
 );
+
+// ── What the base image already has ───────────────────────────────────
+//
+// Listed so the list can answer "what is already there" — a catalogue of
+// things to add, silent about what is present, is what gets pandas installed
+// into a layer for the third time. But they must behave as decoration: ticking
+// one cannot produce a layer, a tag, or a rebuild that installs nothing.
+{
+  const builtins = IMAGE_PRESETS.filter((p) => p.builtin);
+  check("the base image's contents are on the list", builtins.length >= 4);
+  check(
+    "…and none of them builds anything",
+    builtins.every((p) => p.lines.length === 0),
+    builtins.map((p) => p.id).join(", "),
+  );
+  check(
+    "ticking one changes NOTHING — it is already in the image",
+    imageTagFor(extras(builtins.map((p) => p.id))) === BASE_IMAGE_TAG,
+  );
+  check(
+    "…and mixed with a real one, only the real one counts",
+    imageTagFor(extras([...builtins.map((p) => p.id), "rust"])) ===
+      imageTagFor(extras(["rust"])),
+  );
+  check(
+    "a built-in never reaches a Containerfile",
+    !extrasContainerfile(extras([...builtins.map((p) => p.id), "rust"])).includes(
+      "included",
+    ),
+  );
+  check(
+    "every built-in still says what it provides, like the rest",
+    builtins.every((p) => p.provides.trim().length > 0),
+  );
+}
 check(
   "…even mixed in with a real one",
   imageTagFor(extras(["rust", "nope"])) === imageTagFor(RUST),

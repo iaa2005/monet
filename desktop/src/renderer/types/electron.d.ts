@@ -1271,6 +1271,7 @@ export interface ElectronAPI {
           category: string;
           size: string;
           provides: string;
+          builtin?: boolean;
         }[];
         tag: string;
       }>;

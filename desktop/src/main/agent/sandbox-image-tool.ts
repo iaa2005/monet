@@ -61,10 +61,24 @@ function currently(): string {
     : "Nothing has been added to the image yet.";
 }
 
+/** What can be added. Built-ins are listed separately — see alreadyThere. */
 function catalogue(): string {
-  return IMAGE_PRESETS.map(
-    (p) => `- ${p.id}: ${p.provides} (${p.size})`,
-  ).join("\n");
+  return IMAGE_PRESETS.filter((p) => !p.builtin)
+    .map((p) => `- ${p.id}: ${p.provides} (${p.size})`)
+    .join("\n");
+}
+
+/**
+ * What the image already has.
+ *
+ * Worth the tokens: without it the model reads a list of toolchains it can ask
+ * for, infers that everything else is absent, and asks for pandas — which has
+ * been in the base image all along.
+ */
+function alreadyThere(): string {
+  return IMAGE_PRESETS.filter((p) => p.builtin)
+    .map((p) => `- ${p.provides}`)
+    .join("\n");
 }
 
 export const SandboxImageTool = buildTool({
@@ -101,7 +115,10 @@ export const SandboxImageTool = buildTool({
         "solve the problem another way rather than asking again. Call it with no",
         "arguments to see what is already there.",
         "",
-        "Available:",
+        "ALREADY IN THE IMAGE — use these directly, never ask for them:",
+        alreadyThere(),
+        "",
+        "Available to add:",
         catalogue(),
       ].join("\n"),
     );
@@ -117,7 +134,19 @@ export const SandboxImageTool = buildTool({
     if (!toolchain && !lines)
       return {
         data: {
-          text: `${currently()}\n\nAvailable to add:\n${catalogue()}`,
+          text:
+            `Already in the image:\n${alreadyThere()}\n\n${currently()}\n\n` +
+            `Available to add:\n${catalogue()}`,
+          isError: false,
+        },
+      };
+    // Asking for something the base already has: say so and stop. Building a
+    // layer for it would be minutes spent installing nothing.
+    const builtin = IMAGE_PRESETS.find((p) => p.id === toolchain && p.builtin);
+    if (builtin)
+      return {
+        data: {
+          text: `${builtin.label} is already in the sandbox image — ${builtin.provides}. Use it directly.`,
           isError: false,
         },
       };

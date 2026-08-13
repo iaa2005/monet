@@ -48,6 +48,16 @@ export interface ImagePreset {
   /** What it makes available, in the model's words — used in tool results. */
   provides: string;
   lines: string[];
+  /**
+   * Already in the base image — listed, ticked, and not up for discussion.
+   *
+   * These build nothing: `lines` is empty and they never reach a Containerfile
+   * or the tag. They are here because the list is the only place that answers
+   * "what does the sandbox already have", and a list of things you can add,
+   * with no mention of what is present, invites the model and the user alike
+   * to install pandas.
+   */
+  builtin?: boolean;
 }
 
 /** apt in one RUN, so a failure names itself in the build log rather than
@@ -76,6 +86,24 @@ function apt(...packages: string[]): string[] {
  */
 export const IMAGE_PRESETS: ImagePreset[] = [
   // ── Languages ──────────────────────────────────────────────────────
+  {
+    id: "python",
+    label: "Python 3.12",
+    category: "Languages",
+    size: "included",
+    provides: "python3 with numpy, pandas, matplotlib and Pillow",
+    lines: [],
+    builtin: true,
+  },
+  {
+    id: "node",
+    label: "Node.js",
+    category: "Languages",
+    size: "included",
+    provides: "node, npm, npx",
+    lines: [],
+    builtin: true,
+  },
   {
     id: "cpp",
     label: "C / C++",
@@ -144,6 +172,34 @@ export const IMAGE_PRESETS: ImagePreset[] = [
   },
   // ── Documents ──────────────────────────────────────────────────────
   {
+    id: "pydocs",
+    label: "Document libraries",
+    category: "Documents",
+    size: "included",
+    provides: "fpdf2, python-docx, openpyxl — PDFs, .docx and .xlsx from Python",
+    lines: [],
+    builtin: true,
+  },
+  {
+    id: "tectonic",
+    label: "Tectonic (LaTeX)",
+    category: "Documents",
+    size: "included",
+    provides:
+      "tectonic — a self-contained XeTeX that fetches TeX packages on demand, so no texlive is needed",
+    lines: [],
+    builtin: true,
+  },
+  {
+    id: "fonts",
+    label: "DejaVu + Liberation fonts",
+    category: "Documents",
+    size: "included",
+    provides: "full Latin and Cyrillic coverage in PDFs and charts",
+    lines: [],
+    builtin: true,
+  },
+  {
     id: "libreoffice",
     label: "LibreOffice",
     category: "Documents",
@@ -206,6 +262,15 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     lines: apt("tesseract-ocr", "tesseract-ocr-eng", "tesseract-ocr-rus"),
   },
   // ── Data ───────────────────────────────────────────────────────────
+  {
+    id: "jupyter",
+    label: "Jupyter",
+    category: "Data",
+    size: "included",
+    provides: "notebook, nbconvert, ipykernel and plotly",
+    lines: [],
+    builtin: true,
+  },
   {
     id: "sqlite",
     label: "SQLite CLI",
@@ -302,7 +367,9 @@ export function getImageExtras(): ImageExtras {
       // Unknown ids are dropped, not kept: a preset removed in a later build
       // must not keep a machine pinned to a tag nothing can reproduce.
       presets: Array.isArray(raw.presets)
-        ? raw.presets.filter((id) => IMAGE_PRESETS.some((p) => p.id === id))
+        ? raw.presets.filter((id) =>
+            IMAGE_PRESETS.some((p) => p.id === id && !p.builtin),
+          )
         : [],
       extra: typeof raw.extra === "string" ? raw.extra : "",
     };
@@ -317,7 +384,7 @@ export function setImageExtras(patch: Partial<ImageExtras>): ImageExtras {
   // silently dropped on the way back out, leaving the UI showing a preset the
   // image does not have.
   next.presets = next.presets.filter((id) =>
-    IMAGE_PRESETS.some((p) => p.id === id),
+    IMAGE_PRESETS.some((p) => p.id === id && !p.builtin),
   );
   try {
     writeFileSync(configPath(), JSON.stringify(next, null, 2), "utf-8");
@@ -339,7 +406,10 @@ export function setImageExtras(patch: Partial<ImageExtras>): ImageExtras {
 function knownPresets(x: ImageExtras): ImagePreset[] {
   return x.presets
     .map((id) => IMAGE_PRESETS.find((p) => p.id === id))
-    .filter((p): p is ImagePreset => !!p);
+    // `builtin` entries are dropped here as firmly as unknown ids: they are in
+    // the base image already, so ticking one must not produce a layer, a new
+    // tag, or a rebuild that installs nothing.
+    .filter((p): p is ImagePreset => !!p && !p.builtin);
 }
 
 /** Is there anything to build on top of the base at all? */

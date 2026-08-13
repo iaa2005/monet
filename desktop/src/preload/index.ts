@@ -1303,6 +1303,7 @@ const electronAPI = {
           category: string;
           size: string;
           provides: string;
+          builtin?: boolean;
         }[];
         tag: string;
       }> => ipcRenderer.invoke("sandboxImage:get"),

@@ -959,6 +959,37 @@ export default function App(): JSX.Element {
     setView("chat");
   }, []);
 
+  /**
+   * Enter incognito, or start leaving it.
+   *
+   * Lifted out of the header button so the keyboard does exactly what the
+   * click does — including the confirmation. Leaving DESTROYS the chat, and a
+   * shortcut that skipped the question would be a keystroke away from losing
+   * the conversation; an untouched incognito chat has nothing to lose, so that
+   * one closes straight away.
+   */
+  const toggleIncognito = useCallback(() => {
+    // Home only, the same condition the header button is drawn under. Code
+    // works against the user's real checkout, where "leave no trace" is not a
+    // thing this app can offer — and the shortcut must not claim otherwise.
+    if (appMode !== "home") return;
+    const store = useChatStore.getState();
+    if (store.incognito) {
+      if (store.messages.length === 0) {
+        closeIncognito();
+        return;
+      }
+      setIncognitoCloseOpen(true);
+      return;
+    }
+    if (store.currentSessionId) void api()?.chat.reset(store.currentSessionId);
+    store.clearMessages();
+    store.setCurrentSessionId(undefined);
+    setCurrentSessionId(undefined);
+    store.setIncognito(true);
+    setView("chat");
+  }, [appMode, closeIncognito]);
+
   const newSession = useCallback(async () => {
     try {
       const s = (await api()?.sessions.create(
@@ -1129,6 +1160,25 @@ export default function App(): JSX.Element {
       label: "Terminal",
       section: "Panels",
       action: () => toggleDock("terminal"),
+    },
+    {
+      // The vault graph. Only reachable in the header once a vault exists, but
+      // the shortcut is listed unconditionally: a key that appears and
+      // disappears from the cheatsheet is harder to learn than one that is
+      // always there and does nothing until it applies.
+      combo: "mod+shift+o",
+      label: "Obsidian graph",
+      section: "Panels",
+      action: () => toggleDock("vault"),
+    },
+    {
+      // Ctrl+Shift+N is every browser's private window, and it is already
+      // taken here for a new chat's neighbour — mod+n. I is for incognito and
+      // is free in both spaces.
+      combo: "mod+shift+i",
+      label: "Incognito mode",
+      section: "General",
+      action: toggleIncognito,
     },
     {
       // The same shortcut Cursor uses, so the habit transfers.
@@ -1508,7 +1558,7 @@ export default function App(): JSX.Element {
               notes you are looking at. */}
           {hasVault && (
             <IconBtn
-              title="Obsidian graph"
+              title={`Obsidian graph — ${comboLabel("mod+shift+o")}`}
               active={dockOpen.includes("vault")}
               onClick={() => toggleDock("vault")}
             >
@@ -1536,7 +1586,7 @@ export default function App(): JSX.Element {
               subprocess). Runs inside the chat's sandbox, not on the host. */}
           {appMode === "home" && homeShellSupported && (
             <IconBtn
-              title="Sandbox terminal"
+              title={`Terminal — ${comboLabel("mod+`")}`}
               active={dockOpen.includes("terminal")}
               onClick={() => toggleDock("terminal")}
             >
@@ -1548,14 +1598,14 @@ export default function App(): JSX.Element {
           {appMode === "code" && (
             <>
               <IconBtn
-                title="Terminal"
+                title={`Terminal — ${comboLabel("mod+`")}`}
                 active={dockOpen.includes("terminal")}
                 onClick={() => toggleDock("terminal")}
               >
                 <TerminalIcon className="size-4" />
               </IconBtn>
               <IconBtn
-                title="Changes"
+                title={`Changes — ${comboLabel("mod+shift+g")}`}
                 active={dockOpen.includes("changes")}
                 onClick={() => toggleDock("changes")}
               >
@@ -1565,30 +1615,9 @@ export default function App(): JSX.Element {
           )}
           {appMode === "home" && (
             <IconBtn
-              title={incognito ? "Exit incognito" : "Incognito mode"}
+              title={`${incognito ? "Exit incognito" : "Incognito mode"} — ${comboLabel("mod+shift+i")}`}
               active={incognito}
-              onClick={() => {
-                const store = useChatStore.getState();
-                if (store.incognito) {
-                  // Exiting DESTROYS the chat's data — confirm first. But an
-                  // incognito chat nobody typed in has nothing to destroy,
-                  // and a confirmation for deleting nothing is just a click
-                  // in the way.
-                  if (store.messages.length === 0) {
-                    closeIncognito();
-                    return;
-                  }
-                  setIncognitoCloseOpen(true);
-                  return;
-                }
-                if (store.currentSessionId)
-                  void api()?.chat.reset(store.currentSessionId);
-                store.clearMessages();
-                store.setCurrentSessionId(undefined);
-                setCurrentSessionId(undefined);
-                store.setIncognito(true);
-                setView("chat");
-              }}
+              onClick={toggleIncognito}
             >
               {incognito ? (
                 <X className="size-4" />
