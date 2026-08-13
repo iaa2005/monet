@@ -2111,6 +2111,12 @@ async function runAgentScoped(
       const empty = isEmptyReply(assistantText, toolCalls.length);
       if (
         isFeatureOn("nudge") &&
+        // Stop was pressed. An empty reply is what abort LOOKS like from
+        // here — the stream ends with nothing written — so without this the
+        // nudge restarted the very turn the user had just cancelled, and
+        // announced it as the model going quiet. The abort check at the top
+        // of the loop is too late: this runs before the loop comes round.
+        !signal?.aborted &&
         shouldNudge({ emptyReply: empty, nudgesUsed, nudgedLastTurn })
       ) {
         nudgesUsed++;
