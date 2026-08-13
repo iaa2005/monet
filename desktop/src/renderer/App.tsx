@@ -248,6 +248,42 @@ export default function App(): JSX.Element {
   const [currentSessionId, setCurrentSessionId] = useState<string>();
   const [sessionTitle, setSessionTitle] = useState("New session");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  /*
+   * The collapsed sidebar peeks out on hover.
+   *
+   * Collapsing it is for the room, not for the sidebar — you still want to
+   * jump to another chat, and re-opening the panel to click one thing and
+   * closing it again is three actions for one. Hovering the toggle floats it
+   * over the content instead; it stays while the pointer is inside, and while
+   * anything opened FROM it is open.
+   *
+   * That last clause is the whole difficulty: a dropdown inside the flyout
+   * renders in a portal at the document root, so moving onto the menu reads as
+   * leaving the flyout, and the flyout would take its own menu down with it.
+   * So the close is delayed, and the delay re-arms while the subtree still has
+   * something open.
+   */
+  const [sidebarPeek, setSidebarPeek] = useState(false);
+  const peekTimer = useRef<number | null>(null);
+  const peekRef = useRef<HTMLDivElement | null>(null);
+
+  const holdPeek = (): void => {
+    if (peekTimer.current) window.clearTimeout(peekTimer.current);
+    peekTimer.current = null;
+    setSidebarPeek(true);
+  };
+  const releasePeek = (): void => {
+    if (peekTimer.current) window.clearTimeout(peekTimer.current);
+    const check = (): void => {
+      if (peekRef.current?.querySelector('[data-state="open"]')) {
+        peekTimer.current = window.setTimeout(check, 250);
+        return;
+      }
+      peekTimer.current = null;
+      setSidebarPeek(false);
+    };
+    peekTimer.current = window.setTimeout(check, 220);
+  };
   const [settingsOpen, setSettingsOpen] = useState(false);
   // The panel's own union, not a subset of it: this used to list six sections
   // and silently ignored every other one asked for.
@@ -1375,6 +1411,126 @@ export default function App(): JSX.Element {
     }
   }, [bg]);
 
+  /*
+   * The sidebar's markup, lifted out because it is drawn in two places: in
+   * its own resizable panel when open, and as a flyout over the content
+   * when collapsed. One copy, so the two can never drift.
+   */
+  const sidebarBody = (
+    <aside className="flex h-full flex-col">
+      {/* Home / Code: two cards, not flush tabs. The mode you ARE
+          in wears the brand, like every other selected thing in
+          the app; the other one is a plain sheet. */}
+      <div className="flex h-8 shrink-0 items-stretch">
+        <div className="flex flex-1 items-stretch gap-2">
+          <button
+            onClick={() => {
+              setAppMode("home");
+              setView("chat");
+            }}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-[7px] rounded-[var(--radius)] text-[13px] font-medium transition-colors",
+              appMode === "home"
+                ? "border border-brand/50 bg-brand-wash text-brand"
+                : "bg-popover text-foreground",
+            )}
+          >
+            <Home className="size-3.5" />
+            Home
+          </button>
+          <button
+            onClick={() => {
+              setAppMode("code");
+              setView("chat");
+            }}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-[7px] rounded-[var(--radius)] text-[13px] font-medium transition-colors",
+              appMode === "code"
+                ? "border border-brand/50 bg-brand-wash text-brand"
+                : "bg-popover text-foreground",
+            )}
+          >
+            <Code className="size-3.5" />
+            Code
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col">
+        <NavRow
+          icon={Plus}
+          label="New session"
+          onClick={newSession}
+        />
+        <NavRow
+          icon={Upload}
+          label="Import session"
+          onClick={handleImport}
+        />
+        <NavRow
+          icon={AlarmClock}
+          label="Routines"
+          active={dockOpen.includes("routines")}
+          onClick={() => toggleDock("routines")}
+        />
+      </div>
+
+      <RoutinesList
+        onOpen={openChatById}
+        currentSessionId={currentSessionId}
+        onDelete={handleDeleteSession}
+        onRename={(id, title) => {
+          setRenameTargetId(id);
+          setRenameValue(title);
+          setRenameOpen(true);
+        }}
+        onFork={forkSession}
+        space={appMode}
+      />
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex items-center justify-between px-3 pb-1 pt-3">
+          <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
+            Recents
+          </span>
+          <FilterDropdown filters={filters} onChange={changeFilters} />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {/* Waits for the saved filters. The alternative is a
+              list that loads with the defaults and reloads a
+              moment later with the real ones — two queries and
+              a visible jump, every launch. */}
+          {filtersReady && (
+          <SessionList
+            onSelect={handleSelectSession}
+            onDelete={handleDeleteSession}
+            onRename={(id, title) => {
+              setRenameTargetId(id);
+              setRenameValue(title);
+              setRenameOpen(true);
+            }}
+            onFork={forkSession}
+            currentSessionId={currentSessionId}
+            space={appMode}
+            filters={filters}
+          />
+          )}
+        </div>
+      </div>
+
+      {/* A card like the tabs at the other end, not a strip
+          hanging off a divider. */}
+      <div className="rounded-[var(--radius)] bg-popover">
+        <AccountMenu
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenAbout={() => setAboutOpen(true)}
+          onOpenDocs={() => setDocsOpen(true)}
+          onOpenDirectory={() => setDirectoryOpen(true)}
+        />
+      </div>
+    </aside>
+  );
+
   return (
     <div className="relative flex h-screen flex-col bg-sidebar text-foreground">
       {showOnboarding && (
@@ -1416,12 +1572,18 @@ export default function App(): JSX.Element {
         )}
       >
         {!incognito && (
-          <IconBtn
-            title={`${sidebarOpen ? "Collapse" : "Expand"} sidebar — ${comboLabel("mod+b")}`}
-            onClick={() => setSidebarOpen((o) => !o)}
+          <span
+            className="app-no-drag"
+            onMouseEnter={sidebarOpen ? undefined : holdPeek}
+            onMouseLeave={sidebarOpen ? undefined : releasePeek}
           >
-            <PanelLeft className="size-4" />
-          </IconBtn>
+            <IconBtn
+              title={`${sidebarOpen ? "Collapse" : "Expand"} sidebar — ${comboLabel("mod+b")}`}
+              onClick={() => setSidebarOpen((o) => !o)}
+            >
+              <PanelLeft className="size-4" />
+            </IconBtn>
+          </span>
         )}
 
         <div className="app-no-drag flex items-center gap-2">
@@ -1743,10 +1905,23 @@ export default function App(): JSX.Element {
         className={cn(
           // 4px here, 4px on each card (dock.css) — 8px of air at the window
           // edge and 8px between any two panes, from one pair of numbers.
-          "flex min-h-0 flex-1 p-1 pt-0",
+          "relative flex min-h-0 flex-1 p-1 pt-0",
           incognito && "text-card-foreground",
         )}
       >
+        {/* The peeked sidebar: a floating copy of the same markup, over the
+            content rather than beside it. Same width as the docked panel, so
+            summoning it does not re-flow what you were reading. */}
+        {!sidebarOpen && !incognito && sidebarPeek && (
+          <div
+            ref={peekRef}
+            onMouseEnter={holdPeek}
+            onMouseLeave={releasePeek}
+            className="absolute inset-y-1 left-1 z-30 w-80 rounded-[var(--radius)] bg-popover p-1 shadow-[0_16px_48px_-12px_rgb(0_0_0/0.35)]"
+          >
+            {sidebarBody}
+          </div>
+        )}
         <ResizablePanelGroup
           direction="horizontal"
           className={cn(incognito && "bg-sidebar")}
@@ -1766,118 +1941,7 @@ export default function App(): JSX.Element {
                 {/* No surface of its own: the sidebar sits directly on the
                     window background, so the cards beside it are what read as
                     raised. */}
-                <aside className="flex h-full flex-col">
-                  {/* Home / Code: two cards, not flush tabs. The mode you ARE
-                      in wears the brand, like every other selected thing in
-                      the app; the other one is a plain sheet. */}
-                  <div className="flex h-8 shrink-0 items-stretch">
-                    <div className="flex flex-1 items-stretch gap-2">
-                      <button
-                        onClick={() => {
-                          setAppMode("home");
-                          setView("chat");
-                        }}
-                        className={cn(
-                          "flex flex-1 items-center justify-center gap-[7px] rounded-[var(--radius)] text-[13px] font-medium transition-colors",
-                          appMode === "home"
-                            ? "border border-brand/50 bg-brand-wash text-brand"
-                            : "bg-popover text-foreground",
-                        )}
-                      >
-                        <Home className="size-3.5" />
-                        Home
-                      </button>
-                      <button
-                        onClick={() => {
-                          setAppMode("code");
-                          setView("chat");
-                        }}
-                        className={cn(
-                          "flex flex-1 items-center justify-center gap-[7px] rounded-[var(--radius)] text-[13px] font-medium transition-colors",
-                          appMode === "code"
-                            ? "border border-brand/50 bg-brand-wash text-brand"
-                            : "bg-popover text-foreground",
-                        )}
-                      >
-                        <Code className="size-3.5" />
-                        Code
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col">
-                    <NavRow
-                      icon={Plus}
-                      label="New session"
-                      onClick={newSession}
-                    />
-                    <NavRow
-                      icon={Upload}
-                      label="Import session"
-                      onClick={handleImport}
-                    />
-                    <NavRow
-                      icon={AlarmClock}
-                      label="Routines"
-                      active={dockOpen.includes("routines")}
-                      onClick={() => toggleDock("routines")}
-                    />
-                  </div>
-
-                  <RoutinesList
-                    onOpen={openChatById}
-                    currentSessionId={currentSessionId}
-                    onDelete={handleDeleteSession}
-                    onRename={(id, title) => {
-                      setRenameTargetId(id);
-                      setRenameValue(title);
-                      setRenameOpen(true);
-                    }}
-                    onFork={forkSession}
-                    space={appMode}
-                  />
-
-                  <div className="flex min-h-0 flex-1 flex-col">
-                    <div className="flex items-center justify-between px-3 pb-1 pt-3">
-                      <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
-                        Recents
-                      </span>
-                      <FilterDropdown filters={filters} onChange={changeFilters} />
-                    </div>
-                    <div className="min-h-0 flex-1 overflow-y-auto">
-                      {/* Waits for the saved filters. The alternative is a
-                          list that loads with the defaults and reloads a
-                          moment later with the real ones — two queries and
-                          a visible jump, every launch. */}
-                      {filtersReady && (
-                      <SessionList
-                        onSelect={handleSelectSession}
-                        onDelete={handleDeleteSession}
-                        onRename={(id, title) => {
-                          setRenameTargetId(id);
-                          setRenameValue(title);
-                          setRenameOpen(true);
-                        }}
-                        onFork={forkSession}
-                        currentSessionId={currentSessionId}
-                        space={appMode}
-                        filters={filters}
-                      />
-                      )}
-                    </div>
-                  </div>
-
-                  {/* A card like the tabs at the other end, not a strip
-                      hanging off a divider. */}
-                  <div className="rounded-[var(--radius)] bg-popover">
-                    <AccountMenu
-                      onOpenSettings={() => setSettingsOpen(true)}
-                      onOpenAbout={() => setAboutOpen(true)}
-                      onOpenDocs={() => setDocsOpen(true)}
-                      onOpenDirectory={() => setDirectoryOpen(true)}
-                    />
-                  </div>
-                </aside>
+                {sidebarBody}
               </ResizablePanel>
             )}
             {sidebarOpen && !incognito && <ResizableHandle withHandle />}
