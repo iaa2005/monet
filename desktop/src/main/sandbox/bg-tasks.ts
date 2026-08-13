@@ -21,11 +21,12 @@
 import { appendFile, mkdir, readFile } from "fs/promises";
 import { join } from "path";
 import {
+  activeImageTag,
+  ensureSandboxImage,
   podmanRaw,
   sandboxWorkDir,
   PIP_ENV_ARGS,
   PIP_VOLUME_ARGS,
-  IMAGE_TAG,
 } from "./podman-engine.js";
 
 /** Where a task's output lands, relative to the chat's sandbox root. Dotted so
@@ -64,6 +65,11 @@ export async function startBgCommand(
         `Wait for one to report back before starting another.`,
     };
   }
+  // A detached run starts its own container, so it cannot rely on a foreground
+  // call having built the image first — the very first thing a chat does may be
+  // a background install. This also settles which tag to use.
+  const image = await ensureSandboxImage();
+  if (!image.ok) return { ok: false, error: image.error ?? "The sandbox image is not ready." };
   const id = `bg-${++seq}-${Date.now().toString(36)}`;
   const container = `monet-bg-${id}`;
   const dir = sandboxWorkDir(sessionId);
@@ -84,7 +90,7 @@ export async function startBgCommand(
       ...PIP_ENV_ARGS,
       "-w",
       "/work",
-      IMAGE_TAG,
+      activeImageTag(),
       "sh",
       "-lc",
       // Both streams to the file, unbuffered enough to be readable while it

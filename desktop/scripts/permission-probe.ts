@@ -549,5 +549,62 @@ check('the browser stage ignores other tools', r.decidedBy !== 'browser-origin',
 r = await decidePermission(ctxFor({ tool: nav, input: { url: 'http://localhost:3000' } }))
 check('no browser context means no browser decision', r.decidedBy !== 'browser-origin', r)
 
+// ─── The sandbox image ──────────────────────────────────────────────────
+//
+// Everything else a chat does in its sandbox is undone when the container
+// exits. This is the one action that outlives it, on an image shared by every
+// chat, so the answer is the user's EVERY time — one "yes, add gcc" must not
+// become a standing licence to download toolchains.
+
+const image = stubTool({ name: 'SandboxImage' })
+
+r = await decidePermission(ctxFor({ tool: image, input: { toolchain: 'rust' } }))
+check('adding a toolchain asks', r.decidedBy === 'sandbox-image-ask', r)
+check('…and the answer is honoured', r.decision.behavior === 'allow')
+
+r = await decidePermission(
+  ctxFor({
+    tool: image,
+    input: { toolchain: 'rust' },
+    requestPermission: async () => 'deny',
+  }),
+)
+check('a refusal is a refusal', r.decision.behavior === 'deny', r)
+
+// The point of the stage's position: a grant recorded earlier must not answer
+// for the next toolchain.
+r = await decidePermission(
+  ctxFor({
+    tool: image,
+    input: { toolchain: 'go' },
+    grants: new Set(['s1:SandboxImage']),
+  }),
+)
+check(
+  'A PREVIOUS YES DOES NOT COVER THE NEXT ONE — it asks again',
+  r.decidedBy === 'sandbox-image-ask',
+  r,
+)
+
+// Asking what is installed changes nothing, so it must not prompt.
+r = await decidePermission(ctxFor({ tool: image, input: {} }))
+check(
+  'reading what is already installed does not ask',
+  r.decision.behavior === 'allow' && r.decidedBy === 'sandbox-image-ask',
+  r,
+)
+
+r = await decidePermission(
+  ctxFor({ tool: image, input: { toolchain: 'rust' }, requestPermission: undefined }),
+)
+check(
+  'with nobody to ask, nothing is built',
+  r.decision.behavior === 'deny',
+  r,
+)
+
+r = await decidePermission(ctxFor({ tool: bash, input: { toolchain: 'rust' } }))
+check('the stage ignores every other tool', r.decidedBy !== 'sandbox-image-ask', r)
+
 console.log(failures === 0 ? '\nALL PERMISSION CHECKS PASSED' : `\n${failures} FAILED`)
 process.exit(failures === 0 ? 0 : 1)

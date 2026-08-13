@@ -1293,6 +1293,30 @@ const electronAPI = {
       ipcRenderer.invoke("sandbox:isPodmanReady"),
     warmPodman: (sessionId?: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("sandbox:warmPodman", sessionId),
+    /** The toolchains added on top of the base image — see image-extras.ts. */
+    image: {
+      get: (): Promise<{
+        extras: { presets: string[]; extra: string };
+        presets: {
+          id: string;
+          label: string;
+          size: string;
+          provides: string;
+        }[];
+        tag: string;
+      }> => ipcRenderer.invoke("sandboxImage:get"),
+      set: (patch: {
+        presets?: string[];
+        extra?: string;
+      }): Promise<{ extras: { presets: string[]; extra: string }; tag: string }> =>
+        ipcRenderer.invoke("sandboxImage:set", patch),
+      rebuild: (): Promise<{
+        ok: boolean;
+        log: string;
+        error?: string;
+        tag: string;
+      }> => ipcRenderer.invoke("sandboxImage:rebuild"),
+    },
     /** Move the zero-state ("default") sandbox files onto a newborn session. */
     adoptDefault: (sessionId: string): Promise<{ moved: number }> =>
       ipcRenderer.invoke("sandbox:adoptDefault", sessionId),

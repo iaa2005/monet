@@ -15,6 +15,12 @@ import { spawn } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getDataSubdir } from "../data-dir.js";
+import {
+  BASE_IMAGE_TAG,
+  extrasContainerfile,
+  getImageExtras,
+  imageTagFor,
+} from "./image-extras.js";
 import { sessionSlug } from "../agent/checkpoint-store.js";
 import { snapshotFiles } from "./subprocess-engine.js";
 import {
@@ -26,7 +32,19 @@ import {
 
 // Bump the tag when the Containerfile changes — ensureImage() skips the build
 // when the tag already exists, so a new tag forces the updated image.
-const IMAGE_TAG = "monet-sandbox:v3";
+const IMAGE_TAG = BASE_IMAGE_TAG;
+// The user's own layer on top (gcc, rust, ffmpeg …) gets a longer leash than
+// ours: a rustup install on a slow line outlasts fifteen minutes, and being
+// killed at the wall leaves nothing to show for the wait.
+const EXTRAS_BUILD_TIMEOUT_MS = 30 * 60_000;
+/**
+ * The tag runs actually use — the base, or the user's layer over it.
+ *
+ * Held here rather than recomputed at each call site because it is the answer
+ * to "did the extension build", not to "what does the config say". When a
+ * layer fails to build, this stays on the base and every chat keeps working.
+ */
+let activeTag: string = BASE_IMAGE_TAG;
 const BUILD_TIMEOUT_MS = 15 * 60_000;
 // RunCommand (tectonic, npm, etc.) gets a longer leash than RunPython.
 const RUN_COMMAND_TIMEOUT_MS = 5 * 60_000;
@@ -551,7 +569,8 @@ function wslInstalled(): Promise<boolean> {
   });
 }
 
-let imageReady = false;
+/** Tags this process has already confirmed exist — the base, and any layer. */
+const builtTags = new Set<string>();
 let podmanReady: Promise<PodmanReadyResult> | null = null;
 let podmanReadyState = false;
 // Latches once Podman has worked this session. The WSL2 VM idle-freezes / the
@@ -925,39 +944,118 @@ async function ensureImage(): Promise<{ ok: boolean; log: string; error?: string
   // live socket. When they are not, it is the thing that heals them.
   const podman = await ensurePodman();
   if (!podman.ok) return podman;
-  if (imageReady) return { ok: true, log: "" };
 
-  const exists = await run(["image", "exists", IMAGE_TAG], { timeoutMs: 30_000 });
-  if (exists.code === 0) {
-    imageReady = true;
-    return { ok: true, log: podman.log };
+  const wanted = imageTagFor();
+  if (builtTags.has(wanted)) {
+    activeTag = wanted;
+    return { ok: true, log: "" };
   }
 
-  // First use: build the shared image (one-time, minutes).
-  const build = await run(
-    ["build", "-t", IMAGE_TAG, "-f", "-", "."],
-    { stdin: CONTAINERFILE, timeoutMs: BUILD_TIMEOUT_MS, cwd: getDataSubdir("sandboxes") },
-  );
-  if (build.code !== 0) {
+  // The BASE always has to exist: the extension layer's FROM is this tag, and
+  // it is also where a failed extension falls back to.
+  let log = podman.log;
+  if (!builtTags.has(BASE_IMAGE_TAG)) {
+    const exists = await run(["image", "exists", BASE_IMAGE_TAG], { timeoutMs: 30_000 });
+    if (exists.code === 0) builtTags.add(BASE_IMAGE_TAG);
+    else {
+      // First use: build the shared image (one-time, minutes).
+      const build = await buildImage(BASE_IMAGE_TAG, CONTAINERFILE, BUILD_TIMEOUT_MS);
+      if (build.code !== 0) {
+        return {
+          ok: false,
+          log: "",
+          error:
+            `Failed to build the sandbox image:\n${(build.stderr || build.stdout).slice(-600)}` +
+            (build.stderr.includes("connect") || build.stderr.includes("machine")
+              ? "\nHint: is the podman machine running? (podman machine start)"
+              : ""),
+        };
+      }
+      builtTags.add(BASE_IMAGE_TAG);
+      log += "[sandbox] built container image (one-time)\n";
+    }
+  }
+  activeTag = BASE_IMAGE_TAG;
+  if (wanted === BASE_IMAGE_TAG) return { ok: true, log };
+
+  // The user's layer. Its tag is a hash of its Containerfile, so an existing
+  // tag is proof this exact set was built before — including a set that was
+  // removed and put back, which is why this is a hash and not a counter.
+  const has = await run(["image", "exists", wanted], { timeoutMs: 30_000 });
+  if (has.code === 0) {
+    builtTags.add(wanted);
+    activeTag = wanted;
+    return { ok: true, log };
+  }
+  const file = extrasContainerfile();
+  const built = await buildImage(wanted, file, EXTRAS_BUILD_TIMEOUT_MS);
+  if (built.code !== 0) {
+    // NOT a failure of the sandbox. The base is up, activeTag points at it, and
+    // every chat keeps working — a mistyped apt package must not be able to
+    // take the whole feature down. The error rides along as a note.
     return {
-      ok: false,
-      log: "",
-      error:
-        `Failed to build the sandbox image:\n${(build.stderr || build.stdout).slice(-600)}` +
-        (build.stderr.includes("connect") || build.stderr.includes("machine")
-          ? "\nHint: is the podman machine running? (podman machine start)"
-          : ""),
+      ok: true,
+      log:
+        log +
+        `[sandbox] the added tools failed to build — running the base image ` +
+        `without them:\n${(built.stderr || built.stdout).trim().slice(-600)}\n`,
     };
   }
-  imageReady = true;
+  builtTags.add(wanted);
+  activeTag = wanted;
   return {
     ok: true,
-    log: podman.log + "[sandbox] built container image (one-time)\n",
+    log: log + `[sandbox] built the added tools into the image (one-time)\n`,
   };
 }
 
-/** The image tag the sandbox runs — the preview server shares the image. */
-export { IMAGE_TAG };
+/**
+ * `podman build` from a Containerfile on stdin.
+ *
+ * The build CONTEXT is an empty directory, deliberately. It used to be the
+ * sandboxes folder — every chat's files, sent to the daemon as the context of
+ * every image build. Nothing in either Containerfile copies from the context,
+ * so this costs nothing and stops handing the daemon gigabytes of unrelated
+ * user data to tar up.
+ */
+async function buildImage(
+  tag: string,
+  containerfile: string,
+  timeoutMs: number,
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const ctx = join(getDataSubdir("podman"), "build-context");
+  if (!existsSync(ctx)) mkdirSync(ctx, { recursive: true });
+  return run(["build", "-t", tag, "-f", "-", "."], {
+    stdin: containerfile,
+    timeoutMs,
+    cwd: ctx,
+  });
+}
+
+/**
+ * Forget what was built, so the next run re-resolves the tag.
+ *
+ * Called when the extras change: without it the latch above would keep the
+ * process on the image it happened to build first, and a newly ticked toolchain
+ * would not appear until the app restarted.
+ */
+export function resetImageCache(): void {
+  builtTags.clear();
+  activeTag = BASE_IMAGE_TAG;
+}
+
+/**
+ * The image tag runs use right now — the preview server and background tasks
+ * share it.
+ *
+ * A function, not a constant: it is the base until ensureImage() has confirmed
+ * the user's layer, and callers that start containers of their own must not
+ * capture the value before then. Call ensureSandboxImage() first; this is the
+ * answer it settled on.
+ */
+export function activeImageTag(): string {
+  return activeTag;
+}
 
 /**
  * Build the image if needed. Exported for podman-server.ts, which starts a
@@ -997,7 +1095,7 @@ export async function runPodmanCommand(
     "run", "--rm", "-v", `${dir}:/work`,
     ...PIP_VOLUME_ARGS,
     ...PIP_ENV_ARGS,
-    "-w", "/work", IMAGE_TAG, "sh", "-lc", command,
+    "-w", "/work", activeTag, "sh", "-lc", command,
   ], { timeoutMs: opts.timeoutMs ?? RUN_COMMAND_TIMEOUT_MS, signal });
   // Surface any files the command wrote into /work, same as RunPython — so
   // e.g. `python3 -c "...save('out.png')"` shows up as an artifact.
@@ -1049,7 +1147,7 @@ export async function runPodman(
     "PYTHONUTF8=1",
     // The same shared install layer RunCommand uses — see PIP_ENV_ARGS.
     ...PIP_ENV_ARGS,
-    IMAGE_TAG,
+    activeTag,
     "python",
     scriptName,
     // Was omitted, so this fell to the 60s default while RunCommand beside it

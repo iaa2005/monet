@@ -1261,6 +1261,24 @@ export interface ElectronAPI {
     checkPodman: () => Promise<{ ok: boolean; error?: string; needsWsl?: boolean }>;
     isPodmanReady: () => Promise<{ ok: boolean }>;
     warmPodman: (sessionId?: string) => Promise<{ ok: boolean }>;
+    /** Toolchains built on top of the base sandbox image. */
+    image: {
+      get: () => Promise<{
+        extras: { presets: string[]; extra: string };
+        presets: { id: string; label: string; size: string; provides: string }[];
+        tag: string;
+      }>;
+      set: (patch: {
+        presets?: string[];
+        extra?: string;
+      }) => Promise<{ extras: { presets: string[]; extra: string }; tag: string }>;
+      rebuild: () => Promise<{
+        ok: boolean;
+        log: string;
+        error?: string;
+        tag: string;
+      }>;
+    };
     adoptDefault: (sessionId: string) => Promise<{ moved: number }>;
     getSessionConfig: (
       sessionId: string,

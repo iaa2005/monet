@@ -29,8 +29,8 @@
 import { spawn } from "child_process";
 import { createConnection } from "net";
 import {
+  activeImageTag,
   ensureSandboxImage,
-  IMAGE_TAG,
   PIP_ENV_ARGS,
   PIP_VOLUME_ARGS,
   podmanExec,
@@ -135,7 +135,10 @@ export function serveArgs(opts: {
     // chat's own /work/.pip and the machine-wide shared one.
     ...PIP_VOLUME_ARGS,
     ...PIP_ENV_ARGS,
-    IMAGE_TAG,
+    // Whatever ensureSandboxImage() settled on — the base, or the user's layer
+    // over it. A server that ran the base while RunCommand ran the layer would
+    // be missing exactly the tools the chat had just installed.
+    activeImageTag(),
     "sh",
     "-lc",
     opts.command,

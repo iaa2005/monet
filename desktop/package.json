@@ -111,6 +111,7 @@
     "smoke:widgets": "node scripts/renderer-probe.mjs scripts/widget-probe.ts",
     "smoke:space": "node scripts/build-agent-db-probe.mjs scripts/session-space-probe.ts",
     "smoke:skillpaths": "node scripts/renderer-probe.mjs scripts/skill-paths-probe.ts",
+    "smoke:image": "node scripts/renderer-probe.mjs scripts/sandbox-image-probe.ts",
     "smoke:piplayer": "node scripts/renderer-probe.mjs scripts/pip-layer-probe.ts",
     "smoke:skillbridge": "node scripts/build-agent-db-probe.mjs scripts/skill-bridge-probe.ts",
     "smoke:marketplace": "node scripts/renderer-probe.mjs scripts/marketplace-probe.ts",

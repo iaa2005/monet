@@ -17,6 +17,10 @@ export const HOME_TOOL_NAMES = new Set([
   // Long installs and builds run detached via its run_in_background flag;
   // the turn keeps thinking and the finish is announced on its own.
   "RunCommand",
+  // Asking for a compiler the image does not have. It cannot install one
+  // itself — the container is discarded — and the permission prompt is what
+  // makes this safe to offer: the image is shared by every chat.
+  "SandboxImage",
   // The same names Code uses. In Home they resolve to the sandbox
   // implementations — see getVendorToolsForSpace.
   "Read",
@@ -75,6 +79,7 @@ export const HOME_TOOL_NAMES = new Set([
 export const SANDBOX_ONLY_NAMES = new Set([
   "RunPython",
   "RunCommand",
+  "SandboxImage",
 ]);
 
 /**

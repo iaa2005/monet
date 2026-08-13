@@ -43,6 +43,7 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 import { PickCard } from "@/components/settings/PickCard";
+import { SandboxImageSettings } from "@/components/settings/SandboxImageSettings";
 import {
   SectionHeader,
   SectionTitle,
@@ -354,6 +355,10 @@ function SandboxSection(): JSX.Element {
           Podman is ready. Run Python is available in Home sessions.
         </div>
       )}
+
+      {/* Always here, whatever engine is selected — see the note in the
+          component: it is also how anyone finds out the option exists. */}
+      <SandboxImageSettings engine={engine} />
     </div>
   );
 }

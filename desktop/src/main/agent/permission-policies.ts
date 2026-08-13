@@ -191,6 +191,56 @@ const sensitiveFileAsk: PermissionPolicy = {
 };
 
 /**
+ * Extending the sandbox image: always the user's call, every time.
+ *
+ * Everything else a chat does in the sandbox is undone when its container
+ * exits. This is the one action that is not: the image is shared by every chat
+ * on the machine, and a build is minutes and hundreds of megabytes. So it sits
+ * ABOVE the session-approval stage on purpose — "yes, add gcc" is not "yes, add
+ * anything from now on", and each toolchain is its own download.
+ *
+ * Nothing is remembered, which is also what makes the tool safe to advertise:
+ * the model can ask as often as it likes and the answer is always the user's.
+ */
+const sandboxImageAsk: PermissionPolicy = {
+  name: "sandbox-image-ask",
+  async decide(ctx): Promise<PolicyDecision> {
+    const { tool, input, requestPermission, permissionMode } = ctx;
+    if (tool.name !== "SandboxImage") return null;
+    // Reading what is installed is not a change — that is the no-argument call.
+    const asked = input as { toolchain?: unknown; lines?: unknown };
+    if (!asked.toolchain && !asked.lines) return { behavior: "allow", input };
+    if (permissionMode === "bypassPermissions") return null;
+    if (!requestPermission)
+      return {
+        behavior: "deny",
+        message:
+          "Adding to the sandbox image needs the user's approval, and there is " +
+          "nobody to ask. It affects every chat on this machine.",
+      };
+    const what =
+      (typeof asked.toolchain === "string" && asked.toolchain) ||
+      (typeof asked.lines === "string" ? asked.lines.slice(0, 200) : "");
+    const decision = await requestPermission({
+      toolName: tool.userFacingName(input) || tool.name,
+      description:
+        "Build a toolchain into the sandbox image — a few minutes, and it " +
+        "applies to every chat",
+      detail: what,
+    });
+    // Deliberately NOT recording a grant: see the note above.
+    if (decision === "deny")
+      return {
+        behavior: "deny",
+        message:
+          "The user declined to add that to the sandbox image. Solve the task " +
+          "with what is already available rather than asking again.",
+      };
+    return { behavior: "allow", input };
+  },
+};
+
+/**
  * Browser tools, judged by which site they would act on.
  *
  * The cycle this exists for is "change the CSS, reload, look" — on the user's
@@ -367,6 +417,9 @@ export const PERMISSION_POLICIES: readonly PermissionPolicy[] = [
   bypassModeApprove,
   planModeGuard,
   sensitiveFileAsk,
+  // Above session-approval: one "yes" must not become a standing licence to
+  // download toolchains — see the note on the policy.
+  sandboxImageAsk,
   sessionApprovalHistory,
   browserOriginAsk,
   toolOwnRules,

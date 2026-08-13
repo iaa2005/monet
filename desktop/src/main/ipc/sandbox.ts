@@ -17,10 +17,20 @@ import { resetVendorTools } from "../agent/vendor-tools.js";
 import { ensurePodmanBinary } from "../sandbox/podman-binary.js";
 import {
   checkPodmanReady,
+  ensureSandboxImage,
   podmanLikelyReady,
+  resetImageCache,
   sandboxWorkDir,
   warmPodman,
 } from "../sandbox/podman-engine.js";
+import {
+  IMAGE_PRESETS,
+  getImageExtras,
+  setImageExtras,
+  imageTagFor,
+  type ImageExtras,
+  type ImagePreset,
+} from "../sandbox/image-extras.js";
 import { listSandboxFiles, readSandboxFile } from "../sandbox/files.js";
 import {
   mediaTypeOf,
@@ -40,6 +50,48 @@ export function registerSandboxIPC(): void {
       // the user installs nothing (the first run won't stall on the download).
       if (next.engine === "docker") void ensurePodmanBinary();
       return next;
+    },
+  );
+
+  // ── The image the sandbox runs, and what the user added to it ────────
+  //
+  // A chat cannot install a toolchain for itself: the container is --rm, so
+  // apt's work dies with it. These write the recipe for a LAYER on top of the
+  // base image; the build happens on rebuild (or lazily, on the next run).
+
+  ipcMain.handle(
+    "sandboxImage:get",
+    (): { extras: ImageExtras; presets: ImagePreset[]; tag: string } => ({
+      extras: getImageExtras(),
+      presets: IMAGE_PRESETS,
+      tag: imageTagFor(),
+    }),
+  );
+
+  ipcMain.handle(
+    "sandboxImage:set",
+    (_e, patch: Partial<ImageExtras>): { extras: ImageExtras; tag: string } => {
+      const extras = setImageExtras(patch);
+      // Without this the process would keep running whatever image it built
+      // first, and a newly ticked toolchain would not appear until a restart.
+      resetImageCache();
+      return { extras, tag: imageTagFor(extras) };
+    },
+  );
+
+  /**
+   * Build the layer now, rather than on the next run.
+   *
+   * Minutes, so the UI wants to drive it explicitly and show the log. Failure
+   * here is NOT a broken sandbox — ensureSandboxImage falls back to the base
+   * and says so in its log, which is what gets returned.
+   */
+  ipcMain.handle(
+    "sandboxImage:rebuild",
+    async (): Promise<{ ok: boolean; log: string; error?: string; tag: string }> => {
+      resetImageCache();
+      const r = await ensureSandboxImage();
+      return { ...r, tag: imageTagFor() };
     },
   );
 
