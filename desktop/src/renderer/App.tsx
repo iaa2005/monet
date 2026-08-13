@@ -1917,7 +1917,12 @@ export default function App(): JSX.Element {
             ref={peekRef}
             onMouseEnter={holdPeek}
             onMouseLeave={releasePeek}
-            className="absolute inset-y-1 left-1 z-30 w-80 rounded-[var(--radius)] bg-popover p-1 shadow-[0_16px_48px_-12px_rgb(0_0_0/0.35)]"
+            // Shorter than the window on purpose: a floating panel that runs
+            // the full height reads as a second docked sidebar, not as
+            // something hovering over the page. 80% of the body, and never
+            // more than 740px — past that the recents list is scrolling
+            // anyway, so the extra height buys nothing.
+            className="absolute left-1 top-1 z-30 h-[min(80%,740px)] w-80 rounded-[var(--radius)] bg-popover p-1 shadow-[0_16px_48px_-12px_rgb(0_0_0/0.35)]"
           >
             {sidebarBody}
           </div>
