@@ -1558,7 +1558,7 @@ export function MessageInput({
         
         <div
           className={cn(
-            "relative mb-2 glass-panel p-3 pb-2 rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25",
+            "relative mb-1.5 glass-panel p-3 rounded-xl border border-border bg-card transition-colors focus-within:border-foreground/25",
             resizing && "border-foreground/25",
           )}
           // Ctrl+V with a screenshot, an image or a copied media file lands
@@ -1770,251 +1770,254 @@ export function MessageInput({
             )}
           </div>
 
-          {/* Controls inside the composer card */}
-          <div className="mt-2.5 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <PermissionModeMenu
-                mode={mode}
-                onChange={pickMode}
-                home={isHomeSpace}
-              />
+        </div>
+        {/* The controls sit BELOW the card, not inside it: the bordered
+            box is the thing you type in, and a row of pills sharing that
+            outline read as part of the field. What the model may do and
+            which model it is are about the turn, not about the text. */}
+        <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <PermissionModeMenu
+              mode={mode}
+              onChange={pickMode}
+              home={isHomeSpace}
+            />
+            <button
+              type="button"
+              title="Attach files"
+              onClick={() => fileRef.current?.click()}
+              className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
+            >
+              <Plus className="size-4" />
+            </button>
+            <MicButton onText={appendDictated} />
+            <button
+              type="button"
+              title={
+                voiceBusyElsewhere
+                  ? "Voice Mode уже работает в другом чате"
+                  : "Voice Mode — разговор голосом"
+              }
+              disabled={voiceBusyElsewhere}
+              onClick={() => {
+                void (async () => {
+                  const st = useChatStore.getState();
+                  // A zero-state chat has no id to anchor the conversation
+                  // to — and an unanchored voice send goes to whatever chat
+                  // is open when you finish talking. Make the session first.
+                  if (!st.currentSessionId) {
+                    const s = (await api()?.sessions.create(
+                      "New Session",
+                      st.space,
+                    )) as { id: string } | undefined;
+                    if (s?.id) {
+                      st.setCurrentSessionId(s.id);
+                      st.bumpSessions();
+                      const ws = await api()?.workspace.get().catch(() => null);
+                      if (ws) void api()?.sessions.setWorkspace(s.id, ws);
+                    }
+                  }
+                  useChatStore.getState().setVoiceModeOpen(true);
+                })();
+              }}
+              className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground disabled:opacity-40 dark:hover:bg-white/[0.08]"
+            >
+              <AudioLines className="size-4" />
+            </button>
+          </div>
+
+          <div className="flex min-w-0 items-center gap-1.5">
+
+            {bgRunning > 0 && (
+              <span
+                className={cn(
+                  pillBtn,
+                  "cursor-default text-amber-600 dark:text-amber-400",
+                )}
+                title={`${bgRunning} sub-agent${bgRunning > 1 ? "s" : ""} running in the background`}
+              >
+                <Loader2 className="size-3 animate-spin" />
+                {bgRunning}
+              </span>
+            )}
+
+            {!isHomeSpace && hasUserTurns && (
               <button
                 type="button"
-                title="Attach files"
-                onClick={() => fileRef.current?.click()}
+                title="Rewind to a checkpoint"
+                onClick={() => setPickerOpen(true)}
                 className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
               >
-                <Plus className="size-4" />
+                <History className="size-4" />
               </button>
-              <MicButton onText={appendDictated} />
-              <button
-                type="button"
-                title={
-                  voiceBusyElsewhere
-                    ? "Voice Mode уже работает в другом чате"
-                    : "Voice Mode — разговор голосом"
-                }
-                disabled={voiceBusyElsewhere}
-                onClick={() => {
-                  void (async () => {
-                    const st = useChatStore.getState();
-                    // A zero-state chat has no id to anchor the conversation
-                    // to — and an unanchored voice send goes to whatever chat
-                    // is open when you finish talking. Make the session first.
-                    if (!st.currentSessionId) {
-                      const s = (await api()?.sessions.create(
-                        "New Session",
-                        st.space,
-                      )) as { id: string } | undefined;
-                      if (s?.id) {
-                        st.setCurrentSessionId(s.id);
-                        st.bumpSessions();
-                        const ws = await api()?.workspace.get().catch(() => null);
-                        if (ws) void api()?.sessions.setWorkspace(s.id, ws);
-                      }
-                    }
-                    useChatStore.getState().setVoiceModeOpen(true);
-                  })();
-                }}
-                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground disabled:opacity-40 dark:hover:bg-white/[0.08]"
-              >
-                <AudioLines className="size-4" />
-              </button>
-            </div>
+            )}
 
-            <div className="flex min-w-0 items-center gap-1.5">
 
-              {bgRunning > 0 && (
-                <span
-                  className={cn(
-                    pillBtn,
-                    "cursor-default text-amber-600 dark:text-amber-400",
-                  )}
-                  title={`${bgRunning} sub-agent${bgRunning > 1 ? "s" : ""} running in the background`}
-                >
-                  <Loader2 className="size-3 animate-spin" />
-                  {bgRunning}
-                </span>
-              )}
 
-              {!isHomeSpace && hasUserTurns && (
-                <button
-                  type="button"
-                  title="Rewind to a checkpoint"
-                  onClick={() => setPickerOpen(true)}
-                  className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/6 hover:text-foreground dark:hover:bg-white/8"
-                >
-                  <History className="size-4" />
+            {/* Model / provider */}
+            <DropdownMenu
+              open={modelMenuOpen}
+              onOpenChange={(open) => {
+                setModelMenuOpen(open);
+                if (open) loadProviders();
+              }}
+            >
+              <DropdownMenuTrigger asChild>
+                <button type="button" className={pillBtn}>
+                  <span className="max-w-[18ch] truncate">{modelLabel}</span>
                 </button>
-              )}
-
-
-
-              {/* Model / provider */}
-              <DropdownMenu
-                open={modelMenuOpen}
-                onOpenChange={(open) => {
-                  setModelMenuOpen(open);
-                  if (open) loadProviders();
-                }}
-              >
-                <DropdownMenuTrigger asChild>
-                  <button type="button" className={pillBtn}>
-                    <span className="max-w-[18ch] truncate">{modelLabel}</span>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="end" className="w-80">
-                  {providers.length === 0 && (
-                    <div className="px-2.5 py-1.5 text-xs text-muted-foreground">
-                      No providers — add one in Settings.
-                    </div>
-                  )}
-                  {providers.map((p) => {
-                    // A provider with no models is a provider with nothing to
-                    // pick, and it is skipped below. There used to be a third
-                    // possibility here — one synthesised from a flat `model`
-                    // field under the id "__flat" — for a shape that cannot
-                    // occur: every stored provider has a models[].
-                    const visible = (p.models ?? []).filter(
-                      (m) => showHiddenModels || !m.hidden,
-                    );
-                    if (visible.length === 0) return null;
-                    const currentId = activeModelOf(p)?.id;
-                    return (
-                      <div key={p.id}>
-                        <DropdownMenuLabel className="text-xs text-muted-foreground py-0.5 px-2 bg-accent w-fit rounded-full my-0.5">
-                          {p.name}
-                        </DropdownMenuLabel>
-                        {visible.map((m) => (
-                          <DropdownMenuItem
-                            key={m.id}
-                            className={cn("group/model", m.hidden && "opacity-60")}
-                            onClick={() =>
-                              m.id === "__flat"
-                                ? void api()
-                                    ?.providers.setActive(p.id)
-                                    .then(() => {
-                                      setActiveId(p.id);
-                                      loadProviders();
-                                    })
-                                : void selectModel(p, m)
-                            }
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5">
-                                <span className="truncate">
-                                  {m.label || m.name}
-                                </span>
-                                <ModalityBadges
-                                  modalities={m.modalities as Modality[]}
-                                />
-                              </div>
-                              <div className="truncate text-xs text-muted-foreground">
-                                {m.label ? `${m.name} · ` : ""}
-                                {m.contextLength
-                                  ? `${fmtTok(m.contextLength)} ctx`
-                                  : "ctx —"}
-                              </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="end" className="w-80">
+                {providers.length === 0 && (
+                  <div className="px-2.5 py-1.5 text-xs text-muted-foreground">
+                    No providers — add one in Settings.
+                  </div>
+                )}
+                {providers.map((p) => {
+                  // A provider with no models is a provider with nothing to
+                  // pick, and it is skipped below. There used to be a third
+                  // possibility here — one synthesised from a flat `model`
+                  // field under the id "__flat" — for a shape that cannot
+                  // occur: every stored provider has a models[].
+                  const visible = (p.models ?? []).filter(
+                    (m) => showHiddenModels || !m.hidden,
+                  );
+                  if (visible.length === 0) return null;
+                  const currentId = activeModelOf(p)?.id;
+                  return (
+                    <div key={p.id}>
+                      <DropdownMenuLabel className="text-xs text-muted-foreground py-0.5 px-2 bg-accent w-fit rounded-full my-0.5">
+                        {p.name}
+                      </DropdownMenuLabel>
+                      {visible.map((m) => (
+                        <DropdownMenuItem
+                          key={m.id}
+                          className={cn("group/model", m.hidden && "opacity-60")}
+                          onClick={() =>
+                            m.id === "__flat"
+                              ? void api()
+                                  ?.providers.setActive(p.id)
+                                  .then(() => {
+                                    setActiveId(p.id);
+                                    loadProviders();
+                                  })
+                              : void selectModel(p, m)
+                          }
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="truncate">
+                                {m.label || m.name}
+                              </span>
+                              <ModalityBadges
+                                modalities={m.modalities as Modality[]}
+                              />
                             </div>
-                            {m.id !== "__flat" && (
-                              <button
-                                type="button"
-                                title={
-                                  m.hidden
-                                    ? "Show in this list"
-                                    : "Hide from this list"
-                                }
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void toggleModelHidden(p, m);
-                                }}
-                                className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition hover:text-foreground group-hover/model:opacity-100"
-                              >
-                                {m.hidden ? (
-                                  <EyeOff className="size-3" />
-                                ) : (
-                                  <Eye className="size-3" />
-                                )}
-                              </button>
-                            )}
-                            {p.id === activeId && m.id === currentId && (
-                              <Check className="size-4 shrink-0" />
-                            )}
-                          </DropdownMenuItem>
-                        ))}
-                      </div>
-                    );
-                  })}
-                  <DropdownMenuSeparator />
-                  {(() => {
-                    const hiddenCount = providers.reduce(
-                      (n, p) =>
-                        n + (p.models?.filter((m) => m.hidden).length ?? 0),
-                      0,
-                    );
-                    return hiddenCount > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowHiddenModels((v) => !v)}
-                        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/6"
-                      >
-                        {showHiddenModels ? (
-                          <EyeOff className="size-3" />
-                        ) : (
-                          <Eye className="size-3" />
-                        )}
-                        {showHiddenModels
-                          ? "Hide hidden models"
-                          : `Show hidden (${hiddenCount})`}
-                      </button>
-                    ) : null;
-                  })()}
-                  {onOpenProviders && (
+                            <div className="truncate text-xs text-muted-foreground">
+                              {m.label ? `${m.name} · ` : ""}
+                              {m.contextLength
+                                ? `${fmtTok(m.contextLength)} ctx`
+                                : "ctx —"}
+                            </div>
+                          </div>
+                          {m.id !== "__flat" && (
+                            <button
+                              type="button"
+                              title={
+                                m.hidden
+                                  ? "Show in this list"
+                                  : "Hide from this list"
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void toggleModelHidden(p, m);
+                              }}
+                              className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition hover:text-foreground group-hover/model:opacity-100"
+                            >
+                              {m.hidden ? (
+                                <EyeOff className="size-3" />
+                              ) : (
+                                <Eye className="size-3" />
+                              )}
+                            </button>
+                          )}
+                          {p.id === activeId && m.id === currentId && (
+                            <Check className="size-4 shrink-0" />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </div>
+                  );
+                })}
+                <DropdownMenuSeparator />
+                {(() => {
+                  const hiddenCount = providers.reduce(
+                    (n, p) =>
+                      n + (p.models?.filter((m) => m.hidden).length ?? 0),
+                    0,
+                  );
+                  return hiddenCount > 0 ? (
                     <button
                       type="button"
-                      onClick={onOpenProviders}
+                      onClick={() => setShowHiddenModels((v) => !v)}
                       className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/6"
                     >
-                      <Settings className="size-3" />
-                      Providers
+                      {showHiddenModels ? (
+                        <EyeOff className="size-3" />
+                      ) : (
+                        <Eye className="size-3" />
+                      )}
+                      {showHiddenModels
+                        ? "Hide hidden models"
+                        : `Show hidden (${hiddenCount})`}
                     </button>
-                  )}
+                  ) : null;
+                })()}
+                {onOpenProviders && (
+                  <button
+                    type="button"
+                    onClick={onOpenProviders}
+                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/6"
+                  >
+                    <Settings className="size-3" />
+                    Providers
+                  </button>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {activeModel?.supportsEffort && (
+              <DropdownMenu open={effortMenuOpen} onOpenChange={setEffortMenuOpen}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(pillBtn, effortBgClass(effort))}
+                    title="Reasoning effort (Faster ↔ Smarter)"
+                  >
+                    {/* No glyph: "Max" is the whole message, and a sparkle
+                        beside it only competed with the words for the eye.
+                        The colour still carries the level. */}
+                    <span className={cn("font-medium", effortTextClass(effort))}>
+                      {effortLabel(effort)}
+                    </span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="end" className="w-56">
+                  <DropdownMenuLabel>Reasoning effort</DropdownMenuLabel>
+                  <EffortSlider value={effort} onChange={setEffort} />
                 </DropdownMenuContent>
               </DropdownMenu>
+            )}
 
-              {activeModel?.supportsEffort && (
-                <DropdownMenu open={effortMenuOpen} onOpenChange={setEffortMenuOpen}>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className={cn(pillBtn, effortBgClass(effort))}
-                      title="Reasoning effort (Faster ↔ Smarter)"
-                    >
-                      {/* No glyph: "Max" is the whole message, and a sparkle
-                          beside it only competed with the words for the eye.
-                          The colour still carries the level. */}
-                      <span className={cn("font-medium", effortTextClass(effort))}>
-                        {effortLabel(effort)}
-                      </span>
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="top" align="end" className="w-56">
-                    <DropdownMenuLabel>Reasoning effort</DropdownMenuLabel>
-                    <EffortSlider value={effort} onChange={setEffort} />
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-
-              {activeModel && (
-                <ContextMeter
-                  sessionId={currentSessionId ?? null}
-                  space={space}
-                  usedTokens={usedTokens}
-                  ctxWindow={ctxWindow}
-                  className={cn(pillBtn, "px-1")}
-                />
-              )}
-            </div>
+            {activeModel && (
+              <ContextMeter
+                sessionId={currentSessionId ?? null}
+                space={space}
+                usedTokens={usedTokens}
+                ctxWindow={ctxWindow}
+                className={cn(pillBtn, "px-1")}
+              />
+            )}
           </div>
         </div>
       </div>
