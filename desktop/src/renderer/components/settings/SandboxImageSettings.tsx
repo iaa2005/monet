@@ -33,6 +33,8 @@ import {
   GithubIcon,
   GoIcon,
   JavaIcon,
+  NodeIcon,
+  PythonIcon,
   RustIcon,
 } from "@/components/icons";
 import { PickCard } from "@/components/settings/PickCard";
@@ -73,6 +75,8 @@ const ENTRY_ICON: Record<
   string,
   ComponentType<{ className?: string }>
 > = {
+  python: PythonIcon,
+  node: NodeIcon,
   cpp: CppIcon,
   rust: RustIcon,
   go: GoIcon,
