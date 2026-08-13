@@ -31,9 +31,10 @@ app.whenReady().then(async () => {
   );
 
   const SID = "probe-terminal";
+  let TID = null;
   let seen = "";
   const off = term.onTerminalData((id, data) => {
-    if (id === SID) seen += data;
+    if (id === TID) seen += data;
   });
   const waitFor = async (re, ms = 20000) => {
     const until = Date.now() + ms;
@@ -52,29 +53,31 @@ app.whenReady().then(async () => {
     app.exit(1);
     return;
   }
-  check("and it is live", term.hasTerminal(SID));
+  TID = opened.id;
+  check("and it is live", term.hasTerminal(TID));
+  check("it is named after the shell", !!opened.title, opened.title);
 
   const isWin = process.platform === "win32";
   const nl = "\r";
 
   // ── Output streams, rather than arriving at exit ────────────────────
   seen = "";
-  term.writeTerminal(SID, `echo probe-one${nl}`);
+  term.writeTerminal(TID, `echo probe-one${nl}`);
   check("output comes back", await waitFor(/probe-one/), `${seen.length} chars`);
 
   // ── State persists between commands — the `cd` that used to be lost ──
   seen = "";
-  term.writeTerminal(SID, isWin ? `cd ..${nl}` : `cd /${nl}`);
+  term.writeTerminal(TID, isWin ? `cd ..${nl}` : `cd /${nl}`);
   await sleep(1200);
   seen = "";
-  term.writeTerminal(SID, isWin ? `(Get-Location).Path${nl}` : `pwd${nl}`);
+  term.writeTerminal(TID, isWin ? `(Get-Location).Path${nl}` : `pwd${nl}`);
   const moved = await waitFor(isWin ? /claude-code(?!\\desktop)/ : /^\/\s*$/m);
   check("THE SHELL REMEMBERS ITS DIRECTORY between commands", moved, seen.trim().slice(-80));
 
   // ── A long-running process keeps printing, and Ctrl+C ends it ────────
   seen = "";
   term.writeTerminal(
-    SID,
+    TID,
     isWin
       ? `while ($true) { Write-Output tick; Start-Sleep -Milliseconds 300 }${nl}`
       : `while true; do echo tick; sleep 0.3; done${nl}`,
@@ -85,7 +88,7 @@ app.whenReady().then(async () => {
   seen = "";
   // \x03 is what Ctrl+C sends. The old terminal printed "^C" and let the
   // process run; a pty delivers SIGINT.
-  term.writeTerminal(SID, "\x03");
+  term.writeTerminal(TID, "\x03");
   await sleep(1500);
   const before = seen.length;
   await sleep(1500);
@@ -93,25 +96,67 @@ app.whenReady().then(async () => {
   check("CTRL+C STOPS IT — output stops growing", after - before < 20, `${after - before} chars in 1.5s`);
 
   // ── The buffer, which is what redraws a reattached panel ─────────────
-  const buf = term.terminalBuffer(SID);
+  const buf = term.terminalBuffer(TID);
   check("main keeps the scrollback", buf.length > 0, `${buf.length} chars`);
   check("…including what was printed earlier", /probe-one/.test(buf));
 
   // Reopening is a REATTACH, not a second shell: same session, and it hands
   // back the screen so the panel can redraw it.
-  const again = await term.openTerminal(SID, "code", 100, 30);
+  const again = await term.openTerminal(SID, "code", 100, 30, TID);
   check("reopening reattaches", again.ok && (again.buffer ?? "").length > 0);
-  check("…to the same shell, not a new one", term.hasTerminal(SID));
+  check("…to the same shell, not a new one", term.hasTerminal(TID));
 
   // ── Resizing, which full-screen programs read ────────────────────────
-  check("it resizes", term.resizeTerminal(SID, 120, 40));
-  check("a nonsense size is refused", !term.resizeTerminal(SID, 0, 0));
+  check("it resizes", term.resizeTerminal(TID, 120, 40));
+  check("a nonsense size is refused", !term.resizeTerminal(TID, 0, 0));
+
+  // ── Several at once, and `exit` closing exactly one ──────────────────
+  //
+  // The chat used to BE the key, so there could only ever be one shell and
+  // `exit` had nothing to distinguish. Now the id is the terminal's, and the
+  // panel's tab list is this list.
+  {
+    const second = await term.openTerminal(SID, "code", 80, 24);
+    check("a second shell opens in the same chat", second.ok && second.id !== TID, second.id);
+
+    const list = term.listTerminals(SID);
+    check("both are listed for the chat", list.length === 2, list.map((t) => t.id).join(", "));
+    check("…each with a title for its tab", list.every((t) => t.title));
+
+    // The exit event is what the panel closes a tab on, so it has to name the
+    // terminal that ended and no other.
+    let exited = null;
+    const offExit = term.onTerminalExit((id) => {
+      exited = id;
+    });
+    term.writeTerminal(second.id, `exit${nl}`);
+    const until = Date.now() + 10000;
+    while (Date.now() < until && exited === null) await sleep(100);
+    offExit();
+
+    check("typing `exit` ends that shell", exited === second.id, String(exited));
+    check("…and it alone — the other is still live", term.hasTerminal(TID));
+    check(
+      "…so the chat is left with one tab",
+      term.listTerminals(SID).length === 1,
+      term.listTerminals(SID).map((t) => t.title).join(", "),
+    );
+  }
 
   // ── Closing ─────────────────────────────────────────────────────────
-  term.closeTerminal(SID);
+  term.closeTerminal(TID);
   await sleep(500);
-  check("closing ends the session", !term.hasTerminal(SID));
-  check("writing to a dead session is a no-op", !term.writeTerminal(SID, "x"));
+  check("closing ends the session", !term.hasTerminal(TID));
+  check("writing to a dead session is a no-op", !term.writeTerminal(TID, "x"));
+
+  // Deleting a chat takes every shell it owns, however many.
+  {
+    const a = await term.openTerminal(SID, "code", 80, 24);
+    const b = await term.openTerminal(SID, "code", 80, 24);
+    check("two more open", a.ok && b.ok && term.listTerminals(SID).length === 2);
+    term.closeSessionTerminals(SID);
+    check("deleting the chat closes all of them", term.listTerminals(SID).length === 0);
+  }
 
   // ── The sandbox's shell asks podman for a TTY ────────────────────────
   //

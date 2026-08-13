@@ -7,6 +7,7 @@ import { BrowserWindow, ipcMain } from "electron";
 import {
   closeTerminal,
   hasTerminal,
+  listTerminals,
   onTerminalData,
   onTerminalExit,
   openTerminal,
@@ -260,40 +261,54 @@ export function registerSandboxIPC(): void {
       space: string | undefined,
       cols?: number,
       rows?: number,
-    ): Promise<{ ok: boolean; buffer?: string; error?: string }> =>
-      openTerminal(sessionId || "default", space, cols, rows),
+      terminalId?: string,
+    ): Promise<{
+      ok: boolean;
+      id?: string;
+      title?: string;
+      buffer?: string;
+      error?: string;
+    }> => openTerminal(sessionId || "default", space, cols, rows, terminalId),
   );
 
-  ipcMain.on("terminal:write", (_e, sessionId: string, data: string): void => {
+  // The tabs this chat has open. Asked on mount, because the shells outlive
+  // the panel — a chat with three terminals must come back with three.
+  ipcMain.handle(
+    "terminal:list",
+    (_e, sessionId: string): { id: string; title: string }[] =>
+      listTerminals(sessionId || "default"),
+  );
+
+  ipcMain.on("terminal:write", (_e, terminalId: string, data: string): void => {
     // `on`, not `handle`: keystrokes are a stream, and a round trip per
     // character would put the renderer's event loop in the middle of typing.
-    writeTerminal(sessionId || "default", data);
+    writeTerminal(terminalId, data);
   });
 
   ipcMain.on(
     "terminal:resize",
-    (_e, sessionId: string, cols: number, rows: number): void => {
-      resizeTerminal(sessionId || "default", cols, rows);
+    (_e, terminalId: string, cols: number, rows: number): void => {
+      resizeTerminal(terminalId, cols, rows);
     },
   );
 
-  ipcMain.handle("terminal:close", (_e, sessionId: string): void => {
-    closeTerminal(sessionId || "default");
+  ipcMain.handle("terminal:close", (_e, terminalId: string): void => {
+    closeTerminal(terminalId);
   });
 
-  ipcMain.handle("terminal:has", (_e, sessionId: string): { ok: boolean } => ({
-    ok: hasTerminal(sessionId || "default"),
+  ipcMain.handle("terminal:has", (_e, terminalId: string): { ok: boolean } => ({
+    ok: hasTerminal(terminalId),
   }));
 
   // Output goes to every window: there is one, and a session is not owned by
   // a particular renderer — the panel can be closed and reopened while the
   // shell carries on.
-  onTerminalData((sessionId, data) => {
+  onTerminalData((terminalId, data) => {
     for (const w of BrowserWindow.getAllWindows())
-      w.webContents.send("terminal:data", sessionId, data);
+      w.webContents.send("terminal:data", terminalId, data);
   });
-  onTerminalExit((sessionId, code) => {
+  onTerminalExit((terminalId, code) => {
     for (const w of BrowserWindow.getAllWindows())
-      w.webContents.send("terminal:exit", sessionId, code);
+      w.webContents.send("terminal:exit", terminalId, code);
   });
 }

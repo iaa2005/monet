@@ -1298,31 +1298,48 @@ const electronAPI = {
      * switch — `open` on an existing session redraws from its buffer.
      */
     terminal: {
+      /** With a terminalId: reattach to it. Without: start another one. */
       open: (
         sessionId: string,
         space: string | undefined,
         cols?: number,
         rows?: number,
-      ): Promise<{ ok: boolean; buffer?: string; error?: string }> =>
-        ipcRenderer.invoke("terminal:open", sessionId, space, cols, rows),
-      write: (sessionId: string, data: string): void =>
-        ipcRenderer.send("terminal:write", sessionId, data),
-      resize: (sessionId: string, cols: number, rows: number): void =>
-        ipcRenderer.send("terminal:resize", sessionId, cols, rows),
-      close: (sessionId: string): Promise<void> =>
-        ipcRenderer.invoke("terminal:close", sessionId),
-      has: (sessionId: string): Promise<{ ok: boolean }> =>
-        ipcRenderer.invoke("terminal:has", sessionId),
+        terminalId?: string,
+      ): Promise<{
+        ok: boolean;
+        id?: string;
+        title?: string;
+        buffer?: string;
+        error?: string;
+      }> =>
+        ipcRenderer.invoke(
+          "terminal:open",
+          sessionId,
+          space,
+          cols,
+          rows,
+          terminalId,
+        ),
+      list: (sessionId: string): Promise<{ id: string; title: string }[]> =>
+        ipcRenderer.invoke("terminal:list", sessionId),
+      write: (terminalId: string, data: string): void =>
+        ipcRenderer.send("terminal:write", terminalId, data),
+      resize: (terminalId: string, cols: number, rows: number): void =>
+        ipcRenderer.send("terminal:resize", terminalId, cols, rows),
+      close: (terminalId: string): Promise<void> =>
+        ipcRenderer.invoke("terminal:close", terminalId),
+      has: (terminalId: string): Promise<{ ok: boolean }> =>
+        ipcRenderer.invoke("terminal:has", terminalId),
       /** Output as it happens. Returns an unsubscribe. */
-      onData: (fn: (sessionId: string, data: string) => void): (() => void) => {
-        const h = (_e: unknown, sessionId: string, data: string): void =>
-          fn(sessionId, data);
+      onData: (fn: (terminalId: string, data: string) => void): (() => void) => {
+        const h = (_e: unknown, terminalId: string, data: string): void =>
+          fn(terminalId, data);
         ipcRenderer.on("terminal:data", h);
         return () => ipcRenderer.removeListener("terminal:data", h);
       },
-      onExit: (fn: (sessionId: string, code: number) => void): (() => void) => {
-        const h = (_e: unknown, sessionId: string, code: number): void =>
-          fn(sessionId, code);
+      onExit: (fn: (terminalId: string, code: number) => void): (() => void) => {
+        const h = (_e: unknown, terminalId: string, code: number): void =>
+          fn(terminalId, code);
         ipcRenderer.on("terminal:exit", h);
         return () => ipcRenderer.removeListener("terminal:exit", h);
       },

@@ -64,8 +64,8 @@ import { cn, midEllipsis } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import { isApplyingDesk, popoutPageUrl, useDockStore } from "./dock-store";
 
-const Terminal = lazy(() =>
-  import("@/components/Terminal").then((m) => ({ default: m.Terminal })),
+const TerminalPanel = lazy(() =>
+  import("@/components/TerminalPanel").then((m) => ({ default: m.TerminalPanel })),
 );
 
 /** What the panels need from App, delivered without remounting them. */
@@ -275,9 +275,9 @@ const components: Record<string, React.FunctionComponent<IDockviewPanelProps>> =
               </div>
             }
           >
-            {/* Keyed by chat AND space: a different chat is a different
-                shell, and the component attaches to whichever it is given. */}
-            <Terminal
+            {/* Keyed by chat AND space: a different chat has its own set of
+                shells, and the panel asks main which ones exist. */}
+            <TerminalPanel
               key={`${latest.currentSessionId ?? "default"}:${home ? "home" : "code"}`}
               sessionId={latest.currentSessionId ?? "default"}
               space={home ? "home" : "code"}

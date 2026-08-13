@@ -78,13 +78,11 @@ function api(): ElectronAPI | undefined {
 }
 
 interface TerminalProps {
-  /** Whose shell this is. Sessions are keyed by chat, so two chats have two. */
-  sessionId: string;
-  /** "home" runs inside the chat's container; anything else is the host. */
-  space: string;
+  /** Which shell to show. The panel owns the list; this shows one of them. */
+  terminalId: string;
 }
 
-export function Terminal({ sessionId, space }: TerminalProps): JSX.Element {
+export function Terminal({ terminalId }: TerminalProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const themeRef = useRef(isDark());
 
@@ -135,30 +133,31 @@ export function Terminal({ sessionId, space }: TerminalProps): JSX.Element {
     fit.fit();
 
     let alive = true;
-    // Only this chat's bytes. One window, several chats, one channel: without
-    // the filter a background build would type into whichever terminal is on
-    // screen.
+    // Only this terminal's bytes. One channel carries every shell in the app:
+    // without the filter, a build running in another tab would type into
+    // whichever one is on screen.
     const offData = bridge?.sandbox.terminal.onData((id, data) => {
-      if (id === sessionId) term.write(data);
+      if (id === terminalId) term.write(data);
     });
-    const offExit = bridge?.sandbox.terminal.onExit(() => {});
 
     void (async () => {
+      // Reattach — the id already exists; the panel created it.
       const r = await bridge?.sandbox.terminal.open(
-        sessionId,
-        space,
+        "",
+        undefined,
         term.cols,
         term.rows,
+        terminalId,
       );
       if (!alive) return;
       if (!r?.ok) {
         term.write(`\x1b[31m${r?.error ?? "Could not start a shell."}\x1b[0m\r\n`);
         return;
       }
-      // Reattaching: everything main saw while the panel was gone. Written
-      // before the input is wired up so a keystroke cannot land mid-redraw.
+      // Everything main saw while this tab was not on screen. Written before
+      // the input is wired up so a keystroke cannot land mid-redraw.
       if (r.buffer) term.write(r.buffer);
-      term.onData((data) => bridge?.sandbox.terminal.write(sessionId, data));
+      term.onData((data) => bridge?.sandbox.terminal.write(terminalId, data));
       term.focus();
     })();
 
@@ -184,21 +183,20 @@ export function Terminal({ sessionId, space }: TerminalProps): JSX.Element {
     // wrong window and progress bars wrap.
     const ro = new ResizeObserver(() => {
       fit.fit();
-      bridge?.sandbox.terminal.resize(sessionId, term.cols, term.rows);
+      bridge?.sandbox.terminal.resize(terminalId, term.cols, term.rows);
     });
     ro.observe(containerRef.current);
 
     return () => {
       alive = false;
       offData?.();
-      offExit?.();
       observer.disconnect();
       ro.disconnect();
       // Disposes the VIEW. The shell in main keeps running — see the note at
       // the top: that is the feature, not an oversight.
       term.dispose();
     };
-  }, [sessionId, space]);
+  }, [terminalId]);
 
   return (
     <div className="h-full w-full overflow-hidden p-2">

@@ -24,7 +24,7 @@ import { clearUiState } from "./ui-state.js";
 import { sessionSlug } from "../agent/checkpoint-store.js";
 import { clearGoal, dropGoalCache } from "../agent/goal/store.js";
 import { clearSessionEngine } from "../sandbox/config.js";
-import { closeTerminal } from "../terminal/sessions.js";
+import { closeSessionTerminals } from "../terminal/sessions.js";
 
 function rmDir(path: string): void {
   try {
@@ -53,11 +53,12 @@ function rmDir(path: string): void {
 export function purgeSessionData(sessionId: string): void {
   if (!sessionId) return;
 
-  // ── The live shell ────────────────────────────────────────────────
+  // ── The live shells ───────────────────────────────────────────────
   // A terminal deliberately outlives its panel, so nothing else would ever
-  // end it: deleting the chat would leave a container running against a /work
-  // directory this function is about to delete out from under it.
-  closeTerminal(sessionId);
+  // end one: deleting the chat would leave containers running against a /work
+  // directory this function is about to delete out from under them. A chat can
+  // hold several, so all of them go.
+  closeSessionTerminals(sessionId);
 
   // ── The database ──────────────────────────────────────────────────
   // Transcript + context events live in the transcript store's tables, which

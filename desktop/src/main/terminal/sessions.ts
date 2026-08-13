@@ -42,7 +42,12 @@ import { join } from "path";
 const BUFFER_LIMIT = 256 * 1024;
 
 export interface TerminalSession {
+  /** This terminal. A chat can have several — the map is keyed by THIS. */
+  id: string;
+  /** The chat it belongs to: what a delete, or a switch, addresses. */
   sessionId: string;
+  /** What the tab says — the shell's own name. */
+  title: string;
   pty: IPty;
   /** Everything written out, trimmed to BUFFER_LIMIT from the front. */
   buffer: string;
@@ -53,22 +58,32 @@ export interface TerminalSession {
 }
 
 const sessions = new Map<string, TerminalSession>();
+let seq = 0;
 
-type Listener = (sessionId: string, data: string) => void;
+type Listener = (terminalId: string, data: string) => void;
 const listeners = new Set<Listener>();
 
-/** Subscribe to output from every session — the IPC layer forwards to windows. */
+/** Subscribe to output from every terminal — the IPC layer forwards to windows. */
 export function onTerminalData(fn: Listener): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
 
-type ExitListener = (sessionId: string, code: number) => void;
+type ExitListener = (terminalId: string, code: number) => void;
 const exitListeners = new Set<ExitListener>();
 
 export function onTerminalExit(fn: ExitListener): () => void {
   exitListeners.add(fn);
   return () => exitListeners.delete(fn);
+}
+
+/** This chat's terminals, oldest first — the tab list. */
+export function listTerminals(
+  sessionId: string,
+): { id: string; title: string }[] {
+  return [...sessions.values()]
+    .filter((s) => s.sessionId === sessionId)
+    .map((s) => ({ id: s.id, title: s.title }));
 }
 
 /**
@@ -130,26 +145,40 @@ export function sandboxShellArgs(sessionId: string): string[] {
   ];
 }
 
-/** Is there a terminal for this chat right now? */
-export function hasTerminal(sessionId: string): boolean {
-  return sessions.has(sessionId);
+/** Is this terminal live? */
+export function hasTerminal(terminalId: string): boolean {
+  return sessions.has(terminalId);
 }
 
 /** The screen so far, for a panel that just mounted. */
-export function terminalBuffer(sessionId: string): string {
-  return sessions.get(sessionId)?.buffer ?? "";
+export function terminalBuffer(terminalId: string): string {
+  return sessions.get(terminalId)?.buffer ?? "";
 }
 
+/**
+ * Attach to a terminal, or start one.
+ *
+ * `terminalId` given → reattach to that one (the panel remounted, or the chat
+ * came back). Omitted → a NEW shell in this chat, which is what the + button
+ * asks for. A chat holds as many as it is given; they differ only by id.
+ */
 export async function openTerminal(
   sessionId: string,
   space: string | undefined,
   cols = 80,
   rows = 24,
-): Promise<{ ok: boolean; buffer?: string; error?: string }> {
-  const existing = sessions.get(sessionId);
+  terminalId?: string,
+): Promise<{
+  ok: boolean;
+  id?: string;
+  title?: string;
+  buffer?: string;
+  error?: string;
+}> {
+  const existing = terminalId ? sessions.get(terminalId) : undefined;
   if (existing) {
-    // Reattaching: the panel was closed and reopened, or the chat came back.
-    // Resize to whatever the new panel is, and hand back the screen.
+    // Reattaching: resize to whatever the new panel is, and hand back the
+    // screen so it can be redrawn.
     if (cols !== existing.cols || rows !== existing.rows) {
       try {
         existing.pty.resize(cols, rows);
@@ -159,7 +188,12 @@ export async function openTerminal(
         /* a dead pty refuses to resize; the exit notice already went out */
       }
     }
-    return { ok: true, buffer: existing.buffer };
+    return {
+      ok: true,
+      id: existing.id,
+      title: existing.title,
+      buffer: existing.buffer,
+    };
   }
 
   let file: string;
@@ -227,33 +261,48 @@ export async function openTerminal(
     };
   }
 
-  const session: TerminalSession = { sessionId, pty, buffer: "", cols, rows };
-  sessions.set(sessionId, session);
+  // The tab's name: the shell, not the path it was found at.
+  const title =
+    space === "home" && engine === "docker"
+      ? "sandbox"
+      : (file.split(/[\\/]/).pop() ?? file).replace(/\.exe$/i, "");
+  const id = `term-${++seq}-${sessionId}`;
+  const session: TerminalSession = {
+    id,
+    sessionId,
+    title,
+    pty,
+    buffer: "",
+    cols,
+    rows,
+  };
+  sessions.set(id, session);
 
   pty.onData((data) => {
     session.buffer += data;
     if (session.buffer.length > BUFFER_LIMIT)
       session.buffer = session.buffer.slice(-BUFFER_LIMIT);
-    for (const fn of listeners) fn(sessionId, data);
+    for (const fn of listeners) fn(id, data);
   });
 
   pty.onExit(({ exitCode, signal }) => {
     session.exited = { code: exitCode, signal };
-    // The row is dropped, but the words are not: a shell that died on a typo
-    // in .bashrc has to leave its reason on screen, so the notice goes out
-    // before the session disappears.
+    // `exit` at the prompt lands here, and it is the ordinary way to close ONE
+    // tab: the row goes, the words stay. A shell that died on a typo in
+    // .bashrc has to leave its reason on screen, so the notice goes out before
+    // the session disappears.
     const note = `\r\n\x1b[90m[process exited with code ${exitCode}]\x1b[0m\r\n`;
     session.buffer += note;
-    for (const fn of listeners) fn(sessionId, note);
-    sessions.delete(sessionId);
-    for (const fn of exitListeners) fn(sessionId, exitCode);
+    for (const fn of listeners) fn(id, note);
+    sessions.delete(id);
+    for (const fn of exitListeners) fn(id, exitCode);
   });
 
-  return { ok: true, buffer: "" };
+  return { ok: true, id, title, buffer: "" };
 }
 
-export function writeTerminal(sessionId: string, data: string): boolean {
-  const s = sessions.get(sessionId);
+export function writeTerminal(terminalId: string, data: string): boolean {
+  const s = sessions.get(terminalId);
   if (!s) return false;
   try {
     s.pty.write(data);
@@ -264,11 +313,11 @@ export function writeTerminal(sessionId: string, data: string): boolean {
 }
 
 export function resizeTerminal(
-  sessionId: string,
+  terminalId: string,
   cols: number,
   rows: number,
 ): boolean {
-  const s = sessions.get(sessionId);
+  const s = sessions.get(terminalId);
   if (!s || cols < 1 || rows < 1) return false;
   try {
     s.pty.resize(cols, rows);
@@ -281,16 +330,15 @@ export function resizeTerminal(
 }
 
 /**
- * End the session.
+ * End one terminal.
  *
  * NOT called when the panel closes — that is the point of the whole file. This
- * is for the chat being deleted, the app quitting, or the user explicitly
- * killing the shell.
+ * is the tab's own close button, the chat being deleted, or the app quitting.
  */
-export function closeTerminal(sessionId: string): void {
-  const s = sessions.get(sessionId);
+export function closeTerminal(terminalId: string): void {
+  const s = sessions.get(terminalId);
   if (!s) return;
-  sessions.delete(sessionId);
+  sessions.delete(terminalId);
   try {
     s.pty.kill();
   } catch {
@@ -298,7 +346,13 @@ export function closeTerminal(sessionId: string): void {
   }
 }
 
-/** Every live session — for app shutdown. */
+/** Every terminal belonging to one chat — for deleting that chat. */
+export function closeSessionTerminals(sessionId: string): void {
+  for (const s of [...sessions.values()])
+    if (s.sessionId === sessionId) closeTerminal(s.id);
+}
+
+/** Every live terminal — for app shutdown. */
 export function closeAllTerminals(): void {
   for (const id of [...sessions.keys()]) closeTerminal(id);
 }

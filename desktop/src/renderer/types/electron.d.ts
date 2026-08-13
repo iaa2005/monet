@@ -1268,13 +1268,21 @@ export interface ElectronAPI {
         space: string | undefined,
         cols?: number,
         rows?: number,
-      ) => Promise<{ ok: boolean; buffer?: string; error?: string }>;
-      write: (sessionId: string, data: string) => void;
-      resize: (sessionId: string, cols: number, rows: number) => void;
-      close: (sessionId: string) => Promise<void>;
-      has: (sessionId: string) => Promise<{ ok: boolean }>;
-      onData: (fn: (sessionId: string, data: string) => void) => () => void;
-      onExit: (fn: (sessionId: string, code: number) => void) => () => void;
+        terminalId?: string,
+      ) => Promise<{
+        ok: boolean;
+        id?: string;
+        title?: string;
+        buffer?: string;
+        error?: string;
+      }>;
+      list: (sessionId: string) => Promise<{ id: string; title: string }[]>;
+      write: (terminalId: string, data: string) => void;
+      resize: (terminalId: string, cols: number, rows: number) => void;
+      close: (terminalId: string) => Promise<void>;
+      has: (terminalId: string) => Promise<{ ok: boolean }>;
+      onData: (fn: (terminalId: string, data: string) => void) => () => void;
+      onExit: (fn: (terminalId: string, code: number) => void) => () => void;
     };
     /** Toolchains built on top of the base sandbox image. */
     image: {
