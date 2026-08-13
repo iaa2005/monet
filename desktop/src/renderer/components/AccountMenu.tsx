@@ -62,7 +62,10 @@ export function AccountMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+          // The row is a card, so its hover has to be a card too: the fill is
+          // painted by this button, and a square wash inside a rounded shell
+          // showed its corners the moment you pointed at it.
+          className="flex w-full items-center gap-2 rounded-[var(--radius)] px-3 py-2 text-left transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
         >
           {avatar ? (
             <img
