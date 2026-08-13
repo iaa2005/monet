@@ -1185,6 +1185,8 @@ const electronAPI = {
       deniedApps?: string[];
     }): Promise<{ enabled: boolean; deniedApps: string[] }> =>
       ipcRenderer.invoke("computer:setConfig", patch),
+    overlayPreview: (): Promise<void> =>
+      ipcRenderer.invoke("computer:overlayPreview"),
   },
 
   connectors: {

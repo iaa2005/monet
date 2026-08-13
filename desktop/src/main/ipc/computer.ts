@@ -10,6 +10,7 @@ import {
   setComputerConfig,
   type ComputerConfig,
 } from "../computer/config.js";
+import { previewComputerOverlay } from "../computer/overlay.js";
 import { resetVendorTools } from "../agent/vendor-tools.js";
 
 export function registerComputerIPC(): void {
@@ -24,4 +25,8 @@ export function registerComputerIPC(): void {
       return next;
     },
   );
+  // Settings → "Preview overlay": show the glow frame + window dodge briefly.
+  ipcMain.handle("computer:overlayPreview", async (): Promise<void> => {
+    await previewComputerOverlay();
+  });
 }

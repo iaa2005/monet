@@ -11,6 +11,7 @@ import {
   Chrome,
   Copy,
   Download,
+  Eye,
   ListChecks,
   PanelRight,
   Plus,
@@ -440,6 +441,21 @@ export function AutomationSettings(): JSX.Element {
                 This lets model-generated actions click and type on your real
                 desktop. Websites and documents could contain instructions that
                 misdirect the agent. Watch it while it works.
+              </span>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void api()?.computer.overlayPreview()}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2 py-1 text-[12px] text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+              >
+                <Eye className="size-3.5" />
+                Preview overlay
+              </button>
+              <span className="text-[12px] text-muted-foreground">
+                While the agent drives, a glowing frame marks the screen and the
+                app steps into a corner. The frame never appears in screenshots.
               </span>
             </div>
 

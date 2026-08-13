@@ -25,6 +25,7 @@ import {
   typeText,
 } from "../computer/input.js";
 import { getComputerConfig } from "../computer/config.js";
+import { touchComputerOverlay } from "../computer/overlay.js";
 import { artifactReference, saveArtifactBuffer } from "../ipc/artifacts.js";
 
 // The transform from the most recent screenshot to virtual desktop pixels.
@@ -171,6 +172,10 @@ export const ComputerTool = buildTool({
 
     const denied = await deniedGuard(action);
     if (denied) return { data: { text: denied, isError: true } };
+
+    // Glow frame + app-window dodge. Awaited so the FIRST screenshot of a run
+    // is taken after the app has moved out of the way.
+    await touchComputerOverlay();
 
     const needCoord = [
       "left_click",

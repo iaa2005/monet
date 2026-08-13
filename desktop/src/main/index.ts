@@ -17,6 +17,7 @@ import { applyLeanEnv } from "./agent/lean-context.js";
 import { initNightlyConsolidation } from "./memory/nightly.js";
 import { initDevApi } from "./app/dev-api.js";
 import { isAcpLaunch, runAcpMode } from "./acp/index.js";
+import { setDodgeWindow } from "./computer/overlay.js";
 
 // The main bundle is ESM ("type": "module"), where __dirname is not defined.
 // Derive it from import.meta.url so preload/renderer paths resolve.
@@ -363,6 +364,8 @@ function createWindow(): void {
 
   installWindowProcessHandlers(mainWindow, "main");
   installWebviewGuards(mainWindow);
+  // During Computer Use this window dodges into a corner — see computer/overlay.
+  setDodgeWindow(mainWindow);
 
   // Open DevTools in dev mode for debugging
   // DevTools only with CLAUDE_DEVTOOLS=1

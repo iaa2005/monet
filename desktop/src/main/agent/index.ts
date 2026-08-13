@@ -1587,6 +1587,13 @@ export async function runAgent(
     // message_stop sites means a new exit path cannot forget to do it, and a
     // thrown error settles too.
     settleSession(sessionId);
+    // If this run drove the desktop, drop the glow frame and bring the app
+    // window back from its corner. No-op when Computer Use never ran.
+    try {
+      (await import("../computer/overlay.js")).releaseComputerOverlay();
+    } catch {
+      /* the overlay is cosmetic — never fail a run teardown over it */
+    }
   }
 }
 
