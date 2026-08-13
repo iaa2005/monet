@@ -106,6 +106,30 @@ export function CppIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
 }
 
 /**
+ * Browser: a globe, tilted.
+ *
+ * The tilt is the whole point. Upright, this reads as a wireframe sphere and
+ * sits dead level in a row of level icons; off its axis it reads as a planet,
+ * and the meridian is no longer parallel to the equator beside it.
+ *
+ * Baked into the SVG as a transform on the group rather than applied in CSS,
+ * so the icon is the same wherever it is used — a `rotate` in a stylesheet is
+ * one `className` away from being lost. Negative is anticlockwise: SVG's y
+ * axis points down, so the sign is the opposite of the one trigonometry
+ * teaches. Rotating about the centre keeps a circle of r=9.25 exactly where it
+ * was, so nothing leaves the box.
+ */
+export function GlobeIcon(props: SVGProps<SVGSVGElement>): JSX.Element {
+  return (
+    <Icon {...props}>
+      <g transform="rotate(-30 12 12)">
+        <path d="M21.25 12A9.25 9.25 0 0 0 12 2.75M21.25 12H2.75m18.5 0A9.25 9.25 0 0 1 12 21.25m0-18.5A9.25 9.25 0 0 0 2.75 12M12 2.75c-.5 0-4 4.141-4 9.25s3.5 9.25 4 9.25m0-18.5c.5 0 4 4.141 4 9.25s-3.5 9.25-4 9.25M2.75 12A9.25 9.25 0 0 0 12 21.25" />
+      </g>
+    </Icon>
+  );
+}
+
+/**
  * GitHub: the cat.
  *
  * For the CLI entry, which is gh and glab together — the octocat is the half

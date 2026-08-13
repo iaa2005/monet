@@ -39,10 +39,9 @@ import {
   ChevronRight,
   Cpu,
   Check,
-  Globe,
   type LucideIcon,
 } from "lucide-react";
-import { ArtifactIcon, FileIcon } from "@/components/icons";
+import { ArtifactIcon, FileIcon, GlobeIcon } from "@/components/icons";
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import {
@@ -1538,7 +1537,7 @@ export default function App(): JSX.Element {
             active={dockOpen.includes("browser")}
             onClick={() => toggleDock("browser")}
           >
-            <Globe className="size-4" />
+            <GlobeIcon className="size-4" />
           </IconBtn>
           {/* Plan: the session's plan document — prepared in Plan mode,
               built against afterwards. */}
