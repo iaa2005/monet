@@ -1922,7 +1922,11 @@ export default function App(): JSX.Element {
             // something hovering over the page. 80% of the body, and never
             // more than 740px — past that the recents list is scrolling
             // anyway, so the extra height buys nothing.
-            className="absolute left-1 top-1 z-30 h-[min(80%,740px)] w-80 rounded-[var(--radius)] bg-popover p-1 shadow-[0_16px_48px_-12px_rgb(0_0_0/0.35)]"
+            // It slides out from under the toggle rather than appearing where
+            // it lands — the jump was the panel arriving fully formed with no
+            // hint of where it came from. Short and eased: this is a hover,
+            // and anything slower is in the way of the click that follows.
+            className="absolute left-1 top-1 z-30 h-[min(80%,740px)] w-80 animate-in rounded-[var(--radius)] bg-popover p-1 shadow-[0_16px_48px_-12px_rgb(0_0_0/0.35)] duration-150 ease-out fade-in slide-in-from-left-3"
           >
             {sidebarBody}
           </div>
