@@ -19,7 +19,6 @@ import {
   Plus,
   Sparkles,
   Files,
-  Blocks,
   Activity,
   Terminal as TerminalIcon,
   FileDiff,
@@ -32,7 +31,7 @@ import {
   Pencil,
   FileText,
   Upload,
-  Zap,
+  AlarmClock,
   GitFork,
   Archive,
   Trash2,
@@ -44,6 +43,7 @@ import {
   Globe,
   type LucideIcon,
 } from "lucide-react";
+import { ArtifactIcon } from "@/components/icons";
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import {
@@ -1480,7 +1480,7 @@ export default function App(): JSX.Element {
             active={dockOpen.includes("artifacts")}
             onClick={() => toggleDock("artifacts")}
           >
-            <Blocks className="size-4" />
+            <ArtifactIcon className="size-4" />
           </IconBtn>
           {/* Browser: a real page beside the chat, so "check the app" doesn't
               mean alt-tabbing to another window the agent can't see. */}
@@ -1756,7 +1756,7 @@ export default function App(): JSX.Element {
                       onClick={handleImport}
                     />
                     <NavRow
-                      icon={Zap}
+                      icon={AlarmClock}
                       label="Routines"
                       active={dockOpen.includes("routines")}
                       onClick={() => toggleDock("routines")}

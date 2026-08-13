@@ -4,7 +4,9 @@ import {
   Container,
   TerminalSquare,
   type LucideIcon,
+  Settings,
   Settings2,
+  TextCursor,
   Mic,
   Boxes,
   Check,
@@ -127,10 +129,14 @@ const NAV: {
   {
     group: "Settings",
     items: [
-      { id: "general", label: "General", icon: Settings2 },
-      { id: "editor", label: "Editor", icon: Palette },
+      { id: "general", label: "General", icon: Settings },
+      // The editor is where text is edited, not where the theme is picked —
+      // the palette named the one setting on the tab that is not about typing.
+      { id: "editor", label: "Editor", icon: TextCursor },
       { id: "providers", label: "Providers", icon: Boxes },
-      { id: "sandbox", label: "Sandbox", icon: FlaskConical },
+      // A container, because that is literally what the sandbox is now. The
+      // flask was from when it was a Pyodide scratchpad.
+      { id: "sandbox", label: "Sandbox", icon: Container },
       { id: "automation", label: "Automation", icon: MousePointerClick },
       { id: "voice", label: "Voice", icon: Mic },
       { id: "memory", label: "Memory", icon: Brain },

@@ -14,18 +14,26 @@
  * C compiler are one tick away.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import {
   Binary,
   FileText,
   Film,
   Database,
+  FolderGit2,
   Globe,
+  SquareTerminal,
   Wrench,
   Loader2,
   Plus,
   type LucideIcon,
 } from "lucide-react";
+import {
+  CppIcon,
+  GoIcon,
+  JavaIcon,
+  RustIcon,
+} from "@/components/icons";
 import { PickCard } from "@/components/settings/PickCard";
 import { SectionHeader } from "@/components/settings/SectionTitle";
 import type { ElectronAPI } from "@/types/electron";
@@ -50,6 +58,24 @@ const SHELF_ICON: Record<string, LucideIcon> = {
   Media: Film,
   Data: Database,
   Tools: Wrench,
+};
+
+/**
+ * Icons for the entries that HAVE a likeness — a gopher, a coffee cup, a gear
+ * with an R. Everything else falls back to its shelf's glyph, which is the
+ * honest answer for "PDF tools" and "Shell utilities": they are a category,
+ * not a thing.
+ */
+const ENTRY_ICON: Record<
+  string,
+  ComponentType<{ className?: string }>
+> = {
+  cpp: CppIcon,
+  rust: RustIcon,
+  go: GoIcon,
+  jdk: JavaIcon,
+  git: FolderGit2,
+  shell: SquareTerminal,
 };
 
 export function SandboxImageSettings({
@@ -150,7 +176,7 @@ export function SandboxImageSettings({
           {items.map((p) => (
             <PickCard
               key={p.id}
-              icon={SHELF_ICON[p.category]}
+              icon={ENTRY_ICON[p.id] ?? SHELF_ICON[p.category]}
               title={p.label}
               badge={
                 <span className="rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground dark:bg-white/[0.08]">
