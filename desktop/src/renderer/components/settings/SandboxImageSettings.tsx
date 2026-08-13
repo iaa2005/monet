@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import {
   CppIcon,
+  GithubIcon,
   GoIcon,
   JavaIcon,
   RustIcon,
@@ -77,6 +78,7 @@ const ENTRY_ICON: Record<
   go: GoIcon,
   jdk: JavaIcon,
   git: FolderGit2,
+  "forge-cli": GithubIcon,
   shell: SquareTerminal,
 };
 
