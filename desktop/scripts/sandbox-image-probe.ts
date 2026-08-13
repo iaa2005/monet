@@ -134,10 +134,31 @@ check(
 );
 // Anything pip can install has no business in an image: it would be baked into
 // every chat's layer for something that installs in seconds, shared, on demand.
-check(
-  "no Python packages on the list",
-  !IMAGE_PRESETS.some((p) => p.lines.some((l) => /\bpip install\b/.test(l))),
-);
+//
+// One exception, and it has to stay ONE: playwright's Python binding must match
+// the Chromium build sitting beside it in the same layer. Installed later
+// through the shared pip layer it drifts, which is the exact failure the `pdf`
+// skill's setup.sh has a whole section for ("NODE.JS AND PYTHON PLAYWRIGHT
+// VERSION MISMATCH"). A pip line anywhere else is a package that belongs in
+// the shared layer instead.
+{
+  const withPip = IMAGE_PRESETS.filter((p) =>
+    p.lines.some((l) => /\bpip install\b/.test(l)),
+  );
+  check(
+    "pip appears in one entry only — everything else belongs in the shared layer",
+    withPip.length <= 1,
+    withPip.map((p) => p.id).join(", "),
+  );
+  check(
+    "…and it is the browser, whose binding is version-locked to its Chromium",
+    withPip.every(
+      (p) =>
+        p.id === "chromium" &&
+        p.lines.some((l) => /playwright install/.test(l)),
+    ),
+  );
+}
 check(
   "nothing pulls a package index without cleaning up after itself",
   IMAGE_PRESETS.every(

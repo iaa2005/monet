@@ -30,6 +30,7 @@ export const BASE_IMAGE_TAG = "monet-sandbox:v3";
 /** The shelves of the list. Order is the order they are shown in. */
 export const IMAGE_CATEGORIES = [
   "Languages",
+  "Web",
   "Documents",
   "Media",
   "Data",
@@ -116,6 +117,31 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     provides: "java, javac",
     lines: apt("default-jdk-headless"),
   },
+  // ── Web ────────────────────────────────────────────────────────────
+  //
+  // The single most-wanted thing in the skill catalogue. `pdf` checks for it
+  // by name and calls it the HTML route, `playwright-scraper-skill` and
+  // `browse` are nothing without it, `equity-research` lays its tearsheet out
+  // with paged.js, and mermaid-cli renders SVG through the same browser. Big,
+  // and it unlocks more skills than anything else on this list.
+  {
+    id: "chromium",
+    label: "Headless browser",
+    category: "Web",
+    size: "~600 MB",
+    provides:
+      "playwright + headless Chromium — HTML to PDF, page screenshots, scraping a site that needs JavaScript",
+    lines: [
+      "RUN npm install -g playwright",
+      // --with-deps is the apt half: libgbm1, libasound2, libatk-bridge2.0-0
+      // and the rest. Skills that hit this list by hand are working around
+      // its absence.
+      "RUN npx playwright install --with-deps chromium \\",
+      " && rm -rf /var/lib/apt/lists/*",
+      // Both language bindings, because the skills use both.
+      "RUN pip install --no-cache-dir playwright",
+    ],
+  },
   // ── Documents ──────────────────────────────────────────────────────
   {
     id: "libreoffice",
@@ -141,6 +167,18 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     size: "~200 MB",
     provides: "pandoc — markdown, HTML, docx, epub in every direction",
     lines: apt("pandoc"),
+  },
+  // The base image carries DejaVu and Liberation: Latin and Cyrillic, and
+  // nothing else. Several report and slide skills name Noto CJK / Source Han
+  // outright, and without it CJK text renders as boxes in every PDF.
+  {
+    id: "cjkfonts",
+    label: "CJK fonts",
+    category: "Documents",
+    size: "~250 MB",
+    provides:
+      "Noto Sans/Serif CJK — Chinese, Japanese and Korean text in PDFs and images instead of empty boxes",
+    lines: apt("fonts-noto-cjk", "fonts-noto-cjk-extra"),
   },
   // ── Media ──────────────────────────────────────────────────────────
   {
@@ -200,6 +238,45 @@ export const IMAGE_PRESETS: ImagePreset[] = [
     size: "~40 MB",
     provides: "jq, ripgrep, unzip, 7z, tree",
     lines: apt("jq", "ripgrep", "unzip", "p7zip-full", "tree"),
+  },
+  // Each of the three below exists because a skill in the catalogue calls the
+  // binary by name and tells the user to go install it.
+  {
+    id: "forge-cli",
+    label: "GitHub / GitLab CLI",
+    category: "Tools",
+    size: "~90 MB",
+    provides: "gh, glab — pull requests, issues, CI from the command line",
+    lines: [
+      "RUN curl -fsSL https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz \\",
+      " | tar -xz -C /tmp \\",
+      " && mv /tmp/gh_2.63.2_linux_amd64/bin/gh /usr/local/bin/gh \\",
+      " && rm -rf /tmp/gh_2.63.2_linux_amd64",
+      "RUN curl -fsSL https://gitlab.com/gitlab-org/cli/-/releases/v1.49.0/downloads/glab_1.49.0_Linux_x86_64.tar.gz \\",
+      " | tar -xz -C /tmp \\",
+      " && mv /tmp/bin/glab /usr/local/bin/glab \\",
+      " && rm -rf /tmp/bin",
+    ],
+  },
+  {
+    id: "kubectl",
+    label: "kubectl",
+    category: "Tools",
+    size: "~55 MB",
+    provides: "kubectl — talk to a Kubernetes cluster",
+    lines: [
+      "RUN curl -fsSL -o /usr/local/bin/kubectl \\",
+      " https://dl.k8s.io/release/v1.31.4/bin/linux/amd64/kubectl \\",
+      " && chmod +x /usr/local/bin/kubectl",
+    ],
+  },
+  {
+    id: "loadtest",
+    label: "Load testing",
+    category: "Tools",
+    size: "~15 MB",
+    provides: "wrk, ab — measure how an HTTP endpoint holds up",
+    lines: apt("wrk", "apache2-utils"),
   },
 ];
 

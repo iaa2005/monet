@@ -20,6 +20,7 @@ import {
   FileText,
   Film,
   Database,
+  Globe,
   Wrench,
   Loader2,
   Plus,
@@ -44,6 +45,7 @@ interface Preset {
 /** One glyph per shelf — the row is findable by eye before it is read. */
 const SHELF_ICON: Record<string, LucideIcon> = {
   Languages: Binary,
+  Web: Globe,
   Documents: FileText,
   Media: Film,
   Data: Database,
