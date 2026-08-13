@@ -1506,7 +1506,7 @@ export default function App(): JSX.Element {
       />
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex items-center justify-between px-3 pb-1 pt-3">
+        <div className="flex items-center justify-between px-1 pb-1 pt-3">
           <span className="text-[11px] font-medium tracking-wide text-muted-foreground">
             Recents
           </span>

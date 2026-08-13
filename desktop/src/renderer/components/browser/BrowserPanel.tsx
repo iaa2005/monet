@@ -309,7 +309,7 @@ export function BrowserPanel(): JSX.Element {
       </div>
 
       {/* Address bar */}
-      <div className="flex items-center gap-1 border-b border-border px-1.5 py-1">
+      <div className="flex items-center gap-1 px-1.5 py-1">
         <button
           type="button"
           onClick={() => act((v) => v.goBack())}
