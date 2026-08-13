@@ -274,7 +274,7 @@ export function SessionList({
       ) : (
         <div className="flex flex-col pb-2">
           {grouped.map((g) => (
-            <div key={g.title || "all"} className="flex flex-col">
+            <div key={g.title || "all"} className="flex flex-col gap-0.5">
               {g.title && (
                 <div className="px-2 pb-0.5 pt-2 text-[11px] font-medium text-muted-foreground/70">
                   {g.title}
@@ -290,7 +290,7 @@ export function SessionList({
                   // The open chat is branded like every other current thing —
                   // wash behind, brand ink on the title (see the header
                   // toggles and the dock's open tab).
-                  "group relative mx-1 flex cursor-pointer items-center gap-[9px] rounded-md px-[9px] py-1 transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
+                  "group relative flex cursor-pointer items-center gap-[9px] rounded-md px-[9px] py-1 transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
                   // Wash only — no text colour. The row's context menu renders
                   // inside it, and a `text-brand` here came out as a menu with
                   // every item in blue. The title sets its own colour anyway.

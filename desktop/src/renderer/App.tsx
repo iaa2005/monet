@@ -210,7 +210,7 @@ function NavRow({
         // Inset and rounded like the recents rows beside it — a highlight that
         // runs edge to edge belongs to a sidebar with its own surface, and
         // this one no longer has any.
-        "mx-1 flex h-7 items-center gap-2.5 rounded-md px-[9px] text-[13px] font-medium text-foreground transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
+        "flex h-7 items-center gap-2.5 rounded-md px-[9px] text-[13px] font-medium text-foreground transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
         active && "bg-brand-wash text-brand hover:bg-brand-wash hover:text-foreground",
       )}
     >
@@ -264,12 +264,16 @@ export default function App(): JSX.Element {
    * something open.
    */
   const [sidebarPeek, setSidebarPeek] = useState(false);
+  /* Kept mounted while it plays out — an element that unmounts has nothing
+     left to animate. */
+  const [peekClosing, setPeekClosing] = useState(false);
   const peekTimer = useRef<number | null>(null);
   const peekRef = useRef<HTMLDivElement | null>(null);
 
   const holdPeek = (): void => {
     if (peekTimer.current) window.clearTimeout(peekTimer.current);
     peekTimer.current = null;
+    setPeekClosing(false);
     setSidebarPeek(true);
   };
   const releasePeek = (): void => {
@@ -279,8 +283,13 @@ export default function App(): JSX.Element {
         peekTimer.current = window.setTimeout(check, 250);
         return;
       }
-      peekTimer.current = null;
-      setSidebarPeek(false);
+      // Play it out, THEN unmount — same 150ms the entrance takes.
+      setPeekClosing(true);
+      peekTimer.current = window.setTimeout(() => {
+        peekTimer.current = null;
+        setSidebarPeek(false);
+        setPeekClosing(false);
+      }, 150);
     };
     peekTimer.current = window.setTimeout(check, 220);
   };
@@ -1432,7 +1441,11 @@ export default function App(): JSX.Element {
               "flex flex-1 items-center justify-center gap-[7px] rounded-[var(--radius)] text-[13px] font-medium transition-colors",
               appMode === "home"
                 ? "border border-brand/50 bg-brand-wash text-brand"
-                : "bg-popover text-foreground",
+                : // `muted`, not `popover`: the flyout's own surface IS
+                  // popover, so the unselected tab vanished into it — and it
+                  // had no hover at all. The transparent border keeps both
+                  // tabs the size of the bordered one.
+                  "border border-transparent bg-muted text-foreground hover:bg-accent",
             )}
           >
             <Home className="size-3.5" />
@@ -1447,7 +1460,11 @@ export default function App(): JSX.Element {
               "flex flex-1 items-center justify-center gap-[7px] rounded-[var(--radius)] text-[13px] font-medium transition-colors",
               appMode === "code"
                 ? "border border-brand/50 bg-brand-wash text-brand"
-                : "bg-popover text-foreground",
+                : // `muted`, not `popover`: the flyout's own surface IS
+                  // popover, so the unselected tab vanished into it — and it
+                  // had no hover at all. The transparent border keeps both
+                  // tabs the size of the bordered one.
+                  "border border-transparent bg-muted text-foreground hover:bg-accent",
             )}
           >
             <Code className="size-3.5" />
@@ -1456,7 +1473,7 @@ export default function App(): JSX.Element {
         </div>
       </div>
 
-      <div className="flex flex-col">
+      <div className="flex flex-col mt-2 gap-0.5">
         <NavRow
           icon={Plus}
           label="New session"
@@ -1926,7 +1943,14 @@ export default function App(): JSX.Element {
             // it lands — the jump was the panel arriving fully formed with no
             // hint of where it came from. Short and eased: this is a hover,
             // and anything slower is in the way of the click that follows.
-            className="absolute left-1 top-1 z-30 h-[min(80%,740px)] w-80 animate-in rounded-[var(--radius)] bg-popover p-1 shadow-[0_16px_48px_-12px_rgb(0_0_0/0.35)] duration-150 ease-out fade-in slide-in-from-left-3"
+            className={cn(
+              "absolute left-1 top-1 z-30 h-[min(80%,740px)] w-80 rounded-[var(--radius)] bg-popover p-1 shadow-[0_16px_48px_-12px_rgb(0_0_0/0.35)] duration-150 ease-out",
+              peekClosing
+                // Nothing to click on the way out — the panel is leaving, and a
+                // click landing on a fading target is a click nobody meant.
+                ? "pointer-events-none animate-out fade-out slide-out-to-left-3"
+                : "animate-in fade-in slide-in-from-left-3",
+            )}
           >
             {sidebarBody}
           </div>
