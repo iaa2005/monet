@@ -40,10 +40,26 @@ interface ModeDef {
   label: string;
   hint: string;
   icon: LucideIcon;
-  /** Tint for the icon + active trigger label. */
+  /** Tint for the icon in the menu. */
   tone: string;
+  /**
+   * The filled chip the trigger wears in this mode.
+   *
+   * It lives on the mode rather than in the markup because the colour IS the
+   * mode: green runs on its own judgement, amber writes files, blue only
+   * reads, red asks nothing. A reader glancing at the composer should get the
+   * answer from the shape of the chip, before reading a word of it.
+   */
+  badge: string;
   confirm?: "auto" | "bypass";
 }
+
+/** The quiet one: nothing is being waived, so the chip stays neutral. */
+const BADGE_NEUTRAL = "bg-muted text-muted-foreground";
+const BADGE_AMBER = "bg-warn/15 text-warn";
+const BADGE_BLUE = "bg-brand-wash text-brand";
+const BADGE_GREEN = "bg-green-bg text-green-text";
+const BADGE_RED = "bg-red-bg text-red-text";
 
 export const PERMISSION_MODES: ModeDef[] = [
   {
@@ -52,6 +68,7 @@ export const PERMISSION_MODES: ModeDef[] = [
     hint: "Ask before edits and commands",
     icon: Shield,
     tone: "text-muted-foreground",
+    badge: BADGE_NEUTRAL,
   },
   {
     id: "acceptEdits",
@@ -59,6 +76,7 @@ export const PERMISSION_MODES: ModeDef[] = [
     hint: "Auto-accept file edits, ask for the rest",
     icon: FileCheck,
     tone: "text-amber-600 dark:text-amber-500",
+    badge: BADGE_AMBER,
   },
   {
     id: "plan",
@@ -66,6 +84,7 @@ export const PERMISSION_MODES: ModeDef[] = [
     hint: "Read-only — plan before acting",
     icon: ClipboardList,
     tone: "text-sky-600 dark:text-sky-400",
+    badge: BADGE_BLUE,
   },
   {
     id: "auto",
@@ -73,6 +92,7 @@ export const PERMISSION_MODES: ModeDef[] = [
     hint: "Code Monet decides what's safe to run",
     icon: Sparkles,
     tone: "text-green-text",
+    badge: BADGE_GREEN,
     confirm: "auto",
   },
   {
@@ -81,6 +101,7 @@ export const PERMISSION_MODES: ModeDef[] = [
     hint: "Run everything without asking",
     icon: ShieldAlert,
     tone: "text-red-text",
+    badge: BADGE_RED,
     confirm: "bypass",
   },
 ];
@@ -97,6 +118,7 @@ export const HOME_MODES: ModeDef[] = [
     hint: "Code Monet pauses so you can approve each action.",
     icon: Hand,
     tone: "text-muted-foreground",
+    badge: BADGE_NEUTRAL,
   },
   {
     id: "plan",
@@ -104,6 +126,7 @@ export const HOME_MODES: ModeDef[] = [
     hint: "Research first — nothing runs until you approve a plan.",
     icon: ClipboardList,
     tone: "text-link",
+    badge: BADGE_BLUE,
   },
   {
     id: "bypassPermissions",
@@ -111,6 +134,7 @@ export const HOME_MODES: ModeDef[] = [
     hint: "Code Monet never pauses, even for unsafe actions.",
     icon: AlertTriangle,
     tone: "text-red-text",
+    badge: BADGE_RED,
     confirm: "bypass",
   },
 ];
@@ -149,18 +173,19 @@ export function PermissionModeMenu({
   };
 
   /*
-   * The label alone, and a badge when the mode is dangerous.
+   * The label alone, in a chip the colour of the mode.
    *
    * The icon and the chevron were saying what the words already say — a
    * warning triangle beside "Skip all approvals" is the same sentence twice,
    * and every control on this row opens a menu, so a caret on one of them
-   * marks nothing. What DOES need marking is bypass: it stops being a setting
-   * you chose and becomes a state you are in, so it takes a filled badge
-   * rather than coloured text a glance can slide past.
+   * marks nothing. The colour does the work instead: the composer answers
+   * "what may it do without me?" before a word of it is read.
+   *
+   * Hover dims rather than repaints, because a chip that changes colour on
+   * hover would be saying something about the mode, and nothing has changed.
    */
-  const danger = mode === "bypassPermissions";
   const pillBtn =
-    "flex h-7 items-center rounded-md px-2 text-xs font-medium transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]";
+    "flex h-7 items-center rounded-md px-2 text-xs font-medium transition-opacity hover:opacity-80";
 
   return (
     <>
@@ -168,12 +193,7 @@ export function PermissionModeMenu({
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className={cn(
-              pillBtn,
-              danger
-                ? "bg-red-bg text-red-text hover:bg-red-bg hover:text-red-text"
-                : current.tone,
-            )}
+            className={cn(pillBtn, current.badge)}
             title={`Permission mode: ${current.label}`}
           >
             {current.label}

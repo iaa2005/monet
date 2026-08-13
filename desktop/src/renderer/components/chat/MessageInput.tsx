@@ -1387,7 +1387,7 @@ export function MessageInput({
   };
 
   const pillBtn =
-    "flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]";
+    "flex h-7 items-center gap-1 rounded-md px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]";
 
   return (
     <div className="">
