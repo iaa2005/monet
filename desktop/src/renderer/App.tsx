@@ -18,7 +18,6 @@ import {
   Code,
   Plus,
   Sparkles,
-  Files,
   Activity,
   Terminal as TerminalIcon,
   FileDiff,
@@ -43,7 +42,7 @@ import {
   Globe,
   type LucideIcon,
 } from "lucide-react";
-import { ArtifactIcon } from "@/components/icons";
+import { ArtifactIcon, FileIcon } from "@/components/icons";
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";
 import {
@@ -1522,7 +1521,7 @@ export default function App(): JSX.Element {
             active={dockOpen.includes("files")}
             onClick={() => toggleDock("files")}
           >
-            <Files className="size-4" />
+            <FileIcon className="size-4" />
           </IconBtn>
           {/* Artifacts: files the model produced + files the user attached. */}
           <IconBtn
