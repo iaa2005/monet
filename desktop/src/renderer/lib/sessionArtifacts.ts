@@ -126,3 +126,30 @@ export function groupVersions(items: ArtifactItem[]): ArtifactVersions[] {
   groups.sort((a, b) => b.latest.ts - a.latest.ts);
   return groups;
 }
+
+/**
+ * Which copy of its name a given artifact is: 1 is the first the chat wrote,
+ * `total` is the newest.
+ *
+ * The number is a POSITION, not a stored field — a "version" here is simply
+ * how many times this chat wrote a file of that name, which is what the
+ * Artifacts panel already counts when it collapses them into one card. Keeping
+ * it derived means the tab, the card and the panel can never disagree.
+ *
+ * Matched on path when there is one: two writes of report.docx are two files
+ * on disk with different paths, and the name alone cannot tell them apart.
+ */
+export function versionOf(
+  items: ArtifactItem[],
+  target: { name?: string; path?: string },
+): { n: number; total: number } | null {
+  if (!target.name) return null;
+  const sameName = items.filter((i) => i.name === target.name);
+  if (sameName.length === 0) return null;
+  // `items` arrives oldest-first, so the index IS the version, 1-based.
+  const index = target.path
+    ? sameName.findIndex((i) => i.path === target.path)
+    : sameName.length - 1;
+  if (index < 0) return null;
+  return { n: index + 1, total: sameName.length };
+}

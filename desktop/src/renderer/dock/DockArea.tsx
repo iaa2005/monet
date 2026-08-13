@@ -59,6 +59,7 @@ import { BrowserPanel } from "@/components/browser/BrowserPanel";
 import { useBrowserStore } from "@/components/browser/browser-store";
 import { useViewerStore } from "@/stores/viewerStore";
 import { fallbackIcon, resolveIcon } from "@/components/icon-resolver";
+import { useSessionArtifacts, versionOf } from "@/lib/sessionArtifacts";
 import { closeViewerPane, openViewerPane } from "@/dock/dock-store";
 import { cn, midEllipsis } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
@@ -466,6 +467,11 @@ function DockTab(props: IDockviewPanelHeaderProps): JSX.Element {
   // -clicking the tab pins it, exactly as it does there.
   const doc = useViewerStore((s) => s.docs.find((d) => d.id === props.api.id));
   const dark = useIsDark();
+  // A file this chat wrote more than once carries which copy you are looking
+  // at. Only then: v1 on everything would be noise, and the number only means
+  // something when there is another one to be told apart from.
+  const { output } = useSessionArtifacts();
+  const version = doc ? versionOf(output, doc.file) : null;
   return (
     <div
       className="flex h-full items-center gap-1.5 px-0 text-xs font-medium"
@@ -498,6 +504,14 @@ function DockTab(props: IDockviewPanelHeaderProps): JSX.Element {
             tells two similar tabs apart, and CSS truncate would eat it. */}
         {midEllipsis(title ?? "", 26)}
       </span>
+      {version && version.total > 1 && (
+        <span
+          title={`Version ${version.n} of ${version.total} this chat wrote`}
+          className="shrink-0 rounded-full bg-muted px-1.5 text-[10px] font-medium leading-[15px] text-muted-foreground"
+        >
+          v{version.n}
+        </span>
+      )}
       {doc?.dirty && (
         <span
           title="Unsaved changes"
