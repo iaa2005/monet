@@ -1265,7 +1265,13 @@ export interface ElectronAPI {
     image: {
       get: () => Promise<{
         extras: { presets: string[]; extra: string };
-        presets: { id: string; label: string; size: string; provides: string }[];
+        presets: {
+          id: string;
+          label: string;
+          category: string;
+          size: string;
+          provides: string;
+        }[];
         tag: string;
       }>;
       set: (patch: {

@@ -17,6 +17,7 @@
 
 import {
   BASE_IMAGE_TAG,
+  IMAGE_CATEGORIES,
   IMAGE_PRESETS,
   describeExtras,
   extrasContainerfile,
@@ -109,7 +110,42 @@ for (const x of [NONE, RUST, extras(["rust", "cpp"], "RUN echo hi")]) {
 
 // ── Presets are self-describing ───────────────────────────────────────
 
-check("there are presets to tick", IMAGE_PRESETS.length >= 4);
+check("there is a list to pick from", IMAGE_PRESETS.length >= 12);
+check(
+  "every entry is on a known shelf",
+  IMAGE_PRESETS.every((p) => (IMAGE_CATEGORIES as readonly string[]).includes(p.category)),
+  [...new Set(IMAGE_PRESETS.map((p) => p.category))].join(", "),
+);
+check(
+  "every shelf has something on it — an empty heading is a bug in the list",
+  IMAGE_CATEGORIES.every((c) => IMAGE_PRESETS.some((p) => p.category === c)),
+);
+check(
+  "entries of one category are adjacent, so the UI groups without sorting",
+  (() => {
+    const seen: string[] = [];
+    for (const p of IMAGE_PRESETS)
+      if (seen[seen.length - 1] !== p.category) {
+        if (seen.includes(p.category)) return false;
+        seen.push(p.category);
+      }
+    return true;
+  })(),
+);
+// Anything pip can install has no business in an image: it would be baked into
+// every chat's layer for something that installs in seconds, shared, on demand.
+check(
+  "no Python packages on the list",
+  !IMAGE_PRESETS.some((p) => p.lines.some((l) => /\bpip install\b/.test(l))),
+);
+check(
+  "nothing pulls a package index without cleaning up after itself",
+  IMAGE_PRESETS.every(
+    (p) =>
+      !p.lines.some((l) => /apt-get update/.test(l)) ||
+      p.lines.some((l) => /rm -rf \/var\/lib\/apt\/lists/.test(l)),
+  ),
+);
 check(
   "every preset has a size to show before a multi-minute build",
   IMAGE_PRESETS.every((p) => /\d/.test(p.size)),

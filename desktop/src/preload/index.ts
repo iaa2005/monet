@@ -1300,6 +1300,7 @@ const electronAPI = {
         presets: {
           id: string;
           label: string;
+          category: string;
           size: string;
           provides: string;
         }[];

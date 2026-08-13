@@ -27,10 +27,21 @@ import { getDataDir } from "../data-dir.js";
 /** The base image every chat runs, and the FROM of any extension. */
 export const BASE_IMAGE_TAG = "monet-sandbox:v3";
 
+/** The shelves of the list. Order is the order they are shown in. */
+export const IMAGE_CATEGORIES = [
+  "Languages",
+  "Documents",
+  "Media",
+  "Data",
+  "Tools",
+] as const;
+export type ImageCategory = (typeof IMAGE_CATEGORIES)[number];
+
 export interface ImagePreset {
   id: string;
   /** What the user sees. */
   label: string;
+  category: ImageCategory;
   /** Roughly how much it adds, for the confirmation dialog. */
   size: string;
   /** What it makes available, in the model's words — used in tool results. */
@@ -38,34 +49,48 @@ export interface ImagePreset {
   lines: string[];
 }
 
+/** apt in one RUN, so a failure names itself in the build log rather than
+ * leaving a half-updated index in a cached layer. `--no-install-recommends`
+ * throughout: build-essential's recommends alone are ~300 MB of documentation
+ * nobody in a sandbox will read. */
+function apt(...packages: string[]): string[] {
+  return [
+    "RUN apt-get update \\",
+    ` && apt-get install -y --no-install-recommends ${packages.join(" ")} \\`,
+    " && rm -rf /var/lib/apt/lists/*",
+  ];
+}
+
 /**
- * The toolchains people actually ask for.
+ * The list to pick from.
  *
- * Each is one RUN so a failure names itself in the build log. `--no-install-
- * recommends` throughout: the recommends of build-essential alone are ~300 MB
- * of documentation nobody in a sandbox will read.
+ * Chosen from what a sandboxed agent actually walks into: a compiler it does
+ * not have, a .docx it cannot convert, a PDF it cannot read the text out of, a
+ * repository it cannot clone. Sizes are as installed, rounded — they exist so
+ * nobody starts a 700 MB download by accident, not to be exact.
+ *
+ * Not here on purpose: anything pip can install. Those go into the shared pip
+ * layer in seconds and need no image at all (see PIP_ENV_ARGS) — torch in this
+ * list would be a gigabyte baked into every chat's image to no benefit.
  */
 export const IMAGE_PRESETS: ImagePreset[] = [
+  // ── Languages ──────────────────────────────────────────────────────
   {
     id: "cpp",
-    label: "C / C++ (gcc, g++, make)",
+    label: "C / C++",
+    category: "Languages",
     size: "~400 MB",
     provides: "gcc, g++, make, cmake",
-    lines: [
-      "RUN apt-get update \\",
-      " && apt-get install -y --no-install-recommends build-essential cmake \\",
-      " && rm -rf /var/lib/apt/lists/*",
-    ],
+    lines: apt("build-essential", "cmake"),
   },
   {
     id: "rust",
-    label: "Rust (rustc, cargo)",
+    label: "Rust",
+    category: "Languages",
     size: "~700 MB",
     provides: "rustc, cargo",
     lines: [
-      "RUN apt-get update \\",
-      " && apt-get install -y --no-install-recommends build-essential \\",
-      " && rm -rf /var/lib/apt/lists/*",
+      ...apt("build-essential"),
       "RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \\",
       " | sh -s -- -y --profile minimal --no-modify-path",
       'ENV PATH="/root/.cargo/bin:${PATH}"',
@@ -74,6 +99,7 @@ export const IMAGE_PRESETS: ImagePreset[] = [
   {
     id: "go",
     label: "Go",
+    category: "Languages",
     size: "~500 MB",
     provides: "go",
     lines: [
@@ -85,35 +111,95 @@ export const IMAGE_PRESETS: ImagePreset[] = [
   {
     id: "jdk",
     label: "Java (JDK 21)",
+    category: "Languages",
     size: "~350 MB",
     provides: "java, javac",
-    lines: [
-      "RUN apt-get update \\",
-      " && apt-get install -y --no-install-recommends default-jdk-headless \\",
-      " && rm -rf /var/lib/apt/lists/*",
-    ],
+    lines: apt("default-jdk-headless"),
+  },
+  // ── Documents ──────────────────────────────────────────────────────
+  {
+    id: "libreoffice",
+    label: "LibreOffice",
+    category: "Documents",
+    size: "~800 MB",
+    provides: "soffice — converts .docx/.xlsx/.pptx to PDF and between formats",
+    lines: apt("libreoffice-writer", "libreoffice-calc", "libreoffice-impress"),
   },
   {
+    id: "pdftools",
+    label: "PDF tools",
+    category: "Documents",
+    size: "~150 MB",
+    provides:
+      "pdftotext, pdftoppm, pdfimages (poppler) and ghostscript — text out of a PDF, pages to images, compression",
+    lines: apt("poppler-utils", "ghostscript"),
+  },
+  {
+    id: "pandoc",
+    label: "Pandoc",
+    category: "Documents",
+    size: "~200 MB",
+    provides: "pandoc — markdown, HTML, docx, epub in every direction",
+    lines: apt("pandoc"),
+  },
+  // ── Media ──────────────────────────────────────────────────────────
+  {
     id: "ffmpeg",
-    label: "ffmpeg (audio / video)",
+    label: "ffmpeg",
+    category: "Media",
     size: "~250 MB",
-    provides: "ffmpeg, ffprobe",
-    lines: [
-      "RUN apt-get update \\",
-      " && apt-get install -y --no-install-recommends ffmpeg \\",
-      " && rm -rf /var/lib/apt/lists/*",
-    ],
+    provides: "ffmpeg, ffprobe — audio and video, converting and cutting",
+    lines: apt("ffmpeg"),
   },
   {
     id: "imagemagick",
     label: "ImageMagick",
+    category: "Media",
     size: "~120 MB",
-    provides: "convert, magick",
-    lines: [
-      "RUN apt-get update \\",
-      " && apt-get install -y --no-install-recommends imagemagick \\",
-      " && rm -rf /var/lib/apt/lists/*",
-    ],
+    provides: "convert, magick — batch image work Pillow makes awkward",
+    lines: apt("imagemagick"),
+  },
+  {
+    id: "tesseract",
+    label: "Tesseract OCR (eng + rus)",
+    category: "Media",
+    size: "~180 MB",
+    provides: "tesseract — text out of an image, in English and Russian",
+    lines: apt("tesseract-ocr", "tesseract-ocr-eng", "tesseract-ocr-rus"),
+  },
+  // ── Data ───────────────────────────────────────────────────────────
+  {
+    id: "sqlite",
+    label: "SQLite CLI",
+    category: "Data",
+    size: "~5 MB",
+    provides: "sqlite3 — Python already has the library, this is the shell",
+    lines: apt("sqlite3"),
+  },
+  {
+    id: "postgres",
+    label: "PostgreSQL client",
+    category: "Data",
+    size: "~40 MB",
+    provides: "psql, pg_dump — talk to a database elsewhere",
+    lines: apt("postgresql-client"),
+  },
+  // ── Tools ──────────────────────────────────────────────────────────
+  {
+    id: "git",
+    label: "Git",
+    category: "Tools",
+    size: "~60 MB",
+    provides: "git — clone a repository into the sandbox and work in it",
+    lines: apt("git", "ca-certificates"),
+  },
+  {
+    id: "shell",
+    label: "Shell utilities",
+    category: "Tools",
+    size: "~40 MB",
+    provides: "jq, ripgrep, unzip, 7z, tree",
+    lines: apt("jq", "ripgrep", "unzip", "p7zip-full", "tree"),
   },
 ];
 
