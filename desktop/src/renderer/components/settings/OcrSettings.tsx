@@ -125,11 +125,22 @@ export function OcrSettings(): React.JSX.Element {
                   <span className="shrink-0 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] text-brand">
                     in use
                   </span>
+                ) : v.partial && !busy ? (
+                  // A stopped download leaves files that LOOK like an
+                  // install; saying so here is what stops the scanner from
+                  // failing later on a missing weight file.
+                  <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-600 dark:text-amber-400">
+                    unfinished
+                  </span>
                 ) : null
               }
-              description={`${m.short} \u00b7 ${v.size}${
-                m.secondsPerPage ? ` \u00b7 ~${m.secondsPerPage}s a page` : ""
-              }`}
+              description={
+                v.partial && !busy
+                  ? `Download stopped part-way \u00b7 click to resume (keeps what it has)`
+                  : `${m.short} \u00b7 ${v.size}${
+                      m.secondsPerPage ? ` \u00b7 ~${m.secondsPerPage}s a page` : ""
+                    }`
+              }
               selected={chosen && v.installed}
               needsDownload={!v.installed}
               progress={busy ? (progress?.percent ?? 0) : null}

@@ -19,7 +19,13 @@
  */
 
 import { createHash } from "crypto";
-import { createReadStream, createWriteStream, statSync } from "fs";
+import {
+  createReadStream,
+  createWriteStream,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "fs";
 import { mkdir, rename, rm, stat } from "fs/promises";
 import { dirname, join } from "path";
 import { Readable } from "stream";
@@ -206,22 +212,103 @@ async function downloadFile(
 }
 
 /**
+ * The receipt: what a finished install actually wrote.
+ *
+ * Guessing the file list from the catalogue is what made a HALF-installed
+ * model report itself as ready. The `.onnx_data` sidecars are "optional" at
+ * PLANNING time — a small component genuinely has none — but once the repo
+ * publishes one, the graph beside it is a shell that points into it, and a
+ * missing sidecar fails inside onnxruntime as
+ * `file_size: The system cannot find the file specified`, hundreds of
+ * megabytes after the settings page has said "installed".
+ *
+ * Worse, the download order makes that the LIKELY failure: the graphs come
+ * first and are small, the sidecars come last and are the gigabyte. A drop
+ * at 8% leaves every file the old check looked at present and correct.
+ *
+ * So a completed install records what it wrote, and "installed" means that
+ * record still matches the disk. No inference, no network.
+ */
+const RECEIPT = ".monet-install.json";
+
+interface Receipt {
+  /** dtype → the files that install wrote, with the sizes it wrote. */
+  variants: Record<string, { path: string; size: number }[]>;
+}
+
+function readReceipt(dir: string): Receipt | null {
+  try {
+    const raw = JSON.parse(readFileSync(join(dir, RECEIPT), "utf-8")) as Receipt;
+    return raw && typeof raw === "object" && raw.variants ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeReceipt(
+  dir: string,
+  dtype: OcrDtype,
+  files: { path: string; size: number }[],
+): void {
+  try {
+    const cur = readReceipt(dir) ?? { variants: {} };
+    cur.variants[dtype] = files;
+    writeFileSync(join(dir, RECEIPT), JSON.stringify(cur, null, 2), "utf-8");
+  } catch {
+    /* a receipt we cannot write costs a re-verify, not a failed install */
+  }
+}
+
+export type OcrInstallState = "installed" | "partial" | "missing";
+
+/**
+ * Installed, half-installed, or absent — synchronously.
+ *
+ * With a receipt this is exact. Without one (a model installed before
+ * receipts existed) it falls back to the old file check PLUS the tell that
+ * old check lacked: a `.part` file anywhere in the variant means a download
+ * stopped in the middle, whatever else is on disk.
+ */
+export function installState(
+  model: OcrModelInfo,
+  dtype: OcrDtype,
+): OcrInstallState {
+  const dir = modelDir(model);
+  const { required, optional } = variantFiles(model, dtype);
+
+  const receipt = readReceipt(dir)?.variants[dtype];
+  if (receipt) {
+    let anything = false;
+    for (const f of receipt) {
+      const size = statSyncSize(join(dir, f.path));
+      if (size > 0) anything = true;
+      if (size !== f.size) return anything ? "partial" : "missing";
+    }
+    return "installed";
+  }
+
+  // No receipt: an install from an older build, or one that never finished.
+  const partial = [...required, ...optional].some(
+    (p) => statSyncSize(join(dir, `${p}.part`)) > 0,
+  );
+  let present = 0;
+  let missing = 0;
+  for (const path of [...required, "config.json", "tokenizer.json"]) {
+    if (statSyncSize(join(dir, path)) > 0) present++;
+    else missing++;
+  }
+  if (missing > 0 || partial) return present > 0 ? "partial" : "missing";
+  return "installed";
+}
+
+/**
  * Is this model+variant installed, answered synchronously?
  *
  * The tool list is assembled without awaiting anything, and "does the agent
  * get an OCR tool" has to be answerable there.
  */
 export function isInstalledSync(model: OcrModelInfo, dtype: OcrDtype): boolean {
-  const dir = modelDir(model);
-  const { required } = variantFiles(model, dtype);
-  for (const path of [...required, "config.json", "tokenizer.json"]) {
-    try {
-      if (statSyncSize(join(dir, path)) === 0) return false;
-    } catch {
-      return false;
-    }
-  }
-  return true;
+  return installState(model, dtype) === "installed";
 }
 
 /** Is this model+variant fully installed? */
@@ -229,12 +316,7 @@ export async function isInstalled(
   model: OcrModelInfo,
   dtype: OcrDtype,
 ): Promise<boolean> {
-  const dir = modelDir(model);
-  const { required } = variantFiles(model, dtype);
-  for (const path of [...required, "config.json", "tokenizer.json"]) {
-    if ((await sizeOf(join(dir, path))) === 0) return false;
-  }
-  return true;
+  return installState(model, dtype) === "installed";
 }
 
 /** Bytes of this variant already on disk — a part-installed model reports
@@ -303,6 +385,14 @@ export async function installOcrModel(
         },
       );
     }
+    // The receipt is written ONLY here, after every file in the plan landed:
+    // it is the difference between "these files exist" and "this install
+    // finished", and the sidecars are why that difference matters.
+    writeReceipt(
+      dir,
+      dtype,
+      plan.map((f) => ({ path: f.path, size: f.size })),
+    );
     onProgress({ modelId, dtype, loaded: total, total, percent: 100, done: true });
     return { ok: true };
   } catch (err) {

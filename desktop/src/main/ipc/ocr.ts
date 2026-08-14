@@ -22,7 +22,7 @@ import {
   hasBlockFinder,
   installBlockFinder,
   installOcrModel,
-  isInstalled,
+  installState,
   isInstalling,
   removeOcrModel,
 } from "../ocr/install.js";
@@ -38,6 +38,9 @@ export interface UiOcrVariant {
   devices: string[];
   note: string;
   installed: boolean;
+  /** Files on disk, but the install never finished — the sidecars are what
+   * usually stop halfway. Resuming costs only what is missing. */
+  partial: boolean;
   onDisk: number;
   installing: boolean;
 }
@@ -64,7 +67,8 @@ async function toUi(m: OcrModelInfo): Promise<UiOcrModel> {
       size: formatBytes(v.bytes),
       devices: v.devices,
       note: v.note,
-      installed: await isInstalled(m, v.dtype),
+      installed: installState(m, v.dtype) === "installed",
+      partial: installState(m, v.dtype) === "partial",
       onDisk: await bytesOnDisk(m, v.dtype),
       installing: isInstalling(m.id, v.dtype),
     });

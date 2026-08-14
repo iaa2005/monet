@@ -15,7 +15,7 @@ import { existsSync } from "fs";
 import { join } from "path";
 import { moduleDir } from "./module-dir.js";
 import { ocrEngineOf, ocrModel, ocrVariant, type OcrModelInfo } from "./catalog.js";
-import { isInstalled, modelDir } from "./install.js";
+import { installState, modelDir } from "./install.js";
 import { getOcrConfig, ocrModelsDir } from "./settings.js";
 
 interface ChildReply {
@@ -125,11 +125,20 @@ export async function ocrReadiness(): Promise<{
       model,
       reason: `${model.label} is disabled — pick another in Settings → OCR Scanner.`,
     };
-  if (!(await isInstalled(model, cfg.dtype)))
+  // "partial" is its own answer on purpose. A download that stopped in the
+  // middle leaves the graphs on disk and the weight sidecars missing, and
+  // the failure it used to produce — onnxruntime's `file_size: The system
+  // cannot find the file specified` — named a path the user never chose and
+  // suggested nothing. This says which state it is in and what fixes it.
+  const state = installState(model, cfg.dtype);
+  if (state !== "installed")
     return {
       ready: false,
       model,
-      reason: `${model.label} (${cfg.dtype}) is not installed — Settings → OCR Scanner.`,
+      reason:
+        state === "partial"
+          ? `${model.label} (${cfg.dtype}) is only partly downloaded — finish it in Settings → OCR Scanner (it resumes where it stopped).`
+          : `${model.label} (${cfg.dtype}) is not installed — Settings → OCR Scanner.`,
     };
   if (!existsSync(modelDir(model)))
     return { ready: false, model, reason: "Model folder is missing." };
