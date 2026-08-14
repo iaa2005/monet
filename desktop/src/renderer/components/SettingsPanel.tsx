@@ -555,8 +555,8 @@ export function SettingsPanel({
           </div>
         )}
         {groups.map((g) => (
-          <div key={g.group} className="mb-3">
-            <div className="pb-1 pl-1 pt-4 text-[12px] font-medium text-muted-foreground">
+          <div key={g.group} className="mb-2 gap-0.5 grid">
+            <div className="pb-1 pl-1 pt-1 text-[12px] font-medium text-muted-foreground">
               {g.group}
             </div>
             {g.items.map((it) => (
