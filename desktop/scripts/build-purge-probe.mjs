@@ -88,7 +88,7 @@ await build({
     "electron",
     "better-sqlite3",
     "node:sqlite",
-    "@homebridge/node-pty-prebuilt-multiarch",
+    "@lydell/node-pty",
   ],
   plugins: [
     {

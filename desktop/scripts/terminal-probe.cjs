@@ -181,7 +181,7 @@ app.whenReady().then(async () => {
   // "File not found: " with the name left off — so the terminal reported that
   // nothing in particular was missing.
   {
-    const pty = require("@homebridge/node-pty-prebuilt-multiarch");
+    const pty = require("@lydell/node-pty");
     let bareWorks = true;
     try {
       const t = pty.spawn("definitely-not-a-real-binary-xyz", [], {

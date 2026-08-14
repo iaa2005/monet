@@ -17,7 +17,7 @@
  * line, and full-screen programs that need to know the window size.
  */
 
-import type { IPty } from "@homebridge/node-pty-prebuilt-multiarch";
+import type { IPty } from "@lydell/node-pty";
 import { getSessionEngine } from "../sandbox/config.js";
 import {
   PIP_ENV_ARGS,
@@ -240,9 +240,7 @@ export async function openTerminal(
     // whose copy failed to install died at startup with ERR_MODULE_NOT_FOUND
     // before a single window appeared. The terminal is one panel — losing it
     // must cost the terminal, not the app.
-    const { spawn: ptySpawn } = await import(
-      "@homebridge/node-pty-prebuilt-multiarch"
-    );
+    const { spawn: ptySpawn } = await import("@lydell/node-pty");
     pty = ptySpawn(file, args, {
       name: "xterm-256color",
       cols,
@@ -267,7 +265,7 @@ export async function openTerminal(
       return {
         ok: false,
         error:
-          "The terminal's native module (@homebridge/node-pty-prebuilt-multiarch) is not available in this build — " +
+          "The terminal's native module (@lydell/node-pty) is not available in this build — " +
           `reinstall dependencies and repackage. Everything else works. (${why})`,
       };
     return {
