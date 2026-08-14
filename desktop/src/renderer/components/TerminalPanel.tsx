@@ -104,7 +104,7 @@ export function TerminalPanel({
   };
 
   return (
-    <div className="relative flex h-full min-h-0 w-full">
+    <div className="relative flex h-full min-h-0 w-full p-1 pt-0">
       <div className="relative min-w-0 flex-1">
         {activeId ? (
           // Keyed so switching tabs remounts against the other shell — the
@@ -145,7 +145,7 @@ export function TerminalPanel({
 
       {/* Only once there is a choice to make. */}
       {tabs.length > 1 && (
-        <div className="w-40 shrink-0 space-y-0.5 overflow-y-auto border-l border-border py-2 pl-1 pr-1">
+        <div className="w-40 shrink-0 space-y-0.5 overflow-y-auto py-1 pl-1 pr-1 bg-muted/20 rounded-md">
           {tabs.map((t) => (
             <div
               key={t.id}
