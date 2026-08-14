@@ -556,6 +556,12 @@ app.whenReady().then(() => {
       .catch(() => {});
   }, 3_000);
 
+  // Background auto-update from GitHub Releases; surfaces only as the
+  // "Relaunch to update" pill once a new version is downloaded.
+  void import("./app/updater.js")
+    .then((m) => m.startAutoUpdater())
+    .catch(() => {});
+
   // Put a bundled/previously-downloaded portable Podman on PATH so the engine
   // finds it; if Podman is the selected sandbox, provision it in the
   // background so the first run doesn't stall on the download.

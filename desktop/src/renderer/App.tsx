@@ -68,6 +68,7 @@ import { ObsidianIcon } from "@/components/ObsidianIcon";
 import { firstRunVerdict } from "@/lib/first-run";
 import { BetaBadge } from "@/components/BetaBadge";
 import { AccountMenu } from "@/components/AccountMenu";
+import { UpdatePill } from "@/components/UpdatePill";
 import { DocsPanel } from "@/components/docs/DocsPanel";
 import { DirectoryModal } from "@/components/directory/DirectoryModal";
 import { AboutPanel } from "@/components/AboutPanel";
@@ -1555,6 +1556,10 @@ export default function App(): JSX.Element {
           )}
         </div>
       </div>
+
+      {/* A downloaded update waits here, above the account card, until the
+          user grants it the relaunch. */}
+      <UpdatePill />
 
       {/* A card like the tabs at the other end, not a strip
           hanging off a divider. */}

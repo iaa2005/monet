@@ -622,6 +622,11 @@ export interface ElectronAPI {
       callback: (payload: { sessionId: string; mode: string }) => void,
     ) => () => void;
   };
+  updates: {
+    pending: () => Promise<string | null>;
+    install: () => Promise<void>;
+    onReady: (callback: (payload: { version: string }) => void) => () => void;
+  };
   askUser: {
     onRequest: (callback: (request: AskUserRequest) => void) => () => void;
     respond: (

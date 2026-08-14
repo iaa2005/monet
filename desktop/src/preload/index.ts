@@ -328,6 +328,22 @@ const electronAPI = {
     },
   },
 
+  updates: {
+    /** Version already downloaded and waiting for a relaunch, or null. */
+    pending: (): Promise<string | null> => ipcRenderer.invoke("update:pending"),
+    install: (): Promise<void> => ipcRenderer.invoke("update:install"),
+    onReady: (
+      callback: (payload: { version: string }) => void,
+    ): (() => void) => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        payload: { version: string },
+      ) => callback(payload);
+      ipcRenderer.on("update:ready", handler);
+      return () => ipcRenderer.removeListener("update:ready", handler);
+    },
+  },
+
   plan: {
     onRequest: (
       callback: (request: PlanApprovalRequest) => void,

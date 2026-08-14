@@ -2,6 +2,14 @@ appId: com.codemonet.desktop
 productName: Code Monet
 directories:
   output: release
+# GitHub Releases are both the DISTRIBUTION channel and the UPDATE feed:
+# `npm run release` uploads the installer + latest.yml here, and the packaged
+# app's electron-updater polls the same place. Publishing needs GH_TOKEN in
+# the environment; the app itself needs none (the repo's releases are public).
+publish:
+  provider: github
+  owner: iaa2005
+  repo: monet
 files:
   - out/**/*
   # The tray reads this at runtime, so it has to be INSIDE the app — the
