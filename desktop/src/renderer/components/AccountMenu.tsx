@@ -18,7 +18,6 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
 } from "@/components/ui/dropdown-menu";
@@ -86,10 +85,8 @@ export function AccountMenu({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent side="top" align="start" className="w-64">
-        <DropdownMenuLabel className="truncate">
-          {name}
-        </DropdownMenuLabel>
-
+        {/* No name header for now — the row below already shows who this is,
+            and the real identity comes with fizmat.space auth later. */}
         <DropdownMenuItem onClick={onOpenSettings}>
           <Settings />
           Settings
