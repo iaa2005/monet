@@ -598,9 +598,10 @@ export interface ElectronAPI {
     ) => () => void;
     respond: (
       id: string,
-      decision: "approve" | "approve-auto" | "keep-planning",
+      decision: "approve" | "approve-auto" | "keep-planning" | "cancel",
       feedback?: string,
     ) => void;
+    onRequestSettled: (callback: (id: string) => void) => () => void;
     /** The plan document — read/annotate (plan/store.ts in main). */
     current: (sessionId: string) => Promise<Plan | null>;
     list: (sessionId: string) => Promise<Plan[]>;

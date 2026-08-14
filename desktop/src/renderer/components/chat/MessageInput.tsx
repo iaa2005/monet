@@ -46,6 +46,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { useChatStore, type StagedAttachment } from "@/stores/chatStore";
+import { usePlanStore } from "@/stores/planStore";
 import {
   clampComposerHeight,
   COMPOSER_AUTO_MAX_HEIGHT,
@@ -453,6 +454,15 @@ export function MessageInput({
   const addUserMessage = useChatStore((s) => s.addUserMessage);
   const startStreaming = useChatStore((s) => s.startStreaming);
   const setError = useChatStore((s) => s.setError);
+  // A plan awaiting its verdict in THIS chat: the composer is then the
+  // revision field, and its placeholder should say so.
+  const planPendingSid = useChatStore((s) => s.currentSessionId ?? "default");
+  const planPending = usePlanStore(
+    (s) =>
+      s.request !== null &&
+      (s.request.sessionId === undefined ||
+        s.request.sessionId === planPendingSid),
+  );
 
   // Cmd/Ctrl+L (lib/hotkeys.ts) — jump back to typing from anywhere.
   useEffect(() => {
@@ -711,6 +721,21 @@ export function MessageInput({
    * message appears on screen at once: as a "joining the run" chip that the
    * real bubble replaces on delivery, or as a queued bubble.
    */
+  /** A pending plan approval makes the composer the revision field: the
+   * message becomes a user bubble AND the answer to the ExitPlanMode
+   * round-trip ("keep planning" + this text), so the same run resumes and
+   * revises the same plan document. Returns true when it took the message —
+   * every send path (send / queue / inject) asks here first. */
+  const answerPlanWithMessage = (sid: string, text: string): boolean => {
+    const req = usePlanStore.getState().request;
+    if (!req || (req.sessionId !== undefined && req.sessionId !== sid))
+      return false;
+    applyText("");
+    addUserMessage(text, undefined, sid);
+    usePlanStore.getState().respond("keep-planning", text);
+    return true;
+  };
+
   const injectNow = async (): Promise<void> => {
     const store = useChatStore.getState();
     const sid = store.currentSessionId;
@@ -719,6 +744,7 @@ export function MessageInput({
     // A command is for the app, whatever key sent it. Without this, Ctrl+S
     // during a run handed the model the literal text "/clear".
     if (takeLocalCommand(text)) return;
+    if (text && answerPlanWithMessage(sid, text)) return;
     applyText("");
     const { payload, display } = await takeStagedFiles();
     const r = await api()?.chat.inject(sid, text, payload, store.space);
@@ -734,6 +760,7 @@ export function MessageInput({
     // Same as injectNow: queueing "/compact" behind the run would send it to
     // the model when the run ends, not compact anything.
     if (takeLocalCommand(text)) return;
+    if (text && answerPlanWithMessage(sid, text)) return;
     applyText("");
     const { payload, display } = await takeStagedFiles();
     useChatStore.getState().enqueueMessage(sid, text, display, payload);
@@ -1327,6 +1354,21 @@ export function MessageInput({
         }),
       );
     }
+    // A plan is waiting for a verdict → the composer IS the revision field.
+    // The message becomes the user bubble AND the answer to the ExitPlanMode
+    // round-trip ("keep planning" + this text), so the SAME run resumes and
+    // revises the same plan document. Starting a new run here would collide
+    // with the turn still open behind the approval.
+    const planReq = usePlanStore.getState().request;
+    if (
+      planReq &&
+      (planReq.sessionId === undefined || planReq.sessionId === sessionId)
+    ) {
+      addUserMessage(text, displayAttachments, sessionId);
+      usePlanStore.getState().respond("keep-planning", text);
+      return;
+    }
+
     // The bubble, and its id — which has to travel with the send.
     //
     // It did not, and this is the main way messages are sent, so the effect
@@ -1681,7 +1723,11 @@ export function MessageInput({
                   else send();
                 }
               }}
-              placeholder="Type / for commands"
+              placeholder={
+                planPending
+                  ? "Describe what to change in the plan…"
+                  : "Type / for commands"
+              }
               className="composer-input min-w-0 flex-1 min-h-7 overflow-y-auto pl-1 text-sm leading-relaxed outline-none"
               // Dragged: exactly that tall, one line in it or forty.
               // Otherwise: grow with the text, and stop at ten lines.

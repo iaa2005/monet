@@ -74,10 +74,22 @@ export function PlanDocCard({
   const request = usePlanStore((s) => s.request);
   const respond = usePlanStore((s) => s.respond);
   const load = usePlanStore((s) => s.load);
-  const [feedback, setFeedback] = useState("");
   // Build is two steps: the button, then "auto-accept edits while building?"
   // — the mode question comes AFTER the decision to build, not beside it.
   const [confirmAuto, setConfirmAuto] = useState(false);
+
+  // Revising a plan calls ExitPlanMode again, and each call is a message in
+  // the transcript — so a twice-revised plan used to stand in the chat as
+  // three full cards. The document is ONE (revisePlan edits it in place);
+  // the chat should look the same: only the newest call wears the card,
+  // earlier ones collapse to a one-line trace.
+  const isLatestCard = useChatStore((s) => {
+    for (let i = s.messages.length - 1; i >= 0; i--) {
+      const tc = s.messages[i].toolCall;
+      if (tc?.name === "ExitPlanMode") return tc.id === toolCall.id;
+    }
+    return true;
+  });
 
   useEffect(() => load(sessionId), [load, sessionId]);
 
@@ -123,28 +135,35 @@ export function PlanDocCard({
 
   const openPanel = (): void => useDockStore.getState().openPanel("plan");
 
-  // Cmd/Ctrl+Enter while the verdict is pending. The same combo sends a
-  // composer message, so focus decides: in the card's note field it submits
-  // THAT intent (empty note → Build, note → keep planning with it); in any
-  // other input it stays the composer's key; anywhere else it Builds.
+  // Cmd/Ctrl+Enter while the verdict is pending Builds. In any input it
+  // stays the composer's key — typing there is how the plan gets revised.
   useEffect(() => {
     if (!pending) return;
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== "Enter" || !(isMac ? e.metaKey : e.ctrlKey)) return;
       const t = e.target as HTMLElement | null;
-      const inNote = !!t?.closest("[data-plan-note]");
-      if (!inNote && t?.closest("textarea, input, [contenteditable=true]"))
-        return;
+      if (t?.closest("textarea, input, [contenteditable=true]")) return;
       e.preventDefault();
-      const note = feedback.trim();
-      if (inNote && note) respond("keep-planning", note);
-      else if (!confirmAuto) setConfirmAuto(true);
+      if (!confirmAuto) setConfirmAuto(true);
       // On the confirm step the same combo takes the primary answer: auto.
       else respond("approve-auto");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pending, respond, feedback, confirmAuto]);
+  }, [pending, respond, confirmAuto]);
+
+  // An earlier revision: the newest card below carries the document and the
+  // buttons; this call leaves only a trace line, the way a superseded draft
+  // should.
+  if (!isLatestCard)
+    return (
+      <div className="my-1 flex items-center gap-2 text-xs text-muted-foreground">
+        <ListTodo className="size-3.5 shrink-0" />
+        <span className="truncate">
+          {input.title ?? "Plan"} — revised, see the newer plan card
+        </span>
+      </div>
+    );
 
   return (
     <div className="my-2">
@@ -227,32 +246,28 @@ export function PlanDocCard({
         </div>
 
         {pending && !confirmAuto ? (
-          <div className="border-t border-border px-4 py-3">
-            <textarea
-              data-plan-note
-              value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
-              placeholder="Optional: what to change (sent if you keep planning)"
-              rows={2}
-              className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
-            />
-            <div className="mt-2.5 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => respond("keep-planning", feedback)}
-                className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"
-              >
-                Keep planning
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmAuto(true)}
-                className="flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-              >
-                Build
-                <span className="text-xs opacity-70">{comboLabel("mod+enter")}</span>
-              </button>
-            </div>
+          <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
+            <button
+              type="button"
+              onClick={() => respond("cancel")}
+              className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-muted"
+            >
+              Cancel
+            </button>
+            {/* Revision has no field of its own anymore: the composer is the
+                field. A message typed while this card waits answers the
+                round-trip as feedback, and the model revises this same plan. */}
+            <span className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground">
+              To change the plan, just reply in chat
+            </span>
+            <button
+              type="button"
+              onClick={() => setConfirmAuto(true)}
+              className="flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+            >
+              Build
+              <span className="text-xs opacity-70">{comboLabel("mod+enter")}</span>
+            </button>
           </div>
         ) : null}
 

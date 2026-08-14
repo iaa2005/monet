@@ -40,7 +40,10 @@ export type PlanDecision =
   /** Proceed and stop asking about edits in the workspace. */
   | "approve-auto"
   /** Not yet — the model keeps planning, with the user's note. */
-  | "keep-planning";
+  | "keep-planning"
+  /** Declined — do not build, end the turn; the plan stays a draft and the
+   * user follows up in chat when they are ready. */
+  | "cancel";
 
 export interface PlanApprovalResult {
   decision: PlanDecision;
@@ -82,6 +85,13 @@ export function askPlanApprovalFromRenderer(
       settled = true;
       ipcMain.removeListener("plan:response", handler);
       clearTimeout(timer);
+      // However it ended — answered, timed out, window gone — tell the
+      // renderer the round-trip is over. Without this a TIMED-OUT request
+      // stayed pending in the store forever, and the composer (which answers
+      // a pending request instead of sending) would swallow every later
+      // message into a settled promise that no longer listens.
+      if (!win.isDestroyed())
+        win.webContents.send("plan:requestSettled", request.id);
       resolve(result);
     };
     const handler = (

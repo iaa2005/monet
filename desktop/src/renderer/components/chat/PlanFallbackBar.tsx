@@ -46,10 +46,10 @@ export function PlanFallbackBar(): JSX.Element | null {
       </span>
       <button
         type="button"
-        onClick={() => respond("keep-planning")}
+        onClick={() => respond("cancel")}
         className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted"
       >
-        Keep planning
+        Cancel
       </button>
       <button
         type="button"

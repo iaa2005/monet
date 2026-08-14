@@ -342,6 +342,14 @@ const electronAPI = {
     respond: (id: string, decision: PlanDecision, feedback?: string): void => {
       ipcRenderer.send("plan:response", { id, decision, feedback });
     },
+    // The approval round-trip ended (answered, timed out, or the window is
+    // going away) — the renderer must drop a pending request it still holds.
+    onRequestSettled: (callback: (id: string) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, id: string) =>
+        callback(id);
+      ipcRenderer.on("plan:requestSettled", handler);
+      return () => ipcRenderer.removeListener("plan:requestSettled", handler);
+    },
     // ── The plan document (plan/store.ts) ─────────────────────────────
     current: (sessionId: string): Promise<unknown> =>
       ipcRenderer.invoke("plan:current", sessionId),

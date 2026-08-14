@@ -11,6 +11,7 @@
 
 import { useEffect, useMemo, useState, type JSX } from "react";
 import {
+  ArrowLeft,
   Check,
   ChevronRight,
   Circle,
@@ -22,6 +23,7 @@ import {
   User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { comboLabel } from "@/lib/hotkeys";
 import { useChatStore } from "@/stores/chatStore";
 import { usePlanStore } from "@/stores/planStore";
 import { MarkdownViewer } from "@/components/chat/MarkdownViewer";
@@ -259,6 +261,80 @@ function PlanDoc({ plan }: { plan: Plan }): JSX.Element {
   );
 }
 
+/**
+ * The verdict, available where the user actually reads the plan. Same pair
+ * as the chat card — Cancel / Build with the auto-accept follow-up — so
+ * approving from the panel and from the card are one act, not two features.
+ */
+function PendingActions({ sessionId }: { sessionId: string }): JSX.Element | null {
+  const request = usePlanStore((s) => s.request);
+  const respond = usePlanStore((s) => s.respond);
+  const [confirmAuto, setConfirmAuto] = useState(false);
+  const pending =
+    request !== null &&
+    (request.sessionId === undefined || request.sessionId === sessionId);
+  // A resolved request must not leave the confirm step armed for the next one.
+  useEffect(() => {
+    if (!pending) setConfirmAuto(false);
+  }, [pending]);
+  if (!pending) return null;
+
+  return (
+    <div className="sticky top-0 z-10 -mx-1 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+      {!confirmAuto ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => respond("cancel")}
+            className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-muted"
+          >
+            Cancel
+          </button>
+          <span className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground">
+            To change the plan, just reply in chat
+          </span>
+          <button
+            type="button"
+            onClick={() => setConfirmAuto(true)}
+            className="flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+          >
+            Build
+            <span className="text-xs opacity-70">{comboLabel("mod+enter")}</span>
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setConfirmAuto(false)}
+            className="mr-auto flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-muted"
+          >
+            <ArrowLeft className="size-3.5" />
+            Back
+          </button>
+          <span className="text-xs text-muted-foreground">
+            Auto-accept edits while building?
+          </span>
+          <button
+            type="button"
+            onClick={() => respond("approve")}
+            className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-muted"
+          >
+            Ask each time
+          </button>
+          <button
+            type="button"
+            onClick={() => respond("approve-auto")}
+            className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+          >
+            Auto-accept
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** An earlier plan, collapsed to a row until opened. */
 function PastPlan({ plan }: { plan: Plan }): JSX.Element {
   const [open, setOpen] = useState(false);
@@ -324,6 +400,7 @@ export function PlanPanel(): JSX.Element {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-4">
+      <PendingActions sessionId={sessionId} />
       {current ? <PlanDoc plan={current} /> : null}
       {past.length > 0 ? (
         <div className="flex flex-col gap-3">

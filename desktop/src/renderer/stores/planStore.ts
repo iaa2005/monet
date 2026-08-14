@@ -20,7 +20,11 @@ export interface PlanRequest {
   sessionId?: string;
 }
 
-export type PlanDecision = "approve" | "approve-auto" | "keep-planning";
+export type PlanDecision =
+  | "approve"
+  | "approve-auto"
+  | "keep-planning"
+  | "cancel";
 
 function bridge(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -97,6 +101,16 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       if (sessionId !== cur) return;
       localStorage.setItem("permission-mode", mode);
       window.dispatchEvent(new CustomEvent("permission-mode-changed"));
+    });
+  }
+  if (api?.plan?.onRequestSettled) {
+    api.plan.onRequestSettled((id) => {
+      // Main closed the round-trip (timeout, or an answer from elsewhere).
+      // A stale request left here would make the composer keep "answering"
+      // a promise that no longer listens.
+      const s = usePlanStore.getState();
+      if (s.request?.id === id)
+        usePlanStore.setState({ request: null, claimedRequestId: null });
     });
   }
   if (api?.plan?.onRequest) {

@@ -204,8 +204,9 @@ export const ExitPlanModeTool = buildTool({
         "",
         "The user answers with one of: build (you may start, risky actions",
         "still ask), build and auto-accept edits (workspace edits stop",
-        "prompting), or keep planning (you get their note and revise — call",
-        "ExitPlanMode again with the revised plan).",
+        "prompting), a revision note typed in chat (you get it as feedback —",
+        "revise and call ExitPlanMode again; it updates the SAME plan), or",
+        "cancel (do not build, end your turn).",
         "The result tells you which — do not start work until it says you may.",
       ].join("\n"),
     );
@@ -235,6 +236,15 @@ export const ExitPlanModeTool = buildTool({
         })
       : null;
     const { decision, feedback } = await ask(input.plan, doc?.id);
+    if (decision === "cancel") {
+      // Declined is not "revise": the user pressed Cancel, so the model must
+      // not re-present the plan or interrogate them — the plan stays a draft,
+      // the chat stays in plan mode, and the user writes when they are ready.
+      if (doc) setPlanStatus(doc.id, "draft");
+      return out(
+        "The user declined to build this plan. Do NOT build and do NOT present the plan again now. End your turn with a brief acknowledgement; the plan stays a draft and the user will follow up in chat.",
+      );
+    }
     if (decision === "keep-planning") {
       if (doc) {
         setPlanStatus(doc.id, "draft");
