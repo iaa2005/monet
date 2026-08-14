@@ -20,6 +20,7 @@ import {
   cursorPosition,
   focusWindow,
   foregroundApp,
+  launchApp,
   moveMouse,
   pressKey,
   scroll,
@@ -53,6 +54,7 @@ const schema = lazySchema(() =>
         "screenshot",
         "list_elements",
         "focus_window",
+        "launch_app",
         "left_click",
         "right_click",
         "middle_click",
@@ -72,7 +74,7 @@ const schema = lazySchema(() =>
       .string()
       .optional()
       .describe(
-        "Text to type (action=type), a key combo like 'ctrl+c', 'Return' (action=key), or part of a window title (action=focus_window).",
+        "Text to type (action=type), a key combo like 'ctrl+c', 'Return' (action=key), part of a window title (action=focus_window), or an app's Start-menu name (action=launch_app).",
       ),
     scroll_direction: z.enum(["up", "down"]).optional(),
     scroll_amount: z.number().optional().describe("Wheel clicks (default 3)."),
@@ -98,7 +100,8 @@ async function deniedGuard(action: string): Promise<string | null> {
     action === "screenshot" ||
     action === "cursor_position" ||
     action === "list_elements" ||
-    action === "focus_window"
+    action === "focus_window" ||
+    action === "launch_app"
   )
     return null;
   const denied = getComputerConfig().deniedApps.map((a) =>
@@ -227,6 +230,8 @@ export const ComputerTool = buildTool({
         "  coordinate: [x, y] copied from an element's reported click point.",
         "- focus_window — text: part of a window title; brings that app to the",
         "  front. Use it to switch between the windows the screenshot listed.",
+        "- launch_app — text: an app's Start-menu name (e.g. 'Excel',",
+        "  'Блокнот'); starts it directly — no Start-menu clicking needed.",
         "- type — text: the text to type (pastes via clipboard; Unicode ok).",
         "  Click the target field first.",
         "- key — text: a combo like 'ctrl+c', 'alt+Tab', 'Return', 'Escape'.",
@@ -246,6 +251,7 @@ export const ComputerTool = buildTool({
       "- left_click / right_click / middle_click / double_click / mouse_move —",
       "  with coordinate: [x, y].",
       "- focus_window — text: part of a window title; brings that app to the front.",
+      "- launch_app — text: an app's Start-menu name; starts it directly.",
       "- type — text: the text to type (pastes via clipboard; Unicode ok).",
       "- key — text: a combo like 'ctrl+c', 'alt+Tab', 'Return', 'Escape'.",
       "- scroll — coordinate + scroll_direction (up/down) + scroll_amount.",
@@ -319,7 +325,7 @@ export const ComputerTool = buildTool({
           if (!matched)
             return {
               data: {
-                text: `No open window title contains "${text}". Call screenshot to list the open windows.`,
+                text: `No open window title contains "${text}". Call screenshot to list the open windows, or launch_app to start the program.`,
                 isError: true,
               },
             };
@@ -328,6 +334,27 @@ export const ComputerTool = buildTool({
             data: blind()
               ? await describeScreen(`Focused "${matched}".`)
               : await takeScreenshot(sessionId, `Focused "${matched}".`),
+          };
+        }
+        case "launch_app": {
+          if (!text)
+            return {
+              data: { text: "launch_app needs the app's Start-menu name in text.", isError: true },
+            };
+          const started = await launchApp(text);
+          if (!started)
+            return {
+              data: {
+                text: `No installed app matches "${text}". Ask the user for the exact Start-menu name.`,
+                isError: true,
+              },
+            };
+          // Give the window time to appear before reading the screen back.
+          await new Promise((r) => setTimeout(r, 2500));
+          return {
+            data: blind()
+              ? await describeScreen(`Launched "${started}".`)
+              : await takeScreenshot(sessionId, `Launched "${started}".`),
           };
         }
         case "list_elements": {

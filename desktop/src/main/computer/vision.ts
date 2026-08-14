@@ -11,9 +11,10 @@
 import { app } from "electron";
 import { unlink, writeFile } from "fs/promises";
 import { join } from "path";
-import { captureScreen } from "./screen.js";
+import { captureScreen, type Screenshot } from "./screen.js";
 import { detectIcons, ensureIconDetector, hasIconDetector } from "./omniparser.js";
-import { readImageText } from "./winocr.js";
+import { ensureScreenOcr, hasScreenOcr, ppocrImageText } from "./ppocr.js";
+import { readImageText, type OcrLine } from "./winocr.js";
 import type { UiElement } from "./elements.js";
 
 export interface VisionScanResult {
@@ -35,13 +36,13 @@ export async function visionScreenElements(): Promise<VisionScanResult> {
       };
   }
 
-  const shot = await captureScreen();
-  const tmp = join(app.getPath("temp"), `monet-vision-${process.pid}.png`);
-  await writeFile(tmp, shot.png);
+  // Full resolution: the detector letterboxes down to 1280 regardless, but
+  // OCR reads small UI text at half quality from a downscaled capture.
+  const shot = await captureScreen(undefined, Number.MAX_SAFE_INTEGER);
   try {
     const [icons, lines] = await Promise.all([
       detectIcons(shot.png),
-      readImageText(tmp),
+      readScreenLines(shot),
     ]);
 
     // Assign each OCR line to the smallest icon box containing its centre —
@@ -105,6 +106,28 @@ export async function visionScreenElements(): Promise<VisionScanResult> {
       ok: false,
       error: err instanceof Error ? err.message : String(err),
     };
+  }
+}
+
+/**
+ * The words on the screen. PP-OCR (det + eslav rec, ppocr.ts) is the primary —
+ * it reads Cyrillic UI text properly. Windows.Media.Ocr stays as the fallback
+ * for a machine where the models could not be fetched: worse text is still
+ * better than none.
+ */
+async function readScreenLines(shot: Screenshot): Promise<OcrLine[]> {
+  if (!hasScreenOcr()) await ensureScreenOcr();
+  if (hasScreenOcr()) {
+    try {
+      return await ppocrImageText(shot.png);
+    } catch {
+      /* fall through to the OS engine */
+    }
+  }
+  const tmp = join(app.getPath("temp"), `monet-vision-${process.pid}.png`);
+  await writeFile(tmp, shot.png);
+  try {
+    return await readImageText(tmp);
   } finally {
     void unlink(tmp).catch(() => {});
   }

@@ -36,7 +36,13 @@ export interface Screenshot {
   region: ScreenshotRegion;
 }
 
-export async function captureScreen(region?: ScreenshotRegion): Promise<Screenshot> {
+export async function captureScreen(
+  region?: ScreenshotRegion,
+  /** Cap on the returned image's width. The model-facing default keeps
+   * screenshots at a size vision models are trained on; the vision fallback
+   * passes Infinity — OCR wants every pixel the display has. */
+  targetWidth: number = TARGET_WIDTH,
+): Promise<Screenshot> {
   const display = screen.getPrimaryDisplay();
   const { width: dipW, height: dipH } = display.size;
 
@@ -80,8 +86,8 @@ export async function captureScreen(region?: ScreenshotRegion): Promise<Screensh
   let outW = rawRegion.width;
   let outH = rawRegion.height;
 
-  if (outW > TARGET_WIDTH) {
-    const resizedW = TARGET_WIDTH;
+  if (outW > targetWidth) {
+    const resizedW = targetWidth;
     const resizedH = Math.round(outH * resizedW / outW);
     img = img.resize({ width: resizedW, height: resizedH });
     outW = resizedW;

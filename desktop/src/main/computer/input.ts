@@ -206,6 +206,27 @@ Write-Output $p.MainWindowTitle`,
   return out.split("\n").pop()!.trim();
 }
 
+/** Launch an installed application by (part of) its Start-menu name.
+ * Get-StartApps covers classic and Store apps alike; the AppID launches
+ * through the shell, exactly as a Start-menu click would. Returns the
+ * matched app name, or null. */
+export async function launchApp(name: string): Promise<string | null> {
+  const b64 = Buffer.from(name, "utf-8").toString("base64");
+  const r = await ps(
+    `[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}')).ToLower()
+$apps = @(Get-StartApps | Where-Object { $_.Name.ToLower().Contains($t) })
+$app = $apps | Where-Object { $_.Name.ToLower() -eq $t } | Select-Object -First 1
+if (-not $app) { $app = $apps | Sort-Object { $_.Name.Length } | Select-Object -First 1 }
+if (-not $app) { Write-Output '<<NOTFOUND>>'; exit 0 }
+Start-Process ("shell:AppsFolder\\" + $app.AppID)
+Write-Output $app.Name`,
+  );
+  const out = r.stdout.trim();
+  if (!r.ok || !out || out.includes("<<NOTFOUND>>")) return null;
+  return out.split("\n").pop()!.trim();
+}
+
 /** Foreground window's process name (lower-case, no extension), for the
  * Denied-apps gate. Empty string when it can't be determined. */
 export async function foregroundApp(): Promise<string> {

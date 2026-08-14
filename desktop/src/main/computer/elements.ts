@@ -42,7 +42,7 @@ if ($h -eq [IntPtr]::Zero) { [Console]::Out.WriteLine('{"error":"no foreground w
 $root = [System.Windows.Automation.AutomationElement]::FromHandle($h)
 $title = $root.Current.Name
 $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::IsOffscreenProperty, $false)
-$keep = @('Button','Hyperlink','Edit','ComboBox','CheckBox','RadioButton','ListItem','MenuItem','TabItem','TreeItem','SplitButton','Slider','Document')
+$keep = @('Button','Hyperlink','Edit','ComboBox','CheckBox','RadioButton','ListItem','MenuItem','TabItem','TreeItem','SplitButton','Slider','Document','DataItem','HeaderItem')
 $out = New-Object System.Collections.Generic.List[object]
 # Chromium exposes its a11y tree lazily — poke, wait, retry when empty.
 for ($attempt = 0; $attempt -lt 3 -and $out.Count -eq 0; $attempt++) {
