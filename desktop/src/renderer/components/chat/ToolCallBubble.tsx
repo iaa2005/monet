@@ -455,7 +455,7 @@ function FilePathLink({ path }: { path: string }): JSX.Element {
       onKeyDown={(e) => {
         if (e.key === "Enter") handleClick(e as unknown as React.MouseEvent);
       }}
-      className="cursor-pointer font-mono text-xs text-foreground hover:underline"
+      className="cursor-pointer font-mono text-xs text-muted-foreground hover:text-foreground hover:underline"
       title={path}
     >
       {baseName(path)}
@@ -507,13 +507,13 @@ function ToolRow({
           hasDetails && "cursor-pointer",
         )}
       >
-        <span className="text-sm text-muted-foreground whitespace-nowrap">
+        <span className="text-sm text-muted-foreground/70 whitespace-nowrap">
           {human}
         </span>
         {fp ? (
           <FilePathLink path={fp} />
         ) : preview ? (
-          <span className="truncate font-mono text-xs text-foreground">
+          <span className="truncate font-mono text-xs text-muted-foreground">
             {preview}
           </span>
         ) : null}
@@ -578,7 +578,7 @@ function ToolGroupCard({ calls }: { calls: ToolCall[] }): JSX.Element {
         onClick={() => setGroupOpen((o) => !o)}
         className="mx-0 flex w-full items-center gap-2 text-left cursor-pointer"
       >
-        <span className="text-sm text-muted-foreground whitespace-nowrap">
+        <span className="text-sm text-muted-foreground/70 whitespace-nowrap">
           Used {calls.length} tools
         </span>
         <ChevronRight
