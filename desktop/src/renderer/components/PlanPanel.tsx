@@ -280,7 +280,12 @@ function PendingActions({ sessionId }: { sessionId: string }): JSX.Element | nul
   if (!pending) return null;
 
   return (
-    <div className="sticky top-0 z-10 -mx-1 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+    // A bare row, not a card: the panel already frames the document, and a
+    // boxed toolbar read as a card-inside-a-card. No background either — it
+    // sits on the page like the document's own controls; the bottom border
+    // is the only separation. (Not sticky: transparent + sticky would let
+    // the plan scroll through the buttons.)
+    <div className="border-b border-border pb-2.5">
       {!confirmAuto ? (
         <div className="flex flex-wrap items-center gap-2">
           <button
