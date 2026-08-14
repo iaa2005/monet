@@ -177,8 +177,14 @@ export async function downloadFile(
     let have = await sizeOf(part);
     onChunk(have);
 
-    for (let attempt = 1; ; attempt++) {
+    // `stalls` counts CONSECUTIVE attempts that added nothing. A connection
+    // that keeps dropping mid-stream but moves the file forward each time is
+    // making progress, however ugly, and must not be able to exhaust the
+    // budget — a flat cap of six meant a 373 MB file over a link that drops
+    // every ~25 MB could never finish, at any number of clicks.
+    for (let stalls = 0; ; ) {
       if (expect.size && have >= expect.size) break;
+      const before = have;
       try {
         const headers: Record<string, string> = {};
         if (have > 0) headers.Range = `bytes=${have}-`;
@@ -205,10 +211,15 @@ export async function downloadFile(
         throw new Error(`truncated at ${have} of ${expect.size} bytes`);
       } catch (err) {
         if (signal.aborted) throw new Error("Download cancelled");
-        if (attempt >= attempts) throw err;
-        // Whatever landed stays: the next attempt continues from there.
-        have = await sizeOf(part);
-        await new Promise((r) => setTimeout(r, Math.min(15_000, 1000 * attempt)));
+        // Whatever landed stays: the next attempt continues from there. The
+        // stream may have counted bytes the disk never got — resync both
+        // `have` and the bar to what is actually in the file.
+        const actual = await sizeOf(part);
+        onChunk(actual - have);
+        have = actual;
+        stalls = have > before ? 0 : stalls + 1;
+        if (stalls >= attempts) throw err;
+        await new Promise((r) => setTimeout(r, Math.min(15_000, 1000 * (stalls + 1))));
       }
     }
 
@@ -319,11 +330,24 @@ export function installState(
   );
   let present = 0;
   let missing = 0;
+  let onDisk = 0;
   for (const path of [...required, "config.json", "tokenizer.json"]) {
-    if (statSyncSize(join(dir, path)) > 0) present++;
+    const size = statSyncSize(join(dir, path));
+    if (size > 0) present++;
     else missing++;
+    onDisk += size;
   }
+  for (const path of optional) onDisk += statSyncSize(join(dir, path));
   if (missing > 0 || partial) return present > 0 ? "partial" : "missing";
+  // Every file the catalogue can NAME is here — but the weight sidecars are
+  // optional BY NAME, so a download that died exactly between files (every
+  // graph renamed, no .part yet) passes the roll-call while hundreds of
+  // megabytes are absent. The catalogue publishes what the variant weighs;
+  // a folder carrying under 90% of that is not an install, whatever the
+  // names say. (Receipted installs never get here.)
+  const variant = model.variants.find((v) => v.dtype === dtype);
+  if (variant?.bytes && onDisk < variant.bytes * 0.9)
+    return present > 0 ? "partial" : "missing";
   return "installed";
 }
 
