@@ -130,7 +130,7 @@ export function RoutinesList({
   };
 
   return (
-    <div className="shrink-0 px-2">
+    <div className="shrink-0">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -151,78 +151,87 @@ export function RoutinesList({
         <div className="max-h-48 space-y-0.5 overflow-y-auto">
           {[...groups.entries()].map(([routineName, routineChats]) => {
             const collapsed = collapsedRoutines.has(routineName);
+            // A routine with ONE chat renders as just that chat — its title
+            // already names the routine, and a one-child group header was
+            // the same line twice. Continuous-chat routines live here
+            // permanently, so this is the common case, not the corner.
+            const grouped = routineChats.length > 1;
+            const rows = (indent: boolean): JSX.Element[] =>
+              routineChats.map((c) => {
+                const active = c.id === currentSessionId;
+                return (
+                  <div
+                    key={c.id}
+                    className={cn(
+                      // Same row anatomy as Recents: rounded, washed when
+                      // open, brand ink on the open title.
+                      "group relative flex cursor-pointer items-center gap-2 rounded-md px-[9px] py-1 transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
+                      indent && "ml-3",
+                      active && "bg-brand-wash hover:bg-brand-wash",
+                    )}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      showMenu(c.id, e.currentTarget as HTMLElement);
+                    }}
+                  >
+                    <div
+                      className="flex min-w-0 flex-1 items-center gap-2"
+                      onClick={() => onOpen(c.id)}
+                    >
+                      <span
+                        className={cn(
+                          "size-1.5 shrink-0 rounded-full",
+                          active
+                            ? "bg-link"
+                            : "bg-transparent border-2 border-border",
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          "truncate text-[13px] font-medium",
+                          active
+                            ? "text-brand group-hover:text-foreground"
+                            : "text-foreground",
+                        )}
+                      >
+                        {c.title || "Routine run"}
+                      </span>
+                    </div>
+
+                    {/* ⋮ button — visible on hover */}
+                    <button
+                      type="button"
+                      aria-label="More actions"
+                      className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition hover:bg-black/10 hover:text-foreground group-hover:opacity-100 dark:hover:bg-white/10"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        showMenu(c.id, e.currentTarget as HTMLElement);
+                      }}
+                    >
+                      <MoreVertical className="size-3" />
+                    </button>
+                  </div>
+                );
+              });
+            if (!grouped) return <div key={routineName}>{rows(false)}</div>;
             return (
               <div key={routineName}>
                 <button
                   type="button"
                   onClick={() => toggleRoutine(routineName)}
-                  className="flex w-full items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                  className="flex w-full items-center gap-1.5 rounded-md px-[9px] py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
                 >
+                  {collapsed ? (
+                    <ChevronRight className="size-3 shrink-0" />
+                  ) : (
+                    <ChevronDown className="size-3 shrink-0" />
+                  )}
                   <span className="truncate">{routineName}</span>
-                  <span className="tabular-nums text-muted-foreground/70">
+                  <span className="ml-auto tabular-nums text-muted-foreground/70">
                     {routineChats.length}
                   </span>
-                  <span className="ml-auto">
-                    {collapsed ? (
-                      <ChevronRight className="size-3" />
-                    ) : (
-                      <ChevronDown className="size-3" />
-                    )}
-                  </span>
                 </button>
-                {!collapsed && (
-                  <div className="ml-3">
-                    {routineChats.map((c) => {
-                      const active = c.id === currentSessionId;
-                      return (
-                        <div
-                          key={c.id}
-                          className={cn(
-                            "group relative flex cursor-pointer items-center gap-2 px-3 py-1.5 transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]",
-                            active && "bg-black/[0.06] dark:bg-white/[0.08]",
-                          )}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            showMenu(c.id, e.currentTarget as HTMLElement);
-                          }}
-                        >
-                          <div
-                            className="flex min-w-0 flex-1 items-center gap-2"
-                            onClick={() => onOpen(c.id)}
-                          >
-                            <span
-                              className={cn(
-                                "size-1.5 shrink-0 rounded-full",
-                                active ? "bg-link" : "bg-transparent border-2 border-border",
-                              )}
-                            />
-                            <span
-                              className={cn(
-                                "truncate text-[13px]",
-                                active ? "text-foreground" : "text-muted-foreground",
-                              )}
-                            >
-                              {c.title || "Routine run"}
-                            </span>
-                          </div>
-
-                          {/* ⋮ button — visible on hover */}
-                          <button
-                            type="button"
-                            aria-label="More actions"
-                            className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition hover:bg-black/10 hover:text-foreground group-hover:opacity-100 dark:hover:bg-white/10"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              showMenu(c.id, e.currentTarget as HTMLElement);
-                            }}
-                          >
-                            <MoreVertical className="size-3" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                {!collapsed && rows(true)}
               </div>
             );
           })}

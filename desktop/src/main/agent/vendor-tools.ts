@@ -70,7 +70,7 @@ import {
   connectorToolNames,
   connectorToolHasAccounts,
 } from "./connector-tools.js";
-import { CreateRoutineTool } from "./routine-tool.js";
+import { RoutineTool } from "./routine-tool.js";
 import { RememberTool } from "./remember-tool.js";
 import { CreateSkillTool } from "./create-skill-tool.js";
 import {
@@ -280,7 +280,7 @@ const ALL_TOOLS = [
   ServeSandboxTool,
   ComputerTool,
   ...CONNECTOR_TOOLS,
-  CreateRoutineTool,
+  RoutineTool,
   RememberTool,
   // Writes a new skill into the user's skills folder — the counterpart of the
   // Skill tool, which runs one.
@@ -370,8 +370,8 @@ export function isSpaceToolAllowed(
   // Mail tool is pure schema tax and invites the model to call it and fail.
   if (CONNECTOR_TOOL_NAMES.has(name)) return connectorToolHasAccounts(name);
   // Routines exist for both spaces, so the tool does too. It's still gated by
-  // the permission prompt, and it refuses outright inside an unattended run.
-  if (name === "CreateRoutine") return true;
+  // the permission prompt, and its mutations refuse inside an unattended run.
+  if (name === "Routine") return true;
   if (name === "SearchPastChats") return getMemoryConfig().searchChats;
   // Vault tools appear only when a vault is enabled — an empty ObsidianSearch
   // is schema tax that invites a call destined to fail. Both spaces: the
@@ -798,7 +798,7 @@ export async function executeVendorTool(opts: {
   (context as { sessionId?: string }).sessionId = sessionId;
   // Skill copies its bundle into the sandbox only in Home — needs the space.
   (context as { space?: string }).space = space;
-  // CreateRoutine refuses to run with nobody watching. This is deliberately NOT
+  // Routine mutations refuse to run with nobody watching. This is deliberately NOT
   // permissionMode: "Skip all approvals" is also bypassPermissions, and that
   // user is sitting right there — keying off the mode refused them their own
   // routine.

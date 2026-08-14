@@ -14,11 +14,17 @@ import {
   parseCronExpression,
   computeNextCronRun,
 } from "../engine/utils/cron.js";
-import { runAgent } from "../agent/index.js";
+import {
+  runAgent,
+  compactSessionNow,
+  setTurnContext,
+  turnContextState,
+} from "../agent/index.js";
 import { resolveModel } from "../provider/routing.js";
 import { getProviderManager } from "../provider/manager.js";
 import { getSessionStore } from "../session/store.js";
 import {
+  countRuns,
   getRoutine,
   listRoutines,
   listRuns,
@@ -99,64 +105,89 @@ export async function executeRoutine(
   // Connector output: ask the agent to post the result through the connector.
   if (routine.output.kind === "connector" && routine.output.connector)
     task += `\n\nWhen done, post a concise summary of the result to the ${routine.output.connector} connector using its tools.`;
-  let effective = task;
-  let useGate = false;
 
-  // Event trigger: poll the connector for anything new since the last check and
-  // SKIP when there's nothing — the SKIP path (below) turns that into a no-op.
+  // The gate texts, assembled once — HOW they run depends on the chat mode.
+  const gates: string[] = [];
   if (routine.trigger.kind === "event") {
     const ev = routine.trigger.event;
     const since = routine.lastRun ?? routine.createdAt;
-    effective = [
-      `Check ${ev?.connector || "the connected service"} for new ${ev?.type || "events"} since ${since}.`,
-      ev?.filter ? `Only consider events matching: ${ev.filter}.` : "",
-      skipInstruction(),
-      `Otherwise, for the new events, do the following:`,
-      "",
-      effective,
-    ]
-      .filter(Boolean)
-      .join("\n");
-    useGate = true;
+    gates.push(
+      [
+        `Check ${ev?.connector || "the connected service"} for new ${ev?.type || "events"} since ${since}.`,
+        ev?.filter ? `Only consider events matching: ${ev.filter}.` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
   }
-  // Optional agent condition gate on top.
-  if (routine.condition?.kind === "agent" && routine.condition.prompt) {
-    effective = withCondition(routine.condition.prompt, effective);
-    useGate = true;
-  }
+  if (routine.condition?.kind === "agent" && routine.condition.prompt)
+    gates.push(`Evaluate this condition: ${routine.condition.prompt}`);
+  const useGate = gates.length > 0;
 
-  // The retrospective: what the last runs did (or how they failed) rides into
-  // this one, so run N+1 continues instead of restarting — and a run that
-  // failed yesterday gets its cause addressed rather than rediscovered.
-  try {
-    const history = routineHistoryBlock(listRuns(routine.id, 6));
-    if (history) effective = `${effective}\n\n${history}`;
-  } catch {
-    /* continuity, not correctness */
-  }
-  const prompt = effective;
+  const continuous = routine.chat === "continuous";
 
-  const session = store.create(routine.name || "Routine", routine.space);
+  // Continuous mode continues ONE chat run after run — that is the whole
+  // point: run N+1 opens with run N's context. The session id lives on the
+  // routine; a chat the user deleted is simply replaced.
+  let sessionId: string | null = null;
+  if (continuous && routine.sessionId && store.get(routine.sessionId))
+    sessionId = routine.sessionId;
+  const fresh = sessionId === null;
+  const session = sessionId
+    ? { id: sessionId }
+    : store.create(routine.name || "Routine", routine.space);
   // Tag it now, not on success: a run that errors still produced this chat, and
   // the tag is what keeps it out of Recents.
-  store.markRoutineChat(session.id, routine.id);
+  if (fresh) store.markRoutineChat(session.id, routine.id);
+  if (continuous && routine.sessionId !== session.id)
+    updateRoutine(routine.id, { sessionId: session.id });
   notify("routines:started", {
     routineId: routine.id,
     sessionId: session.id,
     name: routine.name || "Routine",
   });
-  let assistantText = "";
-  // Show the routine prompt as the initial user message in the chat.
-  notify("chat:token", {
-    sessionId: session.id,
-    event: { type: "user_message", content: routine.prompt },
-  });
-  try {
+
+  const runOpts = {
+    space: routine.space,
+    providerId: routine.providerId,
+    modelOverride: routine.model,
+    permissionMode: "bypassPermissions" as const,
+    // This is the one place with no user behind it — tools that need a
+    // person (the Routine tool) refuse on this, not on the permission mode.
+    unattended: true,
+    // Ask-level connector actions run unattended ONLY if granted at
+    // creation; destructive is never grantable (the engine enforces both).
+    connectorGrants: routine.grants,
+    // Off = the run's system prompt carries no long-term memory.
+    memory: routine.memory !== false,
+    maxTurns: 30,
+    // Scope to declared connectors plus every connector needed by the
+    // trigger/output. An empty declared scope means the default toolset,
+    // but an explicit output/event connector must still be available.
+    connectors: (() => {
+      const scope = new Set(routine.connectors);
+      if (routine.output.kind === "connector" && routine.output.connector)
+        scope.add(routine.output.connector);
+      if (routine.trigger.kind === "event" && routine.trigger.event?.connector)
+        scope.add(routine.trigger.event.connector);
+      return [...scope];
+    })(),
+  };
+
+  /** One agent turn in the routine's chat, events forwarded to the renderer
+   * exactly like chat:send — returns the assistant's text. */
+  const runTurn = async (prompt: string, display: string): Promise<string> => {
+    let text = "";
+    // Show the prompt as a user message in the chat.
+    notify("chat:token", {
+      sessionId: session.id,
+      event: { type: "user_message", content: display },
+    });
     await runAgent(
       session.id,
       prompt,
       (ev) => {
-        if (ev.type === "text_delta") assistantText += ev.text;
+        if (ev.type === "text_delta") text += ev.text;
         // A run that fails without throwing leaves its chat behind — mark it,
         // the way a hand-driven chat is marked, so the sidebar says so.
         if (ev.type === "error" && ev.error && ev.error !== "Aborted")
@@ -168,40 +199,17 @@ export async function executeRoutine(
             session.id,
             stopReasonLabel(ev.stop_reason, ev.empty === true),
           );
-        // Forward every event to the renderer so chatStore can build the
-        // full display (tool calls, tool results) and persist it — same
-        // pattern as chat:send in ipc/chat.ts.
         notify("chat:token", { sessionId: session.id, event: ev });
       },
-      {
-        space: routine.space,
-        providerId: routine.providerId,
-        modelOverride: routine.model,
-        permissionMode: "bypassPermissions",
-        // This is the one place with no user behind it — tools that need a
-        // person (CreateRoutine) refuse on this, not on the permission mode.
-        unattended: true,
-        // Ask-level connector actions run unattended ONLY if granted at
-        // creation; destructive is never grantable (the engine enforces both).
-        connectorGrants: routine.grants,
-        // Off = the run's system prompt carries no long-term memory.
-        memory: routine.memory !== false,
-        maxTurns: 30,
-        // Scope to declared connectors plus every connector needed by the
-        // trigger/output. An empty declared scope means the default toolset,
-        // but an explicit output/event connector must still be available.
-        connectors: (() => {
-          const scope = new Set(routine.connectors);
-          if (routine.output.kind === "connector" && routine.output.connector)
-            scope.add(routine.output.connector);
-          if (routine.trigger.kind === "event" && routine.trigger.event?.connector)
-            scope.add(routine.trigger.event.connector);
-          return [...scope];
-        })(),
-      },
+      runOpts,
     );
-  } catch (err) {
-    store.delete(session.id);
+    return text;
+  };
+
+  const fail = (err: unknown): RoutineRun => {
+    // A fresh chat in per-run mode dies with its failed run; a continuous
+    // chat is the routine's home and stays, error mark and all.
+    if (!continuous) store.delete(session.id);
     const run: RoutineRun = {
       id: runId,
       routineId: routine.id,
@@ -213,11 +221,10 @@ export async function executeRoutine(
     updateRoutine(routine.id, { lastRun: at, lastStatus: "error" });
     notify("routines:ran", { routineId: routine.id, status: "error" });
     return run;
-  }
+  };
 
-  const text = assistantText.trim();
-  if (useGate && isSkipSentinel(text)) {
-    store.delete(session.id); // condition unmet — no chat
+  const skipped = (): RoutineRun => {
+    if (!continuous) store.delete(session.id); // condition unmet — no chat
     const run: RoutineRun = {
       id: runId,
       routineId: routine.id,
@@ -228,11 +235,72 @@ export async function executeRoutine(
     updateRoutine(routine.id, { lastRun: at, lastStatus: "skipped" });
     notify("routines:ran", { routineId: routine.id, status: "skipped" });
     return run;
+  };
+
+  let assistantText = "";
+  if (continuous) {
+    // The gate runs as its OWN turn: the user watches the check happen —
+    // tools and all — but the turn is then taken out of the model's context
+    // (setTurnContext), so a month of "nothing new" checks never crowds the
+    // chat the actual work lives in.
+    if (useGate) {
+      const gatePrompt = [
+        ...gates,
+        skipInstruction(),
+        `If the condition holds, reply with exactly "PROCEED" and nothing else — the task follows as the next message. Do not start the task in this turn.`,
+      ].join("\n");
+      let gateText = "";
+      try {
+        gateText = await runTurn(gatePrompt, gatePrompt);
+      } catch (err) {
+        return fail(err);
+      } finally {
+        // Out of context either way — a PROCEED turn is as much noise to
+        // run N+2 as a SKIP turn.
+        try {
+          const turns = turnContextState(session.id);
+          const last = turns[turns.length - 1];
+          if (last) setTurnContext(session.id, last.id, false);
+        } catch {
+          /* display concern, never fatal */
+        }
+      }
+      if (isSkipSentinel(gateText.trim())) return skipped();
+    }
+    try {
+      assistantText = await runTurn(task, routine.prompt);
+    } catch (err) {
+      return fail(err);
+    }
+  } else {
+    // Per-run chat: gate and task fold into one prompt, and a SKIP deletes
+    // the chat — a run that did nothing leaves nothing.
+    let effective = task;
+    if (routine.trigger.kind === "event" && gates.length > 0) {
+      effective = [gates[0], skipInstruction(), `Otherwise, for the new events, do the following:`, "", effective].join("\n");
+    }
+    if (routine.condition?.kind === "agent" && routine.condition.prompt)
+      effective = withCondition(routine.condition.prompt, effective);
+    // The retrospective: what the last runs did (or how they failed) rides
+    // into this one, so run N+1 continues instead of restarting. Continuous
+    // chats don't need it — their context IS the history.
+    try {
+      const history = routineHistoryBlock(listRuns(routine.id, 6));
+      if (history) effective = `${effective}\n\n${history}`;
+    } catch {
+      /* continuity, not correctness */
+    }
+    try {
+      assistantText = await runTurn(effective, routine.prompt);
+    } catch (err) {
+      return fail(err);
+    }
+    if (useGate && isSkipSentinel(assistantText.trim())) return skipped();
   }
 
   // Update only the title — chatStore already persisted the full display
   // (user_message, tools, assistant text) via chat:token events.
-  store.updateTitle(session.id, routine.name || session.title);
+  store.updateTitle(session.id, routine.name || "Routine");
 
   const run: RoutineRun = {
     id: runId,
@@ -244,6 +312,18 @@ export async function executeRoutine(
   };
   recordRun(run);
   updateRoutine(routine.id, { lastRun: at, lastStatus: "ok" });
+
+  // The continuous chat's scheduled haircut: every N recorded runs, compact.
+  // Optional — unset means never, and the ordinary in-run compaction still
+  // fires when the window actually fills.
+  if (continuous && routine.compactEvery && routine.compactEvery > 0) {
+    try {
+      if (countRuns(routine.id) % routine.compactEvery === 0)
+        await compactSessionNow(session.id);
+    } catch {
+      /* a failed compaction costs nothing — the next one will catch up */
+    }
+  }
 
   // Notification output: surface the result as a native OS notification.
   if (routine.output.kind === "notification") {

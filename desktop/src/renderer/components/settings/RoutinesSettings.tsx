@@ -84,6 +84,11 @@ interface Draft {
   outputConnector: string;
   condition: string;
   memory: boolean;
+  /** Where runs land: a fresh chat per run, or one continuous chat that
+   * keeps its context between runs. */
+  chatMode: "new" | "continuous";
+  /** continuous: compact the shared chat every N runs; 0 = never. */
+  compactEvery: number;
   enabled: boolean;
 }
 
@@ -109,7 +114,7 @@ const TEMPLATES: Template[] = [
 ];
 
 function emptyDraft(): Draft {
-  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", eventConnector: "", eventType: "", eventInterval: 15, eventFilter: "", connectors: [], grants: [], providerId: "", model: "", outputKind: "chat", outputConnector: "", condition: "", memory: true, enabled: true };
+  return { name: "", prompt: "", space: "code", triggerKind: "schedule", cron: "0 9 * * 1-5", eventConnector: "", eventType: "", eventInterval: 15, eventFilter: "", connectors: [], grants: [], providerId: "", model: "", outputKind: "chat", outputConnector: "", condition: "", memory: true, chatMode: "new", compactEvery: 0, enabled: true };
 }
 
 function draftFromRoutine(r: RoutineRow): Draft {
@@ -140,6 +145,8 @@ function draftFromRoutine(r: RoutineRow): Draft {
     outputConnector: r.output?.connector ?? "",
     condition: r.condition?.prompt ?? "",
     memory: r.memory !== false,
+    chatMode: r.chat === "continuous" ? "continuous" : "new",
+    compactEvery: r.compactEvery ?? 0,
     enabled: r.enabled,
   };
 }
@@ -643,6 +650,11 @@ function RoutineDetail({
       providerId: d.providerId || undefined,
       model: d.model || undefined,
       memory: d.memory,
+      chat: d.chatMode,
+      compactEvery:
+        d.chatMode === "continuous" && d.compactEvery > 0
+          ? d.compactEvery
+          : undefined,
       enabled: d.enabled,
     };
     try {
@@ -1105,10 +1117,56 @@ function RoutineDetail({
               </div>
               <p className="text-xs text-muted-foreground">
                 {d.outputKind === "chat"
-                  ? "Each run opens a new chat with the result."
+                  ? "The result lands in the routine's chat."
                   : d.outputKind === "notification"
                     ? "A native notification with the result (a chat is still saved)."
                     : "The agent posts the result to the connector (a chat is still saved)."}
+              </p>
+
+              {/* Where the runs live: a chat per run, or one chat that
+                  REMEMBERS — run N+1 opens with run N's context. */}
+              <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2">
+                <div className="flex rounded-md border border-border p-0.5">
+                  {(
+                    [
+                      ["new", "New chat per run"],
+                      ["continuous", "One continuous chat"],
+                    ] as const
+                  ).map(([k, labelText]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => set({ chatMode: k })}
+                      className={cn(
+                        "rounded px-2.5 py-1 text-xs font-medium",
+                        d.chatMode === k
+                          ? "bg-black/[0.06] dark:bg-white/[0.08]"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      {labelText}
+                    </button>
+                  ))}
+                </div>
+                {d.chatMode === "continuous" && (
+                  <Select
+                    ariaLabel="Compact the chat"
+                    value={String(d.compactEvery)}
+                    onChange={(v) => set({ compactEvery: Number(v) || 0 })}
+                    options={[
+                      { value: "0", label: "Compact: never" },
+                      { value: "5", label: "Compact every 5 runs" },
+                      { value: "10", label: "Compact every 10 runs" },
+                      { value: "25", label: "Compact every 25 runs" },
+                      { value: "50", label: "Compact every 50 runs" },
+                    ]}
+                  />
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {d.chatMode === "continuous"
+                  ? "Every run continues the same chat, so the agent remembers previous runs. Condition checks stay visible but are kept out of the model's context."
+                  : "Every run starts fresh, with no memory of previous runs."}
               </p>
             </div>
           </section>

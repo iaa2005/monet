@@ -1181,14 +1181,14 @@ export function MessageInput({
 
     // /create-routine expands into a plain instruction rather than being handled
     // here: turning "every weekday at 9" into cron is the model's job, and it
-    // has CreateRoutine for the rest. Sending the raw "/create-routine …" text
-    // would just make the model guess what the slash meant.
+    // has the Routine tool for the rest. Sending the raw "/create-routine …"
+    // text would just make the model guess what the slash meant.
     const routine = /^\/create-routine(?:\s+([\s\S]*))?$/.exec(text);
     if (routine) {
       const wish = routine[1]?.trim();
       text = wish
-        ? `Create a routine for this: ${wish}\n\nWork out the schedule and the connectors it needs, show me what you're about to create, and use the CreateRoutine tool.`
-        : "I want to create a routine. Ask me what it should do and when, then use the CreateRoutine tool.";
+        ? `Create a routine for this: ${wish}\n\nWork out the schedule and the connectors it needs, show me what you're about to create, and use the Routine tool.`
+        : "I want to create a routine. Ask me what it should do and when, then use the Routine tool.";
     }
 
     // A model that can't consume an attachment inline no longer BLOCKS the

@@ -168,7 +168,7 @@ export function PlanDocCard({
   return (
     <div className="my-2">
       <div className="mb-1.5 text-xs text-muted-foreground">Prepared plan</div>
-      <div className="rounded-md border border-border bg-card">
+      <div className="rounded-lg border border-border bg-card">
         {/* Header: the document's "file name" + open-as-panel */}
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <ListTodo className="size-3.5 shrink-0 text-muted-foreground" />
@@ -200,7 +200,7 @@ export function PlanDocCard({
           </button>
         </div>
 
-        <div className="px-4 py-3">
+        <div className="p-3">
           <div className="text-base font-semibold">{title}</div>
           {summary ? (
             <div className="mt-0.5 text-sm text-muted-foreground">{summary}</div>

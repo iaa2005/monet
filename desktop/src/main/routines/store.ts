@@ -57,6 +57,15 @@ export interface Routine {
    * cheap or local model regardless of what the user is chatting with. */
   providerId?: string;
   model?: string;
+  /** Where runs land: a fresh chat per run (default), or ONE continuous chat
+   * that keeps its context between runs — run N+1 remembers run N. */
+  chat?: "new" | "continuous";
+  /** continuous: the chat runs append to. Managed by the executor — created on
+   * the first run, recreated if the user deletes that chat. */
+  sessionId?: string;
+  /** continuous: compact the chat after every N runs. Unset = never — the
+   * ordinary in-run compaction still fires when the window fills. */
+  compactEvery?: number;
   trigger: RoutineTrigger;
   condition?: RoutineCondition;
   output: { kind: OutputKind; connector?: string };
@@ -135,6 +144,23 @@ function db(): ReturnType<typeof getSessionDb> {
     } catch {
       /* column already exists */
     }
+    // Continuous-chat mode: which chat the runs continue, and how often to
+    // compact it. Separate try blocks, same reason as above.
+    try {
+      d.exec(`ALTER TABLE routines ADD COLUMN chat_mode TEXT`);
+    } catch {
+      /* column already exists */
+    }
+    try {
+      d.exec(`ALTER TABLE routines ADD COLUMN session_id TEXT`);
+    } catch {
+      /* column already exists */
+    }
+    try {
+      d.exec(`ALTER TABLE routines ADD COLUMN compact_every INTEGER`);
+    } catch {
+      /* column already exists */
+    }
     // Backfill chats that predate sessions.routine_id, from the run history —
     // done here because routine_runs is guaranteed to exist by this point.
     // Chats whose routine was already deleted are unrecoverable: their runs went
@@ -166,6 +192,9 @@ interface Row {
   provider_id: string | null;
   model: string | null;
   memory: number | null;
+  chat_mode: string | null;
+  session_id: string | null;
+  compact_every: number | null;
   trigger: string;
   condition: string | null;
   output: string;
@@ -188,6 +217,9 @@ function rowToRoutine(r: Row): Routine {
     providerId: r.provider_id ?? undefined,
     model: r.model ?? undefined,
     memory: r.memory === 0 ? false : true,
+    chat: r.chat_mode === "continuous" ? "continuous" : "new",
+    sessionId: r.session_id ?? undefined,
+    compactEvery: r.compact_every ?? undefined,
     trigger: JSON.parse(r.trigger) as RoutineTrigger,
     condition: r.condition ? (JSON.parse(r.condition) as RoutineCondition) : undefined,
     output: JSON.parse(r.output) as Routine["output"],
@@ -217,7 +249,7 @@ export function getRoutine(id: string): Routine | null {
 
 export type RoutineInput = Omit<
   Routine,
-  "id" | "createdAt" | "updatedAt" | "lastRun" | "nextRun" | "lastStatus"
+  "id" | "createdAt" | "updatedAt" | "lastRun" | "nextRun" | "lastStatus" | "sessionId"
 >;
 
 export function createRoutine(input: RoutineInput): Routine {
@@ -225,8 +257,8 @@ export function createRoutine(input: RoutineInput): Routine {
   const r: Routine = { ...input, id: randomUUID(), createdAt: now, updatedAt: now };
   db()
     .prepare(
-      `INSERT INTO routines (id, name, prompt, space, connectors, grants, provider_id, model, memory, trigger, condition, output, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO routines (id, name, prompt, space, connectors, grants, provider_id, model, memory, chat_mode, compact_every, trigger, condition, output, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       r.id,
@@ -238,6 +270,8 @@ export function createRoutine(input: RoutineInput): Routine {
       r.providerId || null,
       r.model || null,
       r.memory === false ? 0 : 1,
+      r.chat === "continuous" ? "continuous" : "new",
+      r.compactEvery ?? null,
       JSON.stringify(r.trigger),
       r.condition ? JSON.stringify(r.condition) : null,
       JSON.stringify(r.output),
@@ -254,7 +288,7 @@ export function updateRoutine(id: string, patch: Partial<Routine>): Routine | nu
   const next: Routine = { ...cur, ...patch, id, updatedAt: new Date().toISOString() };
   db()
     .prepare(
-      `UPDATE routines SET name=?, prompt=?, space=?, connectors=?, grants=?, provider_id=?, model=?, memory=?, trigger=?, condition=?, output=?, enabled=?, updated_at=?, last_run=?, next_run=?, last_status=? WHERE id=?`,
+      `UPDATE routines SET name=?, prompt=?, space=?, connectors=?, grants=?, provider_id=?, model=?, memory=?, chat_mode=?, session_id=?, compact_every=?, trigger=?, condition=?, output=?, enabled=?, updated_at=?, last_run=?, next_run=?, last_status=? WHERE id=?`,
     )
     .run(
       next.name,
@@ -265,6 +299,9 @@ export function updateRoutine(id: string, patch: Partial<Routine>): Routine | nu
       next.providerId || null,
       next.model || null,
       next.memory === false ? 0 : 1,
+      next.chat === "continuous" ? "continuous" : "new",
+      next.sessionId ?? null,
+      next.compactEvery ?? null,
       JSON.stringify(next.trigger),
       next.condition ? JSON.stringify(next.condition) : null,
       JSON.stringify(next.output),
@@ -336,6 +373,16 @@ export function listRoutineChats(
   } catch {
     return [];
   }
+}
+
+/** How many runs this routine has recorded — the counter behind "compact the
+ * continuous chat every N runs". */
+export function countRuns(routineId: string): number {
+  return (
+    db()
+      .prepare("SELECT COUNT(*) AS c FROM routine_runs WHERE routine_id = ?")
+      .get(routineId) as { c: number }
+  ).c;
 }
 
 export function listRuns(routineId: string, limit = 20): RoutineRun[] {
