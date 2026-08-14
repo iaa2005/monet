@@ -115,10 +115,32 @@ export async function scroll(
   );
 }
 
-export async function typeText(text: string): Promise<void> {
+/** PS guard block: bail out before acting when the foreground process is no
+ * longer the one the model last looked at. Checked INSIDE the input script —
+ * one process, no gap between the check and the keystrokes. */
+function expectGuard(expectedApp?: string): string {
+  if (!expectedApp) return "";
+  const b64 = Buffer.from(expectedApp, "utf-8").toString("base64");
+  return `
+$expected = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}'))
+$fgpid = 0
+[MonetInput]::GetWindowThreadProcessId([MonetInput]::GetForegroundWindow(), [ref]$fgpid) | Out-Null
+$fgproc = ''
+try { $fgproc = (Get-Process -Id $fgpid).ProcessName.ToLower() } catch {}
+if ($fgproc -ne $expected) { Write-Output "<<MISMATCH>>$fgproc"; exit 0 }
+`;
+}
+
+export type InputOutcome = { ok: true } | { ok: false; actual: string };
+
+export async function typeText(
+  text: string,
+  expectedApp?: string,
+): Promise<InputOutcome> {
   const b64 = Buffer.from(text, "utf-8").toString("base64");
   const result = await ps(
     `${WIN32}
+${expectGuard(expectedApp)}
 $saved = ''
 try { $saved = Get-Clipboard -Raw } catch {}
 $txt = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}'))
@@ -131,9 +153,13 @@ Start-Sleep -Milliseconds 60
 [MonetInput]::keybd_event(0x56,0,2,[UIntPtr]::Zero)
 [MonetInput]::keybd_event(0xA2,0,2,[UIntPtr]::Zero)
 Start-Sleep -Milliseconds 300
-try { Set-Clipboard -Value $saved } catch {}`,
+try { Set-Clipboard -Value $saved } catch {}
+Write-Output '<<OK>>'`,
   );
   if (!result.ok) throw new Error(result.stderr || "Text input failed");
+  const mm = result.stdout.match(/<<MISMATCH>>(\S*)/);
+  if (mm) return { ok: false, actual: mm[1] || "unknown" };
+  return { ok: true };
 }
 
 const KEY_VK: Record<string, number> = {
@@ -181,12 +207,20 @@ function keyCode(key: string): number {
 }
 
 /** Send a key combination as real key-down/key-up events. */
-export async function pressKey(combo: string): Promise<void> {
+export async function pressKey(
+  combo: string,
+  expectedApp?: string,
+): Promise<InputOutcome> {
   const keys = combo.split("+").map(keyCode);
   const downs = keys.map((key) => `[MonetInput]::keybd_event(${key},0,0,[UIntPtr]::Zero)`).join("; ");
   const ups = [...keys].reverse().map((key) => `[MonetInput]::keybd_event(${key},0,2,[UIntPtr]::Zero)`).join("; ");
-  const result = await ps(`${WIN32}\n${downs}; Start-Sleep -Milliseconds 40; ${ups}`);
+  const result = await ps(
+    `${WIN32}\n${expectGuard(expectedApp)}\n${downs}; Start-Sleep -Milliseconds 40; ${ups}\nWrite-Output '<<OK>>'`,
+  );
   if (!result.ok) throw new Error(result.stderr || "Key press failed");
+  const mm = result.stdout.match(/<<MISMATCH>>(\S*)/);
+  if (mm) return { ok: false, actual: mm[1] || "unknown" };
+  return { ok: true };
 }
 
 export async function cursorPosition(): Promise<{ x: number; y: number }> {

@@ -42,6 +42,12 @@ let lastTransform = {
   offsetY: 0,
 };
 
+/** The foreground process at the last look (screenshot / list_elements /
+ * focus_window / launch_app). Typing is only honest while it still holds:
+ * a target that closed mid-run turned "Typed 6 chars" into keystrokes
+ * sprayed at whatever window came next — reported as success. */
+let lastSeenApp: string | null = null;
+
 interface ComputerOutput {
   text: string;
   isError: boolean;
@@ -166,10 +172,12 @@ function formatScanExtras(scan: {
  * elements, coordinates in DIP screen pixels. */
 async function describeScreen(note: string): Promise<ComputerOutput> {
   lastTransform = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
-  const [wins, scan] = await Promise.all([
+  const [wins, scan, fg] = await Promise.all([
     listTopWindows(),
     listScreenElements(),
+    foregroundApp(),
   ]);
+  lastSeenApp = fg || null;
   const winLines = wins
     .slice(0, 40)
     .map((w) => `- "${w.title}" (${w.app})`);
@@ -210,6 +218,7 @@ async function takeScreenshot(
   region?: { x: number; y: number; width: number; height: number },
 ): Promise<ComputerOutput> {
   const shot = await captureScreen(region);
+  lastSeenApp = (await foregroundApp()) || null;
   lastTransform = {
     scaleX: shot.scaleX,
     scaleY: shot.scaleY,
@@ -521,14 +530,35 @@ export const ComputerTool = buildTool({
                 ),
           };
         }
-        case "type":
+        case "type": {
           if (!text) return { data: { text: "type needs text.", isError: true } };
-          await typeText(text);
+          // Refuse to type into a window the model has not seen. The check
+          // runs inside the input script itself, so there is no gap between
+          // checking and typing — a target that closed mid-run used to keep
+          // collecting "Typed N chars" successes while the keys sprayed at
+          // whatever window came next.
+          const r = await typeText(text, lastSeenApp ?? undefined);
+          if (!r.ok)
+            return {
+              data: {
+                text: `Not typed: the foreground app changed since you last looked — it is now "${r.actual}", not "${lastSeenApp}". Call screenshot to see what happened.`,
+                isError: true,
+              },
+            };
           return { data: { text: `Typed ${text.length} chars.`, isError: false } };
-        case "key":
+        }
+        case "key": {
           if (!text) return { data: { text: "key needs a combo in text.", isError: true } };
-          await pressKey(text);
+          const r = await pressKey(text, lastSeenApp ?? undefined);
+          if (!r.ok)
+            return {
+              data: {
+                text: `Not pressed: the foreground app changed since you last looked — it is now "${r.actual}", not "${lastSeenApp}". Call screenshot to see what happened.`,
+                isError: true,
+              },
+            };
           return { data: { text: `Pressed ${text}.`, isError: false } };
+        }
         case "scroll":
           await scroll(sx, sy, scroll_direction ?? "down", scroll_amount ?? 3);
           return { data: { text: `Scrolled ${scroll_direction ?? "down"}.`, isError: false } };

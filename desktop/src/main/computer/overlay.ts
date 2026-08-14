@@ -159,6 +159,14 @@ async function dodgeApp(gen: number): Promise<void> {
   if (!win || win.isDestroyed() || !win.isVisible() || savedPlacement) return;
   savedPlacement = { bounds: win.getBounds(), maximized: win.isMaximized() };
   if (savedPlacement.maximized) win.unmaximize();
+  // The parked card stays watchable over a maximized target app — but the
+  // AGENT must not know it exists: content protection keeps it out of the
+  // vision capture (same trick as the glow frame), the element filter and the
+  // click guard handle the rest. The renderer collapses its sidebar so the
+  // chat fits the narrow card — see "computer:parked" in App.tsx.
+  win.setAlwaysOnTop(true, "floating");
+  win.setContentProtection(true);
+  win.webContents.send("computer:parked", true);
   await tweenBounds(win, dodgeTarget(), gen);
 }
 
@@ -168,6 +176,9 @@ async function restoreApp(gen: number): Promise<void> {
   if (!saved) return;
   savedPlacement = null;
   if (!win || win.isDestroyed()) return;
+  win.setAlwaysOnTop(false);
+  win.setContentProtection(false);
+  win.webContents.send("computer:parked", false);
   await tweenBounds(win, saved.bounds, gen);
   if (gen !== generation) return;
   if (saved.maximized) win.maximize();

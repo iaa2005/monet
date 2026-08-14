@@ -1183,6 +1183,7 @@ export interface ElectronAPI {
       deniedApps?: string[];
     }) => Promise<{ enabled: boolean; deniedApps: string[] }>;
     overlayPreview: () => Promise<void>;
+    onParked: (cb: (parked: boolean) => void) => () => void;
   };
   connectors: {
     presets: () => Promise<UiConnectorService[]>;

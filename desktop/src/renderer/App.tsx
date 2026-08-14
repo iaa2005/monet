@@ -258,6 +258,25 @@ export default function App(): JSX.Element {
   const [currentSessionId, setCurrentSessionId] = useState<string>();
   const [sessionTitle, setSessionTitle] = useState("New session");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Parked in the corner for a Computer Use run: the card is 400px wide, and
+  // an open sidebar leaves the chat a sliver. Collapse for the duration,
+  // put it back the way it was — and only if the run was what collapsed it.
+  const sidebarBeforePark = useRef<boolean | null>(null);
+  useEffect(() => {
+    return api()?.computer.onParked((parked) => {
+      if (parked) {
+        setSidebarOpen((open) => {
+          sidebarBeforePark.current = open;
+          return false;
+        });
+      } else if (sidebarBeforePark.current !== null) {
+        setSidebarOpen(sidebarBeforePark.current);
+        sidebarBeforePark.current = null;
+      }
+    });
+  }, []);
+
   /*
    * The collapsed sidebar peeks out on hover.
    *

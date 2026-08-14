@@ -1187,6 +1187,12 @@ const electronAPI = {
       ipcRenderer.invoke("computer:setConfig", patch),
     overlayPreview: (): Promise<void> =>
       ipcRenderer.invoke("computer:overlayPreview"),
+    /** True while the window is parked in the corner for a Computer Use run. */
+    onParked: (cb: (parked: boolean) => void): (() => void) => {
+      const handler = (_e: unknown, parked: boolean): void => cb(parked);
+      ipcRenderer.on("computer:parked", handler);
+      return () => ipcRenderer.removeListener("computer:parked", handler);
+    },
   },
 
   connectors: {
