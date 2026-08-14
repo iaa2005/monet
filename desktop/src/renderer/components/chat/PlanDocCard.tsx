@@ -14,6 +14,7 @@
 
 import { useEffect, useState, type JSX } from "react";
 import {
+  ArrowLeft,
   Check,
   Circle,
   ListTodo,
@@ -267,9 +268,10 @@ export function PlanDocCard({
               <button
                 type="button"
                 onClick={() => setConfirmAuto(false)}
-                className="mr-auto rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted"
+                className="mr-auto flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-muted"
               >
-                ← Back
+                <ArrowLeft className="size-3.5" />
+                Back
               </button>
               <button
                 type="button"

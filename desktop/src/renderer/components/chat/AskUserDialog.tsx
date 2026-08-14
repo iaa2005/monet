@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Check, ChevronDown, ChevronUp, HelpCircle, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import type {
   AskUserRequest,
   AskUserAnswer,
@@ -202,17 +201,24 @@ export function AskUserDialog({
             </div>
 
             <div className="flex justify-end gap-2 border-t px-4 py-3">
-              <Button variant="ghost" size="sm" onClick={onCancel}>
+              {/* Same pair as the plan card: bordered secondary, brand-blue
+                  primary — answering questions and approving a plan are the
+                  same "hand the turn back" moment. */}
+              <button
+                type="button"
+                onClick={onCancel}
+                className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-muted"
+              >
                 Dismiss
-              </Button>
-              <Button
-                variant="default"
-                size="sm"
+              </button>
+              <button
+                type="button"
                 disabled={!allAnswered}
                 onClick={submit}
+                className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Submit
-              </Button>
+              </button>
             </div>
           </>
         )}
