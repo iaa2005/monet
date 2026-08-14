@@ -3,8 +3,15 @@
  *
  * Two groups:
  *  - Content  : input the user attached to their messages.
- *  - Artifacts: output the sandbox produced (parsed from RunPython tool results,
- *               which carry "[artifact] <mime> <name> :: <path>" lines).
+ *  - Artifacts: output the sandbox produced (parsed from tool results).
+ *
+ * Output files carry one of two marker lines, and the difference is WHO chose
+ * to show them. "[file] <mime> <name> :: <path>" is a working file — something
+ * a script happened to write; it exists and is reachable, but nobody presents
+ * it. "[artifact] <mime> <name> :: <path>" is a delivery — the model explicitly
+ * handed the file to the user (DeliverFiles, a screenshot, a connector
+ * download). A LaTeX run producing csv → png → tex → pdf writes a dozen
+ * working files and delivers one, and the chat should look like that.
  */
 
 import { useMemo } from "react";
@@ -21,9 +28,19 @@ export interface ArtifactItem {
   dataUrl?: string;
   ts: number;
   source: "content" | "output";
+  /** True when the model explicitly handed this file to the user ([artifact]);
+   * false for working files ([file]). Optional so ad-hoc items (attachments,
+   * viewer stubs) don't have to answer a question that isn't theirs. */
+  delivered?: boolean;
 }
 
-const ARTIFACT_RE = /^\[artifact\]\s+(\S+)\s+(.+?)\s+::\s+(.+)$/;
+const MARKER_RE = /^\[(artifact|file)\]\s+(\S+)\s+(.+?)\s+::\s+(.+)$/;
+
+/** Does this tool output carry file marker lines at all? The cheap gate the
+ * collectors use before paying for a line-by-line parse. */
+export function hasFileMarkers(output: string): boolean {
+  return output.includes("[artifact]") || output.includes("[file]");
+}
 
 export function kindOfMime(mime: string): ArtifactKind {
   if (mime.startsWith("image/")) return "image";
@@ -32,22 +49,23 @@ export function kindOfMime(mime: string): ArtifactKind {
   return "file";
 }
 
-/** Files a single tool result produced (from its [artifact] lines). */
+/** Files a single tool result produced (from its [artifact]/[file] lines). */
 export function sandboxFilesFromOutput(
   output: string,
   ts: number,
 ): ArtifactItem[] {
   const items: ArtifactItem[] = [];
   for (const line of output.split("\n")) {
-    const m = ARTIFACT_RE.exec(line.trim());
+    const m = MARKER_RE.exec(line.trim());
     if (m) {
       items.push({
-        name: m[2],
-        mediaType: m[1],
-        kind: kindOfMime(m[1]),
-        path: m[3],
+        name: m[3],
+        mediaType: m[2],
+        kind: kindOfMime(m[2]),
+        path: m[4],
         ts,
         source: "output",
+        delivered: m[1] === "artifact",
       });
     }
   }
@@ -76,7 +94,7 @@ export function collectArtifacts(messages: ChatMessage[]): SessionArtifacts {
       });
     }
       const out = m.toolCall?.output;
-    if (out && out.includes("[artifact]"))
+    if (out && hasFileMarkers(out))
       output.push(...sandboxFilesFromOutput(out, m.timestamp));
   }
 

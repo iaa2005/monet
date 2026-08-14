@@ -42,12 +42,14 @@ export function stripIndexes(
       return;
     }
     lastIdx = i;
-    // Any tool whose result carries [artifact] markers contributes to the
-    // turn's strip (RunPython, RunCommand, Write, screenshots …).
+    // Only DELIVERED files ([artifact] markers — DeliverFiles, screenshots,
+    // connector downloads) make the strip. Working files ([file] — whatever a
+    // script happened to write) stay off it: a LaTeX turn writes a dozen csv/
+    // png intermediates and the user asked for one pdf.
     const out = m.toolCall?.output;
     if (out && out.includes("[artifact]"))
       for (const f of sandboxFilesFromOutput(out, m.timestamp))
-        acc.set(f.name, f);
+        if (f.delivered) acc.set(f.name, f);
   });
   // Every turn but the running one. A finished turn was already flushed at
   // the user message that ended it; this last flush is the turn in

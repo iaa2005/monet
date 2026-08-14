@@ -130,8 +130,8 @@ export const ServeSandboxTool = buildTool({
           "",
           "Tell the user to switch this chat's sandbox engine to Podman (the",
           "engine menu in the app's top bar, next to Files), then call",
-          "ServeSandbox again. Meanwhile the .html file you wrote is still",
-          "attached to the chat and they can open it from there.",
+          "ServeSandbox again. Meanwhile you can hand the .html file you",
+          "wrote to the user with DeliverFiles so they can open it directly.",
         ].join("\n"),
         true,
       );

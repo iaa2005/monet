@@ -21,8 +21,15 @@ import { ArtifactThumb, KindIcon } from "@/components/ArtifactsPanel";
 import { viewArtifact } from "@/components/artifact-actions";
 
 // Sandbox tool output carries one line per produced file:
-//   [artifact] <mediaType> <name> :: <absolute path>
-const SANDBOX_FILE_RE = /^\[artifact\]\s+(\S+)\s+(.+?)\s+::\s+(.+)$/;
+//   [artifact] <mediaType> <name> :: <path>   — delivered to the user (chip)
+//   [file]     <mediaType> <name> :: <path>   — working file (no chip; the
+//                                               plain-text summary line says
+//                                               what was written)
+// Both are machinery, so both are stripped from the visible text; only the
+// delivered ones become thumbnails/chips. The "Markdown: …" helper line that
+// follows a marker is machinery too.
+const SANDBOX_FILE_RE = /^\[(artifact|file)\]\s+(\S+)\s+(.+?)\s+::\s+(.+)$/;
+const MARKDOWN_HINT_RE = /^Markdown:\s+!\[/;
 
 function kindOfMime(mime: string): "image" | "audio" | "video" | "file" {
   if (mime.startsWith("image/")) return "image";
@@ -31,7 +38,7 @@ function kindOfMime(mime: string): "image" | "audio" | "video" | "file" {
   return "file";
 }
 
-/** Split RunPython output into produced files + the remaining text log. */
+/** Split sandbox output into delivered files (chips) + the visible text log. */
 function parseSandboxOutput(output: string): {
   files: { name: string; mediaType: string; path: string }[];
   text: string;
@@ -39,9 +46,16 @@ function parseSandboxOutput(output: string): {
   const files: { name: string; mediaType: string; path: string }[] = [];
   const rest: string[] = [];
   for (const line of output.split("\n")) {
-    const m = SANDBOX_FILE_RE.exec(line.trim());
-    if (m) files.push({ mediaType: m[1], name: m[2], path: m[3] });
-    else rest.push(line);
+    const trimmed = line.trim();
+    const m = SANDBOX_FILE_RE.exec(trimmed);
+    if (m) {
+      if (m[1] === "artifact")
+        files.push({ mediaType: m[2], name: m[3], path: m[4] });
+      // [file] lines drop silently — the tool's own "Created …" summary
+      // already names what was written.
+    } else if (!MARKDOWN_HINT_RE.test(trimmed)) {
+      rest.push(line);
+    }
   }
   return { files, text: rest.join("\n").trim() };
 }
@@ -121,6 +135,7 @@ const HUMAN_NAMES: Record<string, string> = {
   UpdatePlan: "Updated the plan document",
   Task: "Delegated task",
   RunPython: "Ran Python",
+  DeliverFiles: "Delivered files",
   BrowserNavigate: "Opened page",
   BrowserReadPage: "Read page",
   BrowserInput: "Browser",
@@ -389,10 +404,10 @@ function ToolDetail({
       )}
       {output && (
         <ToolPane copyText={output} divider={!!command}>
-          {output.includes("[artifact]") ? (
+          {output.includes("[artifact]") || output.includes("[file]") ? (
             // Any tool that produced files (Computer/Browser screenshots,
-            // sandbox writes) renders them as thumbnails instead of raw
-            // marker lines.
+            // sandbox writes) goes through the marker parser: delivered files
+            // render as thumbnails, working files vanish from the log.
             <SandboxOutput output={output} inGroup />
           ) : (
             <CodeBlock

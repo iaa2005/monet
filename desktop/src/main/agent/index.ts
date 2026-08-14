@@ -436,8 +436,9 @@ const HOME_DIRECTIVE_DEFAULT = [
   "sandbox of files (user attachments + files you produce): Glob",
   "finds them (subfolders included), Read/Write handle text files,",
   "and RunPython executes Python in the same directory — use it for computation,",
-  "data analysis and binary documents (charts, docx, xlsx). Every file written",
-  "there is attached to the conversation automatically. Only the tools",
+  "data analysis and binary documents (charts, docx, xlsx). Files written there",
+  "are working files the user does NOT see; hand finished results to the user",
+  "with DeliverFiles — deliver the final documents, not intermediates. Only the tools",
   "explicitly provided to you (e.g. Browser or Computer Use, if enabled) reach",
   "outside this sandbox — do not assume any other system access.",
 ].join(" ");

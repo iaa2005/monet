@@ -72,7 +72,8 @@ export const RunCommandTool = buildTool({
         "uses `pip install --target /work/.pip name==X`, which shadows the shared",
         "copy here and changes nothing elsewhere. Do NOT apt/conda-install system",
         "packages (texlive, imagemagick) — they are unavailable.",
-        "Files written to /work are attached to the chat automatically.",
+        "Files written to /work persist for this chat as working files — the",
+        "user does not see them until you hand them over with DeliverFiles.",
         "\n\nrun_in_background is for work whose RESULT YOU DO NOT NEED NEXT.",
         "It returns at once and you are told in this chat when it finishes —",
         "there is no way to wait for it, and nothing to poll. If your very next",
@@ -121,15 +122,17 @@ export const RunCommandTool = buildTool({
     if (r.stderr.trim()) parts.push(`[stderr]\n${r.stderr.trimEnd()}`);
     if (r.error) parts.push(`[sandbox error] ${r.error}`);
     if (r.files.length > 0) {
+      // Working files, same contract as RunPython: visible to the model,
+      // invisible to the user until DeliverFiles hands them over.
       for (const f of r.files) {
         const markdownPath = artifactReference(f.path);
         parts.push(
-          `[artifact] ${f.mediaType} ${f.name} :: ${markdownPath}`,
+          `[file] ${f.mediaType} ${f.name} :: ${markdownPath}`,
         );
         parts.push(`Markdown: ![${f.name}](${markdownPath})`);
       }
       parts.push(
-        `Created ${r.files.length} file(s): ${r.files.map((f) => f.name).join(", ")}`,
+        `Created ${r.files.length} working file(s): ${r.files.map((f) => f.name).join(", ")} — the user does NOT see them. When a file is a finished result, hand it over with DeliverFiles.`,
       );
     }
     if (parts.length === 0) parts.push("(no output)");

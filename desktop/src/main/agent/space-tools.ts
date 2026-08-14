@@ -17,6 +17,9 @@ export const HOME_TOOL_NAMES = new Set([
   // Long installs and builds run detached via its run_in_background flag;
   // the turn keeps thinking and the finish is announced on its own.
   "RunCommand",
+  // Sandbox writes are working files; THIS is the act that shows one to the
+  // user. Without it, Home could finish a document and never present it.
+  "DeliverFiles",
   // Asking for a compiler the image does not have. It cannot install one
   // itself — the container is discarded — and the permission prompt is what
   // makes this safe to offer: the image is shared by every chat.
@@ -80,6 +83,9 @@ export const SANDBOX_ONLY_NAMES = new Set([
   "RunPython",
   "RunCommand",
   "SandboxImage",
+  // Resolves its paths inside the chat's sandbox — nothing to deliver from
+  // in Code, where files live on the real disk the user already sees.
+  "DeliverFiles",
 ]);
 
 /**

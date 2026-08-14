@@ -48,6 +48,7 @@ import type { SubAgentUpdate } from "./subagent.js";
 import { WebFetchTool, WebSearchTool } from "./web-tools.js";
 import { RunPythonTool } from "./sandbox-tool.js";
 import { RunCommandTool } from "./podman-command-tool.js";
+import { DeliverFilesTool } from "./deliver-files-tool.js";
 import { SandboxImageTool } from "./sandbox-image-tool.js";
 import {
   ListMcpResourcesTool,
@@ -265,6 +266,7 @@ const ALL_TOOLS = [
   WebSearchTool,
   RunPythonTool,
   RunCommandTool,
+  DeliverFilesTool,
   SandboxImageTool,
   ListMcpResourcesTool,
   ReadMcpResourceTool,

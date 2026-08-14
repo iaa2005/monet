@@ -25,10 +25,10 @@ import { tunablePrompt } from "../prompts/index.js";
 
 const PROMPT_COMMON = [
   "- Print results you want to report with print().",
-  "- To return a file, WRITE it in the current directory (e.g.",
-  "  plt.savefig('chart.png'), df.to_csv('data.csv')); saved files are shown",
-  "  to the user and attached to the chat automatically. Do NOT call",
-  "  plt.show().",
+  "- To produce a file, WRITE it in the current directory (e.g.",
+  "  plt.savefig('chart.png'), df.to_csv('data.csv')). Saved files are",
+  "  working files: kept and visible to you, NOT shown to the user — hand",
+  "  finished results over with DeliverFiles. Do NOT call plt.show().",
   "- The working directory PERSISTS between runs in this chat: a file you",
   "  saved earlier (e.g. chart.png) is still there — read or embed it",
   "  directly (doc.add_picture('chart.png')), no need to regenerate it.",
@@ -51,9 +51,9 @@ const PROMPT_PYODIDE = [
   "- There is NO pip CLI and NO subprocess in this sandbox. For an explicit",
   "  install use: import micropip; await micropip.install('name').",
   "- You cannot run a web server in this chat. If the user wants to SEE an",
-  "  .html page, write the file (it is attached to the chat and they can open",
-  "  it) and tell them that switching this chat's sandbox engine to Podman",
-  "  lets you serve and view it in the app's browser.",
+  "  .html page, write the file, deliver it with DeliverFiles so they can",
+  "  open it, and tell them that switching this chat's sandbox engine to",
+  "  Podman lets you serve and view it in the app's browser.",
   "- Networking from Python is unreliable here (requests/urllib3 fail).",
   "  For a simple HTTP GET use: from pyodide.http import pyfetch;",
   "  resp = await pyfetch(url); text = await resp.text(). Prefer the",
@@ -74,7 +74,7 @@ const PROMPT_SUBPROCESS = [
   "  subprocess.run([sys.executable, '-m', 'pip', 'install', 'name'])).",
   "- Networking works normally (requests, online APIs) — but do NOT start a",
   "  web server: this engine runs on the user's own machine, so a server here",
-  "  would expose their files. Write the .html (it is attached to the chat)",
+  "  would expose their files. Write the .html, deliver it with DeliverFiles,",
   "  and say that the Podman engine can serve it safely in the app's browser.",
   "- Networking works normally (requests, online APIs).",
   "- Locally installed CLI tools MAY be available (pdflatex, pandoc, git …):",
@@ -184,6 +184,10 @@ export const RunPythonTool = buildTool({
           "Execute Python in a sandbox to compute results, analyse data, or",
           "produce documents (charts, .xlsx, .docx, .csv, .pdf …). This is how",
           "you DO things in Home — there is no direct filesystem here.",
+          "Files your code writes are WORKING FILES: you and later runs see",
+          "them, the user does not. Work with as many intermediates as you",
+          "need (data files, draft renders, .tex sources); when a file is a",
+          "finished result, hand it to the user with DeliverFiles.",
         ].join("\n"),
       ),
       "",
@@ -205,15 +209,17 @@ export const RunPythonTool = buildTool({
       if (r.stderr.trim()) parts.push(`[stderr]\n${r.stderr.trimEnd()}`);
       if (r.error) parts.push(`[sandbox error] ${r.error}`);
       if (r.files.length > 0) {
+        // [file] = a working file: reachable, versioned, NOT shown to the
+        // user. Delivery is a separate, deliberate act — DeliverFiles.
         for (const f of r.files) {
           const markdownPath = artifactReference(f.path);
           parts.push(
-            `[artifact] ${f.mediaType} ${f.name} :: ${markdownPath}`,
+            `[file] ${f.mediaType} ${f.name} :: ${markdownPath}`,
           );
           parts.push(`Markdown: ![${f.name}](${markdownPath})`);
         }
         parts.push(
-          `Created ${r.files.length} file(s): ${r.files.map((f) => f.name).join(", ")}`,
+          `Created ${r.files.length} working file(s): ${r.files.map((f) => f.name).join(", ")} — the user does NOT see them. When a file is a finished result, hand it over with DeliverFiles.`,
         );
       }
       if (parts.length === 0) parts.push("(no output)");
