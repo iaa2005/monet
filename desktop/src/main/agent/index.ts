@@ -1991,8 +1991,16 @@ async function runAgentScoped(
               input: event.input,
             });
             // What the budget's extension decision is made of: repetition is
-            // the difference between a long job and a stuck one.
-            callSignatures.push(callSignature(event.name, event.input ?? {}));
+            // the difference between a long job and a stuck one. Computer
+            // keystrokes are exempt: pressing Down, Down, Down into a
+            // spreadsheet is data entry, and the loop detector fired on
+            // exactly that in a live run.
+            const compAction =
+              event.name === "Computer"
+                ? (event.input as { action?: string } | undefined)?.action
+                : undefined;
+            if (!(compAction === "key" || compAction === "type" || compAction === "scroll"))
+              callSignatures.push(callSignature(event.name, event.input ?? {}));
             if (reconLeft > 0) reconToolCalls++;
           }
           if (event.type === "error") streamError = event.error;
@@ -2508,6 +2516,7 @@ async function runAgentScoped(
     // mirror. Say so ONCE, while there are still steps to act on it — capped
     // and spaced so the correction cannot become its own loop.
     if (
+      isFeatureOn("loops") &&
       shouldSteerLoop({
         signatures: callSignatures,
         steersUsed: loopSteersUsed,

@@ -127,19 +127,39 @@ async function deniedGuard(action: string): Promise<string | null> {
 /** One element per line, centre coordinates ready to click. Coordinates are
  * mapped through `toImg` when the caller's space is not screen pixels. */
 function formatElementLines(
-  els: { n: string; t: string; x: number; y: number; w: number; h: number }[],
+  els: { n: string; t: string; x: number; y: number; w: number; h: number; k?: string }[],
   toImg?: (x: number, y: number) => [number, number],
 ): string {
   return els
-    .slice(0, 120)
+    .slice(0, 180)
     .map((e, i) => {
       const cx = e.x + e.w / 2;
       const cy = e.y + e.h / 2;
       const [ix, iy] = toImg ? toImg(cx, cy) : [Math.round(cx), Math.round(cy)];
       const label = e.n ? `"${e.n}"` : "(unnamed)";
-      return `${i + 1}. [${e.t}] ${label} — click at [${ix}, ${iy}]`;
+      // The Alt accelerator, when the app publishes one (Office ribbons do):
+      // keystrokes beat coordinates on any DPI, so say so inline.
+      const key = e.k ? ` — or press ${e.k.replace(/\s+/g, "")}` : "";
+      return `${i + 1}. [${e.t}] ${label} — click at [${ix}, ${iy}]${key}`;
     })
     .join("\n");
+}
+
+/** The two lines that must come before any element list: an open modal
+ * dialog (everything else bounces off with an error chime until it is
+ * dealt with) and where the keyboard focus is. */
+function formatScanExtras(scan: {
+  dialogs?: string[];
+  focused?: { n: string; t: string } | null;
+}): string {
+  let out = "";
+  if (scan.dialogs && scan.dialogs.length > 0)
+    out +=
+      `!! MODAL DIALOG open: ${scan.dialogs.map((d) => `"${d}"`).join(", ")} — its controls are listed FIRST below. ` +
+      `Deal with it before anything else; clicks outside it just bounce with an error sound.\n`;
+  if (scan.focused)
+    out += `Keyboard focus is on [${scan.focused.t}] ${scan.focused.n ? `"${scan.focused.n}"` : "(unnamed)"} — typing lands there.\n`;
+  return out;
 }
 
 /** Blind-mode "screenshot": open windows + the foreground window's clickable
@@ -156,6 +176,7 @@ async function describeScreen(note: string): Promise<ComputerOutput> {
   let body: string;
   if (scan.ok && (scan.elements?.length ?? 0) > 0) {
     body =
+      formatScanExtras(scan) +
       `Foreground window "${scan.title ?? ""}" — interactive elements (pass an element's [x, y] straight to a click action):\n` +
       formatElementLines(scan.elements ?? []);
   } else {
@@ -461,6 +482,7 @@ export const ComputerTool = buildTool({
           return {
             data: {
               text:
+                formatScanExtras(scan) +
                 `UI elements of "${scan.title ?? ""}" (coordinates are in the last screenshot's pixel space — pass them directly to click actions):\n` +
                 formatElementLines(els, toImg),
               isError: false,

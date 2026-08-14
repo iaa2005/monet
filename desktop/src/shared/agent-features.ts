@@ -24,6 +24,7 @@ export type FeatureId =
   // ── Recovery: the harness catching a run that lost the thread ──
   | "nudge"
   | "budget"
+  | "loops"
   // ── Checking the work ──
   | "verify"
   | "judge"
@@ -150,6 +151,16 @@ export const FEATURES: FeatureSpec[] = [
     description:
       "A reply with no text and no tool call is a model that lost the thread, but the loop reads it as \"finished\" and the chat simply stops. The harness sends the nudge you would have sent by hand. Twice per run at most.",
     icon: "Wind",
+    group: "Recovery",
+    defaultOn: true,
+    cost: "free",
+  },
+  {
+    id: "loops",
+    name: "Catch a loop",
+    description:
+      "When one exact call repeats with identical input, the model is told mid-run — from inside, every identical result looks like one more datum rather than a mirror. Can misread patient work (data entry, retries you asked for) as being stuck; switch it off if the notes annoy more than they save.",
+    icon: "Repeat",
     group: "Recovery",
     defaultOn: true,
     cost: "free",

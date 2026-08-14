@@ -18,12 +18,19 @@ export interface UiElement {
   y: number;
   w: number;
   h: number;
+  /** Office-style Alt accelerator (UIA AccessKey), when the control has one. */
+  k?: string;
 }
 
 export interface UiElementsResult {
   ok: boolean;
   title?: string;
   elements?: UiElement[];
+  /** Titles of open modal child windows (dialogs) — the thing every click
+   * bounces off with an error chime until it is dealt with. */
+  dialogs?: string[];
+  /** The keyboard-focused element right now, when UIA can name one. */
+  focused?: UiElement | null;
   error?: string;
 }
 
@@ -48,28 +55,67 @@ $root = [System.Windows.Automation.AutomationElement]::FromHandle($h)
 $title = $root.Current.Name
 $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::IsOffscreenProperty, $false)
 $keep = @('Button','Hyperlink','Edit','ComboBox','CheckBox','RadioButton','ListItem','MenuItem','TabItem','TreeItem','SplitButton','Slider','Document','DataItem','HeaderItem')
-$out = New-Object System.Collections.Generic.List[object]
+
+function Read-El($el) {
+  $c = $el.Current
+  $t = $c.ControlType.ProgrammaticName -replace '^ControlType\\.',''
+  if ($keep -notcontains $t) { return $null }
+  $r = $c.BoundingRectangle
+  if ([double]::IsInfinity($r.Width) -or $r.Width -le 1 -or $r.Height -le 1) { return $null }
+  $name = $c.Name
+  if ([string]::IsNullOrWhiteSpace($name)) { $name = $c.AutomationId }
+  if ([string]::IsNullOrWhiteSpace($name) -and $t -ne 'Edit' -and $t -ne 'Document') { return $null }
+  if ($name.Length -gt 80) { $name = $name.Substring(0,80) }
+  $o = @{ n = $name; t = $t; x = [int]$r.X; y = [int]$r.Y; w = [int]$r.Width; h = [int]$r.Height }
+  # Office ribbons publish their Alt accelerators here — the reliable way to
+  # drive them blind, immune to DPI and layout.
+  $ak = $c.AccessKey
+  if (-not [string]::IsNullOrWhiteSpace($ak)) { $o.k = $ak }
+  return $o
+}
+
+# Modal child windows FIRST, into their own list: while one is open every
+# click elsewhere bounces off with the error chime, so the model must see it
+# before anything else — and a huge host window (Excel) must not crowd it out.
+$dialogs = New-Object System.Collections.Generic.List[string]
+$dout = New-Object System.Collections.Generic.List[object]
+$winCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window)
+try {
+  $children = $root.FindAll([System.Windows.Automation.TreeScope]::Children, $winCond)
+  foreach ($dlg in $children) {
+    try {
+      $dialogs.Add($dlg.Current.Name)
+      $dels = $dlg.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+      foreach ($el in $dels) {
+        if ($dout.Count -ge 100) { break }
+        try { $o = Read-El $el; if ($o) { $dout.Add($o) } } catch { continue }
+      }
+    } catch { continue }
+  }
+} catch {}
+
+# The keyboard focus — one line that tells the model where typing will land.
+$focused = $null
+try {
+  $f = [System.Windows.Automation.AutomationElement]::FocusedElement
+  if ($f) { $focused = Read-El $f }
+} catch {}
+
+# The window itself. Collect generously — 600, not 150: the old cap filled up
+# with whatever the tree walk met first (Excel: the status bar) and the parts
+# that matter never made the list. The TS side ranks, dedupes the dialog
+# children this walk sees again, and trims.
 # Chromium exposes its a11y tree lazily — poke, wait, retry when empty.
+$out = New-Object System.Collections.Generic.List[object]
 for ($attempt = 0; $attempt -lt 3 -and $out.Count -eq 0; $attempt++) {
   if ($attempt -gt 0) { Start-Sleep -Milliseconds (300 * $attempt) }
   $els = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
   foreach ($el in $els) {
-    if ($out.Count -ge 150) { break }
-    try {
-      $c = $el.Current
-      $t = $c.ControlType.ProgrammaticName -replace '^ControlType\\.',''
-      if ($keep -notcontains $t) { continue }
-      $r = $c.BoundingRectangle
-      if ([double]::IsInfinity($r.Width) -or $r.Width -le 1 -or $r.Height -le 1) { continue }
-      $name = $c.Name
-      if ([string]::IsNullOrWhiteSpace($name)) { $name = $c.AutomationId }
-      if ([string]::IsNullOrWhiteSpace($name) -and $t -ne 'Edit' -and $t -ne 'Document') { continue }
-      if ($name.Length -gt 80) { $name = $name.Substring(0,80) }
-      $out.Add(@{ n = $name; t = $t; x = [int]$r.X; y = [int]$r.Y; w = [int]$r.Width; h = [int]$r.Height })
-    } catch { continue }
+    if ($out.Count -ge 600) { break }
+    try { $o = Read-El $el; if ($o) { $out.Add($o) } } catch { continue }
   }
 }
-$res = @{ title = $title; elements = $out }
+$res = @{ title = $title; dialogEls = $dout; elements = $out; dialogs = $dialogs; focused = $focused }
 [Console]::Out.WriteLine(($res | ConvertTo-Json -Compress -Depth 4))
 `;
 
@@ -134,25 +180,55 @@ function runJsonPs<T>(
   });
 }
 
+/** ConvertTo-Json collapses a 1-element list to a bare object. */
+function asList<T>(v: T[] | T | null | undefined): T[] {
+  return Array.isArray(v) ? v : v ? [v] : [];
+}
+
+/**
+ * What to show first when the list must be cut. Fields and inputs, then the
+ * things one clicks, then navigation, then content rows. Excel's thousand
+ * status-bar descendants were winning on tree order alone; usefulness is not
+ * tree order.
+ */
+const TYPE_RANK: Record<string, number> = {
+  Edit: 0,
+  ComboBox: 1,
+  Button: 2,
+  SplitButton: 2,
+  TabItem: 3,
+  MenuItem: 3,
+  CheckBox: 4,
+  RadioButton: 4,
+  Hyperlink: 5,
+  ListItem: 6,
+  TreeItem: 6,
+  DataItem: 6,
+  HeaderItem: 7,
+  Slider: 7,
+  Document: 8,
+};
+
+/** How many ranked elements the model is shown. */
+const REPORT_CAP = 180;
+
 export async function listScreenElements(): Promise<UiElementsResult> {
   const r = await runJsonPs<{
     error?: string;
     title?: string;
     elements?: UiElement[] | UiElement | null;
+    dialogEls?: UiElement[] | UiElement | null;
+    dialogs?: string[] | string | null;
+    focused?: UiElement | null;
   }>(SCRIPT, 15_000);
   if (!r.ok) return { ok: false, error: r.error };
   if (r.value.error) return { ok: false, error: r.value.error };
-  // ConvertTo-Json collapses a 1-element list to a bare object.
-  const els = Array.isArray(r.value.elements)
-    ? r.value.elements
-    : r.value.elements
-      ? [r.value.elements]
-      : [];
+
   // UIA speaks physical pixels; the tool's whole coordinate space is DIP
   // (screenshots, the vision fallback, Electron's own screen API). Convert
   // at the edge, once — on a 175% display the two differ by 1.75x, which was
   // enough to land every ribbon click in the wrong control.
-  const dip = els.map((e) => {
+  const toDip = (e: UiElement): UiElement => {
     const r2 = screen.screenToDipRect(null, {
       x: e.x,
       y: e.y,
@@ -160,8 +236,34 @@ export async function listScreenElements(): Promise<UiElementsResult> {
       height: e.h,
     });
     return { ...e, x: r2.x, y: r2.y, w: r2.width, h: r2.height };
-  });
-  return { ok: true, title: r.value.title, elements: dip };
+  };
+
+  const dialogEls = asList(r.value.dialogEls).map(toDip);
+  // Rank the window's own elements by usefulness, keep reading order inside
+  // a rank. The dialog's elements go FIRST unconditionally — while it is
+  // open, they are the only clicks that do anything.
+  const ranked = asList(r.value.elements)
+    .map(toDip)
+    .sort((a, b) => {
+      const ra = TYPE_RANK[a.t] ?? 9;
+      const rb = TYPE_RANK[b.t] ?? 9;
+      if (ra !== rb) return ra - rb;
+      return Math.abs(a.y - b.y) > 12 ? a.y - b.y : a.x - b.x;
+    });
+  // The main walk sees the dialog's children again — drop the copies.
+  const seen = new Set(dialogEls.map((e) => `${e.t}|${e.n}|${e.x}|${e.y}`));
+  const merged = [
+    ...dialogEls,
+    ...ranked.filter((e) => !seen.has(`${e.t}|${e.n}|${e.x}|${e.y}`)),
+  ].slice(0, REPORT_CAP);
+
+  return {
+    ok: true,
+    title: r.value.title,
+    elements: merged,
+    dialogs: asList(r.value.dialogs).filter(Boolean),
+    focused: r.value.focused ? toDip(r.value.focused) : null,
+  };
 }
 
 export interface TopWindow {
