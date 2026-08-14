@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, HelpCircle, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, HelpCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type {
   AskUserRequest,
@@ -83,10 +83,10 @@ export function AskUserDialog({
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-1">
-      <div className="glass-panel overflow-hidden rounded-xl border border-primary/40 bg-background shadow-lg ring-1 ring-primary/10">
+      <div className="glass-panel overflow-hidden rounded-xl border border-border bg-card shadow-lg">
         {/* Header — always visible; click to collapse/expand. */}
         <div className="flex items-center gap-2 px-3 py-2">
-          <HelpCircle className="size-4 shrink-0 text-primary" />
+          <HelpCircle className="size-4 shrink-0 text-brand" />
           <button
             type="button"
             onClick={() => setCollapsed((c) => !c)}
@@ -111,7 +111,7 @@ export function AskUserDialog({
             type="button"
             onClick={onCancel}
             title="Dismiss"
-            className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
           >
             <X className="size-3.5" />
           </button>
@@ -125,8 +125,8 @@ export function AskUserDialog({
                 const a = state[qi];
                 return (
                   <div key={qi}>
-                    <div className="mb-2 flex items-center gap-2">
-                      <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <div className="mb-1 flex items-baseline gap-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                         {question.header}
                       </span>
                       {multi && (
@@ -146,25 +146,23 @@ export function AskUserDialog({
                             key={opt.label}
                             type="button"
                             onClick={() => toggleOption(qi, opt.label, multi)}
-                            className={`flex w-full items-start gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                            className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
                               selected
-                                ? "border-primary bg-primary/10"
-                                : "border-border hover:bg-muted"
+                                ? "border-brand/50 bg-brand-wash"
+                                : "border-border hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                             }`}
                           >
                             <span
-                              className={`mt-0.5 flex size-4 shrink-0 items-center justify-center border ${
-                                multi ? "rounded-sm" : "rounded-full"
+                              className={`mt-0.5 flex size-4 shrink-0 items-center justify-center border transition-colors ${
+                                multi ? "rounded-[5px]" : "rounded-full"
                               } ${
                                 selected
-                                  ? "border-primary bg-primary text-primary-foreground"
+                                  ? "border-brand bg-brand text-white"
                                   : "border-muted-foreground/40"
                               }`}
                             >
                               {selected && (
-                                <span className="text-[10px] leading-none">
-                                  ✓
-                                </span>
+                                <Check className="size-3" strokeWidth={3} />
                               )}
                             </span>
                             <span>
@@ -180,9 +178,9 @@ export function AskUserDialog({
                       })}
 
                       <div
-                        className={`rounded-md border px-3 py-2 ${
+                        className={`rounded-lg border px-3 py-2 transition-colors ${
                           a.other.trim()
-                            ? "border-primary bg-primary/10"
+                            ? "border-brand/50 bg-brand-wash"
                             : "border-border"
                         }`}
                       >
