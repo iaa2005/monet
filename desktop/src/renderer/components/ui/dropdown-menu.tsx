@@ -4,6 +4,12 @@ import { Check, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+/* Rows are `rounded-md` (8px) inside a `rounded-lg` (12px) sheet with `p-1`
+ * (4px): concentric corners, 12 − 4 = 8, so the gutter around a highlighted
+ * row stays the same 4px all the way round its corner. At `rounded-sm` the
+ * row's corner turned tighter than the sheet's and the gap visibly fattened
+ * there. Same rule already holds in select.tsx. */
+
 function DropdownMenu(
   props: React.ComponentProps<typeof DropdownMenuPrimitive.Root>,
 ): JSX.Element {
@@ -57,7 +63,7 @@ function DropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "relative flex cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1 text-[13px] outline-none transition-colors select-none",
+        "relative flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[13px] outline-none transition-colors select-none",
         "focus:bg-accent focus:text-accent-foreground",
         "data-[variant=destructive]:text-red-text data-[variant=destructive]:focus:bg-red-bg data-[variant=destructive]:[&_svg]:text-red-text",
         "data-[inset]:pl-8 [&_svg]:size-3.5 [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
@@ -125,7 +131,7 @@ function DropdownMenuSubTrigger({
     <DropdownMenuPrimitive.SubTrigger
       data-slot="dropdown-menu-sub-trigger"
       className={cn(
-        "flex w-full cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1 text-[13px] outline-none select-none",
+        "flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[13px] outline-none select-none",
         "focus:bg-accent focus:text-accent-foreground",
         "[&_svg]:size-3.5 [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
         className,
@@ -152,7 +158,7 @@ function DropdownMenuCheckItem({
       data-slot="dropdown-menu-check-item"
       checked={checked}
       className={cn(
-        "relative flex cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1 text-[13px] outline-none transition-colors select-none",
+        "relative flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[13px] outline-none transition-colors select-none",
         "focus:bg-accent focus:text-accent-foreground",
         "[&_svg]:size-3.5 [&_svg]:shrink-0",
         className,
@@ -190,7 +196,7 @@ function DropdownMenuRadioItem({
     <DropdownMenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
       className={cn(
-        "relative flex cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1 text-[13px] outline-none transition-colors select-none",
+        "relative flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[13px] outline-none transition-colors select-none",
         "focus:bg-accent focus:text-accent-foreground",
         "[&_svg]:size-3.5 [&_svg]:shrink-0",
         className,

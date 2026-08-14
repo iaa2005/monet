@@ -190,6 +190,16 @@ const ENGINE_DESC: Record<"pyodide" | "subprocess" | "docker", string> = {
   docker: "Container · full shell, pip, LaTeX",
 };
 
+/**
+ * The unselected Home/Code tab — one string, because it is worn by both and
+ * they drifted once already. Its two surfaces (resting and hover) live in
+ * globals.css as `.mode-tab-idle`: they move in opposite directions per theme,
+ * which the cascade states plainly and utility ordering does not. The
+ * transparent border keeps both tabs the size of the bordered, selected one.
+ */
+const MODE_TAB_IDLE =
+  "mode-tab-idle border border-transparent text-foreground transition-colors";
+
 /** Sidebar navigation row. */
 function NavRow({
   icon: Icon,
@@ -1441,11 +1451,7 @@ export default function App(): JSX.Element {
               "flex flex-1 items-center justify-center gap-[7px] rounded-[var(--radius)] text-[13px] font-medium transition-colors",
               appMode === "home"
                 ? "border border-brand/50 bg-brand-wash text-brand"
-                : // `muted`, not `popover`: the flyout's own surface IS
-                  // popover, so the unselected tab vanished into it — and it
-                  // had no hover at all. The transparent border keeps both
-                  // tabs the size of the bordered one.
-                  "border border-transparent bg-muted text-foreground hover:bg-accent",
+                : MODE_TAB_IDLE,
             )}
           >
             <Home className="size-3.5" />
@@ -1460,11 +1466,7 @@ export default function App(): JSX.Element {
               "flex flex-1 items-center justify-center gap-[7px] rounded-[var(--radius)] text-[13px] font-medium transition-colors",
               appMode === "code"
                 ? "border border-brand/50 bg-brand-wash text-brand"
-                : // `muted`, not `popover`: the flyout's own surface IS
-                  // popover, so the unselected tab vanished into it — and it
-                  // had no hover at all. The transparent border keeps both
-                  // tabs the size of the bordered one.
-                  "border border-transparent bg-muted text-foreground hover:bg-accent",
+                : MODE_TAB_IDLE,
             )}
           >
             <Code className="size-3.5" />

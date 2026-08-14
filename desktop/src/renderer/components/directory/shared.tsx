@@ -98,7 +98,7 @@ export function Picker({
                 onChange(o.value);
                 setOpen(false);
               }}
-              className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+              className="flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
             >
               {o.label}
               {o.value === value && <Check className="size-3.5" />}

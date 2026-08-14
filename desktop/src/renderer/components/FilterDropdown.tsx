@@ -178,7 +178,7 @@ export function FilterDropdown({
               onMouseEnter={handleHover(s.label)}
               onClick={handleHover(s.label)}
               className={cn(
-                "flex w-full items-center justify-between rounded px-2 py-1.5 transition-colors hover:bg-accent hover:text-foreground",
+                "flex w-full items-center justify-between rounded-md px-2 py-1.5 transition-colors hover:bg-accent hover:text-foreground",
                 hovered === s.label && "bg-accent text-foreground",
               )}
             >
@@ -223,7 +223,7 @@ export function FilterDropdown({
                     }
                   }}
                   className={cn(
-                    "flex w-full items-center justify-between rounded px-2 py-1.5 transition-colors hover:bg-accent hover:text-foreground",
+                    "flex w-full items-center justify-between rounded-md px-2 py-1.5 transition-colors hover:bg-accent hover:text-foreground",
                     o.value === "divider" && "pointer-events-none",
                   )}
                 >

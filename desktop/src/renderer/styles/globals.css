@@ -443,6 +443,29 @@
     background: hsl(0 0% 50%);
 }
 
+/* The unselected Home/Code tab.
+ *
+ * A raised surface goes in opposite directions per theme: on dark chrome it
+ * lifts by getting LIGHTER, on light chrome by getting DARKER. Utilities could
+ * not say that without relying on how `hover:` and `dark:hover:` happen to be
+ * ordered against each other, so it is spelled out here, where the cascade
+ * settles it — `.dark .mode-tab-idle` simply wins.
+ *
+ * Light used to wear --muted, which is 97% lightness on 96.6% chrome: the tab
+ * was invisible, and its hover with it. */
+.mode-tab-idle {
+    background: hsl(var(--bg-300));
+}
+.mode-tab-idle:hover {
+    background: hsl(var(--bg-400));
+}
+.dark .mode-tab-idle {
+    background: hsl(var(--bg-200));
+}
+.dark .mode-tab-idle:hover {
+    background: hsl(var(--bg-300));
+}
+
 /* Monet background glass effect */
 .monet-glass .glass-panel {
     position: relative;
