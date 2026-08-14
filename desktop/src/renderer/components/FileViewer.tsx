@@ -93,8 +93,6 @@ export type FileViewerItem = {
 
 // --- Rich preview detection ---
 
-const TEXT_EXT =
-  /\.(txt|md|csv|tsv|json|jsonc|js|mjs|ts|tsx|py|html|css|xml|svg|yaml|yml|log|tex|bib|sty|canvas|base)$/i;
 const MAX_TEXT_PREVIEW_CHARS = 400_000;
 const MAX_XLSX_ROWS = 500;
 const MAX_XLSX_CELLS = 20_000;
@@ -188,8 +186,13 @@ function previewKindOf(item: FileViewerItem): PreviewKind {
   if (ext === "docx") return "docx";
   if (ext === "xlsx" || ext === "xls") return "xlsx";
   if (ext === "ipynb") return "notebook";
-  if (item.kind === "text" || TEXT_EXT.test(item.name)) return "text";
-  return "none";
+  // Everything else is presumed TEXT, exactly like the disk-file path
+  // (richKindForName → null → code editor). A whitelist here meant every
+  // extension nobody thought of — .cpp, .rs, .sh — showed "no preview" for
+  // a perfectly readable file. The readers refuse real binaries by NUL
+  // check with a clear error, so the open default is safe.
+  if (OPAQUE_EXT.has(ext)) return "none";
+  return "text";
 }
 
 function b64ToBytes(b64: string): Uint8Array {
