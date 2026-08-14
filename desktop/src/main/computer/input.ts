@@ -40,12 +40,22 @@ function ps(script: string): Promise<{ ok: boolean; stdout: string; stderr: stri
 }
 
 // Shared Win32 P/Invoke surface prepended to every script.
+//
+// PER_MONITOR_AWARE_V2 first: without it the fresh powershell.exe is DPI-
+// virtualised, SetCursorPos speaks scaled coordinates while UIA rects are
+// physical, and on a 175% display every click lands 1.75x away from the
+// element the model chose. That one mismatch was most of "blind Excel":
+// ribbon tabs that never opened, blank-workbook clicks spawning Книга1..3.
+// With it, everything this file does — cursor, clicks, wheel — is physical
+// pixels, the same space elements.ts reports and the tool converts through
+// electron's screen.dipToScreenPoint.
 const WIN32 = `
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public class MonetInput {
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr ctx);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint data, IntPtr extra);
   [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
@@ -58,6 +68,7 @@ public class MonetInput {
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out P p);
 }
 "@
+[MonetInput]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null
 `;
 
 const M = {
@@ -155,6 +166,11 @@ const KEY_VK: Record<string, number> = {
   alt: 0xa4,
   option: 0xa4,
   shift: 0xa0,
+  // F1..F24 — VK_F1 is 0x70 and they run contiguously. Their absence cost a
+  // real session Alt+F1, which is Excel's one-keystroke "insert chart".
+  ...Object.fromEntries(
+    Array.from({ length: 24 }, (_, i) => [`f${i + 1}`, 0x70 + i]),
+  ),
 };
 
 function keyCode(key: string): number {

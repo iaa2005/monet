@@ -10,6 +10,7 @@
  */
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
+import { screen } from "electron";
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
@@ -79,9 +80,16 @@ const schema = lazySchema(() =>
     scroll_direction: z.enum(["up", "down"]).optional(),
     scroll_amount: z.number().optional().describe("Wheel clicks (default 3)."),
     region: z
-      .object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
+      .union([
+        z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
+        // Models guess [x, y, width, height] about as often as the object —
+        // a real session burned a turn on the validation error. Take both.
+        z.tuple([z.number(), z.number(), z.number(), z.number()]),
+      ])
       .optional()
-      .describe("Optional screen crop in full-screen coordinates for screenshot."),
+      .describe(
+        "Optional screen crop for screenshot: {x, y, width, height} or [x, y, width, height].",
+      ),
   }),
 );
 type Schema = ReturnType<typeof schema>;
@@ -304,18 +312,30 @@ export const ComputerTool = buildTool({
         lastTransform.offsetX,
         lastTransform.offsetY,
       );
-      sx = p.x;
-      sy = p.y;
+      // The tool's whole space is DIP (screenshots, UIA, vision alike); the
+      // input layer is per-monitor-DPI-aware Win32 and wants PHYSICAL pixels.
+      // Electron owns the display layout, so it does the conversion.
+      const phys = screen.dipToScreenPoint({ x: p.x, y: p.y });
+      sx = phys.x;
+      sy = phys.y;
     }
 
     try {
       switch (action) {
-        case "screenshot":
+        case "screenshot": {
           if (blind())
             return {
-              data: await describeScreen("Screen read (accessibility tree)."),
+              data: await describeScreen(
+                region
+                  ? "Screen read (accessibility tree; region crops don't apply here — the tree is always the whole foreground window)."
+                  : "Screen read (accessibility tree).",
+              ),
             };
-          return { data: await takeScreenshot(sessionId, "Screenshot taken.", region) };
+          const regionObj = Array.isArray(region)
+            ? { x: region[0], y: region[1], width: region[2], height: region[3] }
+            : region;
+          return { data: await takeScreenshot(sessionId, "Screenshot taken.", regionObj) };
+        }
         case "focus_window": {
           if (!text)
             return {
@@ -341,6 +361,11 @@ export const ComputerTool = buildTool({
             return {
               data: { text: "launch_app needs the app's Start-menu name in text.", isError: true },
             };
+          // Snapshot the windows BEFORE launching, so the new one is
+          // recognisable by not being in the set.
+          const before = new Set(
+            (await listTopWindows()).map((w) => `${w.app} ${w.title}`),
+          );
           const started = await launchApp(text);
           if (!started)
             return {
@@ -349,12 +374,29 @@ export const ComputerTool = buildTool({
                 isError: true,
               },
             };
-          // Give the window time to appear before reading the screen back.
-          await new Promise((r) => setTimeout(r, 2500));
+          // Wait for the app's window, not a fixed pause: Excel splashes for
+          // seconds, and scanning early reads whatever window was foreground
+          // before — a real session got this app's own UI as the "result" of
+          // launching Excel. Then focus it, because a slow starter comes up
+          // BEHIND the window the user (or agent) was last in.
+          let appeared: string | null = null;
+          for (let i = 0; i < 12 && !appeared; i++) {
+            await new Promise((r) => setTimeout(r, 700));
+            const now = await listTopWindows();
+            const fresh = now.find((w) => !before.has(`${w.app} ${w.title}`));
+            if (fresh) appeared = fresh.title;
+          }
+          if (appeared) {
+            await focusWindow(appeared);
+            await new Promise((r) => setTimeout(r, 400));
+          }
+          const note = appeared
+            ? `Launched "${started}" — window "${appeared}" is focused.`
+            : `Launched "${started}", but no new window appeared within 8s — it may still be loading, or it reused an existing window. Check the window list.`;
           return {
             data: blind()
-              ? await describeScreen(`Launched "${started}".`)
-              : await takeScreenshot(sessionId, `Launched "${started}".`),
+              ? await describeScreen(note)
+              : await takeScreenshot(sessionId, note),
           };
         }
         case "list_elements": {
@@ -404,7 +446,9 @@ export const ComputerTool = buildTool({
         }
         case "cursor_position": {
           const p = await cursorPosition();
-          return { data: { text: `Cursor at ${p.x}, ${p.y} (screen px).`, isError: false } };
+          // Physical from the DPI-aware input layer → the tool's DIP space.
+          const dip = screen.screenToDipPoint({ x: p.x, y: p.y });
+          return { data: { text: `Cursor at ${dip.x}, ${dip.y} (screen px).`, isError: false } };
         }
         case "mouse_move":
           await moveMouse(sx, sy);

@@ -7,6 +7,7 @@
  */
 
 import { spawn } from "child_process";
+import { screen } from "electron";
 
 export interface UiElement {
   /** Accessible name (or automation id). */
@@ -35,8 +36,12 @@ using System;
 using System.Runtime.InteropServices;
 public class MonetFg {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr ctx);
 }
 "@
+# PER_MONITOR_AWARE_V2: rects must be PHYSICAL pixels, not virtualised ones —
+# the TS side converts them to DIP once, through electron's own screen math.
+[MonetFg]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null
 $h = [MonetFg]::GetForegroundWindow()
 if ($h -eq [IntPtr]::Zero) { [Console]::Out.WriteLine('{"error":"no foreground window"}'); exit 0 }
 $root = [System.Windows.Automation.AutomationElement]::FromHandle($h)
@@ -143,7 +148,20 @@ export async function listScreenElements(): Promise<UiElementsResult> {
     : r.value.elements
       ? [r.value.elements]
       : [];
-  return { ok: true, title: r.value.title, elements: els };
+  // UIA speaks physical pixels; the tool's whole coordinate space is DIP
+  // (screenshots, the vision fallback, Electron's own screen API). Convert
+  // at the edge, once — on a 175% display the two differ by 1.75x, which was
+  // enough to land every ribbon click in the wrong control.
+  const dip = els.map((e) => {
+    const r2 = screen.screenToDipRect(null, {
+      x: e.x,
+      y: e.y,
+      width: e.w,
+      height: e.h,
+    });
+    return { ...e, x: r2.x, y: r2.y, w: r2.width, h: r2.height };
+  });
+  return { ok: true, title: r.value.title, elements: dip };
 }
 
 export interface TopWindow {
