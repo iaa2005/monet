@@ -18,7 +18,11 @@ import { initNightlyConsolidation } from "./memory/nightly.js";
 import { initDevApi } from "./app/dev-api.js";
 import { isAcpLaunch, runAcpMode } from "./acp/index.js";
 import { setDodgeWindow } from "./computer/overlay.js";
-import { setMainWindow } from "./app/main-window.js";
+import {
+  APP_MIN_HEIGHT,
+  APP_MIN_WIDTH,
+  setMainWindow,
+} from "./app/main-window.js";
 
 // The main bundle is ESM ("type": "module"), where __dirname is not defined.
 // Derive it from import.meta.url so preload/renderer paths resolve.
@@ -340,8 +344,10 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 800,
-    minHeight: 600,
+    // Half the old floor: 800 was wider than the layout actually needs, and it
+    // stopped the window from being parked narrow beside something else.
+    minWidth: APP_MIN_WIDTH,
+    minHeight: APP_MIN_HEIGHT,
     show: false,
     title: APP_NAME,
     // Packaged builds take the icon from the exe; a dev launch is plain
@@ -425,8 +431,10 @@ function openSecondaryWindow(): void {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 800,
-    minHeight: 600,
+    // Half the old floor: 800 was wider than the layout actually needs, and it
+    // stopped the window from being parked narrow beside something else.
+    minWidth: APP_MIN_WIDTH,
+    minHeight: APP_MIN_HEIGHT,
     show: false,
     title: APP_NAME,
     // Packaged builds take the icon from the exe; a dev launch is plain

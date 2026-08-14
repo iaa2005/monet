@@ -16,10 +16,10 @@
  */
 
 import { BrowserWindow, screen } from "electron";
+import { APP_MIN_HEIGHT, APP_MIN_WIDTH } from "../app/main-window.js";
 
 const BRAND_HUE = 211; // matches --brand-hue in the renderer's globals.css
 const IDLE_MS = 60_000;
-const DODGE_W = 440;
 const DODGE_MARGIN = 12;
 const TWEEN_MS = 220;
 
@@ -40,7 +40,7 @@ let idleTimer: NodeJS.Timeout | null = null;
 /** Bumped on every show/release so an in-flight tween from the previous state
  * stops moving the window instead of fighting the new one. */
 let generation = 0;
-let savedPlacement: { bounds: Electron.Rectangle; maximized: boolean; minSize: number[] } | null = null;
+let savedPlacement: { bounds: Electron.Rectangle; maximized: boolean } | null = null;
 
 /** The app window that should dodge out of the way. Set once at startup. */
 export function setDodgeWindow(win: BrowserWindow): void {
@@ -133,29 +133,28 @@ function ensureOverlay(): BrowserWindow {
   return overlay;
 }
 
+/**
+ * The corner the app parks in: TOP right, at exactly the window's minimum
+ * size. Bottom-right was where the taskbar's own popups and notifications
+ * live, and it is the busiest corner of a Windows desktop; the top right is
+ * clear. Sizing it to the minimum means no minimum-size juggling — the card
+ * is simply the smallest the app is allowed to be.
+ */
 function dodgeTarget(): Electron.Rectangle {
   const wa = screen.getPrimaryDisplay().workArea;
-  const height = Math.min(680, Math.round(wa.height * 0.85));
   return {
-    x: wa.x + wa.width - DODGE_W - DODGE_MARGIN,
-    y: wa.y + wa.height - height - DODGE_MARGIN,
-    width: DODGE_W,
-    height,
+    x: wa.x + wa.width - APP_MIN_WIDTH - DODGE_MARGIN,
+    y: wa.y + DODGE_MARGIN,
+    width: APP_MIN_WIDTH,
+    height: APP_MIN_HEIGHT,
   };
 }
 
 async function dodgeApp(gen: number): Promise<void> {
   const win = dodgeWindow;
   if (!win || win.isDestroyed() || !win.isVisible() || savedPlacement) return;
-  savedPlacement = {
-    bounds: win.getBounds(),
-    maximized: win.isMaximized(),
-    minSize: win.getMinimumSize(),
-  };
+  savedPlacement = { bounds: win.getBounds(), maximized: win.isMaximized() };
   if (savedPlacement.maximized) win.unmaximize();
-  // The corner card is far below the app's minimum size; lift the floor for
-  // the duration of the dodge.
-  win.setMinimumSize(320, 400);
   await tweenBounds(win, dodgeTarget(), gen);
 }
 
@@ -167,7 +166,6 @@ async function restoreApp(gen: number): Promise<void> {
   if (!win || win.isDestroyed()) return;
   await tweenBounds(win, saved.bounds, gen);
   if (gen !== generation) return;
-  win.setMinimumSize(saved.minSize[0] ?? 800, saved.minSize[1] ?? 600);
   if (saved.maximized) win.maximize();
 }
 

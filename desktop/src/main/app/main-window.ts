@@ -15,6 +15,14 @@
 
 import type { BrowserWindow } from "electron";
 
+/**
+ * How small the app window may get. Lives here, next to the window itself,
+ * because the Computer Use overlay parks the window at exactly this size —
+ * two copies of the numbers would drift the moment one side changed.
+ */
+export const APP_MIN_WIDTH = 400;
+export const APP_MIN_HEIGHT = 600;
+
 let mainWindow: BrowserWindow | null = null;
 
 export function setMainWindow(win: BrowserWindow): void {

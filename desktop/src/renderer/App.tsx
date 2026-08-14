@@ -1603,7 +1603,11 @@ export default function App(): JSX.Element {
           </span>
         )}
 
-        <div className="app-no-drag flex items-center gap-2">
+        {/* The wordmark is the first thing to go when the window is parked
+            narrow: it wrapped onto two lines and collided with the toolbar.
+            Everything it opens (the painting toggle, its rotate menu) is
+            decorative and comes back with the width. */}
+        <div className="app-no-drag flex items-center gap-2 max-[700px]:hidden">
           <div className="relative flex items-center">
             <button
               type="button"
@@ -1656,7 +1660,16 @@ export default function App(): JSX.Element {
           </span>
         )}
 
-        <div className="app-no-drag flex items-center gap-0.5 pr-1.5">
+        {/* Squeezed by a narrow window, this row gives way rather than running
+            under the caption buttons — which are position:fixed and cannot be
+            pushed, so overflow used to draw icons straight through minimize.
+            justify-end makes the overflow spill LEFT, min-w-0 lets it, and the
+            mask fades the cut edge instead of guillotining an icon in half.
+            Everything here is also reachable by keyboard shortcut. */}
+        {/* The fade lives in the pl-7 gutter, not over the buttons: at full
+            width it falls on empty space and nothing looks dimmed, and only a
+            button that has actually slid under it fades out. */}
+        <div className="app-no-drag flex min-w-0 items-center justify-end gap-0.5 overflow-hidden pl-7 pr-1.5 [&>*]:shrink-0 [mask-image:linear-gradient(to_right,transparent,black_28px)]">
           {/* Per-chat sandbox engine (VM). Global default unless pinned here —
               files carry over on switch, only the runtime changes. */}
           {appMode === "home" && !incognito && (
@@ -1673,8 +1686,12 @@ export default function App(): JSX.Element {
                       thing this control has nothing to do with — and Settings
                       already draws the same choice with this glyph. */}
                   <Container className="size-3.5" />
-                  {ENGINE_LABEL[sessionEngine]}
-                  <ChevronDown className="size-3" />
+                  {/* Narrow: the glyph alone. The name and the chevron are the
+                      two widest things in a control the icon already says. */}
+                  <span className="max-[700px]:hidden">
+                    {ENGINE_LABEL[sessionEngine]}
+                  </span>
+                  <ChevronDown className="size-3 max-[700px]:hidden" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-64">
