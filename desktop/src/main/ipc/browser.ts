@@ -8,6 +8,7 @@
  */
 
 import { BrowserWindow, dialog, ipcMain, session, shell } from "electron";
+import { getMainWindow } from "../app/main-window.js";
 import {
   getBrowserConfig,
   setBrowserConfig,
@@ -251,7 +252,7 @@ ipcMain.handle("browser:getConfig", (): BrowserConfig => getBrowserConfig());
 
   // "Open file" in the panel menu — a local page, previewed without a server.
   ipcMain.handle("browser:pickFile", async (): Promise<string | null> => {
-    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const win = BrowserWindow.getFocusedWindow() ?? getMainWindow();
     if (!win) return null;
     const r = await dialog.showOpenDialog(win, {
       title: "Open in the Browser panel",
@@ -276,8 +277,7 @@ ipcMain.handle("browser:getConfig", (): BrowserConfig => getBrowserConfig());
         const png = image.toPNG();
         if (png.length === 0)
           return { ok: false, error: "The page produced an empty frame." };
-        const win =
-          BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+        const win = BrowserWindow.getFocusedWindow() ?? getMainWindow();
         if (!win) return { ok: false, error: "No window." };
         const r = await dialog.showSaveDialog(win, {
           title: "Save screenshot",

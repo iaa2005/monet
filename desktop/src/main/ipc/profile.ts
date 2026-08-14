@@ -1,6 +1,7 @@
 /** Profile IPC — Settings → General profile block. */
 
-import { BrowserWindow, ipcMain } from "electron";
+import { ipcMain } from "electron";
+import { getMainWindow } from "../app/main-window.js";
 import {
   avatarDataUrl,
   avatarRawUrl,
@@ -15,7 +16,7 @@ import {
 } from "../app/profile.js";
 
 function notifyRenderer(): void {
-  const win = BrowserWindow.getAllWindows()[0];
+  const win = getMainWindow();
   if (win)
     win.webContents.send("profile:changed", {
       ...getProfile(),

@@ -7,6 +7,7 @@
  */
 
 import { BrowserWindow, dialog, ipcMain } from "electron";
+import { getMainWindow } from "../app/main-window.js";
 import {
   formatBytes,
   OCR_MODELS,
@@ -151,7 +152,7 @@ export function registerOcrIPC(): void {
   });
 
   ipcMain.handle("ocr:pickFile", async (): Promise<string | null> => {
-    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const win = BrowserWindow.getFocusedWindow() ?? getMainWindow();
     if (!win) return null;
     const r = await dialog.showOpenDialog(win, {
       title: "Read a document",

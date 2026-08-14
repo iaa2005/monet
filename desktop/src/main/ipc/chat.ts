@@ -6,6 +6,7 @@
  */
 
 import { ipcMain, BrowserWindow } from "electron";
+import { getMainWindow } from "../app/main-window.js";
 import { isUntitled, cleanTitle, TITLE_PLACEHOLDER } from "../session/auto-title.js";
 import {
   runAgent,
@@ -389,7 +390,11 @@ export async function checkpointFolder(sessionId: string): Promise<string> {
 
 export function registerChatIPC(): void {
   ipcMain.handle("chat:send", async (_event, payload: ChatSendPayload) => {
-    const win = BrowserWindow.getAllWindows()[0];
+    // The MAIN window, explicitly. getAllWindows()[0] served here for months —
+    // until the Computer Use overlay became a second window that could sit at
+    // [0], and every event of every later run streamed into a page with no
+    // listeners: eternal spinner, Stop dead, the turn missing from the DB.
+    const win = getMainWindow();
     if (!win) throw new Error("No window");
 
     const sessionId = payload.sessionId || "default";

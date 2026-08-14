@@ -12,6 +12,7 @@
  */
 
 import { BrowserWindow, webContents, type WebContents } from "electron";
+import { getMainWindow } from "../app/main-window.js";
 
 interface TabRecord {
   id: string;
@@ -123,7 +124,7 @@ export async function openNewTab(url: string, timeoutMs = 10_000): Promise<void>
 }
 
 async function askPanelForTab(url: string, timeoutMs: number): Promise<void> {
-  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const win = BrowserWindow.getFocusedWindow() ?? getMainWindow();
   if (!win) throw new Error("No app window is open.");
 
   // Counted, not compared by id: whether the panel makes the new tab the
@@ -169,7 +170,7 @@ export async function revealPanel(): Promise<void> {
     const sid = currentRunSession();
     if (sid && sid !== getVisibleChatSession()) return;
   }
-  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const win = BrowserWindow.getFocusedWindow() ?? getMainWindow();
   if (!win || win.isDestroyed()) return;
   win.webContents.send("browser:reveal");
   // One paint at 60Hz is ~16ms; this is the panel animating open and the guest

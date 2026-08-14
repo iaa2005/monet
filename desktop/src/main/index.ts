@@ -18,6 +18,7 @@ import { initNightlyConsolidation } from "./memory/nightly.js";
 import { initDevApi } from "./app/dev-api.js";
 import { isAcpLaunch, runAcpMode } from "./acp/index.js";
 import { setDodgeWindow } from "./computer/overlay.js";
+import { setMainWindow } from "./app/main-window.js";
 
 // The main bundle is ESM ("type": "module"), where __dirname is not defined.
 // Derive it from import.meta.url so preload/renderer paths resolve.
@@ -366,6 +367,9 @@ function createWindow(): void {
   installWebviewGuards(mainWindow);
   // During Computer Use this window dodges into a corner — see computer/overlay.
   setDodgeWindow(mainWindow);
+  // The window IPC handlers talk to — never getAllWindows()[0], which can be
+  // the Computer Use overlay. See app/main-window.ts for the incident.
+  setMainWindow(mainWindow);
 
   // Open DevTools in dev mode for debugging
   // DevTools only with CLAUDE_DEVTOOLS=1

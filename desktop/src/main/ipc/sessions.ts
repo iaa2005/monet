@@ -3,6 +3,7 @@
  */
 
 import { BrowserWindow, ipcMain } from "electron";
+import { getMainWindow } from "../app/main-window.js";
 import { existsSync, rmSync } from "fs";
 import { join } from "path";
 import {
@@ -138,7 +139,7 @@ export function registerSessionsIPC(): void {
       if (!nextTitle) return session;
 
       const updated = store.updateTitle(id, nextTitle);
-      const win = BrowserWindow.getAllWindows()[0];
+      const win = getMainWindow();
       win?.webContents.send("sessions:titleChanged", {
         sessionId: id,
         title: nextTitle,
