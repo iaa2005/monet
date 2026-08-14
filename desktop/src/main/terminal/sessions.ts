@@ -17,7 +17,7 @@
  * line, and full-screen programs that need to know the window size.
  */
 
-import { spawn as ptySpawn, type IPty } from "@homebridge/node-pty-prebuilt-multiarch";
+import type { IPty } from "@homebridge/node-pty-prebuilt-multiarch";
 import { getSessionEngine } from "../sandbox/config.js";
 import {
   PIP_ENV_ARGS,
@@ -235,6 +235,14 @@ export async function openTerminal(
 
   let pty: IPty;
   try {
+    // Loaded HERE, not at module scope. node-pty is a native addon, and a
+    // static import put it in the main bundle's first line: a packaged build
+    // whose copy failed to install died at startup with ERR_MODULE_NOT_FOUND
+    // before a single window appeared. The terminal is one panel — losing it
+    // must cost the terminal, not the app.
+    const { spawn: ptySpawn } = await import(
+      "@homebridge/node-pty-prebuilt-multiarch"
+    );
     pty = ptySpawn(file, args, {
       name: "xterm-256color",
       cols,
@@ -253,6 +261,15 @@ export async function openTerminal(
     // node-pty's "File not found: " arrives with the name left off, so the
     // one fact worth having is missing from it. Put it back.
     const why = err instanceof Error ? err.message : String(err);
+    // The addon itself missing is a different failure from the shell missing,
+    // and the fix is a build one — say which it is.
+    if (/ERR_MODULE_NOT_FOUND|Cannot find (module|package)|\.node/i.test(why))
+      return {
+        ok: false,
+        error:
+          "The terminal's native module (@homebridge/node-pty-prebuilt-multiarch) is not available in this build — " +
+          `reinstall dependencies and repackage. Everything else works. (${why})`,
+      };
     return {
       ok: false,
       error: /file not found/i.test(why)

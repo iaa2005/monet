@@ -33,6 +33,9 @@ asarUnpack:
   - node_modules/sherpa-onnx-linux-arm64/**
   # The Supertonic voice runs on Microsoft's onnxruntime, same constraint.
   - node_modules/onnxruntime-node/**
+  # The terminal's pty is a native addon too — pty.node and winpty's DLLs
+  # cannot be loaded from inside app.asar.
+  - node_modules/@homebridge/node-pty-prebuilt-multiarch/**
 win:
   target: nsis
   icon: build/icon.ico
