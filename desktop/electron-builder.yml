@@ -10,6 +10,10 @@ publish:
   provider: github
   owner: iaa2005
   repo: monet
+  # Publish for real, not as a draft: a draft release is invisible to the
+  # updater, so the default made every `npm run release` a two-step dance
+  # (upload here, then un-draft on GitHub by hand).
+  releaseType: release
 files:
   - out/**/*
   # The tray reads this at runtime, so it has to be INSIDE the app — the
