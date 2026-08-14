@@ -15,6 +15,7 @@ import { captureScreen, type Screenshot } from "./screen.js";
 import { detectIcons, ensureIconDetector, hasIconDetector } from "./omniparser.js";
 import { ensureScreenOcr, hasScreenOcr, ppocrImageText } from "./ppocr.js";
 import { readImageText, type OcrLine } from "./winocr.js";
+import { getMainWindow } from "../app/main-window.js";
 import type { UiElement } from "./elements.js";
 
 export interface VisionScanResult {
@@ -97,10 +98,28 @@ export async function visionScreenElements(): Promise<VisionScanResult> {
         ...toScreen(line.x, line.y, line.w, line.h),
       });
     });
-    // Reading order, roughly: by rows, then left to right.
-    elements.sort((a, b) => (Math.abs(a.y - b.y) > 20 ? a.y - b.y : a.x - b.x));
+    // Drop our own window's elements. The parse covers the whole screen, so
+    // the parked chat card contributes boxes too — including the agent's own
+    // typed text echoed in the conversation, which one session then took for
+    // an Excel cell and clicked. The app must be invisible to its own agent.
+    const own = getMainWindow()?.getBounds();
+    const foreign = own
+      ? elements.filter((e) => {
+          const cx = e.x + e.w / 2;
+          const cy = e.y + e.h / 2;
+          return !(
+            cx >= own.x &&
+            cx <= own.x + own.width &&
+            cy >= own.y &&
+            cy <= own.y + own.height
+          );
+        })
+      : elements;
 
-    return { ok: true, elements };
+    // Reading order, roughly: by rows, then left to right.
+    foreign.sort((a, b) => (Math.abs(a.y - b.y) > 20 ? a.y - b.y : a.x - b.x));
+
+    return { ok: true, elements: foreign };
   } catch (err) {
     return {
       ok: false,

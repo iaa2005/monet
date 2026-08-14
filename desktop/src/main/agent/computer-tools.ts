@@ -31,6 +31,7 @@ import { activeModelAccepts } from "./model-modalities.js";
 import { getComputerConfig } from "../computer/config.js";
 import { touchComputerOverlay } from "../computer/overlay.js";
 import { visionScreenElements } from "../computer/vision.js";
+import { getMainWindow } from "../app/main-window.js";
 import { artifactReference, saveArtifactBuffer } from "../ipc/artifacts.js";
 
 // The transform from the most recent screenshot to virtual desktop pixels.
@@ -312,6 +313,28 @@ export const ComputerTool = buildTool({
         lastTransform.offsetX,
         lastTransform.offsetY,
       );
+      // Never click our own parked window. During Computer Use it sits in the
+      // top-right corner ON TOP of whatever is being driven; a click that
+      // lands there types into the agent's own chat — a session spent minutes
+      // entering spreadsheet data into its composer before diagnosing it.
+      // Refused with an explanation, not silently: the model reroutes in one
+      // turn when told what it hit.
+      const own = getMainWindow()?.getBounds();
+      if (
+        own &&
+        p.x >= own.x &&
+        p.x <= own.x + own.width &&
+        p.y >= own.y &&
+        p.y <= own.y + own.height
+      )
+        return {
+          data: {
+            text:
+              `[${p.x}, ${p.y}] lands on the Code Monet window itself (parked over the desktop during Computer Use) — refused, that would drive the agent's own chat. ` +
+              `Aim at the target app's own coordinates, or focus_window it first.`,
+            isError: true,
+          },
+        };
       // The tool's whole space is DIP (screenshots, UIA, vision alike); the
       // input layer is per-monitor-DPI-aware Win32 and wants PHYSICAL pixels.
       // Electron owns the display layout, so it does the conversion.

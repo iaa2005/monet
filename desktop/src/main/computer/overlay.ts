@@ -19,7 +19,11 @@ import { BrowserWindow, screen } from "electron";
 import { APP_MIN_HEIGHT, APP_MIN_WIDTH } from "../app/main-window.js";
 
 const BRAND_HUE = 211; // matches --brand-hue in the renderer's globals.css
-const IDLE_MS = 60_000;
+/** Pure dead-run insurance — the real release is the agent run's finally.
+ * This was 60s and behaved like a FEATURE: a reasoning model thinking for
+ * two minutes between actions got the window restored mid-run, on top of
+ * the app being driven, and the next clicks landed in our own chat. */
+const IDLE_MS = 10 * 60_000;
 const DODGE_MARGIN = 12;
 const TWEEN_MS = 220;
 
