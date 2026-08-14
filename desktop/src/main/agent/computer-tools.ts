@@ -48,6 +48,12 @@ let lastTransform = {
  * sprayed at whatever window came next — reported as success. */
 let lastSeenApp: string | null = null;
 
+/** Processes this tool spawns to look at the screen. They can briefly own the
+ * foreground (Add-Type compiles, and csc flashes a console), and one of them
+ * being mistaken for the target is what refused every keystroke in a live
+ * session with "it is now excel, not powershell". */
+const HELPER_PROCESSES = new Set(["powershell", "pwsh", "conhost", "csc", "cvtres"]);
+
 interface ComputerOutput {
   text: string;
   isError: boolean;
@@ -172,12 +178,13 @@ function formatScanExtras(scan: {
  * elements, coordinates in DIP screen pixels. */
 async function describeScreen(note: string): Promise<ComputerOutput> {
   lastTransform = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
-  const [wins, scan, fg] = await Promise.all([
+  const [wins, scan] = await Promise.all([
     listTopWindows(),
     listScreenElements(),
-    foregroundApp(),
   ]);
-  lastSeenApp = fg || null;
+  // Straight from the scan, which read it off the very window it walked —
+  // never a separate probe racing these two (that reported "powershell").
+  if (scan.app) lastSeenApp = scan.app;
   const winLines = wins
     .slice(0, 40)
     .map((w) => `- "${w.title}" (${w.app})`);
@@ -218,7 +225,10 @@ async function takeScreenshot(
   region?: { x: number; y: number; width: number; height: number },
 ): Promise<ComputerOutput> {
   const shot = await captureScreen(region);
-  lastSeenApp = (await foregroundApp()) || null;
+  // Our own helper processes must never become the expected target: a PS
+  // probe that flashes to the foreground would otherwise lock typing out.
+  const fg = await foregroundApp();
+  if (fg && !HELPER_PROCESSES.has(fg)) lastSeenApp = fg;
   lastTransform = {
     scaleX: shot.scaleX,
     scaleY: shot.scaleY,

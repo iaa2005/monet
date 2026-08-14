@@ -123,10 +123,19 @@ function expectGuard(expectedApp?: string): string {
   const b64 = Buffer.from(expectedApp, "utf-8").toString("base64");
   return `
 $expected = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}'))
-$fgpid = 0
-[MonetInput]::GetWindowThreadProcessId([MonetInput]::GetForegroundWindow(), [ref]$fgpid) | Out-Null
+# Our own helpers can hold the foreground for a moment (Add-Type compiles and
+# csc flashes a console). Wait them out rather than calling it a mismatch —
+# refusing on that flash is what locked a whole session out of typing.
+$helpers = @('powershell','pwsh','conhost','csc','cvtres')
 $fgproc = ''
-try { $fgproc = (Get-Process -Id $fgpid).ProcessName.ToLower() } catch {}
+for ($i = 0; $i -lt 6; $i++) {
+  $fgpid = 0
+  [MonetInput]::GetWindowThreadProcessId([MonetInput]::GetForegroundWindow(), [ref]$fgpid) | Out-Null
+  try { $fgproc = (Get-Process -Id $fgpid).ProcessName.ToLower() } catch { $fgproc = '' }
+  if ($fgproc -eq $expected) { break }
+  if ($helpers -notcontains $fgproc) { break }
+  Start-Sleep -Milliseconds 120
+}
 if ($fgproc -ne $expected) { Write-Output "<<MISMATCH>>$fgproc"; exit 0 }
 `;
 }

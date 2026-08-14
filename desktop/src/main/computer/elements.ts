@@ -25,6 +25,8 @@ export interface UiElement {
 export interface UiElementsResult {
   ok: boolean;
   title?: string;
+  /** Process that owns the foreground window, lower-case, no extension. */
+  app?: string;
   elements?: UiElement[];
   /** Titles of open modal child windows (dialogs) — the thing every click
    * bounces off with an error chime until it is dealt with. */
@@ -53,6 +55,12 @@ $h = [MonetFg]::GetForegroundWindow()
 if ($h -eq [IntPtr]::Zero) { [Console]::Out.WriteLine('{"error":"no foreground window"}'); exit 0 }
 $root = [System.Windows.Automation.AutomationElement]::FromHandle($h)
 $title = $root.Current.Name
+# Whose window this is, taken HERE — from the same GetForegroundWindow call
+# that produced the tree. A separate probe raced these scans (Add-Type can
+# flash a console) and reported "powershell" as the app the model was looking
+# at, after which every keystroke was refused as aimed at the wrong window.
+$app = ''
+try { $app = (Get-Process -Id $root.Current.ProcessId).ProcessName.ToLower() } catch {}
 $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::IsOffscreenProperty, $false)
 $keep = @('Button','Hyperlink','Edit','ComboBox','CheckBox','RadioButton','ListItem','MenuItem','TabItem','TreeItem','SplitButton','Slider','Document','DataItem','HeaderItem')
 
@@ -115,7 +123,7 @@ for ($attempt = 0; $attempt -lt 3 -and $out.Count -eq 0; $attempt++) {
     try { $o = Read-El $el; if ($o) { $out.Add($o) } } catch { continue }
   }
 }
-$res = @{ title = $title; dialogEls = $dout; elements = $out; dialogs = $dialogs; focused = $focused }
+$res = @{ title = $title; app = $app; dialogEls = $dout; elements = $out; dialogs = $dialogs; focused = $focused }
 [Console]::Out.WriteLine(($res | ConvertTo-Json -Compress -Depth 4))
 `;
 
@@ -216,6 +224,7 @@ export async function listScreenElements(): Promise<UiElementsResult> {
   const r = await runJsonPs<{
     error?: string;
     title?: string;
+    app?: string;
     elements?: UiElement[] | UiElement | null;
     dialogEls?: UiElement[] | UiElement | null;
     dialogs?: string[] | string | null;
@@ -260,6 +269,7 @@ export async function listScreenElements(): Promise<UiElementsResult> {
   return {
     ok: true,
     title: r.value.title,
+    app: r.value.app || undefined,
     elements: merged,
     dialogs: asList(r.value.dialogs).filter(Boolean),
     focused: r.value.focused ? toDip(r.value.focused) : null,

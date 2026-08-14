@@ -314,6 +314,23 @@ export function getVisibleChatSession(): string | undefined {
 const aborts = new Map<string, AbortController>();
 
 /**
+ * Stop every running turn, from outside the renderer.
+ *
+ * The panic button for Computer Use: while the agent drives the desktop it
+ * keeps pulling focus back to the app it is working in, so a user who wants
+ * to stop it cannot reliably reach the Stop button — they click the chat, the
+ * next action steals focus again. A global hotkey needs a way in that does
+ * not go through a window. See computer/overlay.ts.
+ */
+export function abortAllRuns(): number {
+  const n = aborts.size;
+  abortAllBgAgents();
+  for (const a of aborts.values()) a.abort();
+  aborts.clear();
+  return n;
+}
+
+/**
  * Auto-name a fresh chat after its first completed exchange: a small
  * complete() call produces a 3-6 word title (in the user's language), the DB
  * row is renamed, and the renderer is notified so the header and sidebar

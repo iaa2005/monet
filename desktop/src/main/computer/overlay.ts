@@ -15,7 +15,7 @@
  * safety net for a run that dies without reaching its finally.
  */
 
-import { BrowserWindow, screen } from "electron";
+import { BrowserWindow, globalShortcut, screen } from "electron";
 import { APP_MIN_HEIGHT, APP_MIN_WIDTH } from "../app/main-window.js";
 
 const BRAND_HUE = 211; // matches --brand-hue in the renderer's globals.css
@@ -184,6 +184,41 @@ async function restoreApp(gen: number): Promise<void> {
   if (saved.maximized) win.maximize();
 }
 
+/**
+ * The panic key, live only while the agent is driving.
+ *
+ * Always-on-top puts the card where the user can SEE it, but not where they
+ * can reliably click Stop: every action the agent takes pulls focus back to
+ * the app it is working in, so the click and the next focus steal race. A
+ * global shortcut does not need focus, which is the whole point.
+ */
+const STOP_HOTKEY = "Ctrl+Alt+Esc";
+
+function armStopHotkey(): void {
+  try {
+    if (globalShortcut.isRegistered(STOP_HOTKEY)) return;
+    const ok = globalShortcut.register(STOP_HOTKEY, () => {
+      void (async () => {
+        const { abortAllRuns } = await import("../ipc/chat.js");
+        const n = abortAllRuns();
+        console.log(`[computer] ${STOP_HOTKEY} — aborted ${n} run(s)`);
+        releaseComputerOverlay();
+      })();
+    });
+    if (!ok) console.warn(`[computer] could not register ${STOP_HOTKEY}`);
+  } catch {
+    /* a hotkey is a convenience — never fail a run over it */
+  }
+}
+
+function disarmStopHotkey(): void {
+  try {
+    globalShortcut.unregister(STOP_HOTKEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 function armIdleTimer(): void {
   if (idleTimer) clearTimeout(idleTimer);
   idleTimer = setTimeout(() => releaseComputerOverlay(), IDLE_MS);
@@ -197,8 +232,20 @@ function armIdleTimer(): void {
  */
 export async function touchComputerOverlay(): Promise<void> {
   armIdleTimer();
-  if (shown) return;
+  if (shown) {
+    // Re-assert on every action, not just the first: an app that grabs
+    // topmost for itself (installers, some Office dialogs) would otherwise
+    // bury the card for the rest of the run, and the user's way to watch —
+    // and to reach Stop — goes with it.
+    const win = dodgeWindow;
+    if (savedPlacement && win && !win.isDestroyed()) {
+      win.setAlwaysOnTop(true, "floating");
+      win.moveTop();
+    }
+    return;
+  }
   shown = true;
+  armStopHotkey();
   const gen = ++generation;
   const win = ensureOverlay();
   win.setBounds(screen.getPrimaryDisplay().bounds);
@@ -219,6 +266,7 @@ export function releaseComputerOverlay(): void {
   }
   if (!shown) return;
   shown = false;
+  disarmStopHotkey();
   const gen = ++generation;
   const win = overlay;
   void restoreApp(gen);
