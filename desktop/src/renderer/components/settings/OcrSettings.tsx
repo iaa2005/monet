@@ -47,6 +47,10 @@ export function OcrSettings(): React.JSX.Element {
     size: string;
   } | null>(null);
   const [advanced, setAdvanced] = useState(false);
+  // A failed install used to end in silence: the progress bar vanished and
+  // the card went back to looking idle, which read as "done" — the user
+  // only learned otherwise when a scan failed. The error gets a banner.
+  const [installError, setInstallError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<{
     text?: string;
@@ -66,7 +70,11 @@ export function OcrSettings(): React.JSX.Element {
     void load();
     return api()?.onInstallProgress((p) => {
       setProgress(p.done ? null : p);
-      if (p.done) void load();
+      if (!p.done) setInstallError(null);
+      if (p.done) {
+        if (p.error && p.error !== "Download cancelled") setInstallError(p.error);
+        void load();
+      }
     });
   }, []);
 
@@ -82,6 +90,7 @@ export function OcrSettings(): React.JSX.Element {
   const install = async (id: string, dtype: string): Promise<void> => {
     const a = api();
     if (!a) return;
+    setInstallError(null);
     if (!layout?.installed) await a.installLayout();
     await a.install(id, dtype);
     await load();
@@ -176,6 +185,12 @@ export function OcrSettings(): React.JSX.Element {
           );
         })}
       </div>
+
+      {installError && (
+        <p className="rounded-md bg-amber-500/10 px-3 py-2 text-[12px] text-amber-600 dark:text-amber-400">
+          Download failed: {installError} — click the model to try again.
+        </p>
+      )}
 
       {ready && (
         <button

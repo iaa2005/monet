@@ -99,6 +99,62 @@ app.whenReady().then(async () => {
     mod.installState(model, dtype) === "installed",
   );
 
+  // ── A corrupt .part self-heals instead of failing forever ────────────
+  //
+  // The reported bug's exact shape: the part sits at EXACTLY its published
+  // size with the wrong bytes, so the old code skipped the download, flew
+  // to the checksum, failed, and left the same bytes for the next attempt.
+  {
+    const http = require("http");
+    const { createHash } = require("crypto");
+    const good = Buffer.alloc(1_000_000, 7);
+    const sha = createHash("sha256").update(good).digest("hex");
+    let served = 0;
+    const server = http.createServer((req, res) => {
+      served++;
+      // Range or not, serve the whole good file — a 200 tells the client
+      // its resume was ignored, which the wipe path makes irrelevant.
+      res.writeHead(200, { "content-length": String(good.length) });
+      res.end(good);
+    });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const port = server.address().port;
+
+    const dl = path.join(root, "dl", "weights.onnx_data");
+    fs.mkdirSync(path.dirname(dl), { recursive: true });
+    // Full size, wrong bytes — the poisoned resume.
+    fs.writeFileSync(`${dl}.part`, Buffer.alloc(1_000_000, 9));
+
+    let progress = 0;
+    let threw = null;
+    try {
+      await mod.downloadFile(
+        `http://127.0.0.1:${port}/weights`,
+        dl,
+        { path: "weights", size: good.length, sha256: sha },
+        new AbortController().signal,
+        (d) => (progress += d),
+      );
+    } catch (e) {
+      threw = e;
+    }
+    server.close();
+
+    check("a size-complete corrupt part does not error", threw === null, threw?.message);
+    check("…the file was re-fetched clean", served === 1 && fs.existsSync(dl));
+    check(
+      "…and its bytes now verify",
+      fs.existsSync(dl) &&
+        createHash("sha256").update(fs.readFileSync(dl)).digest("hex") === sha,
+    );
+    check("…with no stale .part left behind", !fs.existsSync(`${dl}.part`));
+    check(
+      "…and the progress accounting nets to one file",
+      progress === good.length,
+      String(progress),
+    );
+  }
+
   // ── The real folder, when one was named ──────────────────────────────
   const broken = process.env.MONET_OCR_BROKEN;
   if (broken && fs.existsSync(broken)) {

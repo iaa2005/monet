@@ -146,13 +146,23 @@ async function sha256Of(path: string): Promise<string> {
 }
 
 /**
- * One file, resumed as many times as it takes.
+ * One file, resumed as many times as it takes — and RE-FETCHED when the
+ * resumed bytes turn out to be rotten.
  *
  * Bytes already in the `.part` are kept and asked for from where they stop —
  * a 400 MB file that dies at 380 MB must not start over. `onChunk` reports
- * absolute progress so a resumed download does not make the bar jump back.
+ * deltas so a resumed download does not make the bar jump back.
+ *
+ * The second pass exists because a `.part` can be WRONG, not just short: a
+ * crash mid-flush, or a repo whose files were replaced between the first
+ * attempt and the resume, leaves bytes that no amount of tail-retrying can
+ * fix. This file's own history proves it — a sidecar sat on disk at exactly
+ * its published size with a bad hash, and every "resume" flew to the
+ * checksum in a blink, failed on the same bytes, and left them there for
+ * the next attempt to fail on. Verification failure now WIPES the part and
+ * downloads clean, once; only a second wrong verdict is an error.
  */
-async function downloadFile(
+export async function downloadFile(
   url: string,
   target: string,
   expect: RepoFile,
@@ -163,52 +173,68 @@ async function downloadFile(
   const part = `${target}.part`;
   await mkdir(dirname(target), { recursive: true });
 
-  let have = await sizeOf(part);
-  onChunk(have);
+  for (let pass = 1; ; pass++) {
+    let have = await sizeOf(part);
+    onChunk(have);
 
-  for (let attempt = 1; ; attempt++) {
-    if (expect.size && have >= expect.size) break;
-    try {
-      const headers: Record<string, string> = {};
-      if (have > 0) headers.Range = `bytes=${have}-`;
-      const res = await fetch(url, { headers, signal });
-      // 206 = the resume was honoured; 200 with a Range asked means the
-      // server ignored it and is sending the whole file from the start.
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-      const restarted = have > 0 && res.status !== 206;
-      if (restarted) have = 0;
+    for (let attempt = 1; ; attempt++) {
+      if (expect.size && have >= expect.size) break;
+      try {
+        const headers: Record<string, string> = {};
+        if (have > 0) headers.Range = `bytes=${have}-`;
+        const res = await fetch(url, { headers, signal });
+        // 206 = the resume was honoured; 200 with a Range asked means the
+        // server ignored it and is sending the whole file from the start.
+        if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+        const restarted = have > 0 && res.status !== 206;
+        if (restarted) {
+          onChunk(-have); // the bar walks back with the bytes it lost
+          have = 0;
+        }
 
-      const counted = Readable.fromWeb(res.body as never);
-      counted.on("data", (chunk: Buffer) => {
-        have += chunk.length;
-        onChunk(chunk.length);
-      });
-      await pipeline(
-        counted,
-        createWriteStream(part, { flags: restarted || have === 0 ? "w" : "a" }),
-      );
-      if (!expect.size || have >= expect.size) break;
-      throw new Error(`truncated at ${have} of ${expect.size} bytes`);
-    } catch (err) {
-      if (signal.aborted) throw new Error("Download cancelled");
-      if (attempt >= attempts) throw err;
-      // Whatever landed stays: the next attempt continues from there.
-      have = await sizeOf(part);
-      await new Promise((r) => setTimeout(r, Math.min(15_000, 1000 * attempt)));
+        const counted = Readable.fromWeb(res.body as never);
+        counted.on("data", (chunk: Buffer) => {
+          have += chunk.length;
+          onChunk(chunk.length);
+        });
+        await pipeline(
+          counted,
+          createWriteStream(part, { flags: restarted || have === 0 ? "w" : "a" }),
+        );
+        if (!expect.size || have >= expect.size) break;
+        throw new Error(`truncated at ${have} of ${expect.size} bytes`);
+      } catch (err) {
+        if (signal.aborted) throw new Error("Download cancelled");
+        if (attempt >= attempts) throw err;
+        // Whatever landed stays: the next attempt continues from there.
+        have = await sizeOf(part);
+        await new Promise((r) => setTimeout(r, Math.min(15_000, 1000 * attempt)));
+      }
     }
-  }
 
-  const finalSize = await sizeOf(part);
-  if (expect.size && finalSize !== expect.size)
-    throw new Error(`is ${finalSize} bytes, expected ${expect.size}`);
-  // Size is not integrity: an earlier downloader elsewhere in this app once
-  // produced a file of exactly the right length with the wrong bytes, and a
-  // corrupt ONNX does not fail politely.
-  if (expect.sha256) {
-    const got = await sha256Of(part);
-    if (got !== expect.sha256) throw new Error("checksum mismatch");
+    const finalSize = await sizeOf(part);
+    const sizeOk = !expect.size || finalSize === expect.size;
+    // Size is not integrity: an earlier downloader elsewhere in this app once
+    // produced a file of exactly the right length with the wrong bytes, and a
+    // corrupt ONNX does not fail politely.
+    const hashOk =
+      sizeOk && (!expect.sha256 || (await sha256Of(part)) === expect.sha256);
+    if (sizeOk && hashOk) {
+      await rename(part, target);
+      return;
+    }
+
+    // Verified wrong. Keeping these bytes would fail every future attempt
+    // the same way — wipe them and go again from nothing.
+    await rm(part, { force: true });
+    onChunk(-finalSize);
+    if (pass >= 2)
+      throw new Error(
+        sizeOk
+          ? "checksum mismatch even after a clean re-download"
+          : `is ${finalSize} bytes, expected ${expect.size}`,
+      );
   }
-  await rename(part, target);
 }
 
 /**
