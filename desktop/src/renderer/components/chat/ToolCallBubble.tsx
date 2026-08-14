@@ -63,9 +63,14 @@ function parseSandboxOutput(output: string): {
 function SandboxOutput({
   output,
   inGroup,
+  chips = true,
 }: {
   output: string;
   inGroup?: boolean;
+  /** DeliverFiles passes false: its whole output IS a delivery, which the
+   * end-of-turn card already presents — a chip in the bubble would show the
+   * same file twice within one screen. */
+  chips?: boolean;
 }): JSX.Element {
   const { files, text } = useMemo(() => parseSandboxOutput(output), [output]);
   return (
@@ -79,7 +84,7 @@ function SandboxOutput({
           className={inGroup ? "my-0 border-0 rounded-none" : ""}
         />
       )}
-      {files.length > 0 && (
+      {chips && files.length > 0 && (
         <div className="flex flex-wrap gap-2 p-2">
           {files.map((f, i) => {
             const kind = kindOfMime(f.mediaType);
@@ -408,7 +413,11 @@ function ToolDetail({
             // Any tool that produced files (Computer/Browser screenshots,
             // sandbox writes) goes through the marker parser: delivered files
             // render as thumbnails, working files vanish from the log.
-            <SandboxOutput output={output} inGroup />
+            <SandboxOutput
+              output={output}
+              inGroup
+              chips={name !== "DeliverFiles"}
+            />
           ) : (
             <CodeBlock
               code={output}

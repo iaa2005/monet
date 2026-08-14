@@ -115,6 +115,33 @@ export interface ArtifactVersions {
 }
 
 /**
+ * A version is a FILE ON DISK, not a marker line. Delivering an unchanged
+ * file emits an [artifact] line pointing at the same stored copy its [file]
+ * line already named — one file, two mentions — and counting mentions showed
+ * the user a phantom "v2" the moment anything was delivered. Same-path items
+ * collapse to one, keeping the newest mention (the delivered one, when there
+ * is one). Items without a path (viewer stubs) pass through untouched.
+ */
+function dedupeByPath(items: ArtifactItem[]): ArtifactItem[] {
+  const seen = new Map<string, number>();
+  const out: ArtifactItem[] = [];
+  for (const item of items) {
+    if (!item.path) {
+      out.push(item);
+      continue;
+    }
+    const at = seen.get(item.path);
+    if (at === undefined) {
+      seen.set(item.path, out.length);
+      out.push(item);
+    } else {
+      out[at] = item; // later mention wins, position stays chronological
+    }
+  }
+  return out;
+}
+
+/**
  * Collapse repeated writes of the same file into one entry.
  *
  * Every sandbox run reports the files it changed, so a model that writes
@@ -129,7 +156,7 @@ export interface ArtifactVersions {
  */
 export function groupVersions(items: ArtifactItem[]): ArtifactVersions[] {
   const byName = new Map<string, ArtifactItem[]>();
-  for (const item of items) {
+  for (const item of dedupeByPath(items)) {
     const list = byName.get(item.name);
     if (list) list.push(item);
     else byName.set(item.name, [item]);
@@ -162,7 +189,7 @@ export function versionOf(
   target: { name?: string; path?: string },
 ): { n: number; total: number } | null {
   if (!target.name) return null;
-  const sameName = items.filter((i) => i.name === target.name);
+  const sameName = dedupeByPath(items).filter((i) => i.name === target.name);
   if (sameName.length === 0) return null;
   // `items` arrives oldest-first, so the index IS the version, 1-based.
   const index = target.path

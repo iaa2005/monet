@@ -16,16 +16,59 @@
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
 import { z } from "zod/v4";
-import { readFileSync, statSync } from "fs";
+import { readFileSync, readdirSync, statSync } from "fs";
+import { basename, join } from "path";
 import { buildTool, type ToolUseContext } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
 import { resolveSandboxPath } from "../sandbox/files.js";
 import { mediaTypeOf } from "../sandbox/index.js";
-import { artifactReference, saveArtifactBuffer } from "../ipc/artifacts.js";
+import {
+  artifactReference,
+  artifactSessionDir,
+  saveArtifactBuffer,
+} from "../ipc/artifacts.js";
 import { tunablePrompt } from "../prompts/index.js";
 
 /** A delivery is chat material, not a transfer channel. */
 const MAX_DELIVER_BYTES = 100 * 1024 * 1024;
+
+/**
+ * The artifacts store usually already holds a copy of what is being
+ * delivered — the sandbox run that wrote the file registered one. Delivering
+ * is a change of STATUS, not of content, so when the newest stored copy is
+ * byte-identical to the sandbox file, reuse it: the [artifact] line then
+ * points at the same path the [file] line did, the chat counts one version
+ * instead of a phantom "v2", and nothing is stored twice. A fresh copy is
+ * made only when the sandbox file has moved on since it was last registered —
+ * which is exactly the case where the delivery needs its own snapshot.
+ */
+function reusableCopy(
+  sessionId: string,
+  name: string,
+  bytes: Buffer,
+): string | null {
+  const safeName = basename(name).replace(/[<>:"/\\|?*]/g, "_") || "file";
+  const dir = artifactSessionDir(sessionId);
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return null;
+  }
+  let newest: { ts: number; full: string } | null = null;
+  for (const f of entries) {
+    const m = /^(\d+)-(.+)$/.exec(f);
+    if (!m || m[2] !== safeName) continue;
+    const ts = Number(m[1]);
+    if (!newest || ts > newest.ts) newest = { ts, full: join(dir, f) };
+  }
+  if (!newest) return null;
+  try {
+    return readFileSync(newest.full).equals(bytes) ? newest.full : null;
+  } catch {
+    return null;
+  }
+}
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
@@ -114,7 +157,10 @@ export const DeliverFilesTool = buildTool({
         failed.push(`${raw}: too large to deliver (over 100MB).`);
         continue;
       }
-      const path = saveArtifactBuffer(sessionId, name, readFileSync(abs));
+      const bytes = readFileSync(abs);
+      const path =
+        reusableCopy(sessionId, name, bytes) ??
+        saveArtifactBuffer(sessionId, name, bytes);
       const ref = artifactReference(path);
       lines.push(`[artifact] ${mediaTypeOf(name)} ${name} :: ${ref}`);
       lines.push(`Markdown: ![${name}](${ref})`);

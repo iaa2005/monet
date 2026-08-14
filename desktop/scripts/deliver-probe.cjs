@@ -8,6 +8,9 @@
  *    delivered;
  *  - the output carries an `[artifact]` line per delivered file (the marker
  *    the chat renders as a card) and no `[file]` lines;
+ *  - delivering an UNCHANGED file reuses the stored copy (same ref, no new
+ *    file — the "v2" that used to appear on every delivery was this), while
+ *    a changed file gets a fresh snapshot;
  *  - a missing file, a directory, and an escaping path are refused by name,
  *    and refusing them all is an error while a partial delivery is not.
  *
@@ -66,14 +69,34 @@ app.whenReady().then(async () => {
 
   // ── The delivered copy is a snapshot ─────────────────────────────────
   const artDir = mod.artifactSessionDir(SID);
-  const deliveredPdf = fs
-    .readdirSync(artDir)
-    .filter((f) => f.endsWith("-report.pdf"))
-    .map((f) => path.join(artDir, f))[0];
+  const pdfCopies = () =>
+    fs
+      .readdirSync(artDir)
+      .filter((f) => f.endsWith("-report.pdf"))
+      .map((f) => path.join(artDir, f));
+  const deliveredPdf = pdfCopies()[0];
   check("the delivered copy exists in the artifacts store", !!deliveredPdf);
-  fs.writeFileSync(path.join(work, "report.pdf"), "PDF-BYTES-V2-REWRITTEN");
+
+  // ── Redelivering an unchanged file reuses the copy ───────────────────
+  const ref = (text) => (/:: (artifacts\/\S+report\.pdf)/.exec(text) || [])[1];
+  const firstRef = ref(t1);
+  const again = await call(["report.pdf"]);
   check(
-    "…and a later sandbox overwrite does not touch it",
+    "an unchanged file redelivers as the SAME copy",
+    ref(again.data.text) === firstRef && pdfCopies().length === 1,
+    `${ref(again.data.text)} vs ${firstRef}, ${pdfCopies().length} on disk`,
+  );
+
+  // ── …while a changed file gets its own snapshot ──────────────────────
+  fs.writeFileSync(path.join(work, "report.pdf"), "PDF-BYTES-V2-REWRITTEN");
+  const redelivered = await call(["report.pdf"]);
+  check(
+    "a CHANGED file redelivers as a new copy",
+    ref(redelivered.data.text) !== firstRef && pdfCopies().length === 2,
+    `${pdfCopies().length} on disk`,
+  );
+  check(
+    "…and the overwrite never touched the first delivery",
     fs.readFileSync(deliveredPdf, "utf-8") === "PDF-BYTES-V1",
   );
 
