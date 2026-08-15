@@ -45,8 +45,10 @@ export function OcrSettings(): React.JSX.Element {
   // The block finder's install is its own download (124 MB) that the model
   // install WAITS for, but its progress events carry modelId "layout" and
   // used to match no card — so the first click on Install looked dead while
-  // it silently came down. It gets its own line instead of pretending.
-  const [layoutBusy, setLayoutBusy] = useState(false);
+  // it silently came down. It gets its own banner WITH a bar (null = idle;
+  // the percent restarts once, because it is two files: finder, then the
+  // line detector).
+  const [layoutPct, setLayoutPct] = useState<number | null>(null);
   const [layout, setLayout] = useState<{
     installed: boolean;
     size: string;
@@ -75,7 +77,7 @@ export function OcrSettings(): React.JSX.Element {
     void load();
     return api()?.onInstallProgress((p) => {
       if (p.modelId === "layout") {
-        setLayoutBusy(!(p.done ?? false));
+        setLayoutPct(p.done ? null : p.percent);
         if (p.done && p.error && p.error !== "Download cancelled")
           setInstallError(`Block finder: ${p.error}`);
         if (p.done) void load();
@@ -107,7 +109,7 @@ export function OcrSettings(): React.JSX.Element {
       // The block finder is already coming down (from this or another
       // window) — starting the model on top of it means two gigabyte-class
       // downloads fighting over one flaky link. Wait for it instead.
-      if (layoutBusy) return;
+      if (layoutPct !== null) return;
       const r = await a.installLayout();
       if (!r.ok) {
         if (r.error !== "Already downloading")
@@ -144,11 +146,23 @@ export function OcrSettings(): React.JSX.Element {
       </section>
 
       <div className="space-y-1.5">
-        {layoutBusy && (
-          <p className="rounded-md bg-black/[0.03] px-3 py-2 text-[12px] text-muted-foreground dark:bg-white/[0.04]">
-            Downloading the block finder ({layout?.size ?? "124 MB"}) — the
-            scanner needs it to read pages fast. The model starts after it.
-          </p>
+        {layoutPct !== null && (
+          <div className="rounded-md bg-black/[0.03] px-3 py-2 dark:bg-white/[0.04]">
+            <div className="flex items-baseline gap-2 text-[12px] text-muted-foreground">
+              <span className="min-w-0 flex-1">
+                Downloading the block finder ({layout?.size ?? "124 MB"}) — the
+                scanner needs it to read pages fast.<br />The model starts after it.
+              </span>
+              <span className="shrink-0 tabular-nums">{layoutPct}%</span>
+            </div>
+            {/* Same bar as the model cards (PickCard), same tokens. */}
+            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/[0.1]">
+              <div
+                className="h-full rounded-full bg-brand transition-[width]"
+                style={{ width: `${layoutPct}%` }}
+              />
+            </div>
+          </div>
         )}
         {models.map((m) => {
           const v = m.variants[0];
