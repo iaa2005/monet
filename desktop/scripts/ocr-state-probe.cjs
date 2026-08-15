@@ -150,10 +150,9 @@ app.whenReady().then(async () => {
       await mod.downloadFile(
         `http://127.0.0.1:${port}/weights`,
         dl,
-        { path: "weights", size: good.length, sha256: sha },
-        new AbortController().signal,
+        { size: good.length, sha256: sha },
         // Absolute, not a delta: the last value IS the file's final size.
-        (b) => (progress = b),
+        { onBytes: (b) => (progress = b) },
       );
     } catch (e) {
       threw = e;
@@ -210,10 +209,9 @@ app.whenReady().then(async () => {
       await mod.downloadFile(
         `http://127.0.0.1:${port}/flaky`,
         dl,
-        { path: "flaky", size: good.length, sha256: sha },
-        new AbortController().signal,
-        (b) => seen.push(b),
-        { stallBudget: 3 }, // an even tighter budget than the app's
+        { size: good.length, sha256: sha },
+        // An even tighter stall budget than the app's.
+        { onBytes: (b) => seen.push(b), stallBudget: 3 },
       );
     } catch (e) {
       threw = e;
@@ -274,9 +272,7 @@ app.whenReady().then(async () => {
       await mod.downloadFile(
         `http://127.0.0.1:${port}/stalled`,
         dl,
-        { path: "stalled", size: good.length, sha256: sha },
-        new AbortController().signal,
-        () => {},
+        { size: good.length, sha256: sha },
         { idleMs: 1000 }, // a tight idle budget, so the probe is fast
       );
     } catch (e) {
@@ -321,9 +317,7 @@ app.whenReady().then(async () => {
     const args = [
       `http://127.0.0.1:${port}/locked`,
       dl,
-      { path: "locked", size: good.length, sha256: sha },
-      new AbortController().signal,
-      () => {},
+      { size: good.length, sha256: sha },
       { idleMs: 1500 },
     ];
     const first = mod.downloadFile(...args).then(() => "ok", (e) => e.message);
@@ -383,13 +377,10 @@ app.whenReady().then(async () => {
     let threw = null;
     const t0 = Date.now();
     try {
-      await mod.downloadFile(
-        `http://127.0.0.1:${port}/foreign`,
-        dl,
-        { path: "foreign", size: good.length, sha256: sha },
-        new AbortController().signal,
-        () => {},
-      );
+      await mod.downloadFile(`http://127.0.0.1:${port}/foreign`, dl, {
+        size: good.length,
+        sha256: sha,
+      });
     } catch (e) {
       threw = e;
     }
@@ -431,13 +422,10 @@ app.whenReady().then(async () => {
 
     let threw = null;
     try {
-      await mod.downloadFile(
-        `http://127.0.0.1:${port}/stale`,
-        dl,
-        { path: "stale", size: good.length, sha256: sha },
-        new AbortController().signal,
-        () => {},
-      );
+      await mod.downloadFile(`http://127.0.0.1:${port}/stale`, dl, {
+        size: good.length,
+        sha256: sha,
+      });
     } catch (e) {
       threw = e;
     }

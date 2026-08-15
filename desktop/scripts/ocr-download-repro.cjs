@@ -40,15 +40,16 @@ app.whenReady().then(async () => {
     await mod.downloadFile(
       `https://huggingface.co/${REPO}/resolve/main/${FILE}`,
       target,
-      { path: FILE, size: entry.size, sha256: entry.lfs?.sha256 },
-      new AbortController().signal,
-      (b) => {
-        // Log walk-backs (a seam) and every ~10 MB.
-        if (b < last)
-          console.log(`walk-back: ${last} -> ${b} @${Date.now() - t0}ms`);
-        else if (Math.floor(b / 10_000_000) !== Math.floor(last / 10_000_000))
-          console.log(`  ${(b / 1_000_000).toFixed(0)} MB @${Date.now() - t0}ms`);
-        last = b;
+      { size: entry.size, sha256: entry.lfs?.sha256 },
+      {
+        onBytes: (b) => {
+          // Log walk-backs (a seam) and every ~10 MB.
+          if (b < last)
+            console.log(`walk-back: ${last} -> ${b} @${Date.now() - t0}ms`);
+          else if (Math.floor(b / 10_000_000) !== Math.floor(last / 10_000_000))
+            console.log(`  ${(b / 1_000_000).toFixed(0)} MB @${Date.now() - t0}ms`);
+          last = b;
+        },
       },
     );
     const h = createHash("sha256").update(fs.readFileSync(target)).digest("hex");

@@ -22,7 +22,6 @@ import {
   readdirSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "fs";
 import { spawn } from "child_process";
 import { join } from "path";
@@ -142,11 +141,16 @@ async function downloadPodman(): Promise<{ ok: boolean; error?: string }> {
     if (!existsSync(root)) mkdirSync(root, { recursive: true });
 
     console.log(`[podman] downloading portable CLI: ${ZIP_URL}`);
-    const res = await fetch(ZIP_URL, { redirect: "follow" });
-    if (!res.ok)
-      return { ok: false, error: `Download failed: HTTP ${res.status}` };
-    const buf = Buffer.from(await res.arrayBuffer());
-    writeFileSync(tmpZip, buf);
+    // The app's one downloader: streamed to disk (the old fetch held the
+    // whole ~90 MB zip in memory), resumed across drops, retried on stalls.
+    // GitHub publishes no checksum at a stable URL, so completion is stream
+    // end — the unzip below is the integrity check that matters.
+    const { downloadFile, describeError } = await import("../net/download.js");
+    try {
+      await downloadFile(ZIP_URL, tmpZip);
+    } catch (err) {
+      return { ok: false, error: `Download failed: ${describeError(err)}` };
+    }
 
     rmSync(extractDir, { recursive: true, force: true });
     const ok = await ps(

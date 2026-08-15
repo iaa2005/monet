@@ -1,15 +1,12 @@
 /**
  * Installing and running the on-device GigaAM models.
  *
- * Downloads land in `<dataDir>/stt-models/<id>/`, one directory per model, and
- * every file is written to `<name>.part` first: a download killed halfway
- * used to leave a truncated .onnx that looked installed and failed at load
- * with an ONNX parse error nobody could act on. A `.part` left behind is
- * plainly unfinished, and the next install overwrites it.
- *
- * Every file is also checked against the sha256 HuggingFace publishes: the
- * first version of this downloader wrote a file of exactly the right size
- * with the wrong bytes, and a corrupt ONNX does not fail politely.
+ * Downloads land in `<dataDir>/stt-models/<id>/`, one directory per model,
+ * fetched through the app's ONE downloader (net/download.ts): resume across
+ * drops, sha256 verification against what HuggingFace publishes, locks
+ * against a second window. This file used to carry its own one-shot fetch —
+ * a 225 MB model lost to a single dropped connection — and its own hashing;
+ * both are the shared module's job now.
  *
  * The recognizer itself lives in a separate process (gigaam.child.ts) — see
  * the note there about why it cannot sit in main, or even in main's threads.
@@ -21,18 +18,14 @@
 
 import { fork, type ChildProcess } from "child_process";
 import { createRequire } from "module";
-import { createWriteStream } from "fs";
-import { mkdir, readdir, rm, rename, stat } from "fs/promises";
+import { mkdir, readdir, rm, stat } from "fs/promises";
 import { join } from "path";
 import { cpus } from "os";
-import { createHash } from "crypto";
 import { fileURLToPath } from "url";
-import { Readable, Transform } from "stream";
-import { pipeline } from "stream/promises";
+import { describeError, downloadSet } from "../net/download.js";
 import { getDataDir } from "../data-dir.js";
 import {
   STT_MODELS,
-  downloadProblem,
   fileName,
   fileUrl,
   modelBytes,
@@ -161,54 +154,36 @@ export async function installModel(
 
   try {
     await mkdir(dir, { recursive: true });
-    for (const f of m.files) {
-      const target = join(dir, fileName(f));
-      const part = `${target}.part`;
-      const res = await fetch(fileUrl(m, f), { signal: controller.signal });
-      if (!res.ok || !res.body) {
-        throw new Error(`${fileName(f)}: HTTP ${res.status}`);
-      }
-      // Progress is counted INSIDE the pipeline. Counting it from a `data`
-      // listener on the source put the stream in flowing mode alongside the
-      // pipe, and what landed on disk was the right length with the wrong
-      // bytes — a 225 MB ONNX that killed the recognizer with no message.
-      const hash = createHash("sha256");
-      const count = new Transform({
-        transform(chunk: Buffer, _enc, cb) {
-          loaded += chunk.length;
-          hash.update(chunk);
-          const percent = Math.min(99, Math.floor((loaded / total) * 100));
+    await downloadSet(
+      dir,
+      m.files.map((f) => ({
+        url: fileUrl(m, f),
+        path: fileName(f),
+        size: f.bytes,
+        sha256: f.sha256,
+      })),
+      {
+        signal: controller.signal,
+        report: (l) => {
+          loaded = l;
+          const percent = Math.min(99, Math.floor((l / total) * 100));
           if (percent !== lastPercent) {
             lastPercent = percent;
-            onProgress({ id, loaded, total, percent });
+            onProgress({ id, loaded: l, total, percent });
           }
-          cb(null, chunk);
         },
-      });
-      await pipeline(
-        Readable.fromWeb(res.body as never),
-        count,
-        createWriteStream(part),
-      );
-      const problem = downloadProblem(
-        f,
-        hash.digest("hex"),
-        (await stat(part)).size,
-      );
-      if (problem) throw new Error(problem);
-      await rename(part, target);
-    }
+      },
+    );
     onProgress({ id, loaded: total, total, percent: 100, done: true });
     return { ok: true };
   } catch (err) {
-    const aborted = controller.signal.aborted;
-    const error = aborted
+    const error = controller.signal.aborted
       ? "Download cancelled"
-      : err instanceof Error
-        ? err.message
-        : String(err);
-    // A cancelled or failed download leaves nothing that looks installed.
-    await rm(dir, { recursive: true, force: true }).catch(() => {});
+      : describeError(err);
+    // The `.part` files STAY: they are what makes the next attempt a resume
+    // instead of 225 MB done twice. Nothing incomplete was ever renamed off
+    // `.part`, so nothing on disk can look installed (modelFiles checks the
+    // final names only).
     onProgress({ id, loaded, total, percent: 0, done: true, error });
     return { ok: false, error };
   } finally {

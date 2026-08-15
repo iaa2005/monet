@@ -14,13 +14,11 @@
 
 import { fork, type ChildProcess } from "child_process";
 import { createRequire } from "module";
-import { createWriteStream, existsSync } from "fs";
-import { mkdir, rm, rename, stat } from "fs/promises";
+import { existsSync } from "fs";
+import { mkdir, rm, stat } from "fs/promises";
 import { join } from "path";
-import { createHash } from "crypto";
 import { fileURLToPath } from "url";
-import { Readable, Transform } from "stream";
-import { pipeline } from "stream/promises";
+import { downloadFile } from "../net/download.js";
 import { getDataDir } from "../data-dir.js";
 import {
   TTS_MODEL_FILES,
@@ -124,9 +122,13 @@ export async function ttsStatus(): Promise<TtsStatus> {
 }
 
 /**
- * Download to `target`, checked. Shared with the speaker model next door: the
- * STT downloader once produced a right-sized file with the wrong bytes, and
- * that mistake is not getting a second chance anywhere.
+ * Download to `target`, checked — via the app's ONE downloader
+ * (net/download.ts), which brings what this file's own fetch never had:
+ * resume across drops (this is a 398 MB model), idle-timeout aborts, retry
+ * budgets, verification, and a lock against a second window. The delta
+ * `onChunk` contract is kept for the callers; walk-backs (a wiped corrupt
+ * part) arrive as negative deltas, which is what a bar should do when bytes
+ * really were discarded.
  */
 export async function fetchChecked(p: {
   url: string;
@@ -136,26 +138,19 @@ export async function fetchChecked(p: {
   signal?: AbortSignal;
   onChunk?: (n: number) => void;
 }): Promise<void> {
-  const name = p.target.split(/[\\/]/).pop() as string;
-  const part = `${p.target}.part`;
-  const res = await fetch(p.url, { signal: p.signal });
-  if (!res.ok || !res.body) throw new Error(`${name}: HTTP ${res.status}`);
-  const hash = createHash("sha256");
-  const count = new Transform({
-    transform(chunk: Buffer, _enc, cb) {
-      p.onChunk?.(chunk.length);
-      hash.update(chunk);
-      cb(null, chunk);
+  let prev = 0;
+  await downloadFile(
+    p.url,
+    p.target,
+    { size: p.bytes, sha256: p.sha256 },
+    {
+      signal: p.signal,
+      onBytes: (b) => {
+        p.onChunk?.(b - prev);
+        prev = b;
+      },
     },
-  });
-  await pipeline(Readable.fromWeb(res.body as never), count, createWriteStream(part));
-  const digest = hash.digest("hex");
-  if (p.sha256 && digest !== p.sha256)
-    throw new Error(`${name} arrived corrupt (checksum mismatch) — try again`);
-  const written = (await stat(part)).size;
-  if (written !== p.bytes)
-    throw new Error(`${name}: expected ${p.bytes} bytes, got ${written}`);
-  await rename(part, p.target);
+  );
 }
 
 async function fetchFile(
