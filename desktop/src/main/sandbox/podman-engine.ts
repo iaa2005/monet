@@ -55,9 +55,14 @@ const INIT_TIMEOUT_MS = 20 * 60_000;
 
 const CONTAINERFILE = `
 FROM docker.io/library/python:3.12-slim
+# fonts-cmu is Computer Modern Unicode (15 MB): Knuth's face as OpenType, with
+# the Cyrillic and Greek the Type1 CM fonts never carried. It is what a LaTeX
+# document's \\setmainfont names, so Russian body text finally matches its own
+# formulas — tectonic typesets math in CM whatever the text font is, and DejaVu
+# beside CM math is the mismatch every report used to ship with.
 RUN apt-get update \\
  && apt-get install -y --no-install-recommends nodejs npm curl ca-certificates \\
-    fontconfig fonts-dejavu fonts-dejavu-extra fonts-liberation \\
+    fontconfig fonts-dejavu fonts-dejavu-extra fonts-liberation fonts-cmu \\
  && rm -rf /var/lib/apt/lists/*
 # Tectonic: a self-contained LaTeX engine (~40MB) that fetches TeX packages
 # on demand — full texlive (multi-GB) is deliberately avoided.

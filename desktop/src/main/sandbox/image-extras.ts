@@ -6,7 +6,7 @@
  * only durable place is the image, and the only safe way to change an image is
  * to build a new one — a layer on top of the base:
  *
- *     FROM monet-sandbox:v3
+ *     FROM monet-sandbox:v4
  *     RUN apt-get install -y build-essential
  *
  * The tag carries a hash of that text, so three things come for free: the
@@ -25,7 +25,7 @@ import { join } from "path";
 import { getDataDir } from "../data-dir.js";
 
 /** The base image every chat runs, and the FROM of any extension. */
-export const BASE_IMAGE_TAG = "monet-sandbox:v3";
+export const BASE_IMAGE_TAG = "monet-sandbox:v4";
 
 /** The shelves of the list. Order is the order they are shown in. */
 export const IMAGE_CATEGORIES = [
@@ -192,10 +192,11 @@ export const IMAGE_PRESETS: ImagePreset[] = [
   },
   {
     id: "fonts",
-    label: "DejaVu + Liberation fonts",
+    label: "CMU + DejaVu + Liberation fonts",
     category: "Documents",
     size: "included",
-    provides: "full Latin and Cyrillic coverage in PDFs and charts",
+    provides:
+      "CMU Serif / Sans / Typewriter (Computer Modern Unicode — the LaTeX face, with Cyrillic and Greek) plus DejaVu and Liberation, in PDFs and charts",
     lines: [],
     builtin: true,
   },

@@ -42,6 +42,24 @@ Read the first line of the RunPython tool description:
 - PODMAN: write report.tex, run \`subprocess.run(['tectonic', 'report.tex'])\`
   — tectonic downloads missing TeX packages automatically on first use.
 
+## Fonts in a PODMAN LaTeX document
+
+tectonic is XeTeX: \`inputenc\`/\`fontenc[T2A]\` do not apply, fontspec does.
+The default block — all a document normally needs, and the one that keeps the
+text in the same face as the maths tectonic sets on its own:
+
+\`\`\`latex
+\\usepackage{fontspec}
+\\setmainfont{CMU Serif}
+\\setsansfont{CMU Sans Serif}
+\\setmonofont{CMU Typewriter Text}
+\`\`\`
+
+CMU is Computer Modern Unicode — the classic LaTeX face, with Cyrillic and
+Greek. Add \`\\usepackage{polyglossia}\\setmainlanguage{russian}\` for Russian
+hyphenation. Never pass \`Path=\` or a .ttf filename; the family name resolves.
+DejaVu and Liberation are installed too, for a deliberately different look.
+
 ## DOCX / XLSX / PPTX
 
 python-docx / openpyxl / python-pptx work in EVERY engine (auto-installed).

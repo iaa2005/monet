@@ -89,8 +89,9 @@ const PROMPT_PODMAN = [
   ...PROMPT_COMMON,
   "- PRE-INSTALLED, use directly (do NOT reinstall): Python 3.12 with numpy,",
   "  pandas, matplotlib, Pillow (PIL), fpdf2, python-docx, openpyxl; Node.js +",
-  "  npm; `tectonic` (a self-contained XeTeX/LaTeX engine); and DejaVu +",
-  "  Liberation fonts (full Cyrillic/Latin coverage).",
+  "  npm; `tectonic` (a self-contained XeTeX/LaTeX engine); and the CMU",
+  "  (Computer Modern Unicode), DejaVu and Liberation font families — full",
+  "  Cyrillic and Latin coverage.",
   // This block used to say installs do NOT persist, and told the model to put
   // `pip install` at the top of every script. Both halves were wrong and the
   // model obeyed them exactly: it ran pip through subprocess from inside
@@ -123,11 +124,20 @@ const PROMPT_PODMAN = [
   "  TeX packages automatically on first use.",
   "- For NON-ASCII text (Cyrillic, accents, CJK) do NOT use the pdflatex-style",
   "  inputenc / fontenc[T2A] approach — it fails here. tectonic is XeTeX, so",
-  "  use fontspec with an installed Unicode font:",
+  "  name an installed family with fontspec. This is THE default block, and",
+  "  the only font lines a document normally needs — it is Computer Modern, so",
+  "  the text matches the maths tectonic sets anyway:",
   "    \\usepackage{fontspec}",
-  "    \\setmainfont{DejaVu Serif}",
-  "  (for Russian you may add \\usepackage{polyglossia}\\setmainlanguage",
-  "  {russian}). This renders Cyrillic correctly the first time.",
+  "    \\setmainfont{CMU Serif}",
+  "    \\setsansfont{CMU Sans Serif}",
+  "    \\setmonofont{CMU Typewriter Text}",
+  "  For Russian add \\usepackage{polyglossia}\\setmainlanguage{russian} —",
+  "  that is hyphenation, not fonts. NEVER write Path=, a directory, or a",
+  "  .ttf filename: the family name above is enough and always resolves.",
+  "  Deliberately different look, on request only: DejaVu Serif / DejaVu Sans",
+  "  / DejaVu Sans Mono, or Liberation Serif / Sans / Mono (Times and Arial",
+  "  metrics). A matplotlib figure going INTO such a document matches it with",
+  "  matplotlib.rcParams['font.family'] = 'CMU Serif'.",
   "- Networking is available inside the container.",
 ];
 
