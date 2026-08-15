@@ -26,6 +26,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Portal } from "@/components/ui/portal";
 import { useIsDark } from "@/components/chat/highlight";
 import { fallbackIcon, resolveIcon } from "@/components/icon-resolver";
 import { flattenTree, visibleWindow } from "@/components/tree-rows";
@@ -122,7 +123,7 @@ function LargeFileDialog({
   ]);
   const isBinary = BINARY.has(ext);
 
-  return (
+  const dialog = (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="mx-4 w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-xl">
         <div className="flex items-start gap-3">
@@ -167,6 +168,7 @@ function LargeFileDialog({
       </div>
     </div>
   );
+  return <Portal>{dialog}</Portal>;
 }
 
 /** Where the context menu is open, and on what. `entry: null` = the empty
@@ -234,7 +236,7 @@ function NamePromptDialog({
     if (err) setError(err);
   };
 
-  return (
+  const dialog = (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-[20vh]"
       onMouseDown={onCancel}
@@ -279,6 +281,7 @@ function NamePromptDialog({
       </div>
     </div>
   );
+  return <Portal>{dialog}</Portal>;
 }
 
 function MenuItem({
@@ -881,7 +884,7 @@ export function FileTree({
         (() => {
           const entry = menu.entry;
           return (
-            <>
+            <Portal>
               <div
                 className="fixed inset-0 z-40"
                 onMouseDown={() => setMenu(null)}
@@ -1037,7 +1040,7 @@ export function FileTree({
                   </>
                 )}
               </div>
-            </>
+            </Portal>
           );
         })()}
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
+import { Portal } from '@/components/ui/portal'
 import type { PermissionRequest as PermRequest, PermissionDecision } from '@/types/electron'
 
 interface PermissionDialogProps {
@@ -23,7 +24,7 @@ export function PermissionDialog({
 
   if (!visible) return <></>
 
-  return (
+  const dialog = (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
         <div className="flex items-baseline justify-between gap-2">
@@ -69,4 +70,5 @@ export function PermissionDialog({
       </div>
     </div>
   )
+  return <Portal>{dialog}</Portal>
 }

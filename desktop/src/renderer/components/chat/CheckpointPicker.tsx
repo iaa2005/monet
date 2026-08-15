@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { History, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { Portal } from "@/components/ui/portal";
 import { useChatStore } from "@/stores/chatStore";
 import type { ChatMessage } from "@/types/chat";
 
@@ -22,7 +23,7 @@ export function CheckpointPicker({
 
   const turns = messages.filter((m) => m.role === "user");
 
-  return (
+  const picker = (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
       onClick={onClose}
@@ -116,4 +117,5 @@ export function CheckpointPicker({
       </Modal>
     </div>
   );
+  return <Portal>{picker}</Portal>;
 }

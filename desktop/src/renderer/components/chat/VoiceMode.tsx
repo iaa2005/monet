@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ClipboardList, MessageSquare, Square, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Portal } from "@/components/ui/portal";
 import { INTERRUPT_MARK, useChatStore } from "@/stores/chatStore";
 import { markdownForSpeech, stripTtsTags } from "@shared/voice-tags";
 import { speechLangFor } from "@shared/tts-langs";
@@ -831,7 +832,7 @@ export function VoiceMode({
   };
 
   return (
-    <>
+    <Portal>
       {/* The blurred voice wave along the bottom, over every chat. */}
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[110]">
         <canvas ref={canvasRef} className="block h-32 w-full blur-xl" />
@@ -917,6 +918,6 @@ export function VoiceMode({
           </div>
         )}
       </div>
-    </>
+    </Portal>
   );
 }
