@@ -151,7 +151,7 @@ export function OcrSettings(): React.JSX.Element {
             <div className="flex items-baseline gap-2 text-[12px] text-muted-foreground">
               <span className="min-w-0 flex-1">
                 Downloading the block finder ({layout?.size ?? "124 MB"}) — the
-                scanner needs it to read pages fast.<br />The model starts after it.
+                scanner needs it to read pages fast. <br />The model starts after it.
               </span>
               <span className="shrink-0 tabular-nums">{layoutPct}%</span>
             </div>

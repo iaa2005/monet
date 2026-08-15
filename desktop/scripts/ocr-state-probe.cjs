@@ -341,6 +341,72 @@ app.whenReady().then(async () => {
     );
   }
 
+  // ── A writer that ignores the lock trips the wire, not the checksum ───
+  //
+  // An OLDER build sharing the data dir doesn't know about lock files and
+  // appends to the same .part. The interleave used to surface only as
+  // "checksum mismatch even after clean re-downloads", three gigabyte-sized
+  // passes later. The seam between attempts is detectable immediately: the
+  // file changed size and we didn't do it.
+  {
+    const http = require("http");
+    const { createHash } = require("crypto");
+    const good = Buffer.alloc(1_000_000, 4);
+    const sha = createHash("sha256").update(good).digest("hex");
+    const server = http.createServer((req, res) => {
+      const m = /bytes=(\d+)-/.exec(req.headers.range ?? "");
+      const from = m ? Number(m[1]) : 0;
+      res.writeHead(m ? 206 : 200, {
+        "content-length": String(good.length - from),
+        ...(m ? { "content-range": `bytes ${from}-${good.length - 1}/${good.length}` } : {}),
+      });
+      res.write(good.subarray(from, from + 400_000));
+      setTimeout(() => res.destroy(), 10); // drop; the retry backs off ~1 s
+    });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const port = server.address().port;
+
+    const dl = path.join(root, "dl", "foreign.onnx_data");
+    // The legacy writer: the moment the first attempt's bytes land and the
+    // downloader is backing off, append junk the way a second process would.
+    const meddler = setInterval(() => {
+      try {
+        if (fs.existsSync(`${dl}.part`) && fs.statSync(`${dl}.part`).size >= 400_000) {
+          fs.appendFileSync(`${dl}.part`, Buffer.alloc(10_000, 9));
+          clearInterval(meddler);
+        }
+      } catch {
+        /* keep polling */
+      }
+    }, 50);
+
+    let threw = null;
+    const t0 = Date.now();
+    try {
+      await mod.downloadFile(
+        `http://127.0.0.1:${port}/foreign`,
+        dl,
+        { path: "foreign", size: good.length, sha256: sha },
+        new AbortController().signal,
+        () => {},
+      );
+    } catch (e) {
+      threw = e;
+    }
+    clearInterval(meddler);
+    server.close();
+    check(
+      "a lock-ignorant second writer is caught at the seam, by name",
+      threw !== null && /another app instance/.test(threw.message),
+      threw ? threw.message : "download finished?!",
+    );
+    check(
+      "…in seconds, not after gigabyte-sized re-passes",
+      Date.now() - t0 < 10_000,
+      `${Date.now() - t0}ms`,
+    );
+  }
+
   // ── A crashed downloader's lock is reaped ─────────────────────────────
   //
   // Live locks are heartbeaten (mtime refreshed as bytes land), so "stale"

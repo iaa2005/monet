@@ -94,8 +94,12 @@ const MANIFEST_MS = 20_000;
 /** Consecutive zero-progress attempts before a file is declared stuck. */
 const STALL_BUDGET = 6;
 
-/** Wipe-and-redownload rounds before a verification failure is fatal. */
-const CLEAN_PASSES = 2;
+/** Wipe-and-redownload rounds before a verification failure is fatal. One:
+ * a single-writer download verified clean against the real CDN on the very
+ * link that produced the field failures, so corruption that survives a
+ * clean re-download is not the network — burning a third gigabyte pass
+ * just made the bar refill mysteriously before failing the same way. */
+const CLEAN_PASSES = 1;
 
 /** A lock whose owner hasn't touched it for this long is a corpse. Owners
  * touch their lock on every progress beat, so a LIVE download of any size
@@ -289,6 +293,18 @@ export async function downloadFile(
       onBytes(have);
 
       for (let stalls = 0; !expect.size || have < expect.size; ) {
+        // The tripwire for a writer that doesn't honour our lock — an OLDER
+        // build of this app sharing the data dir appends to the same .part
+        // and interleaves its bytes with ours. The interleave itself can
+        // only be caught by the final checksum, but the seam BETWEEN
+        // attempts is visible right here: the file changed size and we
+        // didn't do it. Failing by name beats three gigabyte-sized passes
+        // ending in "checksum mismatch".
+        const disk = await sizeOf(part);
+        if (disk !== have)
+          throw new Error(
+            "another app instance is writing this file — close other Code Monet windows (including an installed copy) and retry",
+          );
         const before = have;
         // The per-attempt controller: the outer signal aborts it, and so
         // does the idle timer — a socket that goes silent for IDLE_MS lands
@@ -362,7 +378,7 @@ export async function downloadFile(
       if (pass >= CLEAN_PASSES)
         throw new Error(
           sizeOk
-            ? "checksum mismatch even after clean re-downloads"
+            ? "checksum mismatch even after a clean re-download — if another copy of the app is open (an installed one beside this dev run), close it: two apps downloading into one folder corrupt the file"
             : `is ${finalSize} bytes, expected ${expect.size}`,
         );
     }
