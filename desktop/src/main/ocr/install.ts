@@ -20,8 +20,10 @@
 
 import { createHash } from "crypto";
 import {
+  closeSync,
   createReadStream,
   createWriteStream,
+  openSync,
   readFileSync,
   statSync,
   writeFileSync,
@@ -62,6 +64,60 @@ interface RepoFile {
 
 const installing = new Map<string, AbortController>();
 
+/** Longest an attempt may go without a single byte landing before it is
+ * aborted and retried from where the disk got to. A stalled socket (open,
+ * but silent) throws nothing, and an attempt with no timeout would sit in
+ * `pipeline` forever. 30 s is far beyond a normal slow start yet short
+ * enough that a dead link costs one idle wait per ~25 MB, not a frozen
+ * download. */
+const IDLE_MS = 30_000;
+
+/** How long the manifest fetch may take. It is a small API response — on a
+ * stalled link 20 s with nothing is a dead link, not a slow repo. */
+const MANIFEST_MS = 20_000;
+
+/**
+ * One downloader per target file, ACROSS processes.
+ *
+ * The `installing` map guards one process only, and this app has no single
+ * instance lock — two windows (or a packaged install and a dev run sharing
+ * a data dir, which is exactly how the user ended up with three of them)
+ * can install the same model at the same time. Two processes appending to
+ * the same `.part` interleave their bytes: the file reaches the right size
+ * with wrong content, sha fails, both wipe it and both start over, and the
+ * result is the reported "checksum mismatch even after a clean
+ * re-download" — deterministically, at any number of clicks.
+ *
+ * A `wx`-created lock file makes the target exclusive. A crash can leave it
+ * behind; a lock older than two minutes is a corpse and is broken.
+ */
+async function acquireTargetLock(target: string): Promise<() => Promise<void>> {
+  const lock = `${target}.lock`;
+  await mkdir(dirname(lock), { recursive: true });
+  for (let i = 0; i < 2; i++) {
+    try {
+      const fd = openSync(lock, "wx");
+      closeSync(fd);
+      writeFileSync(lock, String(process.pid), "utf-8");
+      return async () => {
+        await rm(lock, { force: true }).catch(() => {});
+      };
+    } catch {
+      try {
+        const stale = Date.now() - statSync(lock).mtimeMs > 120_000;
+        if (stale && i === 0) {
+          await rm(lock, { force: true }).catch(() => {});
+          continue;
+        }
+      } catch {
+        /* the lock vanished between the create attempt and now */
+      }
+      throw new Error("Already downloading in another window");
+    }
+  }
+  throw new Error("Already downloading in another window");
+}
+
 function statSyncSize(path: string): number {
   try {
     return statSync(path).size;
@@ -84,9 +140,13 @@ async function fetchManifest(
   model: OcrModelInfo,
   signal: AbortSignal,
 ): Promise<Map<string, RepoFile>> {
+  // The file download attempts are timed out per-attempt; this HEAD-of-the-
+  // install fetch is not, and a stalled API call would freeze the whole
+  // install with no progress event at all — which reads as "nothing
+  // happened" after clicking Install. Cap it like an attempt.
   const res = await fetch(
     `https://huggingface.co/api/models/${model.repo}?blobs=true`,
-    { signal },
+    { signal: AbortSignal.any([signal, AbortSignal.timeout(MANIFEST_MS)]) },
   );
   if (!res.ok) throw new Error(`Model index: HTTP ${res.status}`);
   const json = (await res.json()) as {
@@ -160,7 +220,10 @@ async function sha256Of(path: string): Promise<string> {
  * its published size with a bad hash, and every "resume" flew to the
  * checksum in a blink, failed on the same bytes, and left them there for
  * the next attempt to fail on. Verification failure now WIPES the part and
- * downloads clean, once; only a second wrong verdict is an error.
+ * downloads clean; up to three clean downloads before giving up, because
+ * a flaky link can corrupt bytes a few times in a row (and two windows
+ * downloading into the same `.part` used to corrupt it deterministically —
+ * the per-target lock stops that at the source).
  */
 export async function downloadFile(
   url: string,
@@ -169,82 +232,133 @@ export async function downloadFile(
   signal: AbortSignal,
   onChunk: (deltaBytes: number) => void,
   attempts = 6,
+  /** Idle timeout per attempt, in ms — the probe passes a tight budget. */
+  idleMs = IDLE_MS,
 ): Promise<void> {
   const part = `${target}.part`;
   await mkdir(dirname(target), { recursive: true });
+  // Cross-process exclusivity first: two windows downloading the same file
+  // into the same `.part` corrupt it deterministically.
+  const releaseLock = await acquireTargetLock(target);
+  try {
+    for (let pass = 1; ; pass++) {
+      let have = await sizeOf(part);
+      onChunk(have);
+      // A hard crash can orphan a fresh copy; a new pass starts clean.
+      await rm(`${part}.fresh`, { force: true });
+      // Which file currently holds the completed bytes: the `.part`, or the
+      // fresh copy a Range-ignoring server was answered with (see below).
+      let current = part;
 
-  for (let pass = 1; ; pass++) {
-    let have = await sizeOf(part);
-    onChunk(have);
+      // `stalls` counts CONSECUTIVE attempts that added nothing. A connection
+      // that keeps dropping mid-stream but moves the file forward each time is
+      // making progress, however ugly, and must not be able to exhaust the
+      // budget — a flat cap of six meant a 373 MB file over a link that drops
+      // every ~25 MB could never finish, at any number of clicks.
+      for (let stalls = 0; ; ) {
+        if (expect.size && have >= expect.size) break;
+        const before = have;
+        // Whether this attempt was a full re-fetch from a Range-ignoring server
+        // — the catch needs to know which file to resync against and discard.
+        let restarted = false;
+        // The per-attempt controller and the bridge from the outer signal:
+        // declared outside the try so the catch can detach the listener.
+        const attempt = new AbortController();
+        const onOuterAbort = (): void => attempt.abort();
+        signal.addEventListener("abort", onOuterAbort, { once: true });
+        try {
+          // A connection can fail by going SILENT, not just by closing: the
+          // socket stays open, no error is ever thrown, and `pipeline` waits
+          // forever — which makes every retry below unreachable. The user's
+          // link drops mid-stream this way. Each attempt gets an idle timeout
+          // instead: no byte for IDLE_MS and the attempt is aborted, which
+          // lands in the catch like any other dropped attempt and resumes from
+          // wherever the disk actually got to.
+          let idle: ReturnType<typeof setTimeout> | undefined;
+          const armIdle = (): void => {
+            clearTimeout(idle);
+            idle = setTimeout(() => attempt.abort(), idleMs);
+          };
+          armIdle();
 
-    // `stalls` counts CONSECUTIVE attempts that added nothing. A connection
-    // that keeps dropping mid-stream but moves the file forward each time is
-    // making progress, however ugly, and must not be able to exhaust the
-    // budget — a flat cap of six meant a 373 MB file over a link that drops
-    // every ~25 MB could never finish, at any number of clicks.
-    for (let stalls = 0; ; ) {
-      if (expect.size && have >= expect.size) break;
-      const before = have;
-      try {
-        const headers: Record<string, string> = {};
-        if (have > 0) headers.Range = `bytes=${have}-`;
-        const res = await fetch(url, { headers, signal });
-        // 206 = the resume was honoured; 200 with a Range asked means the
-        // server ignored it and is sending the whole file from the start.
-        if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-        const restarted = have > 0 && res.status !== 206;
-        if (restarted) {
-          onChunk(-have); // the bar walks back with the bytes it lost
-          have = 0;
+          const headers: Record<string, string> = {};
+          if (have > 0) headers.Range = `bytes=${have}-`;
+          const res = await fetch(url, { headers, signal: attempt.signal });
+          // 206 = the resume was honoured; 200 with a Range asked means the
+          // server ignored it and is sending the whole file from the start.
+          if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+          restarted = have > 0 && res.status !== 206;
+          // Don't truncate the `.part` when the server restarts: the fresh copy
+          // may die too, and the old bytes are then the only progress there is
+          // — truncating first is how a 55 MB part once became a 25 MB one.
+          // The fresh file replaces the part only once it lands complete.
+          current = restarted ? `${part}.fresh` : part;
+          if (restarted) {
+            onChunk(-have); // the bar walks back with the bytes it lost
+            have = 0;
+          }
+
+          const counted = Readable.fromWeb(res.body as never);
+          counted.on("data", (chunk: Buffer) => {
+            armIdle();
+            have += chunk.length;
+            onChunk(chunk.length);
+          });
+          await pipeline(
+            counted,
+            createWriteStream(current, { flags: have === 0 ? "w" : "a" }),
+          );
+          clearTimeout(idle);
+          signal.removeEventListener("abort", onOuterAbort);
+          if (!expect.size || have >= expect.size) break;
+          throw new Error(`truncated at ${have} of ${expect.size} bytes`);
+        } catch (err) {
+          if (signal.aborted) throw new Error("Download cancelled");
+          // The attempt is over; the listener would only leak until the outer
+          // signal fires, so take it off now.
+          signal.removeEventListener("abort", onOuterAbort);
+          // A fresh copy that died is discarded; the `.part` it was replacing
+          // keeps its bytes, so a restart burns nothing.
+          if (restarted) await rm(`${part}.fresh`, { force: true });
+          // Whatever landed stays: the next attempt continues from there. The
+          // stream may have counted bytes the disk never got — resync both
+          // `have` and the bar to what is actually in the file.
+          const actual = await sizeOf(part);
+          onChunk(actual - have);
+          have = actual;
+          stalls = have > before ? 0 : stalls + 1;
+          if (stalls >= attempts) throw err;
+          await new Promise((r) => setTimeout(r, Math.min(15_000, 1000 * (stalls + 1))));
         }
-
-        const counted = Readable.fromWeb(res.body as never);
-        counted.on("data", (chunk: Buffer) => {
-          have += chunk.length;
-          onChunk(chunk.length);
-        });
-        await pipeline(
-          counted,
-          createWriteStream(part, { flags: restarted || have === 0 ? "w" : "a" }),
-        );
-        if (!expect.size || have >= expect.size) break;
-        throw new Error(`truncated at ${have} of ${expect.size} bytes`);
-      } catch (err) {
-        if (signal.aborted) throw new Error("Download cancelled");
-        // Whatever landed stays: the next attempt continues from there. The
-        // stream may have counted bytes the disk never got — resync both
-        // `have` and the bar to what is actually in the file.
-        const actual = await sizeOf(part);
-        onChunk(actual - have);
-        have = actual;
-        stalls = have > before ? 0 : stalls + 1;
-        if (stalls >= attempts) throw err;
-        await new Promise((r) => setTimeout(r, Math.min(15_000, 1000 * (stalls + 1))));
       }
-    }
 
-    const finalSize = await sizeOf(part);
-    const sizeOk = !expect.size || finalSize === expect.size;
-    // Size is not integrity: an earlier downloader elsewhere in this app once
-    // produced a file of exactly the right length with the wrong bytes, and a
-    // corrupt ONNX does not fail politely.
-    const hashOk =
-      sizeOk && (!expect.sha256 || (await sha256Of(part)) === expect.sha256);
-    if (sizeOk && hashOk) {
-      await rename(part, target);
-      return;
-    }
+      const finalSize = await sizeOf(current);
+      const sizeOk = !expect.size || finalSize === expect.size;
+      // Size is not integrity: an earlier downloader elsewhere in this app once
+      // produced a file of exactly the right length with the wrong bytes, and a
+      // corrupt ONNX does not fail politely.
+      const hashOk =
+        sizeOk && (!expect.sha256 || (await sha256Of(current)) === expect.sha256);
+      if (sizeOk && hashOk) {
+        // A fresh copy supersedes the part it replaced.
+        if (current !== part) await rm(part, { force: true });
+        await rename(current, target);
+        return;
+      }
 
-    // Verified wrong. Keeping these bytes would fail every future attempt
-    // the same way — wipe them and go again from nothing.
-    await rm(part, { force: true });
-    onChunk(-finalSize);
-    if (pass >= 2)
-      throw new Error(
-        sizeOk
-          ? "checksum mismatch even after a clean re-download"
-          : `is ${finalSize} bytes, expected ${expect.size}`,
-      );
+      // Verified wrong. Keeping these bytes would fail every future attempt
+      // the same way — wipe them and go again from nothing.
+      await rm(current, { force: true });
+      onChunk(-finalSize);
+      if (pass >= 3)
+        throw new Error(
+          sizeOk
+            ? "checksum mismatch even after clean re-downloads"
+            : `is ${finalSize} bytes, expected ${expect.size}`,
+        );
+    }
+  } finally {
+    await releaseLock();
   }
 }
 
@@ -483,7 +597,7 @@ export async function installLayoutModel(
   try {
     const res = await fetch(
       `https://huggingface.co/api/models/${repo}?blobs=true`,
-      { signal: controller.signal },
+      { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(MANIFEST_MS)]) },
     );
     if (!res.ok) throw new Error(`Model index: HTTP ${res.status}`);
     const json = (await res.json()) as {

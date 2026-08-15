@@ -230,6 +230,109 @@ app.whenReady().then(async () => {
     check("…which took more requests than any flat budget", requests > 10, String(requests));
   }
 
+  // ── A connection that goes SILENT must not freeze the download ─────────
+  //
+  // The failure the user's link actually produces: the socket stays open and
+  // throws nothing, so `pipeline` waits forever and no retry ever runs —
+  // the bar freezes, the user cancels, and "downloading" is a lie. An
+  // attempt that stops receiving bytes must abort itself and resume from
+  // where the disk got to. This server sends 1 MB then never sends another
+  // byte and never closes; the old code hung on it indefinitely.
+  {
+    const http = require("http");
+    const { createHash } = require("crypto");
+    const good = Buffer.alloc(3_000_000, 7);
+    const sha = createHash("sha256").update(good).digest("hex");
+    let requests = 0;
+    const server = http.createServer((req, res) => {
+      requests++;
+      const m = /bytes=(\d+)-/.exec(req.headers.range ?? "");
+      const from = m ? Number(m[1]) : 0;
+      res.writeHead(m ? 206 : 200, {
+        "content-length": String(good.length - from),
+        ...(m ? { "content-range": `bytes ${from}-${good.length - 1}/${good.length}` } : {}),
+      });
+      res.write(good.subarray(from, from + 1_000_000));
+      // No more writes, no destroy: the response stalls mid-stream.
+    });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const port = server.address().port;
+
+    const dl = path.join(root, "dl", "stalled.onnx_data");
+    let threw = null;
+    try {
+      await mod.downloadFile(
+        `http://127.0.0.1:${port}/stalled`,
+        dl,
+        { path: "stalled", size: good.length, sha256: sha },
+        new AbortController().signal,
+        () => {},
+        6,
+        1000, // a tight idle budget, so the probe is fast
+      );
+    } catch (e) {
+      threw = e;
+    }
+    server.close();
+    check(
+      "a mid-stream stall aborts itself and resumes, not hangs",
+      threw === null && fs.existsSync(dl),
+      threw ? threw.message : `${requests} requests`,
+    );
+    check(
+      "…and the stalled file still verifies",
+      fs.existsSync(dl) &&
+        createHash("sha256").update(fs.readFileSync(dl)).digest("hex") === sha,
+    );
+    check("…recovering from as many stalls as it met", requests >= 3, String(requests));
+  }
+
+  // ── Two windows must not download the same file at once ───────────────
+  //
+  // The app has no single-instance lock, so two instances (a packaged run
+  // and a dev run sharing a data dir — how this user ended up with three)
+  // can install the same model simultaneously. Two processes appending to
+  // the same `.part` interleave their bytes: full size, wrong content, sha
+  // fails, both wipe and both start over — the reported "checksum mismatch
+  // even after a clean re-download", deterministically. The per-target lock
+  // makes the second downloader say so instead of corrupting the file.
+  {
+    const http = require("http");
+    const { createHash } = require("crypto");
+    const good = Buffer.alloc(2_000_000, 7);
+    const sha = createHash("sha256").update(good).digest("hex");
+    const server = http.createServer((req, res) => {
+      res.writeHead(200, { "content-length": String(good.length) });
+      res.write(good.subarray(0, 1_000_000)); // half, then hold — stays mid-flight
+    });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const port = server.address().port;
+
+    const dl = path.join(root, "dl", "locked.onnx_data");
+    const args = [
+      `http://127.0.0.1:${port}/locked`,
+      dl,
+      { path: "locked", size: good.length, sha256: sha },
+      new AbortController().signal,
+      () => {},
+      6,
+      1500,
+    ];
+    const first = mod.downloadFile(...args).then(() => "ok", (e) => e.message);
+    await new Promise((r) => setTimeout(r, 400)); // let the first take the lock
+    const second = await mod.downloadFile(...args).then(
+      () => "ok",
+      (e) => e.message,
+    );
+    await first.catch(() => {}); // the stalled first attempt fails on its own
+    server.close();
+    check(
+      "a second download of the same file is refused, not corrupted",
+      second === "Already downloading in another window",
+      second,
+    );
+  }
+
   // ── The real folder, when one was named ──────────────────────────────
   const broken = process.env.MONET_OCR_BROKEN;
   if (broken && fs.existsSync(broken)) {

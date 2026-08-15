@@ -42,6 +42,11 @@ export function OcrSettings(): React.JSX.Element {
   const [models, setModels] = useState<UiOcrModel[]>([]);
   const [cfg, setCfg] = useState<OcrConfig | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
+  // The block finder's install is its own download (124 MB) that the model
+  // install WAITS for, but its progress events carry modelId "layout" and
+  // used to match no card — so the first click on Install looked dead while
+  // it silently came down. It gets its own line instead of pretending.
+  const [layoutBusy, setLayoutBusy] = useState(false);
   const [layout, setLayout] = useState<{
     installed: boolean;
     size: string;
@@ -69,6 +74,13 @@ export function OcrSettings(): React.JSX.Element {
   useEffect(() => {
     void load();
     return api()?.onInstallProgress((p) => {
+      if (p.modelId === "layout") {
+        setLayoutBusy(!(p.done ?? false));
+        if (p.done && p.error && p.error !== "Download cancelled")
+          setInstallError(`Block finder: ${p.error}`);
+        if (p.done) void load();
+        return;
+      }
       setProgress(p.done ? null : p);
       if (!p.done) setInstallError(null);
       if (p.done) {
@@ -91,7 +103,19 @@ export function OcrSettings(): React.JSX.Element {
     const a = api();
     if (!a) return;
     setInstallError(null);
-    if (!layout?.installed) await a.installLayout();
+    if (!layout?.installed) {
+      // The block finder is already coming down (from this or another
+      // window) — starting the model on top of it means two gigabyte-class
+      // downloads fighting over one flaky link. Wait for it instead.
+      if (layoutBusy) return;
+      const r = await a.installLayout();
+      if (!r.ok) {
+        if (r.error !== "Already downloading")
+          setInstallError(`Block finder: ${r.error ?? "download failed"}`);
+        return;
+      }
+      await load();
+    }
     await a.install(id, dtype);
     await load();
   };
@@ -120,6 +144,12 @@ export function OcrSettings(): React.JSX.Element {
       </section>
 
       <div className="space-y-1.5">
+        {layoutBusy && (
+          <p className="rounded-md bg-black/[0.03] px-3 py-2 text-[12px] text-muted-foreground dark:bg-white/[0.04]">
+            Downloading the block finder ({layout?.size ?? "124 MB"}) — the
+            scanner needs it to read pages fast. The model starts after it.
+          </p>
+        )}
         {models.map((m) => {
           const v = m.variants[0];
           const busy = progress?.modelId === m.id;
