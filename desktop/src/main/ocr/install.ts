@@ -211,17 +211,60 @@ function makeLockToucher(target: string): () => void {
 
 // ─── The manifest and the plan ──────────────────────────────────────────────
 
+/**
+ * undici reports every network-level failure as the two words "fetch
+ * failed" and hides the actual reason one `cause` down. Unwrap the chain:
+ * "fetch failed — connect ECONNRESET" is the difference between "try again
+ * in a minute" and "the catalogue names a repo that does not exist".
+ */
+export function describeError(err: unknown): string {
+  const parts: string[] = [];
+  let cur: unknown = err;
+  for (let hops = 0; cur != null && hops < 4; hops++) {
+    const msg = cur instanceof Error ? cur.message : String(cur);
+    const code = (cur as { code?: string }).code;
+    parts.push(code && !msg.includes(code) ? `${msg} (${code})` : msg);
+    cur = cur instanceof Error ? cur.cause : undefined;
+  }
+  const seen = new Set<string>();
+  const unique = parts.filter((p) => !seen.has(p) && (seen.add(p), true));
+  // The generic wrapper adds nothing once a specific layer follows it.
+  if (unique.length > 1 && unique[0] === "fetch failed") unique.shift();
+  return unique.join(" — ");
+}
+
 /** A repo's manifest: what each file weighs and what it should hash to. */
 async function fetchManifest(
   repo: string,
   signal: AbortSignal,
 ): Promise<Map<string, RepoFile>> {
-  // Capped like an attempt: a stalled API call used to freeze the whole
-  // install before the first progress event, which read as a dead button.
-  const res = await fetch(`https://huggingface.co/api/models/${repo}?blobs=true`, {
-    signal: AbortSignal.any([signal, AbortSignal.timeout(MANIFEST_MS)]),
-  });
-  if (!res.ok) throw new Error(`Model index: HTTP ${res.status}`);
+  // Retried, because it used to be the install's single point of failure:
+  // the file downloads survive twenty drops, but ONE refused connect on
+  // this small API call killed the whole click with "fetch failed" — on a
+  // link measured to flap by the minute. Network errors, 5xx and 429 get
+  // three tries; a 4xx is a wrong repo and no retry will fix it.
+  let res: Response | null = null;
+  for (let attempt = 1; res === null; attempt++) {
+    try {
+      // Capped like an attempt: a stalled API call used to freeze the whole
+      // install before the first progress event, which read as a dead button.
+      const r = await fetch(
+        `https://huggingface.co/api/models/${repo}?blobs=true`,
+        { signal: AbortSignal.any([signal, AbortSignal.timeout(MANIFEST_MS)]) },
+      );
+      if (!r.ok) {
+        const e = new Error(`Model index: HTTP ${r.status}`);
+        if (r.status < 500 && r.status !== 429)
+          (e as { permanent?: boolean }).permanent = true;
+        throw e;
+      }
+      res = r;
+    } catch (err) {
+      if (signal.aborted) throw new Error("Download cancelled");
+      if ((err as { permanent?: boolean }).permanent || attempt >= 3) throw err;
+      await delay(1_500 * attempt);
+    }
+  }
   const json = (await res.json()) as {
     siblings?: { rfilename: string; size?: number; lfs?: { sha256?: string } }[];
   };
@@ -621,9 +664,7 @@ export async function installOcrModel(
   } catch (err) {
     const error = controller.signal.aborted
       ? "Download cancelled"
-      : err instanceof Error
-        ? err.message
-        : String(err);
+      : describeError(err);
     // Half a model stays on disk on purpose: the `.part` files are what make
     // the next attempt a resume instead of a gigabyte done twice. What must
     // not survive is anything that LOOKS installed, and nothing incomplete
@@ -672,9 +713,7 @@ export async function installLayoutModel(
   } catch (err) {
     const error = controller.signal.aborted
       ? "Download cancelled"
-      : err instanceof Error
-        ? err.message
-        : String(err);
+      : describeError(err);
     onProgress({ modelId: "layout", dtype: "q4", loaded, total, percent: 0, done: true, error });
     return { ok: false, error };
   } finally {

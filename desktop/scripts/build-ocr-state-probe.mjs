@@ -37,6 +37,7 @@ const entry = resolve(out, "ocr-state-entry.ts");
 writeFileSync(
   entry,
   `export {
+  describeError,
   downloadFile,
   installState,
   isInstalledSync,

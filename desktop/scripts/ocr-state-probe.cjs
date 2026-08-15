@@ -450,6 +450,36 @@ app.whenReady().then(async () => {
     check("…and the lock is gone afterwards", !fs.existsSync(`${dl}.lock`));
   }
 
+  // ── "fetch failed" names its cause ────────────────────────────────────
+  //
+  // undici buries ECONNRESET/DNS one `cause` down; the banner used to show
+  // the two useless words on top. The unwrap keeps the specific layers and
+  // drops the generic wrapper.
+  {
+    const cause = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:443"), {
+      code: "ECONNREFUSED",
+    });
+    const wrapped = new Error("fetch failed", { cause });
+    check(
+      "the cause chain replaces the useless wrapper",
+      mod.describeError(wrapped) === "connect ECONNREFUSED 127.0.0.1:443",
+      mod.describeError(wrapped),
+    );
+    check(
+      "a lone message passes through untouched",
+      mod.describeError(new Error("Model index: HTTP 404")) ===
+        "Model index: HTTP 404",
+    );
+    const bare = Object.assign(new Error("getaddrinfo failed"), {
+      code: "EAI_AGAIN",
+    });
+    check(
+      "an error code missing from the text is appended",
+      mod.describeError(bare) === "getaddrinfo failed (EAI_AGAIN)",
+      mod.describeError(bare),
+    );
+  }
+
   // ── The real folder, when one was named ──────────────────────────────
   const broken = process.env.MONET_OCR_BROKEN;
   if (broken && fs.existsSync(broken)) {
