@@ -152,7 +152,8 @@ app.whenReady().then(async () => {
         dl,
         { path: "weights", size: good.length, sha256: sha },
         new AbortController().signal,
-        (d) => (progress += d),
+        // Absolute, not a delta: the last value IS the file's final size.
+        (b) => (progress = b),
       );
     } catch (e) {
       threw = e;
@@ -168,7 +169,7 @@ app.whenReady().then(async () => {
     );
     check("…with no stale .part left behind", !fs.existsSync(`${dl}.part`));
     check(
-      "…and the progress accounting nets to one file",
+      "…and the final reported size is the file's",
       progress === good.length,
       String(progress),
     );
@@ -203,6 +204,7 @@ app.whenReady().then(async () => {
     const port = server.address().port;
 
     const dl = path.join(root, "dl", "flaky.onnx_data");
+    const seen = [];
     let threw = null;
     try {
       await mod.downloadFile(
@@ -210,13 +212,21 @@ app.whenReady().then(async () => {
         dl,
         { path: "flaky", size: good.length, sha256: sha },
         new AbortController().signal,
-        () => {},
-        3, // an even tighter stall budget than the app's
+        (b) => seen.push(b),
+        { stallBudget: 3 }, // an even tighter budget than the app's
       );
     } catch (e) {
       threw = e;
     }
     server.close();
+    // Twenty drops, one bar: with a range-honouring server the ABSOLUTE
+    // progress never walks back — the jitter the delta scheme produced on
+    // every retry is structurally gone.
+    check(
+      "…progress across twenty drops is monotone",
+      seen.every((v, i) => i === 0 || v >= seen[i - 1]),
+      `${seen.length} reports`,
+    );
     check(
       "twenty drops with progress each time still complete the file",
       threw === null && fs.existsSync(dl),
@@ -267,8 +277,7 @@ app.whenReady().then(async () => {
         { path: "stalled", size: good.length, sha256: sha },
         new AbortController().signal,
         () => {},
-        6,
-        1000, // a tight idle budget, so the probe is fast
+        { idleMs: 1000 }, // a tight idle budget, so the probe is fast
       );
     } catch (e) {
       threw = e;
@@ -315,8 +324,7 @@ app.whenReady().then(async () => {
       { path: "locked", size: good.length, sha256: sha },
       new AbortController().signal,
       () => {},
-      6,
-      1500,
+      { idleMs: 1500 },
     ];
     const first = mod.downloadFile(...args).then(() => "ok", (e) => e.message);
     await new Promise((r) => setTimeout(r, 400)); // let the first take the lock
@@ -331,6 +339,49 @@ app.whenReady().then(async () => {
       second === "Already downloading in another window",
       second,
     );
+  }
+
+  // ── A crashed downloader's lock is reaped ─────────────────────────────
+  //
+  // Live locks are heartbeaten (mtime refreshed as bytes land), so "stale"
+  // can only mean a crash — and a crash's lock must not brick the install.
+  {
+    const http = require("http");
+    const { createHash } = require("crypto");
+    const good = Buffer.alloc(200_000, 3);
+    const sha = createHash("sha256").update(good).digest("hex");
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { "content-length": String(good.length) });
+      res.end(good);
+    });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const port = server.address().port;
+
+    const dl = path.join(root, "dl", "stale-lock.onnx_data");
+    fs.mkdirSync(path.dirname(dl), { recursive: true });
+    fs.writeFileSync(`${dl}.lock`, "");
+    const past = new Date(Date.now() - 10 * 60_000);
+    fs.utimesSync(`${dl}.lock`, past, past);
+
+    let threw = null;
+    try {
+      await mod.downloadFile(
+        `http://127.0.0.1:${port}/stale`,
+        dl,
+        { path: "stale", size: good.length, sha256: sha },
+        new AbortController().signal,
+        () => {},
+      );
+    } catch (e) {
+      threw = e;
+    }
+    server.close();
+    check(
+      "a ten-minute-old lock from a crash is reaped, not obeyed",
+      threw === null && fs.existsSync(dl),
+      threw?.message,
+    );
+    check("…and the lock is gone afterwards", !fs.existsSync(`${dl}.lock`));
   }
 
   // ── The real folder, when one was named ──────────────────────────────

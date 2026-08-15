@@ -1,21 +1,39 @@
 /**
  * Installing an OCR model — downloading a gigabyte over a connection that
- * will drop.
+ * WILL drop, silently stall, and occasionally hand back wrong bytes, into a
+ * data dir that more than one running copy of the app may share.
  *
- * That is not pessimism. Fetching these weights through the library's own
- * loader failed twice on the development machine, at 38 MB and at 103 MB,
- * with `UND_ERR_SOCKET: other side closed`; the library has no resume, so
- * each failure threw the download away. Everything here follows from that:
- * range requests, retries, `.part` files that are plainly unfinished, and a
- * verification pass at the end.
+ * None of that is pessimism; every clause was observed on a real machine:
+ * `UND_ERR_SOCKET` mid-file, sockets that go quiet without closing, a
+ * sidecar at exactly its published size with a bad hash, and three app
+ * instances appending to one `.part`. The design answers each observation:
+ *
+ *  - PROGRESS IS STATE, NOT ARITHMETIC. A file reports the absolute bytes it
+ *    holds; the installer derives the bar from that. The previous delta
+ *    scheme needed corrective negative deltas in five places and drifted or
+ *    jumped whenever an edge case fired — an absolute value cannot drift,
+ *    and a walk-back on the bar now only ever means bytes really were
+ *    discarded.
+ *  - Resume with Range; a server that ignores the Range gets its full copy
+ *    written over the part. (No shadow ".fresh" copy: a server that ignored
+ *    one Range will ignore the next, so bytes it can't resume into are not
+ *    progress, just bookkeeping.)
+ *  - An attempt that receives nothing for IDLE_MS aborts into the ordinary
+ *    retry path — a silent socket must not freeze the install.
+ *  - The retry budget counts CONSECUTIVE attempts that added nothing. Drops
+ *    with progress in between never exhaust it; six dead tries in a row do.
+ *  - Verification failure (size or sha) wipes the part and re-downloads
+ *    clean; only repeated wrong verdicts are an error.
+ *  - A lock file beside the target makes downloads exclusive ACROSS
+ *    processes, and the downloader keeps the lock's mtime fresh while it
+ *    works — a lock is stale only when its owner has stopped touching it,
+ *    not merely because the file is big and the link is slow.
+ *  - A finished install writes a receipt of what it wrote; "installed"
+ *    means the receipt still matches the disk (see installState).
  *
  * Layout on disk mirrors what transformers.js expects of a local model
  * directory — `<ocr-models>/<owner>/<repo>/<path>` — so the loader finds the
  * files with no adapter and no monkey-patching of its cache.
- *
- * What gets downloaded is decided by the catalogue (one weight variant) plus
- * the repo's own manifest: a component with no `.onnx_data` sidecar simply
- * has none, and asking for it must not be an error.
  */
 
 import { createHash } from "crypto";
@@ -25,7 +43,9 @@ import {
   createWriteStream,
   openSync,
   readFileSync,
+  rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "fs";
 import { mkdir, rename, rm, stat } from "fs/promises";
@@ -62,61 +82,29 @@ interface RepoFile {
   sha256?: string;
 }
 
-const installing = new Map<string, AbortController>();
+// ─── Tunables ───────────────────────────────────────────────────────────────
 
-/** Longest an attempt may go without a single byte landing before it is
- * aborted and retried from where the disk got to. A stalled socket (open,
- * but silent) throws nothing, and an attempt with no timeout would sit in
- * `pipeline` forever. 30 s is far beyond a normal slow start yet short
- * enough that a dead link costs one idle wait per ~25 MB, not a frozen
- * download. */
+/** Longest an attempt may go without a single byte before it is aborted and
+ * retried. A stalled socket (open, but silent) throws nothing on its own. */
 const IDLE_MS = 30_000;
 
-/** How long the manifest fetch may take. It is a small API response — on a
- * stalled link 20 s with nothing is a dead link, not a slow repo. */
+/** The manifest is a small API response; 20 s of nothing is a dead link. */
 const MANIFEST_MS = 20_000;
 
-/**
- * One downloader per target file, ACROSS processes.
- *
- * The `installing` map guards one process only, and this app has no single
- * instance lock — two windows (or a packaged install and a dev run sharing
- * a data dir, which is exactly how the user ended up with three of them)
- * can install the same model at the same time. Two processes appending to
- * the same `.part` interleave their bytes: the file reaches the right size
- * with wrong content, sha fails, both wipe it and both start over, and the
- * result is the reported "checksum mismatch even after a clean
- * re-download" — deterministically, at any number of clicks.
- *
- * A `wx`-created lock file makes the target exclusive. A crash can leave it
- * behind; a lock older than two minutes is a corpse and is broken.
- */
-async function acquireTargetLock(target: string): Promise<() => Promise<void>> {
-  const lock = `${target}.lock`;
-  await mkdir(dirname(lock), { recursive: true });
-  for (let i = 0; i < 2; i++) {
-    try {
-      const fd = openSync(lock, "wx");
-      closeSync(fd);
-      writeFileSync(lock, String(process.pid), "utf-8");
-      return async () => {
-        await rm(lock, { force: true }).catch(() => {});
-      };
-    } catch {
-      try {
-        const stale = Date.now() - statSync(lock).mtimeMs > 120_000;
-        if (stale && i === 0) {
-          await rm(lock, { force: true }).catch(() => {});
-          continue;
-        }
-      } catch {
-        /* the lock vanished between the create attempt and now */
-      }
-      throw new Error("Already downloading in another window");
-    }
-  }
-  throw new Error("Already downloading in another window");
-}
+/** Consecutive zero-progress attempts before a file is declared stuck. */
+const STALL_BUDGET = 6;
+
+/** Wipe-and-redownload rounds before a verification failure is fatal. */
+const CLEAN_PASSES = 2;
+
+/** A lock whose owner hasn't touched it for this long is a corpse. Owners
+ * touch their lock on every progress beat, so a LIVE download of any size
+ * keeps its lock fresh — this only reaps crashes. */
+const LOCK_STALE_MS = 90_000;
+
+const installing = new Map<string, AbortController>();
+
+// ─── Small helpers ──────────────────────────────────────────────────────────
 
 function statSyncSize(path: string): number {
   try {
@@ -126,40 +114,120 @@ function statSyncSize(path: string): number {
   }
 }
 
+async function sizeOf(path: string): Promise<number> {
+  try {
+    return (await stat(path)).size;
+  } catch {
+    return 0;
+  }
+}
+
+async function sha256Of(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  await pipeline(createReadStream(path), hash);
+  return hash.digest("hex");
+}
+
+const delay = (ms: number): Promise<void> =>
+  new Promise((r) => setTimeout(r, ms));
+
 /** Where one model's files live. */
 export function modelDir(model: OcrModelInfo): string {
   return join(ocrModelsDir(), ...model.repo.split("/"));
 }
 
-function fileUrl(model: OcrModelInfo, path: string): string {
-  return `https://huggingface.co/${model.repo}/resolve/main/${path}`;
+// ─── Cross-process exclusivity ──────────────────────────────────────────────
+
+/**
+ * One downloader per target file, across processes.
+ *
+ * The `installing` map guards one process only, and this app has no
+ * single-instance lock — a packaged install and a dev run sharing a data dir
+ * can install the same model at once, and two appends into one `.part`
+ * interleave into a file of the right size with the wrong bytes.
+ *
+ * The lock is a `wx`-created file. The OWNER refreshes its mtime on every
+ * progress beat (touchLock); staleness therefore means "the owner stopped",
+ * not "the file is big" — the previous fixed two-minute rule broke LIVE
+ * locks mid-download and reopened the exact corruption it existed to stop.
+ */
+function acquireLock(target: string): () => void {
+  const lock = `${target}.lock`;
+  for (let i = 0; ; i++) {
+    try {
+      closeSync(openSync(lock, "wx"));
+      return () => {
+        try {
+          rmSync(lock, { force: true });
+        } catch {
+          /* best-effort */
+        }
+      };
+    } catch {
+      // mtime 0 = the lock vanished between the create attempt and the stat
+      // — retry the create rather than refusing over a ghost.
+      const m = mtimeOf(lock);
+      if (i === 0 && (m === 0 || Date.now() - m > LOCK_STALE_MS)) {
+        try {
+          rmSync(lock, { force: true });
+        } catch {
+          /* someone else reaped it first */
+        }
+        continue;
+      }
+      throw new Error("Already downloading in another window");
+    }
+  }
 }
 
-/** The repo's manifest: what each file weighs and what it should hash to. */
+function mtimeOf(path: string): number {
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+/** The heartbeat: cheap enough to call on every data event, throttled here. */
+function makeLockToucher(target: string): () => void {
+  const lock = `${target}.lock`;
+  let last = 0;
+  return () => {
+    const now = Date.now();
+    if (now - last < 5_000) return;
+    last = now;
+    try {
+      const t = new Date();
+      utimesSync(lock, t, t);
+    } catch {
+      /* the lock vanished; the download itself is unaffected */
+    }
+  };
+}
+
+// ─── The manifest and the plan ──────────────────────────────────────────────
+
+/** A repo's manifest: what each file weighs and what it should hash to. */
 async function fetchManifest(
-  model: OcrModelInfo,
+  repo: string,
   signal: AbortSignal,
 ): Promise<Map<string, RepoFile>> {
-  // The file download attempts are timed out per-attempt; this HEAD-of-the-
-  // install fetch is not, and a stalled API call would freeze the whole
-  // install with no progress event at all — which reads as "nothing
-  // happened" after clicking Install. Cap it like an attempt.
-  const res = await fetch(
-    `https://huggingface.co/api/models/${model.repo}?blobs=true`,
-    { signal: AbortSignal.any([signal, AbortSignal.timeout(MANIFEST_MS)]) },
-  );
+  // Capped like an attempt: a stalled API call used to freeze the whole
+  // install before the first progress event, which read as a dead button.
+  const res = await fetch(`https://huggingface.co/api/models/${repo}?blobs=true`, {
+    signal: AbortSignal.any([signal, AbortSignal.timeout(MANIFEST_MS)]),
+  });
   if (!res.ok) throw new Error(`Model index: HTTP ${res.status}`);
   const json = (await res.json()) as {
     siblings?: { rfilename: string; size?: number; lfs?: { sha256?: string } }[];
   };
   const out = new Map<string, RepoFile>();
-  for (const s of json.siblings ?? []) {
+  for (const s of json.siblings ?? [])
     out.set(s.rfilename, {
       path: s.rfilename,
       size: s.size ?? 0,
       sha256: s.lfs?.sha256,
     });
-  }
   return out;
 }
 
@@ -191,166 +259,107 @@ export function planInstall(
   return plan;
 }
 
-async function sizeOf(path: string): Promise<number> {
-  try {
-    return (await stat(path)).size;
-  } catch {
-    return 0;
-  }
-}
-
-async function sha256Of(path: string): Promise<string> {
-  const hash = createHash("sha256");
-  await pipeline(createReadStream(path), hash);
-  return hash.digest("hex");
-}
+// ─── One file ───────────────────────────────────────────────────────────────
 
 /**
- * One file, resumed as many times as it takes — and RE-FETCHED when the
- * resumed bytes turn out to be rotten.
+ * Download one file: resume, verify, self-heal.
  *
- * Bytes already in the `.part` are kept and asked for from where they stop —
- * a 400 MB file that dies at 380 MB must not start over. `onChunk` reports
- * deltas so a resumed download does not make the bar jump back.
- *
- * The second pass exists because a `.part` can be WRONG, not just short: a
- * crash mid-flush, or a repo whose files were replaced between the first
- * attempt and the resume, leaves bytes that no amount of tail-retrying can
- * fix. This file's own history proves it — a sidecar sat on disk at exactly
- * its published size with a bad hash, and every "resume" flew to the
- * checksum in a blink, failed on the same bytes, and left them there for
- * the next attempt to fail on. Verification failure now WIPES the part and
- * downloads clean; up to three clean downloads before giving up, because
- * a flaky link can corrupt bytes a few times in a row (and two windows
- * downloading into the same `.part` used to corrupt it deterministically —
- * the per-target lock stops that at the source).
+ * `onBytes` receives the ABSOLUTE number of bytes this file currently has —
+ * never a delta. The caller derives whatever bar it wants from that; this
+ * function's only progress obligation is to tell the truth.
  */
 export async function downloadFile(
   url: string,
   target: string,
   expect: RepoFile,
   signal: AbortSignal,
-  onChunk: (deltaBytes: number) => void,
-  attempts = 6,
-  /** Idle timeout per attempt, in ms — the probe passes a tight budget. */
-  idleMs = IDLE_MS,
+  onBytes: (bytes: number) => void,
+  opts: { stallBudget?: number; idleMs?: number } = {},
 ): Promise<void> {
+  const stallBudget = opts.stallBudget ?? STALL_BUDGET;
+  const idleMs = opts.idleMs ?? IDLE_MS;
   const part = `${target}.part`;
   await mkdir(dirname(target), { recursive: true });
-  // Cross-process exclusivity first: two windows downloading the same file
-  // into the same `.part` corrupt it deterministically.
-  const releaseLock = await acquireTargetLock(target);
-  try {
-    for (let pass = 1; ; pass++) {
-      let have = await sizeOf(part);
-      onChunk(have);
-      // A hard crash can orphan a fresh copy; a new pass starts clean.
-      await rm(`${part}.fresh`, { force: true });
-      // Which file currently holds the completed bytes: the `.part`, or the
-      // fresh copy a Range-ignoring server was answered with (see below).
-      let current = part;
 
-      // `stalls` counts CONSECUTIVE attempts that added nothing. A connection
-      // that keeps dropping mid-stream but moves the file forward each time is
-      // making progress, however ugly, and must not be able to exhaust the
-      // budget — a flat cap of six meant a 373 MB file over a link that drops
-      // every ~25 MB could never finish, at any number of clicks.
-      for (let stalls = 0; ; ) {
-        if (expect.size && have >= expect.size) break;
+  const releaseLock = acquireLock(target);
+  const touchLock = makeLockToucher(target);
+  try {
+    for (let pass = 0; ; pass++) {
+      let have = await sizeOf(part);
+      onBytes(have);
+
+      for (let stalls = 0; !expect.size || have < expect.size; ) {
         const before = have;
-        // Whether this attempt was a full re-fetch from a Range-ignoring server
-        // — the catch needs to know which file to resync against and discard.
-        let restarted = false;
-        // The per-attempt controller and the bridge from the outer signal:
-        // declared outside the try so the catch can detach the listener.
+        // The per-attempt controller: the outer signal aborts it, and so
+        // does the idle timer — a socket that goes silent for IDLE_MS lands
+        // in the same catch as one that closed.
         const attempt = new AbortController();
         const onOuterAbort = (): void => attempt.abort();
         signal.addEventListener("abort", onOuterAbort, { once: true });
+        let idle: ReturnType<typeof setTimeout> | undefined;
+        const armIdle = (): void => {
+          clearTimeout(idle);
+          idle = setTimeout(() => attempt.abort(), idleMs);
+        };
         try {
-          // A connection can fail by going SILENT, not just by closing: the
-          // socket stays open, no error is ever thrown, and `pipeline` waits
-          // forever — which makes every retry below unreachable. The user's
-          // link drops mid-stream this way. Each attempt gets an idle timeout
-          // instead: no byte for IDLE_MS and the attempt is aborted, which
-          // lands in the catch like any other dropped attempt and resumes from
-          // wherever the disk actually got to.
-          let idle: ReturnType<typeof setTimeout> | undefined;
-          const armIdle = (): void => {
-            clearTimeout(idle);
-            idle = setTimeout(() => attempt.abort(), idleMs);
-          };
           armIdle();
-
           const headers: Record<string, string> = {};
           if (have > 0) headers.Range = `bytes=${have}-`;
           const res = await fetch(url, { headers, signal: attempt.signal });
-          // 206 = the resume was honoured; 200 with a Range asked means the
-          // server ignored it and is sending the whole file from the start.
           if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-          restarted = have > 0 && res.status !== 206;
-          // Don't truncate the `.part` when the server restarts: the fresh copy
-          // may die too, and the old bytes are then the only progress there is
-          // — truncating first is how a 55 MB part once became a 25 MB one.
-          // The fresh file replaces the part only once it lands complete.
-          current = restarted ? `${part}.fresh` : part;
-          if (restarted) {
-            onChunk(-have); // the bar walks back with the bytes it lost
+          // 206 = the resume was honoured. 200 against a Range means the
+          // server is sending the whole file — accept it over the part.
+          if (have > 0 && res.status !== 206) {
             have = 0;
+            onBytes(0);
           }
-
-          const counted = Readable.fromWeb(res.body as never);
-          counted.on("data", (chunk: Buffer) => {
+          const body = Readable.fromWeb(res.body as never);
+          body.on("data", (chunk: Buffer) => {
             armIdle();
+            touchLock();
             have += chunk.length;
-            onChunk(chunk.length);
+            onBytes(have);
           });
           await pipeline(
-            counted,
-            createWriteStream(current, { flags: have === 0 ? "w" : "a" }),
+            body,
+            createWriteStream(part, { flags: have === 0 ? "w" : "a" }),
           );
-          clearTimeout(idle);
-          signal.removeEventListener("abort", onOuterAbort);
-          if (!expect.size || have >= expect.size) break;
-          throw new Error(`truncated at ${have} of ${expect.size} bytes`);
+          if (expect.size && have < expect.size)
+            throw new Error(`connection closed at ${have} of ${expect.size} bytes`);
+          break; // stream ended and nothing is missing
         } catch (err) {
           if (signal.aborted) throw new Error("Download cancelled");
-          // The attempt is over; the listener would only leak until the outer
-          // signal fires, so take it off now.
-          signal.removeEventListener("abort", onOuterAbort);
-          // A fresh copy that died is discarded; the `.part` it was replacing
-          // keeps its bytes, so a restart burns nothing.
-          if (restarted) await rm(`${part}.fresh`, { force: true });
-          // Whatever landed stays: the next attempt continues from there. The
-          // stream may have counted bytes the disk never got — resync both
-          // `have` and the bar to what is actually in the file.
-          const actual = await sizeOf(part);
-          onChunk(actual - have);
-          have = actual;
+          // The stream may have counted bytes the disk never got: the file
+          // is the truth, the counter follows it.
+          have = await sizeOf(part);
+          onBytes(have);
           stalls = have > before ? 0 : stalls + 1;
-          if (stalls >= attempts) throw err;
-          await new Promise((r) => setTimeout(r, Math.min(15_000, 1000 * (stalls + 1))));
+          if (stalls >= stallBudget) throw err;
+          await delay(Math.min(15_000, 1_000 * (stalls + 1)));
+        } finally {
+          clearTimeout(idle);
+          signal.removeEventListener("abort", onOuterAbort);
         }
       }
 
-      const finalSize = await sizeOf(current);
+      const finalSize = await sizeOf(part);
       const sizeOk = !expect.size || finalSize === expect.size;
-      // Size is not integrity: an earlier downloader elsewhere in this app once
-      // produced a file of exactly the right length with the wrong bytes, and a
-      // corrupt ONNX does not fail politely.
+      // Size is not integrity: this store has seen a file of exactly the
+      // right length with the wrong bytes, and a corrupt ONNX does not fail
+      // politely.
       const hashOk =
-        sizeOk && (!expect.sha256 || (await sha256Of(current)) === expect.sha256);
+        sizeOk && (!expect.sha256 || (await sha256Of(part)) === expect.sha256);
       if (sizeOk && hashOk) {
-        // A fresh copy supersedes the part it replaced.
-        if (current !== part) await rm(part, { force: true });
-        await rename(current, target);
+        await rename(part, target);
+        onBytes(finalSize);
         return;
       }
 
-      // Verified wrong. Keeping these bytes would fail every future attempt
-      // the same way — wipe them and go again from nothing.
-      await rm(current, { force: true });
-      onChunk(-finalSize);
-      if (pass >= 3)
+      // Verified wrong. These bytes would fail every future attempt the
+      // same way — wipe and go again from nothing, a bounded number of times.
+      await rm(part, { force: true });
+      onBytes(0);
+      if (pass >= CLEAN_PASSES)
         throw new Error(
           sizeOk
             ? "checksum mismatch even after clean re-downloads"
@@ -358,26 +367,58 @@ export async function downloadFile(
         );
     }
   } finally {
-    await releaseLock();
+    releaseLock();
   }
 }
+
+// ─── A set of files, with one progress bar ──────────────────────────────────
+
+/**
+ * Download every file in the plan into `dir`, reporting ABSOLUTE totals.
+ * Files already complete on disk are counted, not re-fetched. This is the
+ * one installer both the model install and the layout install go through.
+ */
+async function downloadSet(
+  dir: string,
+  urlOf: (f: RepoFile) => string,
+  plan: RepoFile[],
+  signal: AbortSignal,
+  report: (loaded: number, file: string) => void,
+): Promise<void> {
+  let done = 0;
+  for (const f of plan) {
+    const target = join(dir, f.path);
+    if (f.size > 0 && (await sizeOf(target)) === f.size) {
+      done += f.size;
+      report(done, f.path);
+      continue;
+    }
+    report(done, f.path);
+    const base = done;
+    await downloadFile(urlOf(f), target, f, signal, (bytes) =>
+      report(base + bytes, f.path),
+    );
+    done = base + (f.size || (await sizeOf(target)));
+    report(done, f.path);
+  }
+}
+
+// ─── The receipt, and what "installed" means ────────────────────────────────
 
 /**
  * The receipt: what a finished install actually wrote.
  *
  * Guessing the file list from the catalogue is what made a HALF-installed
- * model report itself as ready. The `.onnx_data` sidecars are "optional" at
- * PLANNING time — a small component genuinely has none — but once the repo
- * publishes one, the graph beside it is a shell that points into it, and a
- * missing sidecar fails inside onnxruntime as
- * `file_size: The system cannot find the file specified`, hundreds of
- * megabytes after the settings page has said "installed".
+ * model report itself as ready: the `.onnx_data` sidecars are "optional" at
+ * PLANNING time (a component small enough to fit in its protobuf has none),
+ * but once the repo publishes one, the graph beside it is a shell pointing
+ * into it — and a missing sidecar fails inside onnxruntime as `file_size:
+ * The system cannot find the file specified`, hundreds of megabytes after
+ * the settings page said "installed". The download order makes that the
+ * LIKELY failure: graphs are small and come first, sidecars are the
+ * gigabyte and come last.
  *
- * Worse, the download order makes that the LIKELY failure: the graphs come
- * first and are small, the sidecars come last and are the gigabyte. A drop
- * at 8% leaves every file the old check looked at present and correct.
- *
- * So a completed install records what it wrote, and "installed" means that
+ * So a completed install records what it wrote, and "installed" means the
  * record still matches the disk. No inference, no network.
  */
 const RECEIPT = ".monet-install.json";
@@ -415,10 +456,12 @@ export type OcrInstallState = "installed" | "partial" | "missing";
 /**
  * Installed, half-installed, or absent — synchronously.
  *
- * With a receipt this is exact. Without one (a model installed before
- * receipts existed) it falls back to the old file check PLUS the tell that
- * old check lacked: a `.part` file anywhere in the variant means a download
- * stopped in the middle, whatever else is on disk.
+ * With a receipt this is exact. Without one (an install from before receipts
+ * existed) it falls back to a roll-call of names PLUS two tells the old
+ * check lacked: a `.part` anywhere means a download stopped mid-way, and a
+ * folder carrying well under the variant's published weight is missing its
+ * sidecars whatever the names say — "optional by name" is how a download
+ * that died exactly between files used to pass as installed.
  */
 export function installState(
   model: OcrModelInfo,
@@ -453,12 +496,6 @@ export function installState(
   }
   for (const path of optional) onDisk += statSyncSize(join(dir, path));
   if (missing > 0 || partial) return present > 0 ? "partial" : "missing";
-  // Every file the catalogue can NAME is here — but the weight sidecars are
-  // optional BY NAME, so a download that died exactly between files (every
-  // graph renamed, no .part yet) passes the roll-call while hundreds of
-  // megabytes are absent. The catalogue publishes what the variant weighs;
-  // a folder carrying under 90% of that is not an install, whatever the
-  // names say. (Receipted installs never get here.)
   const variant = model.variants.find((v) => v.dtype === dtype);
   if (variant?.bytes && onDisk < variant.bytes * 0.9)
     return present > 0 ? "partial" : "missing";
@@ -499,6 +536,28 @@ export async function bytesOnDisk(
   return total;
 }
 
+// ─── The installers ─────────────────────────────────────────────────────────
+
+/** Progress reporter with the throttle both installers want: an event per
+ * percent step or file change, not per network chunk. */
+function makeReporter(
+  onProgress: ProgressFn,
+  meta: { modelId: string; dtype: OcrDtype },
+  total: number,
+): (loaded: number, file: string) => void {
+  let lastPercent = -1;
+  let lastFile = "";
+  return (loaded, file) => {
+    const percent = total
+      ? Math.min(99, Math.floor((loaded / total) * 100))
+      : 0;
+    if (percent === lastPercent && file === lastFile) return;
+    lastPercent = percent;
+    lastFile = file;
+    onProgress({ ...meta, loaded, total, percent, file });
+  };
+}
+
 export async function installOcrModel(
   modelId: string,
   dtype: OcrDtype,
@@ -516,39 +575,23 @@ export async function installOcrModel(
   const dir = modelDir(model);
   let loaded = 0;
   let total = 0;
-  let lastPercent = -1;
-  const report = (file?: string): void => {
-    const percent = total ? Math.min(99, Math.floor((loaded / total) * 100)) : 0;
-    if (percent === lastPercent && file === undefined) return;
-    lastPercent = percent;
-    onProgress({ modelId, dtype, loaded, total, percent, file });
-  };
-
   try {
-    const manifest = await fetchManifest(model, controller.signal);
+    const manifest = await fetchManifest(model.repo, controller.signal);
     const plan = planInstall(model, dtype, manifest);
     total = plan.reduce((n, f) => n + f.size, 0);
+    const report = makeReporter(onProgress, { modelId, dtype }, total);
 
-    for (const f of plan) {
-      const target = join(dir, f.path);
-      // Already whole from an earlier run: count it and move on.
-      if ((await sizeOf(target)) === f.size && f.size > 0) {
-        loaded += f.size;
-        report(f.path);
-        continue;
-      }
-      report(f.path);
-      await downloadFile(
-        fileUrl(model, f.path),
-        target,
-        f,
-        controller.signal,
-        (delta) => {
-          loaded += delta;
-          report();
-        },
-      );
-    }
+    await downloadSet(
+      dir,
+      (f) => `https://huggingface.co/${model.repo}/resolve/main/${f.path}`,
+      plan,
+      controller.signal,
+      (l, file) => {
+        loaded = l;
+        report(l, file);
+      },
+    );
+
     // The receipt is written ONLY here, after every file in the plan landed:
     // it is the difference between "these files exist" and "this install
     // finished", and the sidecars are why that difference matters.
@@ -577,11 +620,10 @@ export async function installOcrModel(
 }
 
 /**
- * The layout detector, which is one file and no variants.
- *
- * It is a separate install from a reading model because it is a different
- * kind of thing: 124 MB that never changes, needed by the fast path and
- * useless on its own. Same downloader, same resume, same checksum.
+ * The layout detector and friends: single-file installs with no variants.
+ * Same downloader, same resume, same checksum, same lock — via the same
+ * downloadSet as the big models, so there is exactly one code path that
+ * talks to the network.
  */
 export async function installLayoutModel(
   repo: string,
@@ -592,46 +634,23 @@ export async function installLayoutModel(
   if (installing.has(key)) return { ok: false, error: "Already downloading" };
   const controller = new AbortController();
   installing.set(key, controller);
-  const target = join(ocrModelsDir(), ...repo.split("/"), file);
+  const dir = join(ocrModelsDir(), ...repo.split("/"));
   let loaded = 0;
+  let total = 0;
   try {
-    const res = await fetch(
-      `https://huggingface.co/api/models/${repo}?blobs=true`,
-      { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(MANIFEST_MS)]) },
-    );
-    if (!res.ok) throw new Error(`Model index: HTTP ${res.status}`);
-    const json = (await res.json()) as {
-      siblings?: { rfilename: string; size?: number; lfs?: { sha256?: string } }[];
-    };
-    const entry = (json.siblings ?? []).find((s) => s.rfilename === file);
+    const manifest = await fetchManifest(repo, controller.signal);
+    const entry = manifest.get(file);
     if (!entry) throw new Error(`${repo} publishes no ${file}`);
-    const expect: RepoFile = {
-      path: file,
-      size: entry.size ?? 0,
-      sha256: entry.lfs?.sha256,
-    };
-    const total = expect.size;
-    if (statSyncSize(target) === total && total > 0) {
-      onProgress({ modelId: "layout", dtype: "q4", loaded: total, total, percent: 100, done: true });
-      return { ok: true };
-    }
-    await downloadFile(
-      `https://huggingface.co/${repo}/resolve/main/${file}`,
-      target,
-      expect,
-      controller.signal,
-      (delta) => {
-        loaded += delta;
-        onProgress({
-          modelId: "layout",
-          dtype: "q4",
-          loaded,
-          total,
-          percent: total ? Math.min(99, Math.floor((loaded / total) * 100)) : 0,
-          file,
-        });
-      },
+    total = entry.size;
+    const report = makeReporter(
+      onProgress,
+      { modelId: "layout", dtype: "q4" },
+      total,
     );
+    await downloadSet(dir, () => `https://huggingface.co/${repo}/resolve/main/${file}`, [entry], controller.signal, (l, f) => {
+      loaded = l;
+      report(l, f);
+    });
     onProgress({ modelId: "layout", dtype: "q4", loaded: total, total, percent: 100, done: true });
     return { ok: true };
   } catch (err) {
@@ -640,7 +659,7 @@ export async function installLayoutModel(
       : err instanceof Error
         ? err.message
         : String(err);
-    onProgress({ modelId: "layout", dtype: "q4", loaded, total: 0, percent: 0, done: true, error });
+    onProgress({ modelId: "layout", dtype: "q4", loaded, total, percent: 0, done: true, error });
     return { ok: false, error };
   } finally {
     installing.delete(key);
