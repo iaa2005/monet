@@ -19,9 +19,9 @@ const os = require("os");
 const http = require("http");
 const { createHash } = require("crypto");
 
-const REPO = "iaa2005/PP-DocLayout_plus-L_onnx";
-const FILE = "inference.onnx";
-const CUT_EVERY = 15_000_000;
+const REPO = process.env.SEAM_REPO || "iaa2005/PP-DocLayout_plus-L_onnx";
+const FILE = process.env.SEAM_FILE || "inference.onnx";
+const CUT_EVERY = Number(process.env.SEAM_CUT || 15_000_000);
 
 app.whenReady().then(async () => {
   process.env.MONET_PROBE_DIR = fs.mkdtempSync(

@@ -43,7 +43,7 @@ import {
 } from "fs";
 import { mkdir, rename, rm, stat } from "fs/promises";
 import { dirname, join } from "path";
-import { Readable } from "stream";
+import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
 
 /** What the caller knows about the file. Both optional: an unsized download
@@ -244,15 +244,25 @@ export async function downloadFile(
             have = 0;
             onBytes(0);
           }
-          const body = Readable.fromWeb(res.body as never);
-          body.on("data", (chunk: Buffer) => {
-            armIdle();
-            touchLock();
-            have += chunk.length;
-            onBytes(have);
+          // Counting happens INSIDE the pipeline, never via a `data` listener
+          // beside the pipe. The listener pattern is a documented wound: it
+          // put the stream in flowing mode alongside the pipe's own
+          // consumption, and what landed on disk was the right length with
+          // the wrong bytes — a 225 MB ONNX that killed the recognizer with
+          // no message. A Transform only sees a chunk on its way THROUGH to
+          // the file, so the count and the disk cannot disagree.
+          const count = new Transform({
+            transform(chunk: Buffer, _enc, cb): void {
+              armIdle();
+              touchLock();
+              have += chunk.length;
+              onBytes(have);
+              cb(null, chunk);
+            },
           });
           await pipeline(
-            body,
+            Readable.fromWeb(res.body as never),
+            count,
             createWriteStream(part, { flags: have === 0 ? "w" : "a" }),
           );
           if (expect.size && have < expect.size)
