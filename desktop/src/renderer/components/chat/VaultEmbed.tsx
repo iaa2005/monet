@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { FileText } from "lucide-react";
+import { FileText } from "@/components/icons/hg";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {

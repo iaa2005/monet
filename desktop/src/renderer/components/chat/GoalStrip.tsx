@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { CircleDot, Pause, Play, Target, X } from "lucide-react";
+import { CircleDot, Pause, Play, Target, X } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import type { ElectronAPI, GoalRecord } from "@/types/electron";

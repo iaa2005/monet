@@ -25,7 +25,7 @@ import {
   Palette,
   SlidersHorizontal,
   FileScan,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { EditorSettings } from "@/components/settings/EditorSettings";
 import { ObsidianSettings } from "@/components/settings/ObsidianSettings";
 import { OcrSettings } from "@/components/settings/OcrSettings";

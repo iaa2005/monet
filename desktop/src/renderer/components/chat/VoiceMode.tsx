@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { ClipboardList, MessageSquare, Square, X } from "lucide-react";
+import { ClipboardList, MessageSquare, Square, X } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { Portal } from "@/components/ui/portal";
 import { INTERRUPT_MARK, useChatStore } from "@/stores/chatStore";

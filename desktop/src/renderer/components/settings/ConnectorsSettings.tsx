@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LogIn, Plus, Plug, RefreshCw, Trash2, X } from "lucide-react";
+import { LogIn, Plus, Plug, RefreshCw, Trash2, X } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { DirectoryButton } from "@/components/directory/DirectoryModal";

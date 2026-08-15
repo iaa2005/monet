@@ -30,7 +30,7 @@ import {
   RotateCw,
   Star,
   X,
-} from "lucide-react";
+} from "@/components/icons/hg";
 
 /** What the trigger row shows for each mode. */
 const PERSIST_LABEL: Record<BrowserPersist, string> = {

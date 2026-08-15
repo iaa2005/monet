@@ -27,7 +27,7 @@ import {
   Loader2,
   Plus,
   type LucideIcon,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import {
   CppIcon,
   GithubIcon,

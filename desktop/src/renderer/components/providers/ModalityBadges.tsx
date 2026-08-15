@@ -13,7 +13,7 @@ import {
   Type,
   Video,
   type LucideIcon,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import type { Modality } from "@/stores/providerStore";
 

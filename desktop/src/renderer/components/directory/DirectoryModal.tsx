@@ -8,7 +8,7 @@
  */
 
 import { useState } from "react";
-import { Blocks, ScrollText, Search, Server, Store } from "lucide-react";
+import { Blocks, ScrollText, Search, Server, Store } from "@/components/icons/hg";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 import { SkillsSection } from "./SkillsSection";

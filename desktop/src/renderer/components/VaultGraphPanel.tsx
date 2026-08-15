@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw } from "@/components/icons/hg";
 import { useIsDark } from "@/components/chat/highlight";
 import { viewWorkspaceFile } from "@/components/artifact-actions";
 import type { ElectronAPI, VaultGraph, VaultGraphNode } from "@/types/electron";

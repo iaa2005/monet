@@ -10,7 +10,7 @@
  * across chat switches and stays live through a session (never disappears).
  */
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "@/components/icons/hg";
 import {
   DropdownMenu,
   DropdownMenuTrigger,

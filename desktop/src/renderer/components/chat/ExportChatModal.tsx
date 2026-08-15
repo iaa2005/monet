@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Download, Loader2 } from "lucide-react";
+import { Check, Download, Loader2 } from "@/components/icons/hg";
 import { Modal } from "@/components/ui/modal";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";

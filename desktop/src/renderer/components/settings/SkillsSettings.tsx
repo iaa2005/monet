@@ -11,7 +11,7 @@ import {
   Trash2,
   Upload,
   X,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { MarkdownViewer } from "@/components/chat/MarkdownViewer";
 import { CodeBlock } from "@/components/chat/CodeBlock";

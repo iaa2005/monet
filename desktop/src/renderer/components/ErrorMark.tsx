@@ -10,7 +10,7 @@
  * two different warnings for the same thing.
  */
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 
 export function ErrorMark({

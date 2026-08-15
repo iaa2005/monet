@@ -15,7 +15,7 @@ import {
   Loader2,
   ListEnd,
   CornerDownLeft,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { PermissionModeMenu, type PermissionMode } from "./PermissionModeMenu";
 import { MicButton } from "./MicButton";
 import { ContextMeter } from "./ContextMeter";

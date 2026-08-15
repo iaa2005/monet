@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { ChevronRight, FolderOpen } from "lucide-react";
+import { ChevronRight, FolderOpen } from "@/components/icons/hg";
 import {
   groupVersions,
   useSessionArtifacts,

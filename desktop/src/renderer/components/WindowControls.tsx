@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Minus, Square, Copy, X } from "lucide-react";
+import { Minus, Square, Copy, X } from "@/components/icons/hg";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {

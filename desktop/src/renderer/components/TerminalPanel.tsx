@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Trash2, TerminalSquare } from "lucide-react";
+import { Plus, Trash2, TerminalSquare } from "@/components/icons/hg";
 import { Terminal } from "@/components/Terminal";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";

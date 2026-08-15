@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown, Plug, X } from "lucide-react";
+import { Check, ChevronDown, Plug, X } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 

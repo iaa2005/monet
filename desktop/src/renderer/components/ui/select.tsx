@@ -12,7 +12,7 @@
 
 import * as React from "react";
 import { Select as SelectPrimitive } from "radix-ui";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown } from "@/components/icons/hg";
 
 import { cn } from "@/lib/utils";
 

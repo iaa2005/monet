@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Filter, Check, ChevronRight } from "lucide-react";
+import { Filter, Check, ChevronRight } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 
 type FilterOption = {

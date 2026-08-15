@@ -20,7 +20,7 @@ import {
   ShieldQuestion,
   X,
   Zap,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import type {

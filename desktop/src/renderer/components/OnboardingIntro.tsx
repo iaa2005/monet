@@ -38,7 +38,7 @@ import {
   Shield,
   Sparkles,
   Volume2,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import type { ElectronAPI, SttModelStatus, UiVault } from "@/types/electron";
 import { ObsidianIcon } from "@/components/ObsidianIcon";
 import { CodeThemePicker } from "@/components/settings/CodeThemePicker";

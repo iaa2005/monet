@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, ChevronDown, ChevronUp, HelpCircle, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, HelpCircle, X } from "@/components/icons/hg";
 import type {
   AskUserRequest,
   AskUserAnswer,

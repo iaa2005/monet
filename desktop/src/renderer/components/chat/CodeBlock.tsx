@@ -9,7 +9,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { DiffView } from "./DiffView";
 import { isUnifiedDiff, parseUnifiedDiff } from "./diff-core";

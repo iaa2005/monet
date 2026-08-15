@@ -12,7 +12,7 @@ import {
   LogOut,
   ChevronDown,
   ChevronRight,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import {
   DropdownMenu,
   DropdownMenuTrigger,

@@ -21,7 +21,7 @@ import {
   Minus,
   Send,
   User,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { comboLabel } from "@/lib/hotkeys";
 import { useChatStore } from "@/stores/chatStore";

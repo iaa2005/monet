@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { KeyRound, Loader2, X } from "lucide-react";
+import { KeyRound, Loader2, X } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, McpAuthNeed } from "@/types/electron";
 

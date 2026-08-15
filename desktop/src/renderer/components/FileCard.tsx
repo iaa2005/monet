@@ -23,7 +23,7 @@ import {
   SquareArrowOutUpRight,
   Video,
   X,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import type { ArtifactItem } from "@/lib/sessionArtifacts";
 import { isPdf } from "@/lib/pdfThumb";
 import { useChatStore } from "@/stores/chatStore";

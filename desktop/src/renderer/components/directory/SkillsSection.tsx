@@ -33,7 +33,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import type { SkillSource, StoreSkill } from "@/types/electron";
 import {
   api,

@@ -13,8 +13,7 @@
  */
 
 import { useEffect, useState, type JSX } from "react";
-import { ArrowRight, RotateCw, X } from "lucide-react";
-import { Download05 } from "@/components/icons";
+import { ArrowRight, Download, RotateCw, X } from "@/components/icons/hg";
 import type { ElectronAPI, UpdateState } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -52,7 +51,7 @@ export function UpdatePill(): JSX.Element | null {
     return (
       <div className="mb-1.5 w-full rounded-[var(--radius)] border border-border bg-popover px-3 py-2.5">
         <div className="flex items-center gap-3">
-          <Download05 className="size-4 shrink-0 text-foreground" />
+          <Download className="size-4 shrink-0 text-foreground" />
           <span className="min-w-0 flex-1 truncate text-sm font-medium">
             Downloading v{state.version}
           </span>
@@ -127,7 +126,7 @@ export function UpdatePill(): JSX.Element | null {
       onClick={() => void api()?.updates?.download()}
       className={row}
     >
-      <Download05 className="size-4 shrink-0 text-foreground" />
+      <Download className="size-4 shrink-0 text-foreground" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">
           Download update

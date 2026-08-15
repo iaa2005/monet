@@ -41,7 +41,7 @@ import {
   Check,
   Settings,
   type LucideIcon,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { ArtifactIcon, FileIcon, GlobeIcon } from "@/components/icons";
 import { ChatView, PermissionHost } from "@/components/chat/ChatView";
 import { SessionList } from "@/components/SessionList";

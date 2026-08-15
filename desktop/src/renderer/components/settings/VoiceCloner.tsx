@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Copy, FolderOpen, Mic, Square, Upload, Wand2 } from "lucide-react";
+import { Check, Copy, FolderOpen, Mic, Square, Upload, Wand2 } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 

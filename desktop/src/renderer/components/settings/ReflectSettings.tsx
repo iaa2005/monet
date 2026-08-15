@@ -4,7 +4,7 @@
  * (from stats:get), time categories, and four AI-fluency skill cards.
  */
 import { useCallback, useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, ReflectDigest } from "@/types/electron";
 import { Select } from "@/components/ui/select";

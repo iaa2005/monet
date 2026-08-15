@@ -16,7 +16,7 @@ import {
   ShieldAlert,
   Sparkles,
   type LucideIcon,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import {
   DropdownMenu,
   DropdownMenuTrigger,

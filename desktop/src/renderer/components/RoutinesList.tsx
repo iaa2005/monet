@@ -9,7 +9,7 @@ import {
   GitFork,
   Download,
   Trash2,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { ExportChatModal } from "@/components/chat/ExportChatModal";
 import type { ElectronAPI } from "@/types/electron";

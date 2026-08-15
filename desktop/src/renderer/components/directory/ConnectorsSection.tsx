@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Loader2, Plus, Trash2 } from "lucide-react";
+import { AlertCircle, Loader2, Plus, Trash2 } from "@/components/icons/hg";
 import { Modal } from "@/components/ui/modal";
 import { ConnectForm } from "@/components/settings/ProtocolConnectors";
 import type { UiConnectorService } from "../../../main/connectors/services/types";

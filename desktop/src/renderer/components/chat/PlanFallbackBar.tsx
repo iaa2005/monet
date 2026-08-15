@@ -14,7 +14,7 @@
  */
 
 import { type JSX } from "react";
-import { ListTodo } from "lucide-react";
+import { ListTodo } from "@/components/icons/hg";
 import { usePlanStore } from "@/stores/planStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useDockStore } from "@/dock/dock-store";

@@ -90,6 +90,7 @@
     "live:matrix": "node scripts/live-matrix.mjs",
     "smoke:icons": "node scripts/renderer-probe.mjs scripts/icons-probe.ts",
     "smoke:overlays": "node scripts/renderer-probe.mjs scripts/overlay-portal-probe.ts",
+    "smoke:hugeicons": "node scripts/build-hugeicons-subset.mjs && node scripts/renderer-probe.mjs scripts/hugeicons-probe.ts",
     "smoke:modal": "node scripts/modal-click-probe.mjs",
     "smoke:tray": "electron scripts/tray-probe.cjs",
     "smoke:popout": "electron scripts/popout-webview-probe.cjs",
@@ -170,6 +171,7 @@
     "@anthropic-ai/sdk": "^0.110.0",
     "@growthbook/growthbook": "^1.6.5",
     "@huggingface/transformers": "^4.2.0",
+    "@iconify/react": "^6.0.2",
     "@lydell/node-pty": "^1.2.0-beta.15",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@shadcn/react": "^0.2.0",
@@ -239,6 +241,7 @@
   },
   "devDependencies": {
     "@electron/rebuild": "^4.1.0",
+    "@iconify-json/hugeicons": "^1.2.32",
     "@types/lodash-es": "^4.17.12",
     "@types/mailparser": "^3.4.6",
     "@types/nodemailer": "^8.0.1",

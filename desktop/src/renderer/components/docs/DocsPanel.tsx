@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, ChevronRight } from "lucide-react";
+import { Search, X, ChevronRight } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { MarkdownViewer } from "@/components/chat/MarkdownViewer";
 import {

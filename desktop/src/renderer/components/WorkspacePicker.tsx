@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen } from "@/components/icons/hg";
 import { useChatStore } from "@/stores/chatStore";
 import type { ElectronAPI } from "@/types/electron";
 

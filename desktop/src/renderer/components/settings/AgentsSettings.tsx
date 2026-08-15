@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Code, Eye, Lock, Plus, Trash2, X } from "lucide-react";
+import { Bot, Code, Eye, Lock, Plus, Trash2, X } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { MarkdownViewer } from "@/components/chat/MarkdownViewer";
 import type { AgentSummary, ElectronAPI } from "@/types/electron";

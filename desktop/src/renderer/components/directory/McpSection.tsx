@@ -17,7 +17,7 @@ import {
   Search,
   Server,
   Trash2,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import {
   AddConnectorModal,
   type AddConnectorInitial,

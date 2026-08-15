@@ -35,7 +35,7 @@ import {
   Plus,
   Save,
   Trash2,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { linesFor, useIsDark } from "@/components/chat/highlight";
 import { MarkdownViewer } from "@/components/chat/MarkdownViewer";

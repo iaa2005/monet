@@ -9,7 +9,7 @@ import {
   Archive,
   Trash2,
   Download,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { ErrorMark } from "@/components/ErrorMark";
 import { ExportChatModal } from "@/components/chat/ExportChatModal";

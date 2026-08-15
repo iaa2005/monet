@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink } from "@/components/icons/hg";
 
 const RAW = "https://cdn.jsdelivr.net/gh/iaa2005/monet-paintings@main";
 

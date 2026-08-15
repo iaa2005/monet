@@ -19,7 +19,7 @@ import {
   Trash2,
   TriangleAlert,
   Waypoints,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { ObsidianIcon } from "@/components/ObsidianIcon";
 import { useDockStore } from "@/dock/dock-store";
 import { Switch } from "@/components/ui/switch";

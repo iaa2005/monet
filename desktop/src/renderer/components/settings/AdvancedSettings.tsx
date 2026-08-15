@@ -24,7 +24,7 @@ import {
   Wind,
   Zap,
   type LucideIcon,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { Switch } from "@/components/ui/switch";
 import type { ElectronAPI } from "@/types/electron";
 import { Select } from "@/components/ui/select";

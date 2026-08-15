@@ -43,7 +43,7 @@ import {
   Minimize2,
   PanelRight,
   X,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { ArtifactsPanel } from "@/components/ArtifactsPanel";
 import { ChangesPanel } from "@/components/ChangesPanel";
 import { SandboxFilesPanel } from "@/components/SandboxFilesPanel";

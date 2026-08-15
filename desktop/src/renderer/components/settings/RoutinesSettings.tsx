@@ -35,7 +35,7 @@ import {
   Radio,
   Hand,
   type LucideIcon,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { Switch } from "@/components/ui/switch";
 import { Select, TimeSelect } from "@/components/ui/select";
 import {

@@ -5,7 +5,7 @@
  * per-message "Rewind to here").
  */
 import { useState } from "react";
-import { History, X } from "lucide-react";
+import { History, X } from "@/components/icons/hg";
 import { Modal } from "@/components/ui/modal";
 import { Portal } from "@/components/ui/portal";
 import { useChatStore } from "@/stores/chatStore";

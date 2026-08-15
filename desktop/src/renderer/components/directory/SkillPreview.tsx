@@ -27,7 +27,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   ShieldQuestion,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { MarkdownViewer } from "@/components/chat/MarkdownViewer";
 import type { AuditFinding, SkillAudit, StoreSkill } from "@/types/electron";

@@ -23,7 +23,7 @@ import {
   Pencil,
   RefreshCw,
   Save,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { MarkdownViewer } from "./chat/MarkdownViewer";
 import { canvasToMarkdown } from "@shared/obsidian-canvas";
 import { CodeEditor, type CodeSelection } from "./CodeEditor";
@@ -35,7 +35,7 @@ import { CsvTable } from "@/components/sheet/CsvTable";
 import { SheetEditor, type SheetData } from "@/components/sheet/SheetEditor";
 import { useViewerStore } from "@/stores/viewerStore";
 import { useDockStore } from "@/dock/dock-store";
-import { MessageSquarePlus, Table2, Type, Waypoints } from "lucide-react";
+import { MessageSquarePlus, Table2, Type, Waypoints } from "@/components/icons/hg";
 import type { ElectronAPI } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {

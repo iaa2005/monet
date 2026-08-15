@@ -10,7 +10,7 @@
  */
 
 import { useMemo, useState, type ReactNode } from "react";
-import { ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import {
   computeRows,

@@ -24,7 +24,7 @@ import {
   Pencil,
   Scissors,
   Trash2,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { Portal } from "@/components/ui/portal";
 import { useIsDark } from "@/components/chat/highlight";

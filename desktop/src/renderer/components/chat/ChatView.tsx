@@ -37,7 +37,7 @@ import {
   CornerDownLeft,
   Brain,
   X as XIcon,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { ArtifactsStrip } from "@/components/ArtifactsPanel";
 import { stripIndexes } from "./artifact-strips";
 import { viewArtifact } from "@/components/artifact-actions";

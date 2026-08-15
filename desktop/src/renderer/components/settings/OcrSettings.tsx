@@ -19,7 +19,7 @@ import {
   Loader2,
   Trash2,
   X,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 import {

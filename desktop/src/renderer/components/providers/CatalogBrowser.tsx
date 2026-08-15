@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Plus, RefreshCw, Search, X } from "lucide-react";
+import { Check, Plus, RefreshCw, Search, X } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import type { CatalogModelInfo, CatalogProviderInfo } from "@/types/electron";
 import type { ProviderModel } from "@/stores/providerStore";

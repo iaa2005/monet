@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Cpu, Loader2, Trash2, X } from "lucide-react";
+import { Cpu, Loader2, Trash2, X } from "@/components/icons/hg";
 import { PickCard } from "@/components/settings/PickCard";
 import type { ElectronAPI, InstallProgress, SttModelStatus } from "@/types/electron";
 

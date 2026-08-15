@@ -21,7 +21,7 @@ import {
   Search,
   Trash2,
   X,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import {

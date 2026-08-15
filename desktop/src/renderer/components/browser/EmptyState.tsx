@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Clock, Loader2, Play, Plus, Star, X } from "lucide-react";
+import { Clock, Loader2, Play, Plus, Star, X } from "@/components/icons/hg";
 import { chipColors, toneForLabel } from "@shared/selection-tones";
 import type { Bookmark, ElectronAPI, ServerState, Visit } from "@/types/electron";
 import { normalizeUrl } from "./url-input";

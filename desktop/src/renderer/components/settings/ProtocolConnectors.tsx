@@ -20,7 +20,7 @@ import {
   ShieldCheck,
   Hand,
   Ban,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { Modal } from "@/components/ui/modal";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";

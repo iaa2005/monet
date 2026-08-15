@@ -30,7 +30,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Loader2, Mic, Settings2, Square } from "lucide-react";
+import { Check, ChevronDown, Loader2, Mic, Settings2, Square } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 // Vite-native worker import — more dependable than `new Worker(new URL(...))`

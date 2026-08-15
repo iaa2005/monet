@@ -14,7 +14,7 @@ import {
   Circle,
   ListTodo,
   Loader2,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/types/chat";
 

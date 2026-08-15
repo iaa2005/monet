@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, FolderGit2, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderGit2, RefreshCw } from "@/components/icons/hg";
 import { DiffView } from "@/components/chat/DiffView";
 import { parseUnifiedDiff, langFromPath } from "@/components/chat/diff-core";
 import { useChatStore } from "@/stores/chatStore";

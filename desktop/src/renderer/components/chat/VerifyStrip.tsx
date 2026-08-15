@@ -7,7 +7,7 @@
  * The verdict stays until the next send; a green run is worth seeing too.
  */
 
-import { AlertTriangle, Loader2, MinusCircle, ShieldCheck, Wrench } from "lucide-react";
+import { AlertTriangle, Loader2, MinusCircle, ShieldCheck, Wrench } from "@/components/icons/hg";
 import { useChatStore } from "@/stores/chatStore";
 
 export function VerifyStrip(): JSX.Element | null {

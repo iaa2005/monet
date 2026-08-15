@@ -19,7 +19,7 @@ import {
   Square,
   Trash2,
   TriangleAlert,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import {
   DropdownMenu,
   DropdownMenuContent,

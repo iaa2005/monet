@@ -15,7 +15,7 @@ import {
   Plus,
   Search,
   X,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import type { ORModel, ORKeyInfo } from "@/types/electron";
 import type { ProviderModel, Modality } from "@/stores/providerStore";

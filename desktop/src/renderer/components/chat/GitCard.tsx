@@ -22,7 +22,7 @@ import {
   GitPullRequest,
   Loader2,
   Terminal as TerminalIcon,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import type { ElectronAPI, GitInfo } from "@/types/electron";

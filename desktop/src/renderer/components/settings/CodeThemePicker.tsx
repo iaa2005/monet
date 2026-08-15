@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "@/components/icons/hg";
 import { CodeBlock } from "@/components/chat/CodeBlock";
 import { useIsDark } from "@/components/chat/highlight";
 import {

@@ -7,7 +7,7 @@ import {
   Loader2,
   Maximize2,
   X,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import type { ChatMessage, ToolCall } from "@/types/chat";
 import { cn } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";

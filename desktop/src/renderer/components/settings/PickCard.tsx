@@ -13,7 +13,7 @@
  */
 
 import type { ComponentType, ReactNode } from "react";
-import { Check, Download, Loader2 } from "lucide-react";
+import { Check, Download, Loader2 } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 
 export function PickCard({

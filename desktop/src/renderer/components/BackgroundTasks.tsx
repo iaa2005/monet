@@ -23,7 +23,7 @@ import {
   Loader2,
   Square,
   X,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { AnsiText } from "@/components/chat/AnsiText";
 import { useChatStore } from "@/stores/chatStore";

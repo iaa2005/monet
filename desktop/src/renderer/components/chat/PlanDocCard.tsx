@@ -21,7 +21,7 @@ import {
   Loader2,
   Minus,
   PanelRight,
-} from "lucide-react";
+} from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import { comboLabel, isMac } from "@/lib/hotkeys";
 import { usePlanStore } from "@/stores/planStore";

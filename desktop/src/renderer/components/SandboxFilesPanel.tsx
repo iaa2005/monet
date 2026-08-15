@@ -5,7 +5,7 @@
  * intermediate files the model wrote but never referenced show up too.
  */
 import { useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw } from "@/components/icons/hg";
 import { FileTree } from "@/components/FileTree";
 import { useChatStore } from "@/stores/chatStore";
 import type { ElectronAPI } from "@/types/electron";

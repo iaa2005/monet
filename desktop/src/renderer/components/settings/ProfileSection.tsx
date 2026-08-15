@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight, Palette, Upload, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Palette, Upload, X } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, PaintingInfo } from "@/types/electron";
 import { Select } from "@/components/ui/select";
