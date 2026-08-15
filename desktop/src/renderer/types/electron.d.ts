@@ -26,12 +26,14 @@ import type {
 } from "../../main/stt/gigaam.js";
 import type { TtsProgress, TtsStatus } from "../../main/tts/engine.js";
 import type { Plan, PlanTodoStatus } from "@shared/plan";
+import type { UpdateState } from "../../main/app/updater.js";
 import type { ChatMessage } from "./chat";
 
 export type { BrowserConfig, DevServer, BrowserSelection, ServerConfig, ServerState };
 export type { Bookmark, Visit };
 export type { SessionUiState };
 export type { UiVault };
+export type { UpdateState };
 
 /** The vault(s) as a graph, for the dock panel. */
 export interface VaultGraphNode {
@@ -623,9 +625,14 @@ export interface ElectronAPI {
     ) => () => void;
   };
   updates: {
-    pending: () => Promise<string | null>;
+    /** What the updater is doing right now — nothing happens unasked. */
+    state: () => Promise<UpdateState>;
+    check: () => Promise<UpdateState>;
+    /** Start the download the user just agreed to. */
+    download: () => Promise<UpdateState>;
+    /** Relaunch into the downloaded version (it also installs on quit). */
     install: () => Promise<void>;
-    onReady: (callback: (payload: { version: string }) => void) => () => void;
+    onState: (callback: (state: UpdateState) => void) => () => void;
   };
   askUser: {
     onRequest: (callback: (request: AskUserRequest) => void) => () => void;

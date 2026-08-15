@@ -11,6 +11,7 @@ import type {
 } from "../main/ipc/permissions.js";
 import type { AskUserRequest, AskUserAnswer } from "../main/ipc/ask-user.js";
 import type { UiPrefs } from "../main/app/ui-prefs.js";
+import type { UpdateState } from "../main/app/updater.js";
 import type { FeatureFlags } from "../shared/agent-features.js";
 import type { PlanApprovalRequest, PlanDecision } from "../main/ipc/plan.js";
 import type { ConnectorAccount } from "../main/connectors/types.js";
@@ -329,18 +330,17 @@ const electronAPI = {
   },
 
   updates: {
-    /** Version already downloaded and waiting for a relaunch, or null. */
-    pending: (): Promise<string | null> => ipcRenderer.invoke("update:pending"),
+    /** Where the update stands: idle / available / downloading / ready /
+     * error. Nothing downloads until download() is called. */
+    state: (): Promise<UpdateState> => ipcRenderer.invoke("update:state"),
+    check: (): Promise<UpdateState> => ipcRenderer.invoke("update:check"),
+    download: (): Promise<UpdateState> => ipcRenderer.invoke("update:download"),
     install: (): Promise<void> => ipcRenderer.invoke("update:install"),
-    onReady: (
-      callback: (payload: { version: string }) => void,
-    ): (() => void) => {
-      const handler = (
-        _e: Electron.IpcRendererEvent,
-        payload: { version: string },
-      ) => callback(payload);
-      ipcRenderer.on("update:ready", handler);
-      return () => ipcRenderer.removeListener("update:ready", handler);
+    onState: (callback: (state: UpdateState) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, state: UpdateState) =>
+        callback(state);
+      ipcRenderer.on("update:state", handler);
+      return () => ipcRenderer.removeListener("update:state", handler);
     },
   },
 

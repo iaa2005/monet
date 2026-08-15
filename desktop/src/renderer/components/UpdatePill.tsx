@@ -1,55 +1,141 @@
 /**
- * "Relaunch to update" — the only surface auto-update has.
+ * The update, offered — not performed behind the user's back.
  *
- * The update downloaded itself in the background; this pill sits above the
- * account card once it is ready, and clicking it restarts the app into the
- * new version. Dismissable it is not: it takes one row, promises one click,
- * and the same update installs on ordinary quit anyway.
+ * One row above the account card, and it says what is actually true right
+ * now: a version is available (download it?), it is downloading (this far),
+ * it is ready (relaunch — or just close the app when you're done and it
+ * installs itself), or the download failed and here is why. The old pill only
+ * ever appeared after a successful silent download, which is why a release
+ * that never managed to download looked exactly like no release at all.
+ *
+ * Dismissable only in the sense that closing the app finishes the job:
+ * autoInstallOnAppQuit is on, so "later" is a real answer.
  */
 
 import { useEffect, useState, type JSX } from "react";
-import { ArrowRight, RefreshCw } from "lucide-react";
-import type { ElectronAPI } from "@/types/electron";
+import { ArrowRight, RotateCw, X } from "lucide-react";
+import { Download05 } from "@/components/icons";
+import type { ElectronAPI, UpdateState } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
+const MB = (bytes?: number): string | null =>
+  bytes && bytes > 0 ? `${(bytes / (1024 * 1024)).toFixed(0)} MB` : null;
+
 export function UpdatePill(): JSX.Element | null {
-  const [version, setVersion] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [state, setState] = useState<UpdateState>({ status: "idle" });
+  // Hidden for this run only. The download is already on disk by then, and
+  // the app installs it on quit — so this is "not now", not "never".
+  const [hidden, setHidden] = useState(false);
 
   useEffect(() => {
-    // Ask once (the update may have landed before this window existed),
-    // then listen (it may land while we're open).
+    // Ask once (the state may predate this window), then listen.
     void api()
-      ?.updates?.pending()
-      .then((v) => {
-        if (v) setVersion(v);
-      })
+      ?.updates?.state()
+      .then((s) => s && setState(s))
       .catch(() => {});
-    return api()?.updates?.onReady(({ version: v }) => setVersion(v));
+    return api()?.updates?.onState((s) => {
+      setState(s);
+      setHidden(false);
+    });
   }, []);
 
-  if (!version) return null;
+  if (hidden) return null;
+  if (state.status === "idle" || state.status === "checking") return null;
 
+  const row =
+    "group mb-1.5 flex w-full items-center gap-3 rounded-[var(--radius)] border border-border bg-popover px-3 py-2.5 text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]";
+
+  if (state.status === "downloading")
+    return (
+      <div className="mb-1.5 w-full rounded-[var(--radius)] border border-border bg-popover px-3 py-2.5">
+        <div className="flex items-center gap-3">
+          <Download05 className="size-4 shrink-0 text-foreground" />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            Downloading v{state.version}
+          </span>
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+            {state.percent}%
+          </span>
+        </div>
+        <div className="mt-2 h-1 overflow-hidden rounded-full bg-black/[0.08] dark:bg-white/[0.1]">
+          <div
+            className="h-full rounded-full bg-brand transition-[width] duration-300"
+            style={{ width: `${state.percent}%` }}
+          />
+        </div>
+      </div>
+    );
+
+  if (state.status === "ready")
+    return (
+      <button type="button" onClick={() => void api()?.updates?.install()} className={row}>
+        <RotateCw className="size-4 shrink-0 text-foreground" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">
+            Relaunch to update
+          </span>
+          <span className="block text-xs text-muted-foreground">
+            v{state.version} — or on your next quit
+          </span>
+        </span>
+        <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+      </button>
+    );
+
+  if (state.status === "error")
+    return (
+      <div className="mb-1.5 w-full rounded-[var(--radius)] border border-amber-500/40 bg-amber-500/[0.06] px-3 py-2.5">
+        <div className="flex items-start gap-2">
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium">Update failed</span>
+            <span className="block break-words text-xs text-muted-foreground">
+              {state.message}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setHidden(true)}
+            aria-label="Dismiss"
+            className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() =>
+            void (state.version
+              ? api()?.updates?.download()
+              : api()?.updates?.check())
+          }
+          className="mt-2 flex items-center gap-1.5 text-xs font-medium text-foreground hover:underline"
+        >
+          <RotateCw className="size-3.5" />
+          Try again
+        </button>
+      </div>
+    );
+
+  // available — the offer itself. Nothing has been downloaded yet.
+  const size = MB(state.bytes);
   return (
     <button
       type="button"
-      onClick={() => {
-        setBusy(true);
-        void api()?.updates?.install();
-      }}
-      className="group mb-1.5 flex w-full items-center gap-3 rounded-[var(--radius)] border border-border bg-popover px-3 py-2.5 text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+      onClick={() => void api()?.updates?.download()}
+      className={row}
     >
-      <RefreshCw
-        className={`size-4 shrink-0 text-brand ${busy ? "animate-spin" : ""}`}
-      />
+      <Download05 className="size-4 shrink-0 text-foreground" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">
-          Relaunch to update
+          Download update
         </span>
-        <span className="block text-xs text-muted-foreground">v{version}</span>
+        <span className="block text-xs text-muted-foreground">
+          v{state.version}
+          {size ? ` — ${size}` : ""}
+        </span>
       </span>
       <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
     </button>
