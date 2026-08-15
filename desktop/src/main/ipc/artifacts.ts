@@ -121,6 +121,17 @@ export function registerArtifactsIPC(): void {
     },
   );
 
+  // Show this chat's artifacts folder in the OS file manager. The panel is a
+  // view of a real directory, and the answer to "where is that on my disk"
+  // should not be a path the user has to retype.
+  ipcMain.handle(
+    "artifacts:openFolder",
+    async (_e, sessionId: string): Promise<{ ok: boolean; error?: string }> => {
+      const error = await shell.openPath(artifactSessionDir(sessionId));
+      return error ? { ok: false, error } : { ok: true };
+    },
+  );
+
   // Open an artifact with the OS default app.
   ipcMain.handle("artifacts:open", (_e, path: string): { ok: boolean } => {
     try {

@@ -544,6 +544,7 @@ export interface ElectronAPI {
       error?: string;
     }>;
     openPath: (path: string) => Promise<void>;
+    openFolder: (dir: string) => Promise<{ ok: boolean; error?: string }>;
   };
   providers: {
     list: () => Promise<LLMProvider[]>;
@@ -1458,6 +1459,7 @@ export interface ElectronAPI {
       mediaType?: string,
     ) => Promise<{ ok: boolean; dataUrl?: string; error?: string }>;
     open: (path: string) => Promise<{ ok: boolean }>;
+    openFolder: (sessionId: string) => Promise<{ ok: boolean; error?: string }>;
     readText: (
       path: string,
     ) => Promise<{ ok: boolean; content?: string; error?: string }>;

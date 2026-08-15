@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, FolderOpen } from "lucide-react";
 import {
   groupVersions,
   useSessionArtifacts,
@@ -23,6 +23,12 @@ import {
   FileCard,
   FileTile,
 } from "@/components/FileCard";
+import { useChatStore } from "@/stores/chatStore";
+import type { ElectronAPI } from "@/types/electron";
+
+function api(): ElectronAPI | undefined {
+  return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
+}
 
 // The view primitives moved to FileCard (the leaf module) so the cards and this
 // panel don't import each other. Re-exported here because half the chat imports
@@ -74,6 +80,7 @@ function SectionHeader({
 
 export function ArtifactsPanel(): JSX.Element {
   const { content, output } = useSessionArtifacts();
+  const sessionId = useChatStore((s) => s.currentSessionId);
   const [showAll, setShowAll] = useState(false);
   // Delivered files are the showcase; a name the model delivered at least once
   // lives there, version chips counting its DELIVERED copies. Every other name
@@ -102,6 +109,21 @@ export function ArtifactsPanel(): JSX.Element {
 
   return (
     <div className="space-y-5 p-3">
+      {/* Where these files actually live. One folder for the chat — the
+          sections are a reading of it, not three directories. */}
+      {sessionId && (
+        <div className="-mb-3 flex justify-end">
+          <button
+            type="button"
+            onClick={() => void api()?.artifacts.openFolder(sessionId)}
+            title="Open this chat's folder in the file manager"
+            aria-label="Open this chat's folder in the file manager"
+            className="flex size-[26px] items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+          >
+            <FolderOpen className="size-3.5" />
+          </button>
+        </div>
+      )}
       {deliveredGroups.length > 0 && (
         <section>
           <SectionHeader

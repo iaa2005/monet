@@ -262,6 +262,10 @@ const electronAPI = {
     }> => ipcRenderer.invoke("shell:run", command, cwd),
     openPath: (path: string): Promise<void> =>
       ipcRenderer.invoke("shell:openPath", path),
+    /** Open a folder itself in the OS file manager (openPath reveals a file
+     * from its parent — this is the "show me the folder" half). */
+    openFolder: (dir: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("shell:openFolder", dir),
   },
 
   providers: {
@@ -1595,6 +1599,9 @@ const electronAPI = {
       ipcRenderer.invoke("artifacts:readImage", path, mediaType),
     open: (path: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("artifacts:open", path),
+    /** This chat's artifacts folder, in the OS file manager. */
+    openFolder: (sessionId: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("artifacts:openFolder", sessionId),
     readText: (
       path: string,
     ): Promise<{ ok: boolean; content?: string; error?: string }> =>

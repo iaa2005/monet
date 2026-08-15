@@ -799,6 +799,19 @@ export function FileTree({
             <EyeOff className="size-3.5" />
           )}
         </button>
+        {/* The folder these rows ARE. A tree is a view of a real directory,
+            and "let me look at it myself" should not need a path typed out. */}
+        {root && (
+          <button
+            type="button"
+            onClick={() => void api().shell.openFolder(root.path)}
+            title="Open this folder in the file manager"
+            aria-label="Open this folder in the file manager"
+            className="flex size-[26px] shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+          >
+            <FolderOpen className="size-3.5" />
+          </button>
+        )}
         {onRefresh && (
           <button
             type="button"
