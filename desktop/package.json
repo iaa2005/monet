@@ -90,6 +90,7 @@
     "live:matrix": "node scripts/live-matrix.mjs",
     "smoke:icons": "node scripts/renderer-probe.mjs scripts/icons-probe.ts",
     "smoke:overlays": "node scripts/renderer-probe.mjs scripts/overlay-portal-probe.ts",
+    "smoke:detach": "npm run build && node scripts/detach-popout-probe.mjs",
     "smoke:hugeicons": "node scripts/build-hugeicons-subset.mjs && node scripts/renderer-probe.mjs scripts/hugeicons-probe.ts",
     "smoke:modal": "node scripts/modal-click-probe.mjs",
     "smoke:tray": "electron scripts/tray-probe.cjs",

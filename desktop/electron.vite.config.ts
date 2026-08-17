@@ -58,6 +58,56 @@ const vendorAliases = [
   ...pkgStubAliases,
 ]
 
+/**
+ * Let a popped-out dock group open from a file:// page.
+ *
+ * dockview refuses any popout URL whose protocol is not http(s) — a guard
+ * against `javascript:`, `data:` and cross-origin URLs, which is right for a
+ * web app and fatal for a packaged Electron one: our renderer IS a file:// page
+ * (dev, on the vite origin, was the only place Detach ever worked, which is
+ * exactly what the user reported). Upstream 8.x has the same rule, so there is
+ * nothing to upgrade into.
+ *
+ * What the guard is defending against does not apply here, and the two things
+ * that make that true are ours, not assumptions:
+ *
+ *   - the URL is built from location.href (dock-store.popoutPageUrl), never
+ *     from anything a page or a model can influence;
+ *   - main's setWindowOpenHandler allows exactly one URL to become a window —
+ *     our own popout.html at our own origin (isPopoutUrl). Everything else is
+ *     denied there, ahead of this code.
+ *
+ * Measured before writing it: from the file:// renderer, window.open of
+ * popout.html returns a window whose document is readable, writable and
+ * adoptNode-able — the whole of what dockview does to it.
+ *
+ * The transform throws when the upstream text moves, so an upgrade that
+ * rewrites this line fails the build instead of quietly restoring a dead
+ * button.
+ */
+const NEEDLE =
+  "const protocolOk = resolved.protocol === 'http:' || resolved.protocol === 'https:';"
+const dockviewFilePopoutPlugin = {
+  name: 'monet:dockview-file-popout',
+  enforce: 'pre' as const,
+  transform(code: string, id: string) {
+    if (!id.includes('dockview-core')) return null
+    if (!code.includes('popout URL must be same-origin')) return null
+    if (!code.includes(NEEDLE))
+      throw new Error(
+        'monet:dockview-file-popout — dockview changed its popout URL check; ' +
+          're-read assertSameOriginPopoutUrl and update this patch',
+      )
+    return {
+      code: code.replace(
+        NEEDLE,
+        `${NEEDLE.slice(0, -1)} || resolved.protocol === 'file:';`,
+      ),
+      map: null,
+    }
+  },
+}
+
 // Time-limited beta builds: `MONET_BETA_EXPIRES=2026-09-01 npm run build`
 // BAKES the deadline into the bundles (a runtime env var could simply be
 // unset by whoever runs the app). Empty = a normal, unlimited build.
@@ -130,8 +180,13 @@ export default defineConfig({
         ...vendorAliases,
       ],
     },
-    plugins: [react()],
+    plugins: [react(), dockviewFilePopoutPlugin],
     define: betaDefine,
+    // The dev server pre-bundles node_modules with esbuild, where a `transform`
+    // hook never runs — so the patch above would be skipped in dev. It is
+    // harmless there (the vite origin is http and Detach already worked), but a
+    // fix that only applies to one of the two builds is how this bug got here.
+    optimizeDeps: { exclude: ['dockview-core', 'dockview', 'dockview-react'] },
     css: {
       postcss: './postcss.config.js',
     },
