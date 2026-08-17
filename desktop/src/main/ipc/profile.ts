@@ -4,13 +4,11 @@ import { ipcMain } from "electron";
 import { getMainWindow } from "../app/main-window.js";
 import {
   avatarDataUrl,
-  avatarRawUrl,
   getProfile,
-  listGallery,
   listPaintings,
   paintingImage,
+  pickGalleryAvatar,
   setAvatarFromFile,
-  setAvatarFromUrl,
   setProfile,
   type Profile,
 } from "../app/profile.js";
@@ -39,11 +37,6 @@ export function registerProfileIPC(): void {
     if (r.ok) notifyRenderer();
     return r;
   });
-  ipcMain.handle("profile:setAvatarUrl", async (_e, url: string) => {
-    const r = await setAvatarFromUrl(url);
-    if (r.ok) notifyRenderer();
-    return r;
-  });
   ipcMain.handle("profile:paintings", async () => {
     try {
       return { ok: true, items: await listPaintings() };
@@ -59,25 +52,8 @@ export function registerProfileIPC(): void {
     }
   });
   ipcMain.handle("profile:pickPaintingFace", async (_e, file: string) => {
-    const r = await setAvatarFromUrl(avatarRawUrl(file));
+    const r = await pickGalleryAvatar(file);
     if (r.ok) notifyRenderer();
     return r;
   });
-  ipcMain.handle(
-    "profile:gallery",
-    async (): Promise<{
-      ok: boolean;
-      items?: { url: string; dataUrl: string }[];
-      error?: string;
-    }> => {
-      try {
-        return { ok: true, items: await listGallery() };
-      } catch (err) {
-        return {
-          ok: false,
-          error: err instanceof Error ? err.message : "gallery failed",
-        };
-      }
-    },
-  );
 }

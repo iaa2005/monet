@@ -753,8 +753,6 @@ const electronAPI = {
       ipcRenderer.invoke("profile:set", patch),
     setAvatarFile: (path: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("profile:setAvatarFile", path),
-    setAvatarUrl: (url: string): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke("profile:setAvatarUrl", url),
     paintings: (): Promise<{ ok: boolean; items?: unknown[]; error?: string }> =>
       ipcRenderer.invoke("profile:paintings"),
     paintingImage: (
@@ -763,11 +761,6 @@ const electronAPI = {
       ipcRenderer.invoke("profile:paintingImage", file),
     pickPaintingFace: (file: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("profile:pickPaintingFace", file),
-    gallery: (): Promise<{
-      ok: boolean;
-      items?: { url: string; dataUrl: string }[];
-      error?: string;
-    }> => ipcRenderer.invoke("profile:gallery"),
     onChanged: (
       callback: (p: {
         name: string;

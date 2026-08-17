@@ -146,7 +146,7 @@ function MonetPicker({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex flex-col bg-black/90">
-      <div className="flex items-center justify-between px-4 py-3 text-white/90">
+      <div className="flex items-center justify-between px-4 py-3 pt-10 text-white/90">
         <div className="min-w-0 text-sm">
           {cur ? (
             <>

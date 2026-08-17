@@ -26,10 +26,57 @@ async function once(url: string, init: RequestInit, timeoutMs: number): Promise<
   }
 }
 
-/** GH raw → jsDelivr mirror (often reachable when raw is blocked, and back). */
+/**
+ * GH raw → jsDelivr mirror (often reachable when raw is blocked, and back).
+ *
+ * The ref is carried across rather than pinned to @HEAD: jsDelivr resolves a
+ * branch, a tag or a commit, and "HEAD" is none of those — every mirrored URL
+ * used to 404 there, which is a fallback that never fell back. With no @ref at
+ * all jsDelivr serves the default branch, which is what HEAD means.
+ */
 function mirrorOf(url: string): string | null {
-  const m = /^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/[^/]+\/(.+)$/.exec(url);
-  return m ? `https://cdn.jsdelivr.net/gh/${m[1]}/${m[2]}@HEAD/${m[3]}` : null;
+  const m = /^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/.exec(url);
+  if (!m) return null;
+  const ref = m[3] === "HEAD" ? "" : `@${m[3]}`;
+  return `https://cdn.jsdelivr.net/gh/${m[1]}/${m[2]}${ref}/${m[4]}`;
+}
+
+/**
+ * First SUCCESS wins — not first to settle.
+ *
+ * `Promise.race` hands back whatever finishes first, including a rejection:
+ * one unreachable mirror (jsDelivr times out or DNS-fails on some networks —
+ * measured here at 25 s and nothing) would then decide the request while the
+ * primary was busy answering perfectly well. So a failure only counts once
+ * every candidate has failed, and what comes back then is the last real
+ * response — the caller wants to see GitHub's 429, not a mirror's DNS error.
+ */
+async function firstSuccess(
+  urls: string[],
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  if (urls.length === 1) return once(urls[0]!, init, timeoutMs);
+  return new Promise<Response>((resolve, reject) => {
+    let left = urls.length;
+    let lastRes: Response | null = null;
+    let lastErr: unknown = null;
+    for (const u of urls)
+      once(u, init, timeoutMs).then(
+        (res) => {
+          if (res.ok) return resolve(res);
+          lastRes = res;
+          if (--left === 0) resolve(res);
+        },
+        (err) => {
+          lastErr = err;
+          if (--left === 0)
+            lastRes
+              ? resolve(lastRes)
+              : reject(lastErr instanceof Error ? lastErr : new Error("fetch failed"));
+        },
+      );
+  });
 }
 
 export async function fetchRetry(url: string, init: Init = {}): Promise<Response> {
@@ -38,11 +85,13 @@ export async function fetchRetry(url: string, init: Init = {}): Promise<Response
   let lastErr: unknown = null;
   for (let attempt = 0; attempt < tries; attempt++) {
     try {
-      // Race primary vs mirror — whichever responds first wins.
-      // With VPN: mirror (jsDelivr) is fast; without VPN: primary (GitHub) is fast.
-      // No need to wait for the slow one.
+      // Primary and mirror together: with a VPN jsDelivr is the fast one,
+      // without it GitHub is, and neither has to wait for the other.
       const urls = mirror ? [url, mirror] : [url];
-      const res = await Promise.race(urls.map((u) => once(u, rest, timeoutMs)));
+      const res = await firstSuccess(urls, rest, timeoutMs);
+      // 429 is deliberately NOT retried. It is GitHub telling this machine it
+      // has asked for too much, and the cure for that is fewer requests (see
+      // the gallery's disk cache), not the same request again 200 ms later.
       // Retry transient upstream errors; return everything else as-is.
       if (![502, 503, 504].includes(res.status)) return res;
       lastErr = new Error(`HTTP ${res.status}`);

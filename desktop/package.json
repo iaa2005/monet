@@ -89,6 +89,7 @@
     "smoke:acp": "node scripts/acp-probe.mjs",
     "live:matrix": "node scripts/live-matrix.mjs",
     "smoke:icons": "node scripts/renderer-probe.mjs scripts/icons-probe.ts",
+    "smoke:gallery": "node scripts/renderer-probe.mjs scripts/gallery-cache-probe.ts",
     "smoke:overlays": "node scripts/renderer-probe.mjs scripts/overlay-portal-probe.ts",
     "smoke:detach": "npm run build && node scripts/detach-popout-probe.mjs",
     "smoke:hugeicons": "node scripts/build-hugeicons-subset.mjs && node scripts/renderer-probe.mjs scripts/hugeicons-probe.ts",
@@ -269,3 +270,4 @@
     "better-sqlite3": "^11.10.0"
   }
 }
+

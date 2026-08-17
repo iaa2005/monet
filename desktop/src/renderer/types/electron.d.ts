@@ -874,7 +874,6 @@ export interface ElectronAPI {
       work?: string;
     }) => Promise<{ name: string; about: string; fullName: string; work: string }>;
     setAvatarFile: (path: string) => Promise<{ ok: boolean; error?: string }>;
-    setAvatarUrl: (url: string) => Promise<{ ok: boolean; error?: string }>;
     paintings: () => Promise<{
       ok: boolean;
       items?: PaintingInfo[];
@@ -884,11 +883,6 @@ export interface ElectronAPI {
       file: string,
     ) => Promise<{ ok: boolean; dataUrl?: string; error?: string }>;
     pickPaintingFace: (file: string) => Promise<{ ok: boolean; error?: string }>;
-    gallery: () => Promise<{
-      ok: boolean;
-      items?: { url: string; dataUrl: string }[];
-      error?: string;
-    }>;
     onChanged: (
       callback: (p: {
         name: string;
