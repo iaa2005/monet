@@ -66,14 +66,22 @@ export function ArtifactsStrip({
 function SectionHeader({
   label,
   items,
+  extra,
 }: {
   label: string;
   items: ArtifactItem[];
+  /** Panel-level control, shown on the FIRST section only — it belongs to the
+   * chat, not to the section, and a row of its own above the first heading
+   * landed on top of Download all. */
+  extra?: JSX.Element | null;
 }): JSX.Element {
   return (
     <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
       <h4 className="text-sm font-semibold">{label}</h4>
-      <DownloadAllButton items={items} compact />
+      <div className="flex items-center gap-1">
+        <DownloadAllButton items={items} compact />
+        {extra}
+      </div>
     </div>
   );
 }
@@ -107,28 +115,28 @@ export function ArtifactsPanel(): JSX.Element {
     );
   }
 
+  // Where these files actually live. One folder for the whole chat, so it
+  // rides in the first section's header rather than in a strip of its own.
+  const folderButton = sessionId ? (
+    <button
+      type="button"
+      onClick={() => void api()?.artifacts.openFolder(sessionId)}
+      title="Open this chat's folder in the file manager"
+      aria-label="Open this chat's folder in the file manager"
+      className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
+    >
+      <FolderOpen className="size-3.5" />
+    </button>
+  ) : null;
+
   return (
     <div className="space-y-5 p-3">
-      {/* Where these files actually live. One folder for the chat — the
-          sections are a reading of it, not three directories. */}
-      {sessionId && (
-        <div className="-mb-3 flex justify-end">
-          <button
-            type="button"
-            onClick={() => void api()?.artifacts.openFolder(sessionId)}
-            title="Open this chat's folder in the file manager"
-            aria-label="Open this chat's folder in the file manager"
-            className="flex size-[26px] items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]"
-          >
-            <FolderOpen className="size-3.5" />
-          </button>
-        </div>
-      )}
       {deliveredGroups.length > 0 && (
         <section>
           <SectionHeader
             label="Artifacts"
             items={deliveredGroups.map((g) => g.latest)}
+            extra={folderButton}
           />
           <div className="space-y-2">
             {deliveredGroups.map((g, i) => (
@@ -145,17 +153,20 @@ export function ArtifactsPanel(): JSX.Element {
       )}
       {workingGroups.length > 0 && (
         <section>
-          <button
-            type="button"
-            onClick={() => setShowAll((v) => !v)}
-            className="mb-2 flex w-full items-center gap-1 px-0.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ChevronRight
-              className={`size-3.5 transition-transform ${showAll ? "rotate-90" : ""}`}
-            />
-            All files
-            <span className="font-normal">({workingGroups.length})</span>
-          </button>
+          <div className="mb-2 flex items-center gap-1 px-0.5">
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="flex min-w-0 flex-1 items-center gap-1 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronRight
+                className={`size-3.5 transition-transform ${showAll ? "rotate-90" : ""}`}
+              />
+              All files
+              <span className="font-normal">({workingGroups.length})</span>
+            </button>
+            {deliveredGroups.length === 0 && folderButton}
+          </div>
           {showAll && (
             <div className="space-y-2">
               {workingGroups.map((g, i) => (
@@ -173,7 +184,15 @@ export function ArtifactsPanel(): JSX.Element {
       )}
       {contentNewest.length > 0 && (
         <section>
-          <SectionHeader label="Content" items={contentNewest} />
+          <SectionHeader
+            label="Content"
+            items={contentNewest}
+            extra={
+              deliveredGroups.length === 0 && workingGroups.length === 0
+                ? folderButton
+                : null
+            }
+          />
           <div className="grid grid-cols-2 gap-2">
             {contentNewest.map((a, i) => (
               <FileTile key={`${a.source}-${a.ts}-${i}-${a.name}`} a={a} />
