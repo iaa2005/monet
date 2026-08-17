@@ -156,12 +156,16 @@ export const Lock = hg("lock");
 export const LogIn = hg("login-01");
 export const LogOut = hg("logout-01");
 export const Mail = hg("mail-01");
-export const Maximize2 = hg("maximize-01");
+// Maximize/restore everywhere in the app is "give this panel the room" and
+// "put it back" — hugeicons draws that pair as expand/collapse, which is the
+// pair the user picked. The corner-arrows of maximize-01 read as a window
+// control, and none of these three call sites is one.
+export const Maximize2 = hg("expand");
 export const MessageCircleQuestion = hg("message-question");
 export const MessageSquare = hg("message-01");
 export const MessageSquarePlus = hg("message-add-01");
 export const Mic = hg("mic-01");
-export const Minimize2 = hg("minimize-01");
+export const Minimize2 = hg("collapse");
 export const Minus = hg("minus-sign");
 export const MinusCircle = hg("minus-sign-circle");
 export const Monitor = hg("computer");
