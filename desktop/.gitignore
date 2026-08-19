@@ -15,3 +15,7 @@ out-probe/
 
 # Prompt-eval harness output
 out-eval/
+
+# Attachments the app copies into the project during a session (images,
+# screenshots) — runtime data, not source.
+.monet-attachments/
