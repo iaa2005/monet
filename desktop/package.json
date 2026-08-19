@@ -166,7 +166,8 @@
     "smoke:slashclear": "node scripts/renderer-probe.mjs scripts/slash-clear-probe.ts",
     "smoke:cmdbrand": "node scripts/renderer-probe.mjs scripts/command-brand-probe.ts",
     "smoke:voiceready": "node scripts/smoke-agent.mjs scripts/voice-readiness-probe.ts",
-    "smoke:pickcard": "node scripts/renderer-probe.mjs scripts/pick-card-probe.ts"
+    "smoke:pickcard": "node scripts/renderer-probe.mjs scripts/pick-card-probe.ts",
+    "smoke:voicebutton": "node scripts/renderer-probe.mjs scripts/voice-button-probe.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",

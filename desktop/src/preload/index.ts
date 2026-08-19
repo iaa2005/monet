@@ -968,7 +968,7 @@ const electronAPI = {
     },
   },
 
-  /** On-device voice (Supertonic 3) — synthesis in main, playback here. */
+  /** Is Voice Mode usable yet — see main/ipc/voice.ts for what it requires. */
   voice: {
     readiness: (): Promise<{
       ready: boolean;
@@ -976,6 +976,8 @@ const electronAPI = {
       tts: { ok: boolean; reason: string };
     }> => ipcRenderer.invoke("voice:readiness"),
   },
+
+  /** On-device voice (Supertonic 3) — synthesis in main, playback here. */
   tts: {
     available: (): Promise<boolean> => ipcRenderer.invoke("tts:available"),
     status: (): Promise<TtsStatus> => ipcRenderer.invoke("tts:status"),

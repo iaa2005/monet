@@ -260,9 +260,17 @@ function fileFromDataUrl(dataUrl: string | undefined, name: string): File | null
  * to the place that fixes it, instead of starting a conversation that cannot
  * happen.
  *
- * Readiness is re-read on every open, not cached: the fix happens in
+ * Readiness is re-read on every press, not cached: the fix happens in
  * Settings, in another panel, and a stale "not ready" would send the user
  * back to a page where everything is already downloaded.
+ *
+ * That check is async, and Radix opens a menu from its trigger's pointerdown
+ * — synchronously, before any answer exists. Left alone it opened the "not
+ * set up" menu on EVERY press, including with every model downloaded, which
+ * is exactly the bug this component was added to prevent. Radix composes the
+ * trigger's handlers with checkForDefaultPrevented, so preventing the default
+ * on pointerdown and on the keys it opens with hands the decision back here;
+ * `open` is then driven only by what the check found.
  */
 function VoiceModeButton({ disabled }: { disabled: boolean }): JSX.Element {
   const [readiness, setReadiness] = useState<VoiceReadiness | null>(null);
@@ -289,9 +297,10 @@ function VoiceModeButton({ disabled }: { disabled: boolean }): JSX.Element {
 
   const press = (): void => {
     void (async () => {
-      const r = await api()
-        ?.voice.readiness()
-        .catch(() => null);
+      // Optional all the way down: a renderer running against an older
+      // preload has no `voice` key, and reading through it must not throw
+      // where a missing answer is already handled.
+      const r = (await api()?.voice?.readiness?.().catch(() => null)) ?? null;
       // No answer at all (an older main, an IPC error) is not a reason to
       // block the feature — fall through to the conversation, which has its
       // own error note.
@@ -320,12 +329,17 @@ function VoiceModeButton({ disabled }: { disabled: boolean }): JSX.Element {
               : "Voice Mode — разговор голосом"
           }
           disabled={disabled}
-          onClick={(e) => {
-            // The trigger would toggle the menu on every press; the menu is
-            // only ever opened by press() finding something missing.
+          // Radix opens on pointerdown; preventing the default there stops it
+          // (its own handler is skipped when the event is already defaulted)
+          // and leaves `open` to press().
+          onPointerDown={(e) => e.preventDefault()}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" && e.key !== " " && e.key !== "ArrowDown")
+              return;
             e.preventDefault();
             press();
           }}
+          onClick={() => press()}
           className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground disabled:opacity-40 dark:hover:bg-white/[0.08]"
         >
           <AudioLines className="size-4" />
