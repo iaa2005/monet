@@ -433,6 +433,14 @@ function createWindow(): void {
   mainWindow.on("unmaximize", () =>
     mainWindow?.webContents.send("window:maximized", false),
   );
+  // macOS hides the traffic lights in fullscreen; the header's inset for
+  // them must collapse with them or the logo floats 72px from the edge.
+  mainWindow.on("enter-full-screen", () =>
+    mainWindow?.webContents.send("window:fullscreen", true),
+  );
+  mainWindow.on("leave-full-screen", () =>
+    mainWindow?.webContents.send("window:fullscreen", false),
+  );
 
   // Load renderer
   if (isDev && process.env["ELECTRON_RENDERER_URL"]) {
@@ -492,6 +500,12 @@ function openSecondaryWindow(): void {
   win.on("ready-to-show", () => win.show());
   win.on("maximize", () => win.webContents.send("window:maximized", true));
   win.on("unmaximize", () => win.webContents.send("window:maximized", false));
+  win.on("enter-full-screen", () =>
+    win.webContents.send("window:fullscreen", true),
+  );
+  win.on("leave-full-screen", () =>
+    win.webContents.send("window:fullscreen", false),
+  );
   if (isDev && process.env["ELECTRON_RENDERER_URL"]) {
     win.loadURL(process.env["ELECTRON_RENDERER_URL"]);
   } else {
@@ -606,6 +620,12 @@ app.whenReady().then(() => {
   ipcMain.handle(
     "window:isMaximized",
     () => mainWindow?.isMaximized() ?? false,
+  );
+  // Answered from the window the CALL came from, not mainWindow — the
+  // secondary window's header asks about itself.
+  ipcMain.handle(
+    "window:isFullScreen",
+    (e) => BrowserWindow.fromWebContents(e.sender)?.isFullScreen() ?? false,
   );
 
   createWindow();

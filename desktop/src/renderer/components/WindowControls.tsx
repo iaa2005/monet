@@ -7,9 +7,20 @@ function api(): ElectronAPI | undefined {
 }
 
 /** Space the macOS traffic lights occupy at the header's left edge. Rendered
- * at the START of the title bar, before any button, on darwin only. */
+ * at the START of the title bar, before any button, on darwin only — and
+ * collapsed in fullscreen, where the system hides the lights and the header
+ * would otherwise keep a 72px hole at its edge. */
 export function MacTrafficLightInset(): JSX.Element {
-  if (api()?.platform !== "darwin") return <></>;
+  const isMac = api()?.platform === "darwin";
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!isMac) return;
+    api()?.win.isFullScreen?.().then(setFullscreen).catch(() => {});
+    return api()?.win.onFullScreenChange?.(setFullscreen);
+  }, [isMac]);
+
+  if (!isMac || fullscreen) return <></>;
   return <div aria-hidden className="h-full w-[72px] shrink-0" />;
 }
 

@@ -1,8 +1,14 @@
 /**
  * Computer Use overlay — while the agent is driving the mouse/keyboard, a
- * glowing brand-coloured frame breathes around the screen edge and the app
- * window dodges into the bottom-right corner so it does not sit on top of the
- * apps being controlled.
+ * glowing brand-coloured frame breathes around the screen edge.
+ *
+ * On Windows the app window ALSO dodges into the top-right corner, because
+ * there is no other way to keep it watchable without it sitting on top of the
+ * apps being driven. macOS does not need that and users read it as the app
+ * running away with their layout: activating a target app already sends our
+ * window behind it, Spaces keep the desktop tidy, and the window is excluded
+ * from capture either way. So on darwin the window stays exactly where the
+ * user put it — only the frame appears.
  *
  * The frame is click-through (`setIgnoreMouseEvents`) and content-protected
  * (`setContentProtection` → WDA_EXCLUDEFROMCAPTURE on Windows), so the USER
@@ -17,6 +23,8 @@
 
 import { BrowserWindow, globalShortcut, screen } from "electron";
 import { APP_MIN_HEIGHT, APP_MIN_WIDTH } from "../app/main-window.js";
+
+const IS_MAC = process.platform === "darwin";
 
 const BRAND_HUE = 211; // matches --brand-hue in the renderer's globals.css
 /** Pure dead-run insurance — the real release is the agent run's finally.
@@ -45,6 +53,9 @@ let idleTimer: NodeJS.Timeout | null = null;
  * stops moving the window instead of fighting the new one. */
 let generation = 0;
 let savedPlacement: { bounds: Electron.Rectangle; maximized: boolean } | null = null;
+/** macOS: the window never moves, so the only thing to undo is the capture
+ * exclusion. Tracked separately from savedPlacement, which stays null there. */
+let macProtected = false;
 
 /** The app window that should dodge out of the way. Set once at startup. */
 export function setDodgeWindow(win: BrowserWindow): void {
@@ -105,12 +116,49 @@ function tweenOpacity(win: BrowserWindow, to: number, gen: number, ms = 180): Pr
   });
 }
 
+/** The display the frame belongs on: the one holding the pointer, so a
+ * multi-monitor user sees it around the screen actually being driven. */
+function overlayDisplay(): Electron.Display {
+  try {
+    return screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  } catch {
+    return screen.getPrimaryDisplay();
+  }
+}
+
+/**
+ * Make the frame float over EVERYTHING, on every Space.
+ *
+ * Re-applied on every show rather than only at creation. On macOS a window's
+ * collection behaviour and its sharing type are both reset by ordinary
+ * hide/show cycles and by a Space switch; on Windows the display affinity of
+ * a transparent window does not reliably survive create/hide either (checked
+ * live with GetWindowDisplayAffinity — it read 0x0 with only the
+ * creation-time call). Asserting it every time is cheap and is the difference
+ * between a frame that always works and one that works until the user moves
+ * to another desktop.
+ */
+function assertOverlayLevel(win: BrowserWindow): void {
+  win.setAlwaysOnTop(true, "screen-saver");
+  win.setIgnoreMouseEvents(true);
+  if (IS_MAC) {
+    // Without this the frame is invisible the moment the user is in a
+    // fullscreen app or a second Space — exactly when Computer Use runs.
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
+  if (!process.env.MONET_OVERLAY_CAPTURABLE) win.setContentProtection(true);
+}
+
 function ensureOverlay(): BrowserWindow {
   if (overlay && !overlay.isDestroyed()) return overlay;
   overlay = new BrowserWindow({
-    ...screen.getPrimaryDisplay().bounds,
+    ...overlayDisplay().bounds,
     frame: false,
     transparent: true,
+    // A non-activating panel is what lets a window sit above a fullscreen
+    // app on macOS; a plain window is confined to its own Space.
+    ...(IS_MAC ? { type: "panel" as const } : {}),
+    backgroundColor: "#00000000",
     resizable: false,
     movable: false,
     minimizable: false,
@@ -124,13 +172,11 @@ function ensureOverlay(): BrowserWindow {
     show: false,
     webPreferences: { sandbox: true, contextIsolation: true },
   });
-  overlay.setAlwaysOnTop(true, "screen-saver");
-  overlay.setIgnoreMouseEvents(true);
-  // Visible to the user, absent from every screen capture (incl. our own).
-  // MONET_OVERLAY_CAPTURABLE=1 keeps it in captures — the only way to verify
-  // the glow visually in an automated run, since exclusion hides it from every
-  // screenshot tool on the machine.
-  if (!process.env.MONET_OVERLAY_CAPTURABLE) overlay.setContentProtection(true);
+  assertOverlayLevel(overlay);
+  // The frame is visible to the user and absent from every screen capture
+  // (including the agent's own) — see assertOverlayLevel.
+  // MONET_OVERLAY_CAPTURABLE=1 keeps it in captures, the only way to verify
+  // the glow visually in an automated run.
   void overlay.loadURL(
     `data:text/html;base64,${Buffer.from(GLOW_HTML, "utf-8").toString("base64")}`,
   );
@@ -145,7 +191,7 @@ function ensureOverlay(): BrowserWindow {
  * is simply the smallest the app is allowed to be.
  */
 function dodgeTarget(): Electron.Rectangle {
-  const wa = screen.getPrimaryDisplay().workArea;
+  const wa = overlayDisplay().workArea;
   return {
     x: wa.x + wa.width - APP_MIN_WIDTH - DODGE_MARGIN,
     y: wa.y + DODGE_MARGIN,
@@ -157,6 +203,15 @@ function dodgeTarget(): Electron.Rectangle {
 async function dodgeApp(gen: number): Promise<void> {
   const win = dodgeWindow;
   if (!win || win.isDestroyed() || !win.isVisible() || savedPlacement) return;
+  if (IS_MAC) {
+    // No dodge on macOS — see the note at the top of this file. Content
+    // protection still applies, so the window is absent from the agent's
+    // screenshots wherever the user has left it, and clicks pass to whatever
+    // is actually on top.
+    macProtected = true;
+    win.setContentProtection(true);
+    return;
+  }
   savedPlacement = { bounds: win.getBounds(), maximized: win.isMaximized() };
   if (savedPlacement.maximized) win.unmaximize();
   // The parked card stays watchable over a maximized target app — but the
@@ -172,6 +227,12 @@ async function dodgeApp(gen: number): Promise<void> {
 
 async function restoreApp(gen: number): Promise<void> {
   const win = dodgeWindow;
+  if (IS_MAC) {
+    if (!macProtected) return;
+    macProtected = false;
+    if (win && !win.isDestroyed()) win.setContentProtection(false);
+    return;
+  }
   const saved = savedPlacement;
   if (!saved) return;
   savedPlacement = null;
@@ -242,19 +303,25 @@ export async function touchComputerOverlay(): Promise<void> {
       win.setAlwaysOnTop(true, "floating");
       win.moveTop();
     }
+    // The frame has the same problem and no card to fall back on: a target
+    // app going fullscreen mid-run used to hide it for good.
+    if (overlay && !overlay.isDestroyed() && overlay.isVisible()) {
+      const d = overlayDisplay().bounds;
+      const cur = overlay.getBounds();
+      if (cur.x !== d.x || cur.y !== d.y || cur.width !== d.width || cur.height !== d.height)
+        overlay.setBounds(d);
+      assertOverlayLevel(overlay);
+    }
     return;
   }
   shown = true;
   armStopHotkey();
   const gen = ++generation;
   const win = ensureOverlay();
-  win.setBounds(screen.getPrimaryDisplay().bounds);
+  win.setBounds(overlayDisplay().bounds);
   win.setOpacity(0);
   win.showInactive();
-  // Re-assert on every show: on Windows the display affinity of a transparent
-  // window does not reliably survive create/hide cycles (checked live with
-  // GetWindowDisplayAffinity — it read 0x0 with only the creation-time call).
-  if (!process.env.MONET_OVERLAY_CAPTURABLE) win.setContentProtection(true);
+  assertOverlayLevel(win);
   await Promise.all([tweenOpacity(win, 1, gen), dodgeApp(gen)]);
 }
 
