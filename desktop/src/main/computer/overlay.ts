@@ -56,6 +56,39 @@ let savedPlacement: { bounds: Electron.Rectangle; maximized: boolean } | null = 
 /** macOS: the window never moves, so the only thing to undo is the capture
  * exclusion. Tracked separately from savedPlacement, which stays null there. */
 let macProtected = false;
+/** macOS: the window was in native fullscreen when the run started, and owes
+ * itself a return to it. */
+let macWasFullScreen = false;
+
+/**
+ * Toggle native fullscreen and wait for the animation to finish.
+ *
+ * The transition is asynchronous and about half a second long; acting on the
+ * window before it lands (showing the frame, reading bounds) catches it
+ * mid-flight. The timeout is there because the event does not arrive at all
+ * when the window is already in the requested state.
+ */
+function setFullScreenAwaited(
+  win: BrowserWindow,
+  full: boolean,
+): Promise<void> {
+  if (win.isFullScreen() === full) return Promise.resolve();
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(done, 1500);
+    // Subscribed per branch: Electron types these as separate overloads, so a
+    // union of the two names matches neither.
+    if (full) win.once("enter-full-screen", done);
+    else win.once("leave-full-screen", done);
+    win.setFullScreen(full);
+  });
+}
 
 /** The app window that should dodge out of the way. Set once at startup. */
 export function setDodgeWindow(win: BrowserWindow): void {
@@ -210,6 +243,17 @@ async function dodgeApp(gen: number): Promise<void> {
     // is actually on top.
     macProtected = true;
     win.setContentProtection(true);
+    // Native fullscreen is the one placement we cannot leave alone. A
+    // fullscreen window owns a Space of its own: the moment the agent
+    // activates a target app macOS switches away from it, so the window is
+    // not "behind" anything the user can click past — it is on another
+    // desktop, with its traffic lights out of reach and nothing but a
+    // trackpad swipe to get back. Leaving fullscreen returns it to the frame
+    // it had before, in the Space the user is actually looking at.
+    if (win.isFullScreen()) {
+      macWasFullScreen = true;
+      await setFullScreenAwaited(win, false);
+    }
     return;
   }
   savedPlacement = { bounds: win.getBounds(), maximized: win.isMaximized() };
@@ -230,7 +274,13 @@ async function restoreApp(gen: number): Promise<void> {
   if (IS_MAC) {
     if (!macProtected) return;
     macProtected = false;
-    if (win && !win.isDestroyed()) win.setContentProtection(false);
+    if (win && !win.isDestroyed()) {
+      win.setContentProtection(false);
+      if (macWasFullScreen) {
+        macWasFullScreen = false;
+        await setFullScreenAwaited(win, true);
+      }
+    }
     return;
   }
   const saved = savedPlacement;
@@ -317,12 +367,23 @@ export async function touchComputerOverlay(): Promise<void> {
   shown = true;
   armStopHotkey();
   const gen = ++generation;
+  // The app window settles FIRST on macOS. The frame asks to be visible on
+  // every Space, and that request lands on the whole app: made while our own
+  // window is still in native fullscreen, it drops that window out of its
+  // Space presentation and leaves a stranded copy of its old frame behind
+  // (reproduced with CGWindowList — the restored 1200x800 frame appears the
+  // moment setVisibleOnAllWorkspaces runs, and only then). Leaving fullscreen
+  // before the frame exists costs one awaited animation and avoids it.
+  if (IS_MAC) await dodgeApp(gen);
   const win = ensureOverlay();
   win.setBounds(overlayDisplay().bounds);
   win.setOpacity(0);
   win.showInactive();
   assertOverlayLevel(win);
-  await Promise.all([tweenOpacity(win, 1, gen), dodgeApp(gen)]);
+  await Promise.all([
+    tweenOpacity(win, 1, gen),
+    ...(IS_MAC ? [] : [dodgeApp(gen)]),
+  ]);
 }
 
 /** The run is over (or idle): fade the frame, bring the app window back. */
@@ -336,11 +397,17 @@ export function releaseComputerOverlay(): void {
   disarmStopHotkey();
   const gen = ++generation;
   const win = overlay;
-  void restoreApp(gen);
   if (win && !win.isDestroyed()) {
     void tweenOpacity(win, 0, gen).then(() => {
       if (gen === generation && win && !win.isDestroyed()) win.hide();
+      // Mac: the frame is hidden now, so restoring fullscreen cannot collide
+      // with its all-Spaces request. Elsewhere the two are independent and
+      // the window comes back while the frame fades.
+      if (IS_MAC) void restoreApp(gen);
     });
+    if (!IS_MAC) void restoreApp(gen);
+  } else {
+    void restoreApp(gen);
   }
 }
 
