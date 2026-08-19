@@ -16,7 +16,7 @@
  *   npm run smoke:detach
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -28,6 +28,11 @@ const check = (name, pass, detail) => {
 };
 
 const dataDir = mkdtempSync(join(tmpdir(), "monet-detach-"));
+// Past the first-run intro: it covers the window on a fresh data dir, and the
+// dock behind it has no toolbar to click. (This probe passed before macOS
+// support only because the intro's own screen still left the buttons behind
+// it — a coincidence, not a contract.)
+writeFileSync(join(dataDir, "ui-prefs.json"), JSON.stringify({ onboarded: true }), "utf-8");
 const electron = process.platform === "win32" ? "electron.cmd" : "electron";
 const app = spawn(join("node_modules", ".bin", electron), [
   `--remote-debugging-port=${PORT}`,

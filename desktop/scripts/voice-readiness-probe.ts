@@ -6,10 +6,15 @@
  * needs no preparation — so the button's refusal is exercised rather than
  * assumed.
  */
-import { mkdirSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "fs";
 import { join } from "path";
+import { tmpdir } from "os";
 
-const dir = process.env.MONET_DATA_DIR!;
+// Its own folder unless one is handed in: the npm script passes nothing, so
+// reading MONET_DATA_DIR and trusting it crashed the probe on mkdirSync
+// (undefined) for anyone who ran it the documented way.
+const dir = process.env.MONET_DATA_DIR ?? mkdtempSync(join(tmpdir(), "monet-voice-"));
+process.env.MONET_DATA_DIR = dir;
 mkdirSync(dir, { recursive: true });
 
 const settings = (patch: Record<string, unknown>): void => {

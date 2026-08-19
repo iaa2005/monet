@@ -35,7 +35,7 @@ const fakeDisplay = {
   id: 0,
   bounds: { x: 0, y: 0, width: 1920, height: 1080 },
   workArea: { x: 0, y: 0, width: 1920, height: 1080 },
-  scaleFactor: 1,
+  scaleFactor: Number(process.env.SMOKE_SCALE_FACTOR || 1),
   size: { width: 1920, height: 1080 },
 }
 export const screen = {
@@ -44,6 +44,19 @@ export const screen = {
   getCursorScreenPoint: () => ({ x: 0, y: 0 }),
   getDisplayNearestPoint: () => fakeDisplay,
   on: (..._args: unknown[]) => undefined,
+  // Windows-only in the app (computer/screen.ts), and therefore the half a
+  // probe written on a Mac never reaches: without these, the DIP conversion
+  // throws "screen.dipToScreenPoint is not a function" the moment a probe
+  // runs on win32. Scaled by the fake display's factor, so a probe can set
+  // SMOKE_SCALE_FACTOR and watch a 150% screen behave like one.
+  dipToScreenPoint: (p: { x: number; y: number }) => ({
+    x: Math.round(p.x * fakeDisplay.scaleFactor),
+    y: Math.round(p.y * fakeDisplay.scaleFactor),
+  }),
+  screenToDipPoint: (p: { x: number; y: number }) => ({
+    x: p.x / fakeDisplay.scaleFactor,
+    y: p.y / fakeDisplay.scaleFactor,
+  }),
 }
 export const desktopCapturer = {
   getSources: async () => [],
