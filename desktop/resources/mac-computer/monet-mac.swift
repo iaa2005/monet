@@ -243,8 +243,16 @@ func focusedValue() -> String? {
 func cmdType(_ text: String, _ expected: String?) {
   guard guardExpected(expected) else { return }
 
+  // The clipboard is NOT restored here. It used to be, 260ms after cmd+V —
+  // and the target reads the pasteboard on its own schedule, so a slower app
+  // pasted whatever we had just put BACK. Seen in a real run: seven cells of
+  // correct data, then the user's own prompt text dropped into cell A8,
+  // because that is what had been on their clipboard.
+  //
+  // The caller owns the restore now: it saves the user's clipboard once at
+  // the start of a Computer Use run and puts it back when the run ends, so
+  // nothing races a paste that is still in flight.
   let pb = NSPasteboard.general
-  let saved = pb.string(forType: .string)
   pb.clearContents()
   pb.setString(text, forType: .string)
   usleepMs(120)
@@ -261,11 +269,6 @@ func cmdType(_ text: String, _ expected: String?) {
   usleepMs(260)
 
   let after = focusedValue()
-  // Restore the user's clipboard whatever the outcome.
-  if let s = saved {
-    pb.clearContents()
-    pb.setString(s, forType: .string)
-  }
 
   // <<OK>> is reserved for typing we actually SAW arrive. Everything else —
   // a focused element that publishes no value (an Excel grid, a canvas), or

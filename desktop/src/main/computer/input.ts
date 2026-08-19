@@ -178,6 +178,12 @@ export async function typeText(
 ): Promise<InputOutcome> {
   const b64 = Buffer.from(text, "utf-8").toString("base64");
   if (isMac) {
+    // Typing here goes through the pasteboard, so the user's clipboard is
+    // held for the whole run and returned when it ends — see clipboard-guard
+    // for why restoring per keystroke corrupted a table.
+    const { holdClipboard, noteTyped } = await import("./clipboard-guard.js");
+    holdClipboard();
+    noteTyped(text);
     const args = ["type", b64];
     if (expectedApp) args.push(expectedApp);
     return macOutcome(await runMac(args, 30_000), "Text input");

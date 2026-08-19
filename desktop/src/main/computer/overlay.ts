@@ -386,6 +386,12 @@ export function releaseComputerOverlay(): void {
   if (!shown) return;
   shown = false;
   disarmStopHotkey();
+  // The run is over, so nothing can still be pasting — give the user their
+  // clipboard back. Typing on macOS borrows it for the whole run precisely
+  // so no restore races a paste in flight.
+  void import("./clipboard-guard.js")
+    .then((m) => m.releaseClipboard(m.lastTypedText()))
+    .catch(() => {});
   const gen = ++generation;
   const win = overlay;
   if (win && !win.isDestroyed()) {
