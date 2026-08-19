@@ -11,8 +11,12 @@ first use: the portable CLI downloads, the Linux backend (WSL2 on Windows)
 initialises, the shared image builds. That first run takes minutes and the
 button reports each stage.
 
-- **"WSL2 isn't installed yet"** — run `wsl.exe --install` in a terminal,
-  reboot if Windows asks, then click *Install / prepare* again.
+- **"WSL2 isn't installed yet"** (Windows) — run `wsl.exe --install` in a
+  terminal, reboot if Windows asks, then click *Install / prepare* again.
+- **macOS** — the CLI is not downloaded for you: install it with
+  `brew install podman`, then `podman machine init && podman machine start`.
+  The Subprocess engine on macOS additionally confines every run with the
+  system sandbox (Seatbelt): writes outside the chat's folder are refused.
 - Stuck at machine start: a leftover machine from a previous run can wedge
   it; *Install / prepare* again is safe — provisioning is idempotent.
 - Not ready is never silent failure of your message: the tool result says
