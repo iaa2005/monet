@@ -203,6 +203,9 @@ func cmdType(_ text: String, _ expected: String?) {
   // CGEventKeyboardSetUnicodeString types arbitrary unicode independent of
   // the user's layout — Cyrillic included, which is exactly where synthetic
   // keycodes fall apart. Chunked: the field holds at most 20 UTF-16 units.
+  // The string rides the DOWN event only — mirrored onto the UP it inserts
+  // nothing and some apps (TextEdit) then drop the whole pair. Verified live:
+  // down+up-with-string typed nothing; down-with-string + plain up types.
   let units = Array(text.utf16)
   var i = 0
   while i < units.count {
@@ -211,7 +214,6 @@ func cmdType(_ text: String, _ expected: String?) {
     down?.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
     post(down)
     let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false)
-    up?.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
     post(up)
     usleepMs(8)
     i += 16
@@ -401,6 +403,20 @@ func cmdElements() {
     } else {
       if title.isEmpty { title = wTitle }
       main.append(contentsOf: acc)
+    }
+    // A save/confirm SHEET is a child of its window, not a window itself —
+    // kAXWindowsAttribute never lists it. While one is open its buttons are
+    // the only clicks that do anything, so surface it as a dialog too (the
+    // TS side de-duplicates the copies the main walk collected).
+    if let kids = axAttr(w, kAXChildrenAttribute) as? [AXUIElement] {
+      for kid in kids where axString(kid, kAXRoleAttribute) == "AXSheet" {
+        var sheetBudget = 1500
+        var sheetAcc: [AxEl] = []
+        walkAx(kid, depth: 0, into: &sheetAcc, budget: &sheetBudget)
+        let sTitle = axString(kid, kAXTitleAttribute)
+        dialogs.append(sTitle.isEmpty ? "(dialog)" : sTitle)
+        dialogEls.append(contentsOf: sheetAcc)
+      }
     }
   }
   var focusedDict: [String: Any]? = nil
