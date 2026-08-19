@@ -155,7 +155,9 @@ if ($fgproc -ne $expected) { Write-Output "<<MISMATCH>>$fgproc"; exit 0 }
 `;
 }
 
-export type InputOutcome = { ok: true } | { ok: false; actual: string };
+export type InputOutcome =
+  | { ok: true; unverified?: boolean }
+  | { ok: false; actual: string };
 
 /** Shared tail for the mac helper's guarded commands: they answer <<OK>> or
  * <<MISMATCH>>app when the foreground app is not the one the model saw. */
@@ -163,6 +165,10 @@ function macOutcome(r: { ok: boolean; stdout: string; stderr: string }, what: st
   if (!r.ok) throw new Error(r.stderr || `${what} failed`);
   const mm = r.stdout.match(/<<MISMATCH>>(\S*)/);
   if (mm) return { ok: false, actual: mm[1] || "unknown" };
+  // The helper confirms typing by reading the focused element back. Where it
+  // could not — the element publishes no value, or the value did not take —
+  // that travels as a flag rather than being flattened into success.
+  if (r.stdout.includes("<<UNVERIFIED>>")) return { ok: true, unverified: true };
   return { ok: true };
 }
 

@@ -610,7 +610,25 @@ export const ComputerTool = buildTool({
                 isError: true,
               },
             };
-          return { data: { text: `Typed ${text.length} chars.`, isError: false } };
+          // Say when the text could not be confirmed to have landed. The
+          // helper reads the focused element back; some targets (a
+          // spreadsheet grid, a canvas) publish no value to read, and some
+          // simply do not accept synthetic keystrokes — in the reported Excel
+          // run every cell answered "Typed 7 chars" against an empty sheet.
+          // One warning after the FIRST cell is the difference between a
+          // mistake and twenty turns of them.
+          return {
+            data: {
+              text: r.unverified
+                ? `Sent ${text.length} chars, but could not confirm they arrived — ` +
+                  "this target does not report its contents. Verify before typing " +
+                  "more: take a screenshot, or read the value back another way. If " +
+                  "the text is not there, the app is refusing synthetic keystrokes " +
+                  "and clicking or a scripted route is the way in."
+                : `Typed ${text.length} chars.`,
+              isError: false,
+            },
+          };
         }
         case "key": {
           if (!text) return { data: { text: "key needs a combo in text.", isError: true } };

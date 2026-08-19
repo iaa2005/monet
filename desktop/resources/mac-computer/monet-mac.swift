@@ -198,27 +198,85 @@ func cmdKey(_ combo: String, _ expected: String?) {
   print("<<OK>>")
 }
 
+/** The value of whatever currently has keyboard focus, when it is readable.
+ * Used to confirm typing actually landed — nil means "cannot tell", which is
+ * different from "empty". */
+func focusedValue() -> String? {
+  let sys = AXUIElementCreateSystemWide()
+  var focused: CFTypeRef?
+  guard
+    AXUIElementCopyAttributeValue(sys, kAXFocusedUIElementAttribute as CFString, &focused)
+      == .success,
+    let el = focused
+  else { return nil }
+  var value: CFTypeRef?
+  guard
+    AXUIElementCopyAttributeValue(el as! AXUIElement, kAXValueAttribute as CFString, &value)
+      == .success
+  else { return nil }
+  return value as? String
+}
+
+/**
+ * Type text into whatever has focus — through the clipboard.
+ *
+ * This used to synthesise the characters with keyboardSetUnicodeString, which
+ * is layout-independent in principle and worked in TextEdit. It does not work
+ * everywhere: driven against Excel it reported success and typed nothing, for
+ * every cell, while the agent kept going on the strength of that report. The
+ * Windows side of this tool pastes for the same reason.
+ *
+ * So: put the text on the pasteboard, send cmd+V by KEYCODE (physical, so a
+ * Russian or any other layout changes nothing), then put the user's clipboard
+ * back — losing what someone had copied is not an acceptable side effect of
+ * the agent typing a word.
+ *
+ * The result is CHECKED rather than assumed. Where the focused element
+ * publishes a value, it must contain what we typed; when it does not, the
+ * caller is told <<UNVERIFIED>> instead of <<OK>>. Silent false success is
+ * what made the Excel run unrecoverable — twenty turns of "Typed 7 chars"
+ * against an empty spreadsheet.
+ */
 func cmdType(_ text: String, _ expected: String?) {
   guard guardExpected(expected) else { return }
-  // CGEventKeyboardSetUnicodeString types arbitrary unicode independent of
-  // the user's layout — Cyrillic included, which is exactly where synthetic
-  // keycodes fall apart. Chunked: the field holds at most 20 UTF-16 units.
-  // The string rides the DOWN event only — mirrored onto the UP it inserts
-  // nothing and some apps (TextEdit) then drop the whole pair. Verified live:
-  // down+up-with-string typed nothing; down-with-string + plain up types.
-  let units = Array(text.utf16)
-  var i = 0
-  while i < units.count {
-    let chunk = Array(units[i..<min(i + 16, units.count)])
-    let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true)
-    down?.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
-    post(down)
-    let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false)
-    post(up)
-    usleepMs(8)
-    i += 16
+
+  let pb = NSPasteboard.general
+  let saved = pb.string(forType: .string)
+  pb.clearContents()
+  pb.setString(text, forType: .string)
+  usleepMs(120)
+
+  let before = focusedValue()
+  let v: CGKeyCode = 9  // kVK_ANSI_V — a physical key, not a character
+  let down = CGEvent(keyboardEventSource: nil, virtualKey: v, keyDown: true)
+  down?.flags = .maskCommand
+  post(down)
+  usleepMs(40)
+  let up = CGEvent(keyboardEventSource: nil, virtualKey: v, keyDown: false)
+  up?.flags = .maskCommand
+  post(up)
+  usleepMs(260)
+
+  let after = focusedValue()
+  // Restore the user's clipboard whatever the outcome.
+  if let s = saved {
+    pb.clearContents()
+    pb.setString(s, forType: .string)
   }
-  print("<<OK>>")
+
+  // <<OK>> is reserved for typing we actually SAW arrive. Everything else —
+  // a focused element that publishes no value (an Excel grid, a canvas), or
+  // one whose value did not take the text — is <<UNVERIFIED>>, and the caller
+  // tells the model to check before building on it.
+  //
+  // Deliberately not optimistic. Reporting success it could not confirm is
+  // what let a run type into a spreadsheet twenty times and believe all of
+  // it; a warning after the first cell would have ended that immediately.
+  if let a = after, a.contains(text) {
+    print("<<OK>>")
+  } else {
+    print("<<UNVERIFIED>>")
+  }
 }
 
 // ─── apps and windows ────────────────────────────────────────────────────
