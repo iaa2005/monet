@@ -14,5 +14,10 @@
   <!-- Dictation / voice cloner record from the microphone. -->
   <key>com.apple.security.device.audio-input</key>
   <true/>
+  <!-- Computer Use drives other apps through Apple Events (osascript and the
+       accessibility bridge). Without this the hardened runtime refuses them
+       with errAEPrivilegeError (-10004), which is what the agent hit. -->
+  <key>com.apple.security.automation.apple-events</key>
+  <true/>
 </dict>
 </plist>

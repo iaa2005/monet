@@ -252,15 +252,44 @@ func cmdWindows() {
   jsonOut(onScreenWindows().map { ["app": $0.app.lowercased(), "title": $0.title] })
 }
 
+/**
+ * Focus by window title OR by application name.
+ *
+ * Titles come from CGWindowList's kCGWindowName, which is the ONE field there
+ * that needs Screen Recording — without that grant every title is empty, so a
+ * title-only match could never succeed and the model was told "no open window
+ * contains Word" while Word sat on screen. Owner name needs no permission at
+ * all, and "focus Word" naming the app is what a person means anyway.
+ *
+ * Titles are still tried first: with the grant they distinguish two documents
+ * of the same app, which the app name cannot.
+ */
 func cmdFocus(_ title: String) {
   let want = title.lowercased()
-  for w in onScreenWindows() {
-    if !w.title.lowercased().contains(want) { continue }
+  let windows = onScreenWindows()
+  for w in windows where w.title.lowercased().contains(want) {
     if let app = NSRunningApplication(processIdentifier: w.pid) {
       app.activate(options: [.activateIgnoringOtherApps])
-      print(w.title)
+      print(w.title.isEmpty ? w.app : w.title)
       return
     }
+  }
+  for w in windows where w.app.lowercased().contains(want) {
+    if let app = NSRunningApplication(processIdentifier: w.pid) {
+      app.activate(options: [.activateIgnoringOtherApps])
+      print(w.title.isEmpty ? w.app : w.title)
+      return
+    }
+  }
+  // Running but with no window on screen (minimised, or an app that opens its
+  // window only once activated) — still the app the user asked for.
+  for app in NSWorkspace.shared.runningApplications
+  where (app.localizedName ?? "").lowercased().contains(want)
+    && app.activationPolicy == .regular
+  {
+    app.activate(options: [.activateIgnoringOtherApps])
+    print(app.localizedName ?? want)
+    return
   }
   print("<<NOTFOUND>>")
 }

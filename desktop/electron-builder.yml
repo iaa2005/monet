@@ -80,6 +80,16 @@ mac:
     NSMicrophoneUsageDescription: >-
       Dictation and the voice cloner record from the microphone. Audio is
       processed on this Mac.
+    # Computer Use reads the screen and the accessibility tree. macOS asks for
+    # these once, and an app with no usage string is refused without a prompt.
+    NSAppleEventsUsageDescription: >-
+      Computer Use controls other applications on your behalf — opening
+      documents, typing and clicking — only while you have it switched on.
+    # Screen Recording has no dedicated key; the capture APIs prompt on first
+    # use. This one covers the accessibility tree the text-only path reads.
+    NSAccessibilityUsageDescription: >-
+      Computer Use reads on-screen controls and moves the pointer and keyboard,
+      only while you have it switched on.
   # Signing/notarization: works unsigned for local use (Gatekeeper will
   # quarantine downloads). For distribution set CSC_LINK/CSC_KEY_PASSWORD
   # (Developer ID cert) and notarize:
