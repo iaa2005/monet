@@ -386,6 +386,14 @@ export interface ComputerPermissions {
   helper: boolean;
 }
 
+export interface VoiceReadiness {
+  ready: boolean;
+  /** Hearing — the configured STT engine. */
+  stt: { ok: boolean; reason: string };
+  /** Speaking — the voice model and the chosen voice. */
+  tts: { ok: boolean; reason: string };
+}
+
 export interface ElectronAPI {
   platform: string;
   versions: { node: string; chrome: string; electron: string };
@@ -1042,6 +1050,9 @@ export interface ElectronAPI {
     }) => Promise<{ ok: boolean; text?: string; error?: string; ms?: number }>;
     onModelProgress: (cb: (p: InstallProgress) => void) => () => void;
   };
+  voice: {
+    readiness: () => Promise<VoiceReadiness>;
+  },
   tts: {
     available: () => Promise<boolean>;
     status: () => Promise<TtsStatus>;
