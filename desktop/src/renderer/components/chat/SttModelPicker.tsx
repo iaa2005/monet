@@ -11,9 +11,20 @@
  * second button elsewhere.
  */
 
+/**
+ * The one row to take without reading the other six.
+ *
+ * RNN-T over CTC: it writes punctuation itself, and the difference shows on
+ * dictated speech, where the alternative is one long unbroken sentence. The
+ * multilingual pair are for languages GigaAM's Russian models do not cover,
+ * and "large" costs 592 MB for that reach — neither is the default answer.
+ */
+const RECOMMENDED_MODEL = "gigaam-v3-rnnt-punct";
+
 import { useEffect, useState } from "react";
 import { Cpu, Loader2, Trash2, X } from "@/components/icons/hg";
 import { PickCard } from "@/components/settings/PickCard";
+import { RecommendedChip } from "@/components/settings/RecommendedChip";
 import type { ElectronAPI, InstallProgress, SttModelStatus } from "@/types/electron";
 
 function api(): ElectronAPI | undefined {
@@ -94,6 +105,7 @@ export function SttModelPicker({
             key={m.id}
             icon={Cpu}
             title={m.label}
+            badge={m.id === RECOMMENDED_MODEL ? <RecommendedChip /> : null}
             description={`${m.languages} \u00b7 ${mb(m.bytes)}${
               m.punctuation ? " \u00b7 punctuation" : ""
             }`}

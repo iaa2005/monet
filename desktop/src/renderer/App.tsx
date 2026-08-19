@@ -95,6 +95,7 @@ import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useChatStore, expandedSubAgentCall } from "@/stores/chatStore";
 import { subAgentView } from "@/lib/subagent";
 import { VoiceMode } from "@/components/chat/VoiceMode";
+import { RecommendedChip } from "@/components/settings/RecommendedChip";
 import { cn } from "@/lib/utils";
 import { RoutinesList } from "@/components/RoutinesList";
 import type { ChatMessage } from "@/types/chat";
@@ -1766,11 +1767,7 @@ export default function App(): JSX.Element {
                     <div className="flex flex-col">
                       <span className="flex items-center gap-1.5">
                         {ENGINE_LABEL[e]}
-                        {RECOMMENDED_ENGINE === e && (
-                          <span className="rounded-full bg-emerald-500/15 px-1.5 py-px text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                            recommended
-                          </span>
-                        )}
+                        {RECOMMENDED_ENGINE === e && <RecommendedChip />}
                       </span>
                       <span className="text-[11px] text-muted-foreground">
                         {ENGINE_DESC[e]}

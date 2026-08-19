@@ -45,6 +45,7 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 import { PickCard } from "@/components/settings/PickCard";
+import { RecommendedChip } from "@/components/settings/RecommendedChip";
 import { SandboxImageSettings } from "@/components/settings/SandboxImageSettings";
 import {
   SectionHeader,
@@ -305,11 +306,7 @@ function SandboxSection(): JSX.Element {
               badge={
                 <>
                   {e.warn && <AlertTriangle className="size-3.5 text-amber-500" />}
-                  {e.recommend && (
-                    <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                      recommended
-                    </span>
-                  )}
+                  {e.recommend && <RecommendedChip />}
                   {e.disabled && (
                     <span className="rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground dark:bg-white/[0.08]">
                       soon

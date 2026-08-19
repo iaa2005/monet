@@ -9,7 +9,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Check,
   Cloud,
   Cpu,
   Download,
@@ -25,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 import { SttModelPicker } from "@/components/chat/SttModelPicker";
 import { PickCard } from "@/components/settings/PickCard";
+import { RecommendedChip } from "@/components/settings/RecommendedChip";
 import { VoiceCloner } from "@/components/settings/VoiceCloner";
 import type { ElectronAPI, TtsProgress, TtsStatus } from "@/types/electron";
 import { WHISPER_TIERS, DEFAULT_WHISPER } from "@shared/whisper-tier";
@@ -38,6 +38,12 @@ import {
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
+
+/** The dictation engine someone with no opinion should take. GigaAM is the
+ * on-device one that writes punctuation itself and handles Russian mixed with
+ * English terms — Whisper stays the pick for other languages and lighter
+ * machines, which is what its own line says. */
+const RECOMMENDED_STT_ENGINE = "ondevice";
 
 const BUILDER_URL = "https://supertonic.supertone.ai/voice-builder";
 
@@ -305,6 +311,7 @@ export function VoiceSettings(): JSX.Element {
               key={id}
               icon={icon}
               title={title}
+              badge={id === RECOMMENDED_STT_ENGINE ? <RecommendedChip /> : null}
               description={description}
               selected={engine === id}
               onClick={() => save("engine", id, setEngine)}
@@ -458,77 +465,54 @@ export function VoiceSettings(): JSX.Element {
             {/* One column: a name, a line about the voice and a picture do not
                 fit side by side without the description wrapping mid-word. */}
             <div className="flex flex-col gap-1.5">
-              {tts.voices.map((v: TtsStatus["voices"][number]) => (
-                <div
-                  key={v.id}
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl border p-2 transition-colors",
-                    ttsVoice === v.id
-                      ? "border-brand/40 bg-brand/[0.06]"
-                      : "border-border hover:border-foreground/20",
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      save("ttsVoice", v.id, setTtsVoice);
-                      if (!v.installed)
-                        void api()
-                          ?.tts.installVoice(v.id)
-                          .then(refreshTts);
-                    }}
-                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                  >
-                    <VoiceArt voice={v} className="size-12" />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5">
-                        <span className="text-[13px] font-medium">{v.name}</span>
-                        {v.custom && (
-                          <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">
-                            yours
-                          </span>
-                        )}
-                      </span>
-                      <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
-                        {v.desc}
-                      </span>
-                    </span>
-                  </button>
-                  {/* Absence outranks the tick — same rule as PickCard, and
-                      for the same reason: the default voice arrives chosen
-                      and undownloaded, and a tick there says "ready". */}
-                  {!v.installed ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        save("ttsVoice", v.id, setTtsVoice);
-                        void api()?.tts.installVoice(v.id).then(refreshTts);
-                      }}
-                      className="flex shrink-0 items-center gap-1 rounded-md border border-border/70 px-1.5 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.07]"
-                    >
-                      <Download className="size-3" />
-                      Download
-                    </button>
-                  ) : ttsVoice === v.id ? (
-                    <Check className="size-4 shrink-0 text-brand" />
-                  ) : null}
-                  {v.custom && (
-                    <button
-                      type="button"
-                      title="Delete this voice"
-                      onClick={() =>
-                        void api()?.tts.removeVoice(v.id).then(() => {
-                          if (ttsVoice === v.id) save("ttsVoice", "F1", setTtsVoice);
-                          refreshTts();
-                        })
-                      }
-                      className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-destructive"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
+              {/* The same card as every other pick in Settings. It was drawn
+                  by hand here, and drifted exactly where it mattered: the
+                  default voice arrives chosen and undownloaded, and the
+                  hand-rolled row answered that with a tick. */}
+              {tts.voices.map((v: TtsStatus["voices"][number]) => {
+                const choose = (): void => {
+                  save("ttsVoice", v.id, setTtsVoice);
+                  if (!v.installed)
+                    void api()?.tts.installVoice(v.id).then(refreshTts);
+                };
+                return (
+                  <PickCard
+                    key={v.id}
+                    art={<VoiceArt voice={v} className="size-12 shrink-0" />}
+                    title={v.name}
+                    badge={
+                      v.custom ? (
+                        <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">
+                          yours
+                        </span>
+                      ) : null
+                    }
+                    description={v.desc}
+                    selected={ttsVoice === v.id}
+                    needsDownload={!v.installed}
+                    onClick={choose}
+                    onDownload={choose}
+                    trailing={
+                      v.custom ? (
+                        <button
+                          type="button"
+                          title="Delete this voice"
+                          onClick={() =>
+                            void api()?.tts.removeVoice(v.id).then(() => {
+                              if (ttsVoice === v.id)
+                                save("ttsVoice", "F1", setTtsVoice);
+                              refreshTts();
+                            })
+                          }
+                          className="mt-1.5 shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-destructive"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      ) : null
+                    }
+                  />
+                );
+              })}
             </div>
 
             <VoiceCloner
