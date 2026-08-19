@@ -191,7 +191,10 @@ function isMacUi(): boolean {
 /** Per-chat sandbox-engine picker labels (Home header). */
 const ENGINE_LABEL: Record<"pyodide" | "subprocess" | "docker", string> = {
   pyodide: "Pyodide",
-  subprocess: "Subprocess",
+  // Named for what fences it, not for how it is spawned: on macOS this engine
+  // IS Seatbelt, and "Subprocess" undersold it as the unprotected option.
+  // The stored id stays "subprocess" — this is a label, not a new engine.
+  subprocess: isMacUi() ? "Seatbelt" : "Subprocess",
   docker: "Podman",
 };
 const ENGINE_DESC: Record<"pyodide" | "subprocess" | "docker", string> = {
@@ -964,8 +967,13 @@ export default function App(): JSX.Element {
       if (sid) {
         void api()?.sandbox.setSessionConfig(sid, engine);
       } else {
-        // No session yet: hold the choice, send() applies it at birth.
+        // No session yet. Hold the choice for the session's birth AND pin it
+        // on the "default" scope the zero state actually runs in — the
+        // terminal, Run Python and the file tree all address that id before
+        // the first send, so without this the picker looked applied and the
+        // terminal still refused with "Pyodide has no shell".
         useChatStore.getState().setPendingSandboxEngine(engine);
+        void api()?.sandbox.setSessionConfig("", engine);
       }
     },
     [currentSessionId],

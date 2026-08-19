@@ -232,7 +232,9 @@ export async function openTerminal(
     return {
       ok: false,
       error:
-        "The Pyodide sandbox has no shell (it runs in WebAssembly). Switch the engine to Podman or Subprocess in Settings → Sandbox.",
+        "The Pyodide sandbox has no shell (it runs in WebAssembly). Switch this chat's engine to " +
+        (process.platform === "darwin" ? "Seatbelt" : "Subprocess") +
+        " or Podman — the picker is in the Home header, next to the Files button.",
     };
   } else {
     const shell = hostShell();

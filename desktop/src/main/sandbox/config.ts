@@ -23,7 +23,18 @@ export interface SandboxConfig {
   engine: SandboxEngine;
 }
 
-const DEFAULT: SandboxConfig = { engine: "pyodide" };
+/**
+ * The engine a fresh install runs on.
+ *
+ * macOS gets the host one, because there it is not the weaker choice: every
+ * run goes through Seatbelt (sandbox-exec), which refuses writes outside the
+ * chat's folder at the kernel. That buys real Python, real pip and a real
+ * shell without the bargain the same engine makes on Windows and Linux, where
+ * nothing fences it and Pyodide's WebAssembly walls are the safer default.
+ */
+const DEFAULT: SandboxConfig = {
+  engine: process.platform === "darwin" ? "subprocess" : "pyodide",
+};
 
 function configPath(): string {
   return join(getDataDir(), "sandbox.json");
@@ -35,9 +46,11 @@ export function getSandboxConfig(): SandboxConfig {
     if (!existsSync(p)) return { ...DEFAULT };
     const raw = JSON.parse(readFileSync(p, "utf-8")) as Partial<SandboxConfig>;
     const engine: SandboxEngine =
-      raw.engine === "subprocess" || raw.engine === "docker"
+      raw.engine === "subprocess" ||
+      raw.engine === "docker" ||
+      raw.engine === "pyodide"
         ? raw.engine
-        : "pyodide";
+        : DEFAULT.engine;
     return { engine };
   } catch {
     return { ...DEFAULT };

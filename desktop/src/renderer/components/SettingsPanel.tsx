@@ -189,7 +189,9 @@ const SANDBOX_ENGINES: {
   {
     id: "subprocess",
     icon: TerminalSquare,
-    title: "Local subprocess (real Python / Node)",
+    title: isMacRenderer()
+      ? "Seatbelt (real Python / Node, sandboxed by macOS)"
+      : "Local subprocess (real Python / Node)",
     blurb: isMacRenderer()
       ? "Runs real python/node in a per-chat folder, fenced by macOS's built-in sandbox (Seatbelt): writing outside the chat folder is blocked. Reads and network stay open — use with models you trust."
       : "Runs real python/node in a per-chat temp folder. Full power, but code executes on your machine WITHOUT hard isolation — use only with models you trust.",
@@ -330,7 +332,7 @@ function SandboxSection(): JSX.Element {
           <span>
             <span className="font-medium">Heads up:</span>{" "}
             {isMacRenderer()
-              ? "local subprocess runs model-generated code on your computer. macOS's Seatbelt blocks writes outside the chat folder, but code can still read your files and reach the network. Use it with models you trust."
+              ? "Seatbelt runs model-generated code on your computer. macOS blocks writes outside the chat folder, but code can still read your files and reach the network. Use it with models you trust."
               : "local subprocess runs model-generated code on your computer without a hard sandbox. It can read and write files and reach the network. Only use it with models you trust."}
           </span>
         </div>
