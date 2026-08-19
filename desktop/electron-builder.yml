@@ -30,10 +30,6 @@ extraResources:
   # to Chrome's "Load unpacked", which cannot read inside app.asar.
   - from: resources/browser-extension
     to: browser-extension
-  # macOS Computer Use: Swift source compiled on the user's machine at first
-  # use (see src/main/computer/mac.ts) — swiftc reads it from disk.
-  - from: resources/mac-computer
-    to: mac-computer
 # Native binaries can't be spawned from inside app.asar — keep them on disk
 # (spawn paths swap app.asar → app.asar.unpacked at runtime).
 asarUnpack:
@@ -61,6 +57,13 @@ win:
   forceCodeSigning: false
   # signAndEditExecutable defaults to true — rcedit embeds build/icon.ico into the .exe
 mac:
+  # macOS Computer Use: Swift source compiled on the user's machine at first
+  # use (see src/main/computer/mac.ts) — swiftc reads it from disk. Declared
+  # HERE and not in the global list: there it also rode into the Windows
+  # installer, where nothing can read it and no swiftc exists to try.
+  extraResources:
+    - from: resources/mac-computer
+      to: mac-computer
   # zip is NOT optional: electron-updater on macOS updates FROM the zip; a
   # dmg-only publish leaves the packaged app silently unable to update.
   target:
