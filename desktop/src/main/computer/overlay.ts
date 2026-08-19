@@ -2,13 +2,15 @@
  * Computer Use overlay — while the agent is driving the mouse/keyboard, a
  * glowing brand-coloured frame breathes around the screen edge.
  *
- * On Windows the app window ALSO dodges into the top-right corner, because
- * there is no other way to keep it watchable without it sitting on top of the
- * apps being driven. macOS does not need that and users read it as the app
- * running away with their layout: activating a target app already sends our
- * window behind it, Spaces keep the desktop tidy, and the window is excluded
- * from capture either way. So on darwin the window stays exactly where the
- * user put it — only the frame appears.
+ * The app window ALSO dodges into the top-right corner at its minimum size,
+ * on every platform: there is no other way to keep it watchable — and Stop
+ * reachable — without it sitting on top of the apps being driven.
+ *
+ * macOS needs one extra step first. A window in native fullscreen owns a
+ * Space of its own and cannot be reframed while it does, so the run begins by
+ * leaving fullscreen and ends by returning to it. Parked, the card also joins
+ * every Space, or activating a fullscreen target app would leave it behind on
+ * the desktop the user just left.
  *
  * The frame is click-through (`setIgnoreMouseEvents`) and content-protected
  * (`setContentProtection` → WDA_EXCLUDEFROMCAPTURE on Windows), so the USER
@@ -53,9 +55,6 @@ let idleTimer: NodeJS.Timeout | null = null;
  * stops moving the window instead of fighting the new one. */
 let generation = 0;
 let savedPlacement: { bounds: Electron.Rectangle; maximized: boolean } | null = null;
-/** macOS: the window never moves, so the only thing to undo is the capture
- * exclusion. Tracked separately from savedPlacement, which stays null there. */
-let macProtected = false;
 /** macOS: the window was in native fullscreen when the run started, and owes
  * itself a return to it. */
 let macWasFullScreen = false;
@@ -236,26 +235,11 @@ function dodgeTarget(): Electron.Rectangle {
 async function dodgeApp(gen: number): Promise<void> {
   const win = dodgeWindow;
   if (!win || win.isDestroyed() || !win.isVisible() || savedPlacement) return;
-  if (IS_MAC) {
-    // No dodge on macOS — see the note at the top of this file. Content
-    // protection still applies, so the window is absent from the agent's
-    // screenshots wherever the user has left it, and clicks pass to whatever
-    // is actually on top.
-    macProtected = true;
-    win.setContentProtection(true);
-    // Native fullscreen is the one placement we cannot leave alone. A
-    // fullscreen window owns a Space of its own: the moment the agent
-    // activates a target app macOS switches away from it, so the window is
-    // not "behind" anything the user can click past — it is on another
-    // desktop, with its traffic lights out of reach and nothing but a
-    // trackpad swipe to get back. Leaving fullscreen returns it to the frame
-    // it had before, in the Space the user is actually looking at.
-    if (win.isFullScreen()) {
-      macWasFullScreen = true;
-      await setFullScreenAwaited(win, false);
-    }
-    return;
-  }
+  // Defensive: the run normally leaves fullscreen before the frame is built
+  // (see touchComputerOverlay), because a fullscreen window cannot be
+  // reframed and because the frame's all-Spaces request strands one. This
+  // covers any other caller.
+  if (IS_MAC) await leaveFullScreenForRun(win);
   savedPlacement = { bounds: win.getBounds(), maximized: win.isMaximized() };
   if (savedPlacement.maximized) win.unmaximize();
   // The parked card stays watchable over a maximized target app — but the
@@ -265,34 +249,42 @@ async function dodgeApp(gen: number): Promise<void> {
   // chat fits the narrow card — see "computer:parked" in App.tsx.
   win.setAlwaysOnTop(true, "floating");
   win.setContentProtection(true);
+  // Follow the user across Spaces. Without it, the agent activating a
+  // fullscreen app leaves the card behind on the desktop they came from —
+  // which is the whole of what it is for. Safe here and not on the frame:
+  // fullscreen is already over by this point.
+  if (IS_MAC) win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.webContents.send("computer:parked", true);
   await tweenBounds(win, dodgeTarget(), gen);
 }
 
 async function restoreApp(gen: number): Promise<void> {
   const win = dodgeWindow;
-  if (IS_MAC) {
-    if (!macProtected) return;
-    macProtected = false;
-    if (win && !win.isDestroyed()) {
-      win.setContentProtection(false);
-      if (macWasFullScreen) {
-        macWasFullScreen = false;
-        await setFullScreenAwaited(win, true);
-      }
-    }
-    return;
-  }
   const saved = savedPlacement;
   if (!saved) return;
   savedPlacement = null;
   if (!win || win.isDestroyed()) return;
   win.setAlwaysOnTop(false);
   win.setContentProtection(false);
+  if (IS_MAC) win.setVisibleOnAllWorkspaces(false);
   win.webContents.send("computer:parked", false);
   await tweenBounds(win, saved.bounds, gen);
   if (gen !== generation) return;
   if (saved.maximized) win.maximize();
+  // Fullscreen last: it is an animation of its own, and starting it before
+  // the window is back at its old frame makes the restore visibly fight it.
+  if (macWasFullScreen) {
+    macWasFullScreen = false;
+    await setFullScreenAwaited(win, true);
+  }
+}
+
+/** Leave native fullscreen for the duration of a run, remembering to go back.
+ * A no-op off macOS and on a window that is not fullscreen. */
+async function leaveFullScreenForRun(win: BrowserWindow): Promise<void> {
+  if (!IS_MAC || !win.isFullScreen()) return;
+  macWasFullScreen = true;
+  await setFullScreenAwaited(win, false);
 }
 
 /**
@@ -367,23 +359,22 @@ export async function touchComputerOverlay(): Promise<void> {
   shown = true;
   armStopHotkey();
   const gen = ++generation;
-  // The app window settles FIRST on macOS. The frame asks to be visible on
-  // every Space, and that request lands on the whole app: made while our own
-  // window is still in native fullscreen, it drops that window out of its
-  // Space presentation and leaves a stranded copy of its old frame behind
-  // (reproduced with CGWindowList — the restored 1200x800 frame appears the
-  // moment setVisibleOnAllWorkspaces runs, and only then). Leaving fullscreen
-  // before the frame exists costs one awaited animation and avoids it.
-  if (IS_MAC) await dodgeApp(gen);
+  // Fullscreen ends FIRST on macOS, before the frame exists. The frame asks
+  // to be visible on every Space, and that request lands on the whole app:
+  // made while our own window is still in native fullscreen, it drops that
+  // window out of its Space presentation and leaves a stranded copy of its
+  // old frame behind (reproduced with CGWindowList — the restored 1200x800
+  // frame appears the moment setVisibleOnAllWorkspaces runs, and only then).
+  // Only the fullscreen exit is awaited here; the park itself animates
+  // alongside the frame, as everywhere else.
+  if (IS_MAC && dodgeWindow && !dodgeWindow.isDestroyed())
+    await leaveFullScreenForRun(dodgeWindow);
   const win = ensureOverlay();
   win.setBounds(overlayDisplay().bounds);
   win.setOpacity(0);
   win.showInactive();
   assertOverlayLevel(win);
-  await Promise.all([
-    tweenOpacity(win, 1, gen),
-    ...(IS_MAC ? [] : [dodgeApp(gen)]),
-  ]);
+  await Promise.all([tweenOpacity(win, 1, gen), dodgeApp(gen)]);
 }
 
 /** The run is over (or idle): fade the frame, bring the app window back. */
