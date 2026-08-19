@@ -312,15 +312,19 @@ export function VoiceSettings(): JSX.Element {
           ))}
         </div>
 
+        {/* The engine's own settings, set apart from the engine list above:
+            the model rows are cards too, so with a list gap between them the
+            picker read as one nine-row list and "which of these is the family
+            and which is the model" had to be worked out from the wording. */}
         {engine === "ondevice" ? (
-          <div className="">
+          <div className="mt-4 border-t border-border/60 pt-4">
             <SttModelPicker
               selected={nativeModel}
               onSelect={(v) => save("nativeModel", v, setNativeModel)}
             />
           </div>
         ) : engine === "local" ? (
-          <div className="flex gap-1.5">
+          <div className="mt-4 flex gap-1.5 border-t border-border/60 pt-4">
             <Select
               ariaLabel="Local model"
               value={localModel}
@@ -351,7 +355,7 @@ export function VoiceSettings(): JSX.Element {
             />
           </div>
         ) : (
-          <div className="flex flex-col gap-1.5">
+          <div className="mt-4 flex flex-col gap-1.5 border-t border-border/60 pt-4">
             <input
               value={endpoint}
               onChange={(e) => save("endpoint", e.target.value, setEndpoint)}
