@@ -14,7 +14,9 @@ import { buildTool } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
 
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36";
+  process.platform === "darwin"
+    ? "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36"
+    : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36";
 const FETCH_TIMEOUT_MS = 20_000;
 const MAX_CHARS = 40_000;
 

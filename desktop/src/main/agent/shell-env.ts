@@ -10,6 +10,7 @@
  */
 
 import { existsSync } from "fs";
+import { userInfo as osUserInfo } from "os";
 import { join } from "path";
 
 let resolved: string | null | undefined;
@@ -18,7 +19,16 @@ export function ensurePosixShell(): string | null {
   if (resolved !== undefined) return resolved;
 
   if (process.platform !== "win32") {
-    resolved = process.env.SHELL ?? "/bin/bash";
+    // A GUI launch on macOS has no SHELL in the environment (launchd does not
+    // set one), so read the login shell from the user database and export it —
+    // the vendor engine's shell discovery and the pty terminal both key off
+    // process.env.SHELL.
+    const sh =
+      process.env.SHELL ??
+      osUserInfo().shell ??
+      (process.platform === "darwin" ? "/bin/zsh" : "/bin/bash");
+    process.env.SHELL = sh;
+    resolved = sh;
     return resolved;
   }
 

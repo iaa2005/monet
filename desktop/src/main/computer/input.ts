@@ -9,6 +9,7 @@
  */
 
 import { spawn } from "child_process";
+import { runMac } from "./mac.js";
 
 function ps(script: string): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
@@ -81,7 +82,13 @@ const M = {
   WHEEL: 0x0800,
 };
 
+const isMac = process.platform === "darwin";
+
 export async function moveMouse(x: number, y: number): Promise<void> {
+  if (isMac) {
+    await runMac(["move", String(x), String(y)]);
+    return;
+  }
   await ps(`${WIN32}\n[MonetInput]::SetCursorPos(${x}, ${y}) | Out-Null`);
 }
 
@@ -91,6 +98,10 @@ export async function click(
   button: "left" | "right" | "middle" = "left",
   double = false,
 ): Promise<void> {
+  if (isMac) {
+    await runMac(["click", String(x), String(y), button, double ? "double" : "single"]);
+    return;
+  }
   const [down, up] =
     button === "right"
       ? [M.RIGHTDOWN, M.RIGHTUP]
@@ -109,6 +120,10 @@ export async function scroll(
   direction: "up" | "down",
   clicks = 3,
 ): Promise<void> {
+  if (isMac) {
+    await runMac(["scroll", String(x), String(y), direction, String(clicks)]);
+    return;
+  }
   const amount = (direction === "up" ? 1 : -1) * clicks * 120;
   await ps(
     `${WIN32}\n[MonetInput]::SetCursorPos(${x}, ${y}) | Out-Null; [MonetInput]::mouse_event(${M.WHEEL},0,0,${amount},[IntPtr]::Zero)`,
@@ -142,11 +157,25 @@ if ($fgproc -ne $expected) { Write-Output "<<MISMATCH>>$fgproc"; exit 0 }
 
 export type InputOutcome = { ok: true } | { ok: false; actual: string };
 
+/** Shared tail for the mac helper's guarded commands: they answer <<OK>> or
+ * <<MISMATCH>>app when the foreground app is not the one the model saw. */
+function macOutcome(r: { ok: boolean; stdout: string; stderr: string }, what: string): InputOutcome {
+  if (!r.ok) throw new Error(r.stderr || `${what} failed`);
+  const mm = r.stdout.match(/<<MISMATCH>>(\S*)/);
+  if (mm) return { ok: false, actual: mm[1] || "unknown" };
+  return { ok: true };
+}
+
 export async function typeText(
   text: string,
   expectedApp?: string,
 ): Promise<InputOutcome> {
   const b64 = Buffer.from(text, "utf-8").toString("base64");
+  if (isMac) {
+    const args = ["type", b64];
+    if (expectedApp) args.push(expectedApp);
+    return macOutcome(await runMac(args, 30_000), "Text input");
+  }
   const result = await ps(
     `${WIN32}
 ${expectGuard(expectedApp)}
@@ -220,6 +249,14 @@ export async function pressKey(
   combo: string,
   expectedApp?: string,
 ): Promise<InputOutcome> {
+  if (isMac) {
+    // The model speaks Windows chord names; the helper knows the macOS
+    // equivalents (ctrl→cmd for the copy/paste family is the model's own
+    // job — the prompt tells it the platform).
+    const args = ["key", combo];
+    if (expectedApp) args.push(expectedApp);
+    return macOutcome(await runMac(args), "Key press");
+  }
   const keys = combo.split("+").map(keyCode);
   const downs = keys.map((key) => `[MonetInput]::keybd_event(${key},0,0,[UIntPtr]::Zero)`).join("; ");
   const ups = [...keys].reverse().map((key) => `[MonetInput]::keybd_event(${key},0,2,[UIntPtr]::Zero)`).join("; ");
@@ -233,6 +270,11 @@ export async function pressKey(
 }
 
 export async function cursorPosition(): Promise<{ x: number; y: number }> {
+  if (isMac) {
+    const r = await runMac(["cursor"]);
+    const [x, y] = r.stdout.trim().split(",").map((n) => parseInt(n, 10));
+    return { x: x || 0, y: y || 0 };
+  }
   const r = await ps(
     `${WIN32}\n$p = New-Object MonetInput+P; [MonetInput]::GetCursorPos([ref]$p) | Out-Null; Write-Output "$($p.X),$($p.Y)"`,
   );
@@ -245,6 +287,12 @@ export async function cursorPosition(): Promise<{ x: number; y: number }> {
  * or null when nothing matched. */
 export async function focusWindow(title: string): Promise<string | null> {
   const b64 = Buffer.from(title, "utf-8").toString("base64");
+  if (isMac) {
+    const r = await runMac(["focus", b64]);
+    const out = r.stdout.trim();
+    if (!r.ok || !out || out.includes("<<NOTFOUND>>")) return null;
+    return out.split("\n").pop()!.trim();
+  }
   const r = await ps(
     `${WIN32}
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -271,6 +319,12 @@ Write-Output $p.MainWindowTitle`,
  * matched app name, or null. */
 export async function launchApp(name: string): Promise<string | null> {
   const b64 = Buffer.from(name, "utf-8").toString("base64");
+  if (isMac) {
+    const r = await runMac(["launch", b64]);
+    const out = r.stdout.trim();
+    if (!r.ok || !out || out.includes("<<NOTFOUND>>")) return null;
+    return out.split("\n").pop()!.trim();
+  }
   const r = await ps(
     `[Console]::OutputEncoding = [Text.Encoding]::UTF8
 $t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}')).ToLower()
@@ -289,6 +343,10 @@ Write-Output $app.Name`,
 /** Foreground window's process name (lower-case, no extension), for the
  * Denied-apps gate. Empty string when it can't be determined. */
 export async function foregroundApp(): Promise<string> {
+  if (isMac) {
+    const r = await runMac(["frontmost"]);
+    return r.stdout.trim().toLowerCase();
+  }
   const r = await ps(
     `${WIN32}
 $pid = 0

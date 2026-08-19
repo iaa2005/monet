@@ -220,7 +220,67 @@ const TYPE_RANK: Record<string, number> = {
 /** How many ranked elements the model is shown. */
 const REPORT_CAP = 180;
 
+/**
+ * macOS: the Swift helper walks the frontmost app's Accessibility tree and
+ * answers in the same shape the PowerShell/UIA script does — same type names
+ * (mapped in the helper), same dialog-first contract. One real difference:
+ * AX coordinates are already points (= DIP), so no screenToDipRect pass.
+ */
+async function listScreenElementsMac(): Promise<UiElementsResult> {
+  const { runMac, macPermissions } = await import("./mac.js");
+  const r = await runMac(["elements"], 20_000);
+  if (!r.ok) return { ok: false, error: r.stderr || "The accessibility scan failed." };
+  let v: {
+    error?: string;
+    title?: string;
+    app?: string;
+    elements?: UiElement[];
+    dialogEls?: UiElement[];
+    dialogs?: string[];
+    focused?: UiElement | null;
+  };
+  try {
+    v = JSON.parse(r.stdout);
+  } catch {
+    return { ok: false, error: "The accessibility scan returned malformed data." };
+  }
+  if (v.error === "accessibility-not-granted") {
+    const perms = await macPermissions();
+    return {
+      ok: false,
+      error:
+        "macOS has not granted this app Accessibility access. Enable it in " +
+        "System Settings → Privacy & Security → Accessibility, then retry." +
+        (perms.screen ? "" : " (Screen Recording is also off — window titles and screenshots need it.)"),
+    };
+  }
+  if (v.error) return { ok: false, error: v.error };
+
+  const dialogEls = asList(v.dialogEls);
+  const ranked = asList(v.elements).sort((a, b) => {
+    const ra = TYPE_RANK[a.t] ?? 9;
+    const rb = TYPE_RANK[b.t] ?? 9;
+    if (ra !== rb) return ra - rb;
+    return Math.abs(a.y - b.y) > 12 ? a.y - b.y : a.x - b.x;
+  });
+  const seen = new Set(dialogEls.map((e) => `${e.t}|${e.n}|${e.x}|${e.y}`));
+  const merged = [
+    ...dialogEls,
+    ...ranked.filter((e) => !seen.has(`${e.t}|${e.n}|${e.x}|${e.y}`)),
+  ].slice(0, REPORT_CAP);
+
+  return {
+    ok: true,
+    title: v.title,
+    app: v.app || undefined,
+    elements: merged,
+    dialogs: asList(v.dialogs).filter(Boolean),
+    focused: v.focused ?? null,
+  };
+}
+
 export async function listScreenElements(): Promise<UiElementsResult> {
+  if (process.platform === "darwin") return listScreenElementsMac();
   const r = await runJsonPs<{
     error?: string;
     title?: string;
@@ -293,6 +353,16 @@ ConvertTo-Json -Compress -InputObject $list
 /** Every process with a visible top-level window — the app-switching map for
  * a model that cannot see the taskbar. */
 export async function listTopWindows(): Promise<TopWindow[]> {
+  if (process.platform === "darwin") {
+    const { runMac } = await import("./mac.js");
+    const r = await runMac(["windows"], 10_000);
+    try {
+      const v = JSON.parse(r.stdout) as TopWindow[];
+      return Array.isArray(v) ? v.filter((w) => w.app || w.title) : [];
+    } catch {
+      return [];
+    }
+  }
   const r = await runJsonPs<TopWindow[] | TopWindow | null>(
     WINDOWS_SCRIPT,
     10_000,

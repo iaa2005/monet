@@ -226,7 +226,12 @@ export function getVendorTools(): Tools {
   // exports SHELL when git-bash exists, which makes Bash actually WORK.)
   const posixShell = ensurePosixShell();
   cachedTools = ALL_TOOLS.filter(
-    (t) => t.isEnabled() && (posixShell !== null || t.name !== "Bash"),
+    (t) =>
+      t.isEnabled() &&
+      (posixShell !== null || t.name !== "Bash") &&
+      // PowerShell exists only on Windows; offered elsewhere it would fail
+      // on every call (its own isEnabled() does not check the platform).
+      (process.platform === "win32" || t.name !== "PowerShell"),
   );
   return cachedTools;
 }
@@ -418,7 +423,13 @@ export function isSpaceToolAllowed(
   // Computer Use no longer requires a multimodal model: a text-only model
   // drives the desktop through the accessibility tree (the tool's "screenshot"
   // returns an element inventory instead of pixels — see computer-tools.ts).
-  if (name === "Computer") return getComputerConfig().enabled;
+  // Implemented on Windows (PowerShell/UIA) and macOS (Swift helper); on
+  // other platforms the tool must not be offered — every call would fail.
+  if (name === "Computer")
+    return (
+      getComputerConfig().enabled &&
+      (process.platform === "win32" || process.platform === "darwin")
+    );
   return spaceAllows(name, space);
 }
 

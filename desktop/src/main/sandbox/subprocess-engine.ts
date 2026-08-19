@@ -57,6 +57,37 @@ function pythonCandidates(): string[] {
     : ["python3", "python"];
 }
 
+/**
+ * macOS Seatbelt profile: reads stay open (interpreters live all over the
+ * disk), writes are fenced to the session folder and the temp dirs every
+ * runtime expects. `sandbox-exec` is marked deprecated but is what Apple's
+ * own tooling (and Claude Code's Bash sandbox) still runs on.
+ */
+function seatbeltProfile(dir: string): string {
+  const esc = (p: string): string => p.replace(/(["\\])/g, "\\$1");
+  return [
+    "(version 1)",
+    "(allow default)",
+    "(deny file-write*)",
+    "(allow file-write*",
+    `  (subpath "${esc(dir)}")`,
+    '  (subpath "/private/tmp")',
+    '  (subpath "/private/var/folders")',
+    '  (subpath "/dev")',
+    ")",
+  ].join("\n");
+}
+
+/** On macOS, wrap a command in the OS sandbox; elsewhere pass through. */
+function confined(
+  cmd: string,
+  args: string[],
+  dir: string,
+): { cmd: string; args: string[] } {
+  if (process.platform !== "darwin") return { cmd, args };
+  return { cmd: "/usr/bin/sandbox-exec", args: ["-p", seatbeltProfile(dir), cmd, ...args] };
+}
+
 function run(
   cmd: string,
   args: string[],
@@ -115,15 +146,21 @@ export async function runSubprocess(
 
   let result: Awaited<ReturnType<typeof run>> | null = null;
   if (language === "python") {
+    // Find the interpreter UNCONFINED (the sandbox wrapper masks ENOENT —
+    // sandbox-exec itself always spawns), then run the script confined.
     let python: string | null = null;
     for (const cmd of pythonCandidates()) {
-      result = await run(cmd, [scriptName], dir);
-      if (!result.spawnError) {
+      const probe = await run(cmd, ["--version"], dir);
+      if (!probe.spawnError) {
         python = cmd;
         break; // interpreter found
       }
     }
-    if (result?.spawnError || !python) {
+    if (python) {
+      const c = confined(python, [scriptName], dir);
+      result = await run(c.cmd, c.args, dir);
+    }
+    if (!python) {
       return {
         ok: false,
         stdout: "",
@@ -165,11 +202,13 @@ export async function runSubprocess(
         result.stderr += `\n[sandbox] auto-install of ${pipName} failed:\n${install.stderr.slice(-400)}`;
         break;
       }
-      result = await run(python, [scriptName], dir);
+      const c = confined(python, [scriptName], dir);
+      result = await run(c.cmd, c.args, dir);
       result.stdout = `[sandbox] installed ${pipName} via pip\n` + result.stdout;
     }
   } else {
-    result = await run(process.execPath, [scriptName], dir);
+    const c = confined(process.execPath, [scriptName], dir);
+    result = await run(c.cmd, c.args, dir);
   }
 
   // Files this run created OR modified (the working dir persists per chat).
@@ -207,16 +246,18 @@ export async function runSubprocessCommand(
   const dir = sessionDir(sessionId);
   const before = snapshotFiles(dir);
   const isWin = process.platform === "win32";
-  const cmd = isWin ? "powershell.exe" : "sh";
-  const args = isWin
-    ? [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        `[Console]::OutputEncoding = [Text.Encoding]::UTF8; ${command}`,
-      ]
-    : ["-c", command];
-  const result = await run(cmd, args, dir);
+  const base = isWin
+    ? {
+        cmd: "powershell.exe",
+        args: [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `[Console]::OutputEncoding = [Text.Encoding]::UTF8; ${command}`,
+        ],
+      }
+    : confined("sh", ["-c", command], dir);
+  const result = await run(base.cmd, base.args, dir);
 
   const after = snapshotFiles(dir);
   const files: SandboxFile[] = [];

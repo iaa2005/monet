@@ -52,7 +52,11 @@ let lastSeenApp: string | null = null;
  * foreground (Add-Type compiles, and csc flashes a console), and one of them
  * being mistaken for the target is what refused every keystroke in a live
  * session with "it is now excel, not powershell". */
-const HELPER_PROCESSES = new Set(["powershell", "pwsh", "conhost", "csc", "cvtres"]);
+const HELPER_PROCESSES = new Set([
+  "powershell", "pwsh", "conhost", "csc", "cvtres",
+  // macOS: the compiled Swift helper, and the terminal it may run under in dev.
+  "monet-mac", "terminal", "iterm2",
+]);
 
 interface ComputerOutput {
   text: string;
@@ -88,7 +92,7 @@ const schema = lazySchema(() =>
       .string()
       .optional()
       .describe(
-        "Text to type (action=type), a key combo like 'ctrl+c', 'Return' (action=key), part of a window title (action=focus_window), or an app's Start-menu name (action=launch_app).",
+        "Text to type (action=type), a key combo like 'ctrl+c' / 'cmd+c', 'Return' (action=key), part of a window title (action=focus_window), or an app's name (action=launch_app).",
       ),
     scroll_direction: z.enum(["up", "down"]).optional(),
     scroll_amount: z.number().optional().describe("Wheel clicks (default 3)."),
@@ -268,9 +272,16 @@ export const ComputerTool = buildTool({
     return false;
   },
   async prompt() {
+    // Platform-true hints: the model must reach for cmd on a Mac and ctrl on
+    // Windows, and "Start menu" means nothing in /Applications.
+    const mac = process.platform === "darwin";
+    const osName = mac ? "macOS" : "Windows";
+    const modKey = mac ? "cmd+c" : "ctrl+c";
+    const switchCombo = mac ? "cmd+Tab" : "alt+Tab";
+    const appSource = mac ? "app name (as in /Applications)" : "Start-menu name";
     if (blind()) {
       return [
-        "Control the user's desktop through the Windows accessibility tree —",
+        `Control the user's desktop through the ${osName} accessibility tree —`,
         "no vision needed. FIRST call action='screenshot': instead of an image",
         "it returns TEXT — the list of open windows and every interactive",
         "element of the foreground window (buttons, fields, links…) with its",
@@ -279,11 +290,11 @@ export const ComputerTool = buildTool({
         "  coordinate: [x, y] copied from an element's reported click point.",
         "- focus_window — text: part of a window title; brings that app to the",
         "  front. Use it to switch between the windows the screenshot listed.",
-        "- launch_app — text: an app's Start-menu name (e.g. 'Excel',",
-        "  'Блокнот'); starts it directly — no Start-menu clicking needed.",
-        "- type — text: the text to type (pastes via clipboard; Unicode ok).",
+        `- launch_app — text: an app's ${appSource} (e.g. 'Excel',`,
+        "  'Блокнот'); starts it directly — no menu clicking needed.",
+        "- type — text: the text to type (Unicode ok).",
         "  Click the target field first.",
-        "- key — text: a combo like 'ctrl+c', 'alt+Tab', 'Return', 'Escape'.",
+        `- key — text: a combo like '${modKey}', '${switchCombo}', 'Return', 'Escape'.`,
         "- scroll — coordinate + scroll_direction (up/down) + scroll_amount.",
         "After every click the tool re-reads the tree and returns the updated",
         "inventory — read it to verify the click did what you expected. A",
@@ -300,9 +311,9 @@ export const ComputerTool = buildTool({
       "- left_click / right_click / middle_click / double_click / mouse_move —",
       "  with coordinate: [x, y].",
       "- focus_window — text: part of a window title; brings that app to the front.",
-      "- launch_app — text: an app's Start-menu name; starts it directly.",
-      "- type — text: the text to type (pastes via clipboard; Unicode ok).",
-      "- key — text: a combo like 'ctrl+c', 'alt+Tab', 'Return', 'Escape'.",
+      `- launch_app — text: an app's ${appSource}; starts it directly.`,
+      "- type — text: the text to type (Unicode ok).",
+      `- key — text: a combo like '${modKey}', '${switchCombo}', 'Return', 'Escape'.`,
       "- scroll — coordinate + scroll_direction (up/down) + scroll_amount.",
       "- cursor_position — where the pointer is.",
       "- screenshot may include region: {x, y, width, height}; the result reports the crop region.",

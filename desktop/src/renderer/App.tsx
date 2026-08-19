@@ -63,7 +63,7 @@ import { DockArea } from "@/dock/DockArea";
 import { DOCK_PANEL_IDS, useDockStore } from "@/dock/dock-store";
 import type { DockPanelId } from "@/dock/dock-layout";
 import { SubAgentTranscript } from "@/components/chat/ToolCallBubble";
-import { WindowControls } from "@/components/WindowControls";
+import { MacTrafficLightInset, WindowControls } from "@/components/WindowControls";
 import { ObsidianIcon } from "@/components/ObsidianIcon";
 import { firstRunVerdict } from "@/lib/first-run";
 import { BetaBadge } from "@/components/BetaBadge";
@@ -1614,6 +1614,7 @@ export default function App(): JSX.Element {
           incognito && "bg-card text-card-foreground rounded-t-xl",
         )}
       >
+        <MacTrafficLightInset />
         {!incognito && (
           <span
             className="app-no-drag"

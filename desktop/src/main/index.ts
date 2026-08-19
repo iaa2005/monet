@@ -8,6 +8,7 @@ import { registerAllIPC } from "./ipc/index.js";
 import { createTray } from "./app/tray.js";
 import { appIconPath } from "./app/icon.js";
 import { applyDataDirEnv } from "./data-dir.js";
+import { fixGuiPath } from "./app/shell-path.js";
 import { recordTitle, recordVisit } from "./browser/bookmarks.js";
 import { purgeIncognitoLeftovers } from "./session/incognito.js";
 import { ensureBuiltinSkills } from "./skills/builtin.js";
@@ -32,6 +33,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // touches the filesystem.
 applyDataDirEnv();
 
+// GUI launches inherit launchd's bare PATH on macOS — graft the login shell's
+// PATH on before any subsystem spawns a process or probes for a binary.
+fixGuiPath();
+
 // `--acp`: an editor spawned us to speak the Agent Client Protocol over
 // stdio. Same engine, no window. Taken before any window or tray code runs —
 // and before anything can log, since stdout IS the protocol stream there.
@@ -49,9 +54,7 @@ applyLeanEnv();
 // Every new webContents starts from this, and a popup's first request can
 // leave before any per-window handler runs. Session-level setUserAgent was not
 // enough: Google still answered "this browser or app may not be secure".
-app.userAgentFallback =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like " +
-  `Gecko) Chrome/${process.versions.chrome || "120.0.0.0"} Safari/537.36`;
+app.userAgentFallback = chromeUserAgent();
 
 // FedCM is ON in this Chromium but has no UI in Electron, and that kills
 // "Sign in with Google" buttons built on Google Identity Services without a
@@ -318,9 +321,18 @@ function installWebviewGuards(win: BrowserWindow): void {
 export function chromeUserAgent(): string {
   const chrome = process.versions.chrome || "120.0.0.0";
   return (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+    `Mozilla/5.0 (${uaPlatformToken()}) AppleWebKit/537.36 (KHTML, like Gecko) ` +
     `Chrome/${chrome} Safari/537.36`
   );
+}
+
+/** The OS token real Chrome sends on this platform — the UA must not claim
+ * Windows on a Mac, or sites serve Ctrl-key shortcuts and Windows downloads,
+ * and the sec-ch-ua-platform header (set elsewhere) would contradict it. */
+function uaPlatformToken(): string {
+  if (process.platform === "darwin") return "Macintosh; Intel Mac OS X 10_15_7";
+  if (process.platform === "win32") return "Windows NT 10.0; Win64; x64";
+  return "X11; Linux x86_64";
 }
 
 /** Sessions already given the plain Chrome UA. */
@@ -356,6 +368,11 @@ function createWindow(): void {
     // Hide the native title bar but keep the resizable window frame so we can
     // draw a custom header + window controls (looks native, not Electron).
     titleBarStyle: "hidden",
+    // macOS keeps its native traffic lights; center them in the custom
+    // header (36px tall) instead of the default top-left corner spot.
+    ...(process.platform === "darwin"
+      ? { trafficLightPosition: { x: 12, y: 10 } }
+      : {}),
     backgroundColor: canvasFor(nativeTheme.shouldUseDarkColors),
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),
@@ -441,6 +458,9 @@ function openSecondaryWindow(): void {
     // Electron and shows Electron's own logo unless it is handed one.
     ...(appIconPath() ? { icon: appIconPath() as string } : {}),
     titleBarStyle: "hidden",
+    ...(process.platform === "darwin"
+      ? { trafficLightPosition: { x: 12, y: 10 } }
+      : {}),
     backgroundColor: canvasFor(nativeTheme.shouldUseDarkColors),
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),

@@ -183,6 +183,7 @@ app.whenReady().then(async () => {
   {
     const pty = require("@lydell/node-pty");
     let bareWorks = true;
+    let exitedFast = false;
     try {
       const t = pty.spawn("definitely-not-a-real-binary-xyz", [], {
         name: "xterm-color",
@@ -190,6 +191,15 @@ app.whenReady().then(async () => {
         rows: 24,
         cwd: process.cwd(),
         env: process.env,
+      });
+      // POSIX forkpty succeeds and the child dies when exec fails — the
+      // failure is an exit, not a throw. Windows ConPTY throws instead.
+      exitedFast = await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(false), 2000);
+        t.onExit(() => {
+          clearTimeout(timer);
+          resolve(true);
+        });
       });
       t.kill();
     } catch (err) {
@@ -200,7 +210,10 @@ app.whenReady().then(async () => {
         JSON.stringify(String(err.message)),
       );
     }
-    check("a missing executable does throw", !bareWorks);
+    if (process.platform === "win32")
+      check("a missing executable does throw", !bareWorks);
+    else
+      check("a missing executable exits at exec", exitedFast);
 
     const exe = term.podmanExecutable();
     check(
