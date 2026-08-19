@@ -10,11 +10,15 @@
  */
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
-import { screen } from "electron";
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
-import { captureScreen, toScreenCoord } from "../computer/screen.js";
+import {
+  captureScreen,
+  fromInputPoint,
+  toInputPoint,
+  toScreenCoord,
+} from "../computer/screen.js";
 import { listScreenElements, listTopWindows } from "../computer/elements.js";
 import {
   click,
@@ -404,20 +408,11 @@ export const ComputerTool = buildTool({
             isError: true,
           },
         };
-      // The tool's whole space is DIP (screenshots, UIA, vision alike); the
-      // input layer is per-monitor-DPI-aware Win32 and wants PHYSICAL pixels.
-      // Electron owns the display layout, so it does the conversion.
-      //
-      // Windows ONLY. dipToScreenPoint is a Win32-backed method that simply
-      // does not exist on the other platforms — calling it on macOS threw
-      // "screen.dipToScreenPoint is not a function" and killed every click,
-      // drag and scroll the agent attempted. macOS needs no conversion at
-      // all: AX rects, CGEvent and Electron all speak points already.
-      if (process.platform === "win32") {
-        const phys = screen.dipToScreenPoint({ x: p.x, y: p.y });
-        sx = phys.x;
-        sy = phys.y;
-      }
+      // One function, on every platform: pass-through off Windows, physical
+      // pixels on it. See toInputPoint for why this is not written inline.
+      const inputPoint = toInputPoint(p);
+      sx = inputPoint.x;
+      sy = inputPoint.y;
     }
 
     try {
@@ -566,7 +561,8 @@ export const ComputerTool = buildTool({
         case "cursor_position": {
           const p = await cursorPosition();
           // Physical from the DPI-aware input layer → the tool's DIP space.
-          const dip = screen.screenToDipPoint({ x: p.x, y: p.y });
+          // Windows-only in effect; elsewhere the two spaces are the same one.
+          const dip = fromInputPoint(p);
           return { data: { text: `Cursor at ${dip.x}, ${dip.y} (screen px).`, isError: false } };
         }
         case "mouse_move":
