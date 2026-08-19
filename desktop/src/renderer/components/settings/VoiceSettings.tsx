@@ -490,10 +490,23 @@ export function VoiceSettings(): JSX.Element {
                       </span>
                     </span>
                   </button>
-                  {ttsVoice === v.id ? (
+                  {/* Absence outranks the tick — same rule as PickCard, and
+                      for the same reason: the default voice arrives chosen
+                      and undownloaded, and a tick there says "ready". */}
+                  {!v.installed ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        save("ttsVoice", v.id, setTtsVoice);
+                        void api()?.tts.installVoice(v.id).then(refreshTts);
+                      }}
+                      className="flex shrink-0 items-center gap-1 rounded-md border border-border/70 px-1.5 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.07]"
+                    >
+                      <Download className="size-3" />
+                      Download
+                    </button>
+                  ) : ttsVoice === v.id ? (
                     <Check className="size-4 shrink-0 text-brand" />
-                  ) : !v.installed ? (
-                    <Download className="size-3.5 shrink-0 text-muted-foreground/60" />
                   ) : null}
                   {v.custom && (
                     <button
