@@ -33,6 +33,10 @@ export interface UiElementsResult {
   dialogs?: string[];
   /** The keyboard-focused element right now, when UIA can name one. */
   focused?: UiElement | null;
+  /** The app is frontmost but has no window open — its menus are all there
+   * is to act on. Reported so a caller does not read an empty element list as
+   * "the accessibility tree is broken" and fall back to guessing at pixels. */
+  noWindow?: boolean;
   error?: string;
 }
 
@@ -238,6 +242,7 @@ async function listScreenElementsMac(): Promise<UiElementsResult> {
     dialogEls?: UiElement[];
     dialogs?: string[];
     focused?: UiElement | null;
+    noWindow?: boolean;
   };
   try {
     v = JSON.parse(r.stdout);
@@ -276,6 +281,7 @@ async function listScreenElementsMac(): Promise<UiElementsResult> {
     elements: merged,
     dialogs: asList(v.dialogs).filter(Boolean),
     focused: v.focused ?? null,
+    noWindow: v.noWindow === true,
   };
 }
 

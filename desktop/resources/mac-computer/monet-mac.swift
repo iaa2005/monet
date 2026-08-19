@@ -21,7 +21,10 @@
  *   launch B64NAME             → app name | <<NOTFOUND>>
  *   windows                    → [{"app":..,"title":..}]
  *   elements                   → {"title","app","elements":[{n,t,x,y,w,h}],
- *                                 "dialogs":[..],"focused":{..}|null}
+ *                                 "dialogs":[..],"focused":{..}|null,
+ *                                 "noWindow":bool}  — menus are included as
+ *                                 type "Menu", and are all there is when the
+ *                                 app has no window open
  *   ocr PNGPATH                → [{"t","x","y","w","h"}]  (image pixels)
  *
  * Coordinates everywhere are macOS "points" with a top-left origin — the
@@ -428,6 +431,32 @@ struct AxEl {
   let f: CGRect
 }
 
+/**
+ * Make an app build its accessibility tree, if it only does so on request.
+ *
+ * Microsoft Office reports AXWindows as an EMPTY list until an assistive
+ * client sets AXEnhancedUserInterface on the application element — VoiceOver
+ * sets it, and anything else that wants the tree is expected to. Without it
+ * Word answered with nothing at all, the tool fell back to parsing the screen
+ * visually, and the model was handed a list of unnamed icons it could not
+ * choose between. (Excel answers either way, which is why one worked and the
+ * other did not.)
+ *
+ * Returns the previous value so the caller can put it back: leaving enhanced
+ * mode on makes some apps noticeably slower and is known to upset window
+ * dragging, and it is not ours to change permanently.
+ */
+@discardableResult
+func setEnhancedUI(_ app: AXUIElement, _ on: Bool) -> Bool? {
+  var current: CFTypeRef?
+  let had =
+    AXUIElementCopyAttributeValue(app, "AXEnhancedUserInterface" as CFString, &current)
+    == .success ? (current as? Bool ?? ((current as? Int) == 1)) : nil
+  AXUIElementSetAttributeValue(
+    app, "AXEnhancedUserInterface" as CFString, (on ? kCFBooleanTrue : kCFBooleanFalse))
+  return had
+}
+
 func walkAx(_ el: AXUIElement, depth: Int, into out: inout [AxEl], budget: inout Int) {
   if depth > 12 || budget <= 0 { return }
   budget -= 1
@@ -472,10 +501,56 @@ func cmdElements() {
   if windows.isEmpty, let focused = axAttr(axApp, kAXFocusedWindowAttribute) {
     windows = [focused as! AXUIElement]
   }
+  // Nothing at all is the signature of an app that builds its tree only for
+  // an assistive client — ask, give it a moment, and look again.
+  var restoreEnhanced: Bool? = nil
+  var toggledEnhanced = false
+  if windows.isEmpty {
+    restoreEnhanced = setEnhancedUI(axApp, true)
+    toggledEnhanced = true
+    for _ in 0..<10 {
+      usleepMs(80)
+      windows = (axAttr(axApp, kAXWindowsAttribute) as? [AXUIElement]) ?? []
+      if !windows.isEmpty { break }
+    }
+    if windows.isEmpty, let focused = axAttr(axApp, kAXFocusedWindowAttribute) {
+      windows = [focused as! AXUIElement]
+    }
+  }
+  defer {
+    // Put it back exactly as found: on permanently costs the app speed and
+    // is known to upset window dragging.
+    if toggledEnhanced, restoreEnhanced != true { setEnhancedUI(axApp, false) }
+  }
   var main: [AxEl] = []
   var dialogEls: [AxEl] = []
   var dialogs: [String] = []
   var title = ""
+
+  /**
+   * The menu bar, always — every top-level menu of the frontmost app.
+   *
+   * The reported failure was an agent staring at a screenful of unnamed
+   * toolbar icons with no way to choose. Menus are the opposite: every item
+   * carries its own name, in the user's language, and reaches commands that
+   * have no icon at all. On a Mac they are the reliable way to drive an app,
+   * and they are readable even when the app has no window open.
+   *
+   * Top level only. Opening one and re-reading is a click away, and pulling
+   * every submenu would bury the window's own controls.
+   */
+  var menus: [AxEl] = []
+  if let bar = axAttr(axApp, kAXMenuBarAttribute) {
+    for item in (axAttr(bar as! AXUIElement, kAXChildrenAttribute) as? [AXUIElement]) ?? [] {
+      let name = axString(item, kAXTitleAttribute)
+      // The Apple menu carries no title and belongs to the system, not the app.
+      if name.isEmpty { continue }
+      if let f = axFrame(item), f.width >= 2, f.height >= 2 {
+        menus.append(AxEl(n: name, t: "Menu", f: f))
+      }
+    }
+  }
+
   for w in windows {
     let wTitle = axString(w, kAXTitleAttribute)
     let subrole = axString(w, kAXSubroleAttribute)
@@ -519,7 +594,10 @@ func cmdElements() {
   jsonOut([
     "title": title,
     "app": app.localizedName?.lowercased() ?? "",
-    "elements": main.map(elDict),
+    // Menus first: with no window open they are the only way in, and even
+    // with one they beat guessing which unnamed icon is the command.
+    "elements": (menus + main).map(elDict),
+    "noWindow": windows.isEmpty,
     "dialogEls": dialogEls.map(elDict),
     "dialogs": dialogs,
     "focused": focusedDict as Any,

@@ -220,6 +220,16 @@ async function describeScreen(note: string): Promise<ComputerOutput> {
       formatScanExtras(scan) +
       `Foreground window "${scan.title ?? ""}" — interactive elements (pass an element's [x, y] straight to a click action):\n` +
       formatElementLines(scan.elements ?? []);
+  } else if (scan.ok && scan.noWindow) {
+    // An app with no window is not a broken tree, and parsing the screen for
+    // it hands back a page of unnamed icons belonging to whatever else is
+    // visible — which is exactly how a run ended up unable to choose one.
+    // Say the real state; the menus came back in the scan and are actionable.
+    body =
+      `"${scan.app ?? "The frontmost app"}" is running but has NO window open, so there is ` +
+      "nothing in it to click. Open one first — cmd+N for a new document, or its " +
+      "File menu — then read the screen again. Its menu bar is available now:\n" +
+      formatElementLines(scan.elements ?? []);
   } else {
     // No accessibility tree — parse the pixels instead (OmniParser + WinOCR).
     const vis = await visionScreenElements();
