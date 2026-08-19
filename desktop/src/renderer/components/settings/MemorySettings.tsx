@@ -171,7 +171,10 @@ export function MemorySettings(): JSX.Element {
   const [config, setConfig] = useState({
     searchChats: true,
     generateMemory: true,
-    extractEveryMinutes: 3,
+    // Matches main's default (memory/store.ts): off until asked for, so the
+    // first paint does not claim a paid pass is running before the real
+    // config arrives.
+    extractEveryMinutes: 0,
   });
   const [files, setFiles] = useState<MemoryFileInfo[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
@@ -295,7 +298,7 @@ export function MemorySettings(): JSX.Element {
           icon={Timer}
           title="Memory extraction"
           on
-          description="How often a conversation may be read for durable facts. Noting after every message would charge you for a model call you did not ask for."
+          description="How often a conversation may be read for durable facts. Off by default: each pass is a model call on your own key, so it starts only once you ask for it."
         >
           <div className="mt-2 flex items-center justify-between gap-4">
             <span className="text-[13px] text-muted-foreground">

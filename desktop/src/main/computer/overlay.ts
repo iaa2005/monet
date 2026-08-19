@@ -1,8 +1,16 @@
 /**
  * Computer Use overlay — while the agent is driving the mouse/keyboard, a
- * glowing brand-coloured frame breathes around the screen edge and the app
- * window dodges into the bottom-right corner so it does not sit on top of the
- * apps being controlled.
+ * glowing brand-coloured frame breathes around the screen edge.
+ *
+ * The app window ALSO dodges into the top-right corner at its minimum size,
+ * on every platform: there is no other way to keep it watchable — and Stop
+ * reachable — without it sitting on top of the apps being driven.
+ *
+ * macOS needs one extra step first. A window in native fullscreen owns a
+ * Space of its own and cannot be reframed while it does, so the run begins by
+ * leaving fullscreen and ends by returning to it. Parked, the card also joins
+ * every Space, or activating a fullscreen target app would leave it behind on
+ * the desktop the user just left.
  *
  * The frame is click-through (`setIgnoreMouseEvents`) and content-protected
  * (`setContentProtection` → WDA_EXCLUDEFROMCAPTURE on Windows), so the USER
@@ -17,6 +25,8 @@
 
 import { BrowserWindow, globalShortcut, screen } from "electron";
 import { APP_MIN_HEIGHT, APP_MIN_WIDTH } from "../app/main-window.js";
+
+const IS_MAC = process.platform === "darwin";
 
 const BRAND_HUE = 211; // matches --brand-hue in the renderer's globals.css
 /** Pure dead-run insurance — the real release is the agent run's finally.
@@ -45,6 +55,39 @@ let idleTimer: NodeJS.Timeout | null = null;
  * stops moving the window instead of fighting the new one. */
 let generation = 0;
 let savedPlacement: { bounds: Electron.Rectangle; maximized: boolean } | null = null;
+/** macOS: the window was in native fullscreen when the run started, and owes
+ * itself a return to it. */
+let macWasFullScreen = false;
+
+/**
+ * Toggle native fullscreen and wait for the animation to finish.
+ *
+ * The transition is asynchronous and about half a second long; acting on the
+ * window before it lands (showing the frame, reading bounds) catches it
+ * mid-flight. The timeout is there because the event does not arrive at all
+ * when the window is already in the requested state.
+ */
+function setFullScreenAwaited(
+  win: BrowserWindow,
+  full: boolean,
+): Promise<void> {
+  if (win.isFullScreen() === full) return Promise.resolve();
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(done, 1500);
+    // Subscribed per branch: Electron types these as separate overloads, so a
+    // union of the two names matches neither.
+    if (full) win.once("enter-full-screen", done);
+    else win.once("leave-full-screen", done);
+    win.setFullScreen(full);
+  });
+}
 
 /** The app window that should dodge out of the way. Set once at startup. */
 export function setDodgeWindow(win: BrowserWindow): void {
@@ -105,12 +148,49 @@ function tweenOpacity(win: BrowserWindow, to: number, gen: number, ms = 180): Pr
   });
 }
 
+/** The display the frame belongs on: the one holding the pointer, so a
+ * multi-monitor user sees it around the screen actually being driven. */
+function overlayDisplay(): Electron.Display {
+  try {
+    return screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  } catch {
+    return screen.getPrimaryDisplay();
+  }
+}
+
+/**
+ * Make the frame float over EVERYTHING, on every Space.
+ *
+ * Re-applied on every show rather than only at creation. On macOS a window's
+ * collection behaviour and its sharing type are both reset by ordinary
+ * hide/show cycles and by a Space switch; on Windows the display affinity of
+ * a transparent window does not reliably survive create/hide either (checked
+ * live with GetWindowDisplayAffinity — it read 0x0 with only the
+ * creation-time call). Asserting it every time is cheap and is the difference
+ * between a frame that always works and one that works until the user moves
+ * to another desktop.
+ */
+function assertOverlayLevel(win: BrowserWindow): void {
+  win.setAlwaysOnTop(true, "screen-saver");
+  win.setIgnoreMouseEvents(true);
+  if (IS_MAC) {
+    // Without this the frame is invisible the moment the user is in a
+    // fullscreen app or a second Space — exactly when Computer Use runs.
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
+  if (!process.env.MONET_OVERLAY_CAPTURABLE) win.setContentProtection(true);
+}
+
 function ensureOverlay(): BrowserWindow {
   if (overlay && !overlay.isDestroyed()) return overlay;
   overlay = new BrowserWindow({
-    ...screen.getPrimaryDisplay().bounds,
+    ...overlayDisplay().bounds,
     frame: false,
     transparent: true,
+    // A non-activating panel is what lets a window sit above a fullscreen
+    // app on macOS; a plain window is confined to its own Space.
+    ...(IS_MAC ? { type: "panel" as const } : {}),
+    backgroundColor: "#00000000",
     resizable: false,
     movable: false,
     minimizable: false,
@@ -124,13 +204,11 @@ function ensureOverlay(): BrowserWindow {
     show: false,
     webPreferences: { sandbox: true, contextIsolation: true },
   });
-  overlay.setAlwaysOnTop(true, "screen-saver");
-  overlay.setIgnoreMouseEvents(true);
-  // Visible to the user, absent from every screen capture (incl. our own).
-  // MONET_OVERLAY_CAPTURABLE=1 keeps it in captures — the only way to verify
-  // the glow visually in an automated run, since exclusion hides it from every
-  // screenshot tool on the machine.
-  if (!process.env.MONET_OVERLAY_CAPTURABLE) overlay.setContentProtection(true);
+  assertOverlayLevel(overlay);
+  // The frame is visible to the user and absent from every screen capture
+  // (including the agent's own) — see assertOverlayLevel.
+  // MONET_OVERLAY_CAPTURABLE=1 keeps it in captures, the only way to verify
+  // the glow visually in an automated run.
   void overlay.loadURL(
     `data:text/html;base64,${Buffer.from(GLOW_HTML, "utf-8").toString("base64")}`,
   );
@@ -145,7 +223,7 @@ function ensureOverlay(): BrowserWindow {
  * is simply the smallest the app is allowed to be.
  */
 function dodgeTarget(): Electron.Rectangle {
-  const wa = screen.getPrimaryDisplay().workArea;
+  const wa = overlayDisplay().workArea;
   return {
     x: wa.x + wa.width - APP_MIN_WIDTH - DODGE_MARGIN,
     y: wa.y + DODGE_MARGIN,
@@ -157,6 +235,11 @@ function dodgeTarget(): Electron.Rectangle {
 async function dodgeApp(gen: number): Promise<void> {
   const win = dodgeWindow;
   if (!win || win.isDestroyed() || !win.isVisible() || savedPlacement) return;
+  // Defensive: the run normally leaves fullscreen before the frame is built
+  // (see touchComputerOverlay), because a fullscreen window cannot be
+  // reframed and because the frame's all-Spaces request strands one. This
+  // covers any other caller.
+  if (IS_MAC) await leaveFullScreenForRun(win);
   savedPlacement = { bounds: win.getBounds(), maximized: win.isMaximized() };
   if (savedPlacement.maximized) win.unmaximize();
   // The parked card stays watchable over a maximized target app — but the
@@ -166,6 +249,11 @@ async function dodgeApp(gen: number): Promise<void> {
   // chat fits the narrow card — see "computer:parked" in App.tsx.
   win.setAlwaysOnTop(true, "floating");
   win.setContentProtection(true);
+  // Follow the user across Spaces. Without it, the agent activating a
+  // fullscreen app leaves the card behind on the desktop they came from —
+  // which is the whole of what it is for. Safe here and not on the frame:
+  // fullscreen is already over by this point.
+  if (IS_MAC) win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.webContents.send("computer:parked", true);
   await tweenBounds(win, dodgeTarget(), gen);
 }
@@ -178,10 +266,25 @@ async function restoreApp(gen: number): Promise<void> {
   if (!win || win.isDestroyed()) return;
   win.setAlwaysOnTop(false);
   win.setContentProtection(false);
+  if (IS_MAC) win.setVisibleOnAllWorkspaces(false);
   win.webContents.send("computer:parked", false);
   await tweenBounds(win, saved.bounds, gen);
   if (gen !== generation) return;
   if (saved.maximized) win.maximize();
+  // Fullscreen last: it is an animation of its own, and starting it before
+  // the window is back at its old frame makes the restore visibly fight it.
+  if (macWasFullScreen) {
+    macWasFullScreen = false;
+    await setFullScreenAwaited(win, true);
+  }
+}
+
+/** Leave native fullscreen for the duration of a run, remembering to go back.
+ * A no-op off macOS and on a window that is not fullscreen. */
+async function leaveFullScreenForRun(win: BrowserWindow): Promise<void> {
+  if (!IS_MAC || !win.isFullScreen()) return;
+  macWasFullScreen = true;
+  await setFullScreenAwaited(win, false);
 }
 
 /**
@@ -242,19 +345,35 @@ export async function touchComputerOverlay(): Promise<void> {
       win.setAlwaysOnTop(true, "floating");
       win.moveTop();
     }
+    // The frame has the same problem and no card to fall back on: a target
+    // app going fullscreen mid-run used to hide it for good.
+    if (overlay && !overlay.isDestroyed() && overlay.isVisible()) {
+      const d = overlayDisplay().bounds;
+      const cur = overlay.getBounds();
+      if (cur.x !== d.x || cur.y !== d.y || cur.width !== d.width || cur.height !== d.height)
+        overlay.setBounds(d);
+      assertOverlayLevel(overlay);
+    }
     return;
   }
   shown = true;
   armStopHotkey();
   const gen = ++generation;
+  // Fullscreen ends FIRST on macOS, before the frame exists. The frame asks
+  // to be visible on every Space, and that request lands on the whole app:
+  // made while our own window is still in native fullscreen, it drops that
+  // window out of its Space presentation and leaves a stranded copy of its
+  // old frame behind (reproduced with CGWindowList — the restored 1200x800
+  // frame appears the moment setVisibleOnAllWorkspaces runs, and only then).
+  // Only the fullscreen exit is awaited here; the park itself animates
+  // alongside the frame, as everywhere else.
+  if (IS_MAC && dodgeWindow && !dodgeWindow.isDestroyed())
+    await leaveFullScreenForRun(dodgeWindow);
   const win = ensureOverlay();
-  win.setBounds(screen.getPrimaryDisplay().bounds);
+  win.setBounds(overlayDisplay().bounds);
   win.setOpacity(0);
   win.showInactive();
-  // Re-assert on every show: on Windows the display affinity of a transparent
-  // window does not reliably survive create/hide cycles (checked live with
-  // GetWindowDisplayAffinity — it read 0x0 with only the creation-time call).
-  if (!process.env.MONET_OVERLAY_CAPTURABLE) win.setContentProtection(true);
+  assertOverlayLevel(win);
   await Promise.all([tweenOpacity(win, 1, gen), dodgeApp(gen)]);
 }
 
@@ -267,13 +386,25 @@ export function releaseComputerOverlay(): void {
   if (!shown) return;
   shown = false;
   disarmStopHotkey();
+  // The run is over, so nothing can still be pasting — give the user their
+  // clipboard back. Typing on macOS borrows it for the whole run precisely
+  // so no restore races a paste in flight.
+  void import("./clipboard-guard.js")
+    .then((m) => m.releaseClipboard(m.lastTypedText()))
+    .catch(() => {});
   const gen = ++generation;
   const win = overlay;
-  void restoreApp(gen);
   if (win && !win.isDestroyed()) {
     void tweenOpacity(win, 0, gen).then(() => {
       if (gen === generation && win && !win.isDestroyed()) win.hide();
+      // Mac: the frame is hidden now, so restoring fullscreen cannot collide
+      // with its all-Spaces request. Elsewhere the two are independent and
+      // the window comes back while the frame fades.
+      if (IS_MAC) void restoreApp(gen);
     });
+    if (!IS_MAC) void restoreApp(gen);
+  } else {
+    void restoreApp(gen);
   }
 }
 

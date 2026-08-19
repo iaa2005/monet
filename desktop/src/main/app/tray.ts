@@ -6,7 +6,16 @@ let tray: Tray | null = null;
 let isQuitting = false;
 
 export function createTray(mainWindow: BrowserWindow): void {
-  tray = new Tray(appIconImage(16));
+  if (process.platform === "darwin") {
+    // The menu bar wants a TEMPLATE image — macOS keeps only the alpha
+    // channel and paints it black/white to match the bar, in both themes.
+    // A colored 16px PNG there renders as a smudged full-color dot.
+    const img = appIconImage(18);
+    img.setTemplateImage(true);
+    tray = new Tray(img);
+  } else {
+    tray = new Tray(appIconImage(16));
+  }
   tray.setToolTip(APP_NAME);
 
   const contextMenu = Menu.buildFromTemplate([

@@ -18,6 +18,7 @@ import { registerAgentsIPC } from "./agents.js";
 import { registerMemoryIPC } from "./memory.js";
 import { registerObsidianIPC } from "./obsidian.js";
 import { registerOcrIPC } from "./ocr.js";
+import { registerVoiceIPC } from "./voice.js";
 import { registerRasteriserIPC } from "../ocr/render.js";
 import { registerReflectIPC } from "./reflect.js";
 import { registerProfileIPC } from "./profile.js";
@@ -59,6 +60,7 @@ export function registerAllIPC(): void {
   registerMemoryIPC();
   registerObsidianIPC();
   registerOcrIPC();
+  registerVoiceIPC();
   // The hidden rasteriser window answers on its own channel.
   registerRasteriserIPC();
   registerReflectIPC();

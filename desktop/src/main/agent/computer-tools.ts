@@ -10,11 +10,15 @@
  */
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
-import { screen } from "electron";
 import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
-import { captureScreen, toScreenCoord } from "../computer/screen.js";
+import {
+  captureScreen,
+  fromInputPoint,
+  toInputPoint,
+  toScreenCoord,
+} from "../computer/screen.js";
 import { listScreenElements, listTopWindows } from "../computer/elements.js";
 import {
   click,
@@ -31,6 +35,24 @@ import { activeModelAccepts } from "./model-modalities.js";
 import { getComputerConfig } from "../computer/config.js";
 import { touchComputerOverlay } from "../computer/overlay.js";
 import { visionScreenElements } from "../computer/vision.js";
+
+/**
+ * Are window titles readable at all?
+ *
+ * macOS hands out kCGWindowName only to an app with Screen Recording; without
+ * it every title is the empty string, which is indistinguishable from "no
+ * match" unless someone asks. Windows has no such gate, so this is false
+ * there and the ordinary message stands.
+ */
+async function titlesAreBlind(): Promise<boolean> {
+  if (process.platform !== "darwin") return false;
+  try {
+    const { macPermissions } = await import("../computer/mac.js");
+    return !(await macPermissions()).screen;
+  } catch {
+    return false;
+  }
+}
 import { getMainWindow } from "../app/main-window.js";
 import { artifactReference, saveArtifactBuffer } from "../ipc/artifacts.js";
 
@@ -52,7 +74,11 @@ let lastSeenApp: string | null = null;
  * foreground (Add-Type compiles, and csc flashes a console), and one of them
  * being mistaken for the target is what refused every keystroke in a live
  * session with "it is now excel, not powershell". */
-const HELPER_PROCESSES = new Set(["powershell", "pwsh", "conhost", "csc", "cvtres"]);
+const HELPER_PROCESSES = new Set([
+  "powershell", "pwsh", "conhost", "csc", "cvtres",
+  // macOS: the compiled Swift helper, and the terminal it may run under in dev.
+  "monet-mac", "terminal", "iterm2",
+]);
 
 interface ComputerOutput {
   text: string;
@@ -88,7 +114,7 @@ const schema = lazySchema(() =>
       .string()
       .optional()
       .describe(
-        "Text to type (action=type), a key combo like 'ctrl+c', 'Return' (action=key), part of a window title (action=focus_window), or an app's Start-menu name (action=launch_app).",
+        "Text to type (action=type), a key combo like 'ctrl+c' / 'cmd+c', 'Return' (action=key), part of a window title (action=focus_window), or an app's name (action=launch_app).",
       ),
     scroll_direction: z.enum(["up", "down"]).optional(),
     scroll_amount: z.number().optional().describe("Wheel clicks (default 3)."),
@@ -194,6 +220,16 @@ async function describeScreen(note: string): Promise<ComputerOutput> {
       formatScanExtras(scan) +
       `Foreground window "${scan.title ?? ""}" — interactive elements (pass an element's [x, y] straight to a click action):\n` +
       formatElementLines(scan.elements ?? []);
+  } else if (scan.ok && scan.noWindow) {
+    // An app with no window is not a broken tree, and parsing the screen for
+    // it hands back a page of unnamed icons belonging to whatever else is
+    // visible — which is exactly how a run ended up unable to choose one.
+    // Say the real state; the menus came back in the scan and are actionable.
+    body =
+      `"${scan.app ?? "The frontmost app"}" is running but has NO window open, so there is ` +
+      "nothing in it to click. Open one first — cmd+N for a new document, or its " +
+      "File menu — then read the screen again. Its menu bar is available now:\n" +
+      formatElementLines(scan.elements ?? []);
   } else {
     // No accessibility tree — parse the pixels instead (OmniParser + WinOCR).
     const vis = await visionScreenElements();
@@ -268,9 +304,16 @@ export const ComputerTool = buildTool({
     return false;
   },
   async prompt() {
+    // Platform-true hints: the model must reach for cmd on a Mac and ctrl on
+    // Windows, and "Start menu" means nothing in /Applications.
+    const mac = process.platform === "darwin";
+    const osName = mac ? "macOS" : "Windows";
+    const modKey = mac ? "cmd+c" : "ctrl+c";
+    const switchCombo = mac ? "cmd+Tab" : "alt+Tab";
+    const appSource = mac ? "app name (as in /Applications)" : "Start-menu name";
     if (blind()) {
       return [
-        "Control the user's desktop through the Windows accessibility tree —",
+        `Control the user's desktop through the ${osName} accessibility tree —`,
         "no vision needed. FIRST call action='screenshot': instead of an image",
         "it returns TEXT — the list of open windows and every interactive",
         "element of the foreground window (buttons, fields, links…) with its",
@@ -279,11 +322,11 @@ export const ComputerTool = buildTool({
         "  coordinate: [x, y] copied from an element's reported click point.",
         "- focus_window — text: part of a window title; brings that app to the",
         "  front. Use it to switch between the windows the screenshot listed.",
-        "- launch_app — text: an app's Start-menu name (e.g. 'Excel',",
-        "  'Блокнот'); starts it directly — no Start-menu clicking needed.",
-        "- type — text: the text to type (pastes via clipboard; Unicode ok).",
+        `- launch_app — text: an app's ${appSource} (e.g. 'Excel',`,
+        "  'Блокнот'); starts it directly — no menu clicking needed.",
+        "- type — text: the text to type (Unicode ok).",
         "  Click the target field first.",
-        "- key — text: a combo like 'ctrl+c', 'alt+Tab', 'Return', 'Escape'.",
+        `- key — text: a combo like '${modKey}', '${switchCombo}', 'Return', 'Escape'.`,
         "- scroll — coordinate + scroll_direction (up/down) + scroll_amount.",
         "After every click the tool re-reads the tree and returns the updated",
         "inventory — read it to verify the click did what you expected. A",
@@ -300,9 +343,9 @@ export const ComputerTool = buildTool({
       "- left_click / right_click / middle_click / double_click / mouse_move —",
       "  with coordinate: [x, y].",
       "- focus_window — text: part of a window title; brings that app to the front.",
-      "- launch_app — text: an app's Start-menu name; starts it directly.",
-      "- type — text: the text to type (pastes via clipboard; Unicode ok).",
-      "- key — text: a combo like 'ctrl+c', 'alt+Tab', 'Return', 'Escape'.",
+      `- launch_app — text: an app's ${appSource}; starts it directly.`,
+      "- type — text: the text to type (Unicode ok).",
+      `- key — text: a combo like '${modKey}', '${switchCombo}', 'Return', 'Escape'.`,
       "- scroll — coordinate + scroll_direction (up/down) + scroll_amount.",
       "- cursor_position — where the pointer is.",
       "- screenshot may include region: {x, y, width, height}; the result reports the crop region.",
@@ -375,12 +418,11 @@ export const ComputerTool = buildTool({
             isError: true,
           },
         };
-      // The tool's whole space is DIP (screenshots, UIA, vision alike); the
-      // input layer is per-monitor-DPI-aware Win32 and wants PHYSICAL pixels.
-      // Electron owns the display layout, so it does the conversion.
-      const phys = screen.dipToScreenPoint({ x: p.x, y: p.y });
-      sx = phys.x;
-      sy = phys.y;
+      // One function, on every platform: pass-through off Windows, physical
+      // pixels on it. See toInputPoint for why this is not written inline.
+      const inputPoint = toInputPoint(p);
+      sx = inputPoint.x;
+      sy = inputPoint.y;
     }
 
     try {
@@ -402,13 +444,31 @@ export const ComputerTool = buildTool({
         case "focus_window": {
           if (!text)
             return {
-              data: { text: "focus_window needs part of a window title in text.", isError: true },
+              data: {
+                text:
+                  "focus_window needs text: part of a window title, or the " +
+                  "application's name.",
+                isError: true,
+              },
             };
           const matched = await focusWindow(text);
           if (!matched)
             return {
               data: {
-                text: `No open window title contains "${text}". Call screenshot to list the open windows, or launch_app to start the program.`,
+                // Name the real obstacle when there is one. Without Screen
+                // Recording macOS reports every window title as empty, so the
+                // old message sent the model to call screenshot and read a
+                // list of blanks — it retried that until it gave up, with the
+                // app it wanted sitting right there on screen.
+                text:
+                  (await titlesAreBlind())
+                    ? `Nothing matched "${text}", and window TITLES are unavailable — macOS ` +
+                      "withholds them until Screen Recording is granted to this app in " +
+                      "System Settings → Privacy & Security. Matching by application name " +
+                      "still works, so try the app's own name (e.g. 'Word', 'Chrome'), or " +
+                      "launch_app to start it."
+                    : `No open window or application matches "${text}". Call screenshot to ` +
+                      "list the open windows, or launch_app to start the program.",
                 isError: true,
               },
             };
@@ -511,7 +571,8 @@ export const ComputerTool = buildTool({
         case "cursor_position": {
           const p = await cursorPosition();
           // Physical from the DPI-aware input layer → the tool's DIP space.
-          const dip = screen.screenToDipPoint({ x: p.x, y: p.y });
+          // Windows-only in effect; elsewhere the two spaces are the same one.
+          const dip = fromInputPoint(p);
           return { data: { text: `Cursor at ${dip.x}, ${dip.y} (screen px).`, isError: false } };
         }
         case "mouse_move":
@@ -555,7 +616,34 @@ export const ComputerTool = buildTool({
                 isError: true,
               },
             };
-          return { data: { text: `Typed ${text.length} chars.`, isError: false } };
+          // Say when the text could not be confirmed to have landed — the
+          // helper reads the focused element back, and a spreadsheet grid or
+          // canvas publishes nothing to read. In that case the verification
+          // the model would request next is done HERE and returned with the
+          // result: a real Excel run spent one extra turn per cell asking for
+          // a screen read after every single "unverified", and forty turns
+          // ran out mid-table. Same shape as the click actions, which have
+          // always auto-verified.
+          if (r.unverified) {
+            await new Promise((res) => setTimeout(res, 350));
+            const state = blind()
+              ? await describeScreen(
+                  `Sent ${text.length} chars. This target does not report its ` +
+                    "contents, so the screen was re-read for you — check the state " +
+                    "below (a spreadsheet shows the active cell in its formula " +
+                    "bar) instead of asking for another read. If the text is not " +
+                    "there, the app refuses synthetic keystrokes; click or use a " +
+                    "scripted route.",
+                )
+              : await takeScreenshot(
+                  sessionId,
+                  `Sent ${text.length} chars (unconfirmed — check the screenshot).`,
+                );
+            return { data: state };
+          }
+          return {
+            data: { text: `Typed ${text.length} chars.`, isError: false },
+          };
         }
         case "key": {
           if (!text) return { data: { text: "key needs a combo in text.", isError: true } };

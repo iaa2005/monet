@@ -46,7 +46,9 @@ function bundledCandidates(): string[] {
   return dirs;
 }
 
-/** Recursively find the directory that directly contains podman.exe. */
+const PODMAN_EXE = process.platform === "win32" ? "podman.exe" : "podman";
+
+/** Recursively find the directory that directly contains the podman binary. */
 function findPodmanBin(root: string, depth = 0): string | null {
   if (!existsSync(root) || depth > 6) return null;
   let entries: string[];
@@ -55,7 +57,7 @@ function findPodmanBin(root: string, depth = 0): string | null {
   } catch {
     return null;
   }
-  if (entries.includes("podman.exe")) return root;
+  if (entries.includes(PODMAN_EXE)) return root;
   for (const e of entries) {
     const full = join(root, e);
     try {
@@ -125,8 +127,20 @@ let downloading: Promise<{ ok: boolean; error?: string }> | null = null;
  * first Podman use (Windows only; elsewhere we rely on a system podman). */
 export async function ensurePodmanBinary(): Promise<{ ok: boolean; error?: string }> {
   if (addPodmanToPath()) return { ok: true };
-  if (process.platform !== "win32")
-    return { ok: false, error: "No bundled Podman; install podman from your package manager." };
+  if (process.platform !== "win32") {
+    // No portable download here — a system install is the norm. PATH already
+    // includes the login shell's dirs (fixGuiPath), so brew installs resolve.
+    const { spawnSync } = await import("child_process");
+    const probe = spawnSync("podman", ["--version"], { encoding: "utf8" });
+    if (probe.status === 0) return { ok: true };
+    return {
+      ok: false,
+      error:
+        process.platform === "darwin"
+          ? "Podman is not installed. Install it with `brew install podman`, then run `podman machine init && podman machine start`."
+          : "No bundled Podman; install podman from your package manager.",
+    };
+  }
   if (!downloading) downloading = downloadPodman();
   const r = await downloading;
   if (!r.ok) downloading = null;

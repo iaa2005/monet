@@ -26,6 +26,7 @@ import { Switch } from "@/components/ui/switch";
 import type {
   BrowserApproval,
   BrowserEngine,
+  ComputerPermissions,
   ElectronAPI,
 } from "@/types/electron";
 import { isValidPattern } from "@shared/origins";
@@ -39,6 +40,10 @@ function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
+function isMacUi(): boolean {
+  return api()?.platform === "darwin";
+}
+
 /**
  * Pairing the user's own browser: get the extension, carry the code across.
  *
@@ -48,6 +53,118 @@ function api(): ElectronAPI | undefined {
  * app refuses every connection that cannot produce this, and the only way it
  * travels is a person typing it into the extension.
  */
+/**
+ * The macOS permission checklist for Computer Use.
+ *
+ * macOS grants Accessibility and Screen Recording per app, and its prompt
+ * appears once — miss it and every call afterwards just returns nothing, with
+ * no error to read. So the state is shown rather than assumed, with the
+ * button that opens the exact pane, and it re-checks itself while the section
+ * is open: the grant lands in another app, and coming back to a stale "not
+ * granted" is how people conclude the feature is broken.
+ */
+function MacPermissionChecklist(): JSX.Element {
+  const [perms, setPerms] = useState<ComputerPermissions | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    const poll = (): void => {
+      api()
+        ?.computer.permissions?.()
+        .then((p) => live && setPerms(p))
+        .catch(() => {});
+    };
+    poll();
+    // Granting happens in System Settings, so the answer changes while this
+    // panel is in the background — poll instead of waiting for a remount.
+    const t = setInterval(poll, 2000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, []);
+
+  if (!perms?.supported) return <></>;
+
+  if (!perms.helper) {
+    return (
+      <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px]">
+        <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
+        <span>
+          Computer Use needs the Xcode Command Line Tools to build its helper.
+          Run <span className="font-mono">xcode-select --install</span> in a
+          terminal, then reopen this panel.
+        </span>
+      </div>
+    );
+  }
+
+  const rows: {
+    key: "accessibility" | "screen";
+    ok: boolean;
+    label: string;
+    why: string;
+  }[] = [
+    {
+      key: "accessibility",
+      ok: perms.ax,
+      label: "Accessibility",
+      why: "Move the mouse, type, and read on-screen controls.",
+    },
+    {
+      key: "screen",
+      ok: perms.screen,
+      label: "Screen Recording",
+      why: "Take screenshots and read window titles.",
+    },
+  ];
+  const allOk = rows.every((r) => r.ok);
+
+  return (
+    <div className="mt-3 rounded-lg border border-border/60 bg-background/40 px-3 py-2.5">
+      <div className="flex items-center gap-1.5 text-[13px] font-medium">
+        <ShieldQuestion className="size-3.5 text-muted-foreground" />
+        System permissions
+        {allOk && (
+          <span className="ml-1 inline-flex items-center gap-1 text-[11px] font-normal text-emerald-600 dark:text-emerald-400">
+            <Check className="size-3" />
+            all set
+          </span>
+        )}
+      </div>
+      <p className="mt-0.5 text-[12px] text-muted-foreground">
+        Granted per app in System Settings → Privacy &amp; Security. macOS asks
+        once, so grant them here if you missed the prompt. After granting,
+        quit and reopen the app.
+      </p>
+      <div className="mt-2 space-y-1.5">
+        {rows.map((r) => (
+          <div key={r.key} className="flex items-center gap-2">
+            {r.ok ? (
+              <Check className="size-3.5 shrink-0 text-emerald-500" />
+            ) : (
+              <X className="size-3.5 shrink-0 text-destructive" />
+            )}
+            <span className="text-[12px] font-medium">{r.label}</span>
+            <span className="flex-1 truncate text-[12px] text-muted-foreground">
+              {r.why}
+            </span>
+            {!r.ok && (
+              <button
+                type="button"
+                onClick={() => void api()?.computer.openPrivacy?.(r.key)}
+                className="shrink-0 rounded-md border border-border/60 px-2 py-0.5 text-[11px] font-medium hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+              >
+                Open Settings
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function BridgePairing(): JSX.Element {
   const [status, setStatus] = useState<{
     connected: boolean;
@@ -430,11 +547,12 @@ export function AutomationSettings(): JSX.Element {
       <section className="pt-5">
         <SectionHeader
           title="Computer use"
-          description="The agent can take screenshots of your screen and control your mouse and keyboard. A multimodal model works from screenshots; a text-only model drives through the Windows accessibility tree. Some actions cannot be undone; close anything sensitive — the agent can see your screen."
+          description="The agent can take screenshots of your screen and control your mouse and keyboard. A multimodal model works from screenshots; a text-only model drives through the system accessibility tree. Some actions cannot be undone; close anything sensitive — the agent can see your screen."
           control={<Switch checked={computerOn} onChange={toggleComputer} />}
         />
         {computerOn && (
           <>
+            <MacPermissionChecklist />
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px]">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
               <span>
@@ -445,9 +563,9 @@ export function AutomationSettings(): JSX.Element {
             </div>
 
             <p className="mt-3 text-[12px] text-muted-foreground">
-              While the agent drives, a glowing frame marks the screen and this
-              window steps into the top-right corner. The frame never appears in
-              screenshots — not even the agent's own.
+              {isMacUi()
+                ? "While the agent drives, a glowing frame marks the screen. This window stays where you put it — it is excluded from screenshots, and clicks pass straight through the frame to whatever is underneath."
+                : "While the agent drives, a glowing frame marks the screen and this window steps into the top-right corner. The frame never appears in screenshots — not even the agent's own."}
             </p>
 
             {/* Dev only: firing the overlay by hand is for working ON it. */}

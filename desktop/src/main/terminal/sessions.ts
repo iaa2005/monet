@@ -29,6 +29,7 @@ import {
 import { getProjectRoot } from "../engine/state/state.js";
 import { addPodmanToPath, podmanBinDir } from "../sandbox/podman-binary.js";
 import { existsSync } from "fs";
+import { userInfo as osUserInfo } from "os";
 import { join } from "path";
 
 /**
@@ -114,7 +115,14 @@ function hostShell(): { file: string; args: string[] } {
   if (process.platform === "win32")
     // -NoLogo: the copyright banner is three lines of nothing every time.
     return { file: "powershell.exe", args: ["-NoLogo"] };
-  const sh = process.env.SHELL || "/bin/bash";
+  // GUI-launched apps on macOS inherit launchd's environment, which has no
+  // SHELL — so the env var alone would silently fall back to bash 3.2 while
+  // the user's actual login shell is zsh. userInfo() reads the user database
+  // (the same answer `dscl` gives), and is right in a terminal launch too.
+  const sh =
+    process.env.SHELL ||
+    osUserInfo().shell ||
+    (process.platform === "darwin" ? "/bin/zsh" : "/bin/bash");
   // Login shell, so the user's own PATH and aliases are there — the point of
   // a terminal in Code is that it behaves like their terminal.
   return { file: sh, args: ["-l"] };
@@ -224,7 +232,9 @@ export async function openTerminal(
     return {
       ok: false,
       error:
-        "The Pyodide sandbox has no shell (it runs in WebAssembly). Switch the engine to Podman or Subprocess in Settings → Sandbox.",
+        "The Pyodide sandbox has no shell (it runs in WebAssembly). Switch this chat's engine to " +
+        (process.platform === "darwin" ? "Seatbelt" : "Subprocess") +
+        " or Podman — the picker is in the Home header, next to the Files button.",
     };
   } else {
     const shell = hostShell();

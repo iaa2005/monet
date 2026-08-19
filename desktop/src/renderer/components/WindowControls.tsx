@@ -6,6 +6,24 @@ function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
+/** Space the macOS traffic lights occupy at the header's left edge. Rendered
+ * at the START of the title bar, before any button, on darwin only — and
+ * collapsed in fullscreen, where the system hides the lights and the header
+ * would otherwise keep a 72px hole at its edge. */
+export function MacTrafficLightInset(): JSX.Element {
+  const isMac = api()?.platform === "darwin";
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!isMac) return;
+    api()?.win.isFullScreen?.().then(setFullscreen).catch(() => {});
+    return api()?.win.onFullScreenChange?.(setFullscreen);
+  }, [isMac]);
+
+  if (!isMac || fullscreen) return <></>;
+  return <div aria-hidden className="h-full w-[72px] shrink-0" />;
+}
+
 /** Custom min / maximize-restore / close buttons for the frameless window.
  *
  * Rendered as a FIXED layer above everything (modals sit at z-50/60): the
@@ -14,11 +32,19 @@ function api(): ElectronAPI | undefined {
  * layout exactly where it was. */
 export function WindowControls(): JSX.Element {
   const [maximized, setMaximized] = useState(false);
+  const isMac = api()?.platform === "darwin";
 
   useEffect(() => {
+    if (isMac) return;
     api()?.win.isMaximized().then(setMaximized).catch(() => {});
     return api()?.win.onMaximizeChange(setMaximized);
-  }, []);
+  }, [isMac]);
+
+  // macOS draws its own traffic lights top-LEFT (positioned into the header
+  // by trafficLightPosition in main). Custom right-side buttons would give
+  // the window two sets of controls; the header instead reserves left space
+  // via MacTrafficLightInset.
+  if (isMac) return <></>;
 
   // 46px is the Windows caption-button width; the HEIGHT comes from the title
   // bar's own token, so a hover block can never overhang the bar again.

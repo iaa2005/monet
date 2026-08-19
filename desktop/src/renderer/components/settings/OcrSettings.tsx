@@ -194,7 +194,10 @@ export function OcrSettings(): React.JSX.Element {
                       m.secondsPerPage ? ` \u00b7 ~${m.secondsPerPage}s a page` : ""
                     }`
               }
-              selected={chosen && v.installed}
+              // Ringed because it IS the choice; the Download button says it
+              // is not here yet. Hiding the ring until it downloads used to
+              // leave the chosen row looking unchosen.
+              selected={chosen}
               needsDownload={!v.installed}
               progress={busy ? (progress?.percent ?? 0) : null}
               onClick={

@@ -22,6 +22,18 @@ import { dirname, join } from "path";
 import { getDataDir } from "../data-dir.js";
 import { tunablePrompt } from "../prompts/index.js";
 
+/**
+ * Off, out of the box.
+ *
+ * The per-turn pass is a MODEL call on the user's own key, fired every few
+ * minutes in every chat — a running cost that starts before anyone has asked
+ * for memory and that nothing in the UI is loud about. Explicit "remember
+ * this" and the nightly consolidation both work without it, so the feature is
+ * not absent by default, only its polling is. Anyone who wants the automatic
+ * pass turns it on in Settings → Memory and is choosing to spend on it.
+ */
+const DEFAULT_EXTRACT_MINUTES = 0;
+
 export interface MemoryConfig {
   searchChats: boolean;
   generateMemory: boolean;
@@ -79,10 +91,14 @@ export function getMemoryConfig(): MemoryConfig {
       // run" rather than silently resurrecting a per-turn request.
       extractEveryMinutes: Number.isFinite(mins)
         ? Math.min(Math.max(mins, 0), 240)
-        : 3,
+        : DEFAULT_EXTRACT_MINUTES,
     };
   } catch {
-    return { searchChats: true, generateMemory: true, extractEveryMinutes: 3 };
+    return {
+      searchChats: true,
+      generateMemory: true,
+      extractEveryMinutes: DEFAULT_EXTRACT_MINUTES,
+    };
   }
 }
 

@@ -19,6 +19,15 @@ function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
+/** macOS and Linux have no bare `python`/`pip` — the commands shown must be
+ * the ones that exist, or the first step fails before the cloner runs. */
+const isMac = ((): boolean => {
+  const p = (window as unknown as { electronAPI?: { platform?: string } })
+    .electronAPI?.platform;
+  return p !== "win32";
+})();
+
+
 const MAX_SECONDS = 40;
 const MIN_SECONDS = 8;
 
@@ -198,7 +207,11 @@ export function VoiceCloner({
         <div className="mt-2.5 space-y-1.5">
           <p className="text-[12px] text-muted-foreground">
             Ready in <span className="text-foreground">{ready.dir}</span>. Install
-            once (<code className="text-foreground">pip install -r requirements.txt</code>),
+            once (
+            <code className="text-foreground">
+              {isMac ? "pip3" : "pip"} install -r requirements.txt
+            </code>
+            ),
             then run — an hour on a CPU, and Ctrl-C keeps the best voice so far:
           </p>
           <div className="flex items-center gap-1.5">

@@ -60,8 +60,12 @@ ConvertTo-Json -Compress -InputObject $lines
 `;
 
 /** OCR a PNG on disk. Returns [] when the engine is missing or reading fails —
- * the vision fallback still has its boxes, just without words. */
+ * the vision fallback still has its boxes, just without words.
+ * Windows: Windows.Media.Ocr over WinRT. macOS: Apple's Vision framework via
+ * the compiled helper — the same "ships with the OS, no model to download"
+ * bargain, and it reads Russian well. */
 export function readImageText(pngPath: string): Promise<OcrLine[]> {
+  if (process.platform === "darwin") return readImageTextMac(pngPath);
   const script = SCRIPT_TEMPLATE.replace("__PATH__", pngPath.replace(/'/g, "''"));
   return new Promise((resolve) => {
     const child = spawn(
@@ -114,4 +118,16 @@ export function readImageText(pngPath: string): Promise<OcrLine[]> {
       }
     });
   });
+}
+
+async function readImageTextMac(pngPath: string): Promise<OcrLine[]> {
+  try {
+    const { runMac } = await import("./mac.js");
+    const r = await runMac(["ocr", pngPath], 20_000);
+    if (!r.ok) return [];
+    const parsed = JSON.parse(r.stdout) as OcrLine[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }

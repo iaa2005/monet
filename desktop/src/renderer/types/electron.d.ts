@@ -378,6 +378,22 @@ export interface GitInfo {
   untracked?: number;
 }
 
+export interface ComputerPermissions {
+  /** false on platforms with no per-app grants (Windows) — hide the checklist. */
+  supported: boolean;
+  ax: boolean;
+  screen: boolean;
+  helper: boolean;
+}
+
+export interface VoiceReadiness {
+  ready: boolean;
+  /** Hearing — the configured STT engine. */
+  stt: { ok: boolean; reason: string };
+  /** Speaking — the voice model and the chosen voice. */
+  tts: { ok: boolean; reason: string };
+}
+
 export interface ElectronAPI {
   platform: string;
   versions: { node: string; chrome: string; electron: string };
@@ -1034,6 +1050,9 @@ export interface ElectronAPI {
     }) => Promise<{ ok: boolean; text?: string; error?: string; ms?: number }>;
     onModelProgress: (cb: (p: InstallProgress) => void) => () => void;
   };
+  voice: {
+    readiness: () => Promise<VoiceReadiness>;
+  },
   tts: {
     available: () => Promise<boolean>;
     status: () => Promise<TtsStatus>;
@@ -1191,6 +1210,8 @@ export interface ElectronAPI {
       deniedApps?: string[];
     }) => Promise<{ enabled: boolean; deniedApps: string[] }>;
     overlayPreview: () => Promise<void>;
+    permissions: () => Promise<ComputerPermissions>;
+    openPrivacy: (pane: "accessibility" | "screen") => Promise<{ ok: boolean }>;
     onParked: (cb: (parked: boolean) => void) => () => void;
   };
   connectors: {
@@ -1497,6 +1518,8 @@ export interface ElectronAPI {
     newWindow: () => Promise<void>;
     isMaximized: () => Promise<boolean>;
     onMaximizeChange: (callback: (maximized: boolean) => void) => () => void;
+    isFullScreen: () => Promise<boolean>;
+    onFullScreenChange: (callback: (fullscreen: boolean) => void) => () => void;
   };
 }
 

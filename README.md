@@ -60,6 +60,11 @@ Every chat runs in one of two spaces, and the boundary is enforced when a tool
 Requirements: Node.js and npm. Dependencies live in `desktop/` — install from
 there, then use the root scripts.
 
+The app targets **Windows and macOS**. On macOS, `better-sqlite3` must be
+rebuilt for Electron's ABI once after install (`npx electron-rebuild -f -w
+better-sqlite3`), and Computer Use compiles its Swift helper with the Xcode
+Command Line Tools on first use (`xcode-select --install` if missing).
+
 ```shell
 cd desktop
 npm install

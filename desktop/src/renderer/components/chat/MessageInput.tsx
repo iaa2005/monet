@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { STORAGE_PREFIX } from "@shared/brand";
 import {
   AudioLines,
+  AlertTriangle,
   ArrowUp,
   ChevronDown,
   Check,
@@ -53,7 +54,7 @@ import {
   COMPOSER_DEFAULT_HEIGHT,
 } from "@shared/composer-height";
 import { cn } from "@/lib/utils";
-import type { ElectronAPI } from "@/types/electron";
+import type { ElectronAPI, VoiceReadiness } from "@/types/electron";
 
 type StagedFile = StagedAttachment;
 
@@ -245,6 +246,132 @@ function fileFromDataUrl(dataUrl: string | undefined, name: string): File | null
   } catch {
     return null;
   }
+}
+
+/**
+ * The Voice Mode button, and the door it refuses to open.
+ *
+ * Voice Mode needs a speech model to hear with and a voice to answer in, and
+ * neither ships with the app. Before this, pressing the button with nothing
+ * downloaded opened the conversation anyway: it listened, failed to
+ * transcribe, and said so in a small note — after the user had already
+ * started talking. So readiness is asked first, and when something is
+ * missing the button opens a menu that names WHICH part is missing and goes
+ * to the place that fixes it, instead of starting a conversation that cannot
+ * happen.
+ *
+ * Readiness is re-read on every press, not cached: the fix happens in
+ * Settings, in another panel, and a stale "not ready" would send the user
+ * back to a page where everything is already downloaded.
+ *
+ * That check is async, and Radix opens a menu from its trigger's pointerdown
+ * — synchronously, before any answer exists. Left alone it opened the "not
+ * set up" menu on EVERY press, including with every model downloaded, which
+ * is exactly the bug this component was added to prevent. Radix composes the
+ * trigger's handlers with checkForDefaultPrevented, so preventing the default
+ * on pointerdown and on the keys it opens with hands the decision back here;
+ * `open` is then driven only by what the check found.
+ */
+function VoiceModeButton({ disabled }: { disabled: boolean }): JSX.Element {
+  const [readiness, setReadiness] = useState<VoiceReadiness | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const enterVoiceMode = async (): Promise<void> => {
+    const st = useChatStore.getState();
+    // A zero-state chat has no id to anchor the conversation to — and an
+    // unanchored voice send goes to whatever chat is open when you finish
+    // talking. Make the session first.
+    if (!st.currentSessionId) {
+      const s = (await api()?.sessions.create("New Session", st.space)) as
+        | { id: string }
+        | undefined;
+      if (s?.id) {
+        st.setCurrentSessionId(s.id);
+        st.bumpSessions();
+        const ws = await api()?.workspace.get().catch(() => null);
+        if (ws) void api()?.sessions.setWorkspace(s.id, ws);
+      }
+    }
+    useChatStore.getState().setVoiceModeOpen(true);
+  };
+
+  const press = (): void => {
+    void (async () => {
+      // Optional all the way down: a renderer running against an older
+      // preload has no `voice` key, and reading through it must not throw
+      // where a missing answer is already handled.
+      const r = (await api()?.voice?.readiness?.().catch(() => null)) ?? null;
+      // No answer at all (an older main, an IPC error) is not a reason to
+      // block the feature — fall through to the conversation, which has its
+      // own error note.
+      if (!r || r.ready) {
+        await enterVoiceMode();
+        return;
+      }
+      setReadiness(r);
+      setMenuOpen(true);
+    })();
+  };
+
+  const missing = [
+    readiness?.stt.ok === false ? readiness.stt.reason : null,
+    readiness?.tts.ok === false ? readiness.tts.reason : null,
+  ].filter((m): m is string => !!m);
+
+  return (
+    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          title={
+            disabled
+              ? "Voice Mode уже работает в другом чате"
+              : "Voice Mode — разговор голосом"
+          }
+          disabled={disabled}
+          // Radix opens on pointerdown; preventing the default there stops it
+          // (its own handler is skipped when the event is already defaulted)
+          // and leaves `open` to press().
+          onPointerDown={(e) => e.preventDefault()}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" && e.key !== " " && e.key !== "ArrowDown")
+              return;
+            e.preventDefault();
+            press();
+          }}
+          onClick={() => press()}
+          className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground disabled:opacity-40 dark:hover:bg-white/[0.08]"
+        >
+          <AudioLines className="size-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-72">
+        <DropdownMenuLabel>Voice Mode is not set up yet</DropdownMenuLabel>
+        <div className="px-2 pb-1.5 text-[12px] leading-relaxed text-muted-foreground">
+          Talking needs a speech model to hear you and a voice to answer in.
+          Neither ships with the app — download them once in Settings and this
+          button starts a conversation.
+        </div>
+        {missing.length > 0 && (
+          <div className="space-y-1 px-2 pb-2">
+            {missing.map((m) => (
+              <div key={m} className="flex items-start gap-1.5 text-[12px]">
+                <AlertTriangle className="mt-0.5 size-3 shrink-0 text-amber-500" />
+                <span>{m}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => useChatStore.getState().requestOpenSettings("voice")}
+        >
+          <Settings className="size-4 shrink-0" />
+          Open voice settings
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 export function MessageInput({
@@ -1839,39 +1966,7 @@ export function MessageInput({
               <Plus className="size-4" />
             </button>
             <MicButton onText={appendDictated} />
-            <button
-              type="button"
-              title={
-                voiceBusyElsewhere
-                  ? "Voice Mode уже работает в другом чате"
-                  : "Voice Mode — разговор голосом"
-              }
-              disabled={voiceBusyElsewhere}
-              onClick={() => {
-                void (async () => {
-                  const st = useChatStore.getState();
-                  // A zero-state chat has no id to anchor the conversation
-                  // to — and an unanchored voice send goes to whatever chat
-                  // is open when you finish talking. Make the session first.
-                  if (!st.currentSessionId) {
-                    const s = (await api()?.sessions.create(
-                      "New Session",
-                      st.space,
-                    )) as { id: string } | undefined;
-                    if (s?.id) {
-                      st.setCurrentSessionId(s.id);
-                      st.bumpSessions();
-                      const ws = await api()?.workspace.get().catch(() => null);
-                      if (ws) void api()?.sessions.setWorkspace(s.id, ws);
-                    }
-                  }
-                  useChatStore.getState().setVoiceModeOpen(true);
-                })();
-              }}
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-black/[0.06] hover:text-foreground disabled:opacity-40 dark:hover:bg-white/[0.08]"
-            >
-              <AudioLines className="size-4" />
-            </button>
+            <VoiceModeButton disabled={voiceBusyElsewhere} />
           </div>
 
           <div className="flex min-w-0 items-center gap-1.5">

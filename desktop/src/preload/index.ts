@@ -968,6 +968,15 @@ const electronAPI = {
     },
   },
 
+  /** Is Voice Mode usable yet — see main/ipc/voice.ts for what it requires. */
+  voice: {
+    readiness: (): Promise<{
+      ready: boolean;
+      stt: { ok: boolean; reason: string };
+      tts: { ok: boolean; reason: string };
+    }> => ipcRenderer.invoke("voice:readiness"),
+  },
+
   /** On-device voice (Supertonic 3) — synthesis in main, playback here. */
   tts: {
     available: (): Promise<boolean> => ipcRenderer.invoke("tts:available"),
@@ -1208,6 +1217,14 @@ const electronAPI = {
       ipcRenderer.invoke("computer:setConfig", patch),
     overlayPreview: (): Promise<void> =>
       ipcRenderer.invoke("computer:overlayPreview"),
+    permissions: (): Promise<{
+      supported: boolean;
+      ax: boolean;
+      screen: boolean;
+      helper: boolean;
+    }> => ipcRenderer.invoke("computer:permissions"),
+    openPrivacy: (pane: "accessibility" | "screen"): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("computer:openPrivacy", pane),
     /** True while the window is parked in the corner for a Computer Use run. */
     onParked: (cb: (parked: boolean) => void): (() => void) => {
       const handler = (_e: unknown, parked: boolean): void => cb(parked);
@@ -1659,6 +1676,16 @@ const electronAPI = {
         callback(maximized);
       ipcRenderer.on("window:maximized", handler);
       return () => ipcRenderer.removeListener("window:maximized", handler);
+    },
+    isFullScreen: (): Promise<boolean> =>
+      ipcRenderer.invoke("window:isFullScreen"),
+    onFullScreenChange: (
+      callback: (fullscreen: boolean) => void,
+    ): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, fs: boolean) =>
+        callback(fs);
+      ipcRenderer.on("window:fullscreen", handler);
+      return () => ipcRenderer.removeListener("window:fullscreen", handler);
     },
   },
 };

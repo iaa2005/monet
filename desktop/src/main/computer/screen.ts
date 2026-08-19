@@ -112,6 +112,33 @@ export async function captureScreen(
 }
 
 /** Convert model-image coordinates to virtual desktop coordinates. */
+/**
+ * The point handed to the INPUT layer, from a point in the tool's space.
+ *
+ * The tool's whole space is DIP — screenshots, the accessibility tree and the
+ * vision fallback all report there. Windows' input layer is per-monitor-DPI
+ * aware and wants physical pixels, so Electron converts; every other platform
+ * already speaks the same units and must pass through UNCHANGED.
+ *
+ * It lives here, as one function, because it was once inline in the tool and
+ * the macOS branch simply forgot to assign — every click went to [0, 0] and
+ * the pointer sat in the corner of the screen. A pass-through is easy to omit
+ * when it is spelled as "do nothing".
+ */
+export function toInputPoint(p: { x: number; y: number }): { x: number; y: number } {
+  if (process.platform !== "win32") return { x: p.x, y: p.y };
+  const phys = screen.dipToScreenPoint({ x: p.x, y: p.y });
+  return { x: phys.x, y: phys.y };
+}
+
+/** The inverse of toInputPoint: a point from the input layer, in the tool's
+ * space. Same rule, same reason — screenToDipPoint is Windows-only too. */
+export function fromInputPoint(p: { x: number; y: number }): { x: number; y: number } {
+  if (process.platform !== "win32") return { x: p.x, y: p.y };
+  const dip = screen.screenToDipPoint({ x: p.x, y: p.y });
+  return { x: dip.x, y: dip.y };
+}
+
 export function toScreenCoord(
   x: number,
   y: number,

@@ -14,6 +14,30 @@ import { getDataSubdir } from "../data-dir.js";
 const DEBUG_PORT = 9333;
 
 function candidates(): string[] {
+  if (process.platform === "darwin") {
+    const home = process.env.HOME ?? "";
+    const mac = (app: string, bin: string): string =>
+      join("/Applications", app, "Contents", "MacOS", bin);
+    return [
+      process.env.CHROME_PATH,
+      mac("Google Chrome.app", "Google Chrome"),
+      home ? join(home, mac("Google Chrome.app", "Google Chrome")) : "",
+      mac("Chromium.app", "Chromium"),
+      // Edge is Chromium too — same CDP.
+      mac("Microsoft Edge.app", "Microsoft Edge"),
+      mac("Brave Browser.app", "Brave Browser"),
+    ].filter((c): c is string => !!c);
+  }
+  if (process.platform === "linux") {
+    return [
+      process.env.CHROME_PATH,
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser",
+      "/usr/bin/microsoft-edge",
+    ].filter((c): c is string => !!c);
+  }
   const pf = process.env.ProgramFiles ?? "C:\\Program Files";
   const pf86 = process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)";
   const local = process.env.LOCALAPPDATA ?? "";

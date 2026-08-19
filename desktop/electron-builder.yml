@@ -30,6 +30,10 @@ extraResources:
   # to Chrome's "Load unpacked", which cannot read inside app.asar.
   - from: resources/browser-extension
     to: browser-extension
+  # macOS Computer Use: Swift source compiled on the user's machine at first
+  # use (see src/main/computer/mac.ts) — swiftc reads it from disk.
+  - from: resources/mac-computer
+    to: mac-computer
 # Native binaries can't be spawned from inside app.asar — keep them on disk
 # (spawn paths swap app.asar → app.asar.unpacked at runtime).
 asarUnpack:
@@ -57,8 +61,41 @@ win:
   forceCodeSigning: false
   # signAndEditExecutable defaults to true — rcedit embeds build/icon.ico into the .exe
 mac:
-  target: dmg
+  # zip is NOT optional: electron-updater on macOS updates FROM the zip; a
+  # dmg-only publish leaves the packaged app silently unable to update.
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
   icon: build/icon.png
+  category: public.app-category.developer-tools
+  # Hardened runtime is what notarization requires; the entitlements poke the
+  # holes Electron + our native addons (onnxruntime, sherpa-onnx, node-pty,
+  # better-sqlite3) need to run under it.
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: >-
+      Dictation and the voice cloner record from the microphone. Audio is
+      processed on this Mac.
+    # Computer Use reads the screen and the accessibility tree. macOS asks for
+    # these once, and an app with no usage string is refused without a prompt.
+    NSAppleEventsUsageDescription: >-
+      Computer Use controls other applications on your behalf — opening
+      documents, typing and clicking — only while you have it switched on.
+    # Screen Recording has no dedicated key; the capture APIs prompt on first
+    # use. This one covers the accessibility tree the text-only path reads.
+    NSAccessibilityUsageDescription: >-
+      Computer Use reads on-screen controls and moves the pointer and keyboard,
+      only while you have it switched on.
+  # Signing/notarization: works unsigned for local use (Gatekeeper will
+  # quarantine downloads). For distribution set CSC_LINK/CSC_KEY_PASSWORD
+  # (Developer ID cert) and notarize:
+  #   notarize: { teamId: <TEAM_ID> }  + APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD
+dmg:
+  writeUpdateInfo: false
 linux:
   target: AppImage
   icon: build/icon.png

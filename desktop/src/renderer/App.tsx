@@ -63,7 +63,7 @@ import { DockArea } from "@/dock/DockArea";
 import { DOCK_PANEL_IDS, useDockStore } from "@/dock/dock-store";
 import type { DockPanelId } from "@/dock/dock-layout";
 import { SubAgentTranscript } from "@/components/chat/ToolCallBubble";
-import { WindowControls } from "@/components/WindowControls";
+import { MacTrafficLightInset, WindowControls } from "@/components/WindowControls";
 import { ObsidianIcon } from "@/components/ObsidianIcon";
 import { firstRunVerdict } from "@/lib/first-run";
 import { BetaBadge } from "@/components/BetaBadge";
@@ -95,6 +95,7 @@ import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useChatStore, expandedSubAgentCall } from "@/stores/chatStore";
 import { subAgentView } from "@/lib/subagent";
 import { VoiceMode } from "@/components/chat/VoiceMode";
+import { RecommendedChip } from "@/components/settings/RecommendedChip";
 import { cn } from "@/lib/utils";
 import { RoutinesList } from "@/components/RoutinesList";
 import type { ChatMessage } from "@/types/chat";
@@ -179,17 +180,42 @@ function IconBtn({
   );
 }
 
+/** Platform of the host process, as the preload reports it. Read at module
+ * scope: it cannot change while the window is open. */
+function isMacUi(): boolean {
+  return (
+    (window as unknown as { electronAPI?: { platform?: string } }).electronAPI
+      ?.platform === "darwin"
+  );
+}
+
 /** Per-chat sandbox-engine picker labels (Home header). */
 const ENGINE_LABEL: Record<"pyodide" | "subprocess" | "docker", string> = {
   pyodide: "Pyodide",
-  subprocess: "Subprocess",
+  // Named for what fences it, not for how it is spawned: on macOS this engine
+  // IS Seatbelt, and "Subprocess" undersold it as the unprotected option.
+  // The stored id stays "subprocess" — this is a label, not a new engine.
+  subprocess: isMacUi() ? "Seatbelt" : "Subprocess",
   docker: "Podman",
 };
 const ENGINE_DESC: Record<"pyodide" | "subprocess" | "docker", string> = {
   pyodide: "WebAssembly · isolated · no shell",
-  subprocess: "Host Python/Node · weak isolation",
+  // macOS fences this one with Seatbelt (sandbox-exec): writes outside the
+  // chat folder are refused by the kernel, which is a different bargain from
+  // the bare host process every other platform gets.
+  subprocess: isMacUi()
+    ? "Host Python/Node · macOS sandbox"
+    : "Host Python/Node · weak isolation",
   docker: "Container · full shell, pip, LaTeX",
 };
+
+/** The engine we steer people to, when one is clearly better here. On macOS
+ * that is Subprocess: real Python and pip, with the OS refusing writes outside
+ * the chat folder — Pyodide's isolation without its package limits. Elsewhere
+ * the subprocess engine has no such fence, so nothing is recommended. */
+const RECOMMENDED_ENGINE: "pyodide" | "subprocess" | "docker" | null = isMacUi()
+  ? "subprocess"
+  : null;
 
 /**
  * The unselected Home/Code tab — one string, because it is worn by both and
@@ -942,8 +968,13 @@ export default function App(): JSX.Element {
       if (sid) {
         void api()?.sandbox.setSessionConfig(sid, engine);
       } else {
-        // No session yet: hold the choice, send() applies it at birth.
+        // No session yet. Hold the choice for the session's birth AND pin it
+        // on the "default" scope the zero state actually runs in — the
+        // terminal, Run Python and the file tree all address that id before
+        // the first send, so without this the picker looked applied and the
+        // terminal still refused with "Pyodide has no shell".
         useChatStore.getState().setPendingSandboxEngine(engine);
+        void api()?.sandbox.setSessionConfig("", engine);
       }
     },
     [currentSessionId],
@@ -1614,6 +1645,7 @@ export default function App(): JSX.Element {
           incognito && "bg-card text-card-foreground rounded-t-xl",
         )}
       >
+        <MacTrafficLightInset />
         {!incognito && (
           <span
             className="app-no-drag"
@@ -1733,7 +1765,10 @@ export default function App(): JSX.Element {
                       )}
                     />
                     <div className="flex flex-col">
-                      <span>{ENGINE_LABEL[e]}</span>
+                      <span className="flex items-center gap-1.5">
+                        {ENGINE_LABEL[e]}
+                        {RECOMMENDED_ENGINE === e && <RecommendedChip />}
+                      </span>
                       <span className="text-[11px] text-muted-foreground">
                         {ENGINE_DESC[e]}
                       </span>

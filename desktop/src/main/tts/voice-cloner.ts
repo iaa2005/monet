@@ -118,7 +118,12 @@ export function prepareCloner(p: {
       // and continuing it for forty-five more reached 0.886 — against 0.92 for
       // the same style spoken twice, which is the metric's own noise. Twenty
       // minutes hands back half the voice the model can manage.
-      `python clone.py voice.wav --name "${stem}" --lang ${p.lang} ` +
+      // `python3` off Windows. macOS ships no bare `python` (and Homebrew
+      // installs only `python3`), so the handed-over command failed with
+      // "command not found" before the cloner could say anything — on Windows
+      // the opposite is true, where `python3` is the App Store stub.
+      `${process.platform === "win32" ? "python" : "python3"} clone.py ` +
+      `voice.wav --name "${stem}" --lang ${p.lang} ` +
       `--minutes 60 --models "${models}"`,
     seconds: p.samples.length / p.sampleRate,
   };

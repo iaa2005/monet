@@ -10,6 +10,13 @@
  *
  * One component, so they cannot drift again — and so "make it look like Voice"
  * is a one-line change rather than a re-draw.
+ *
+ * One rule about the state glyph is worth stating, because getting it backwards
+ * cost a real user a download they could not find: "not here yet" OUTRANKS
+ * "chosen". A model that ships pre-selected but undownloaded was drawing the
+ * same tick as one sitting on disk, so the row read as ready and the only way
+ * to start the download was to click a row that already looked chosen. Absence
+ * now shows as a labelled Download button, whether or not the row is selected.
  */
 
 import type { ComponentType, ReactNode } from "react";
@@ -24,8 +31,11 @@ export function PickCard({
   badge,
   description,
   selected = false,
-  /** Shows the download glyph: here to be chosen, not here yet. */
+  /** Not on the machine yet. Draws the Download button and outranks the tick. */
   needsDownload = false,
+  /** What the Download button does. Defaults to onClick, since every picker
+   * that has one already installs on row click. */
+  onDownload,
   busy = false,
   disabled = false,
   /** 0…100 while something downloads. Takes the place of the state glyph and
@@ -45,6 +55,7 @@ export function PickCard({
   description?: ReactNode;
   selected?: boolean;
   needsDownload?: boolean;
+  onDownload?: () => void;
   busy?: boolean;
   disabled?: boolean;
   progress?: number | null;
@@ -96,6 +107,11 @@ export function PickCard({
             </span>
           )}
           {children}
+          {selected && needsDownload && !downloading && !busy && (
+            <span className="mt-1 block text-[11px] font-medium leading-snug text-amber-600 dark:text-amber-400">
+              Chosen, but not on your machine yet — download it to use it.
+            </span>
+          )}
         </span>
       </button>
         {busy ? (
@@ -104,10 +120,21 @@ export function PickCard({
           <span className="mt-1 shrink-0 text-[11px] tabular-nums text-muted-foreground">
             {progress}%
           </span>
+        ) : needsDownload ? (
+          // A button with a word on it, not a hint glyph: this is the one
+          // action the row needs and it must not depend on guessing that the
+          // row is clickable.
+          <button
+            type="button"
+            onClick={onDownload ?? onClick}
+            disabled={disabled || !(onDownload ?? onClick)}
+            className="mt-0.5 flex shrink-0 items-center gap-1 rounded-md border border-border/70 px-1.5 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-black/[0.05] disabled:opacity-50 dark:hover:bg-white/[0.07]"
+          >
+            <Download className="size-3" />
+            Download
+          </button>
         ) : selected ? (
           <Check className="mt-1.5 size-4 shrink-0 text-brand" />
-        ) : needsDownload ? (
-          <Download className="mt-1.5 size-3.5 shrink-0 text-muted-foreground/60" />
         ) : null}
         {trailing}
       </div>

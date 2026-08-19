@@ -45,6 +45,7 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI } from "@/types/electron";
 import { PickCard } from "@/components/settings/PickCard";
+import { RecommendedChip } from "@/components/settings/RecommendedChip";
 import { SandboxImageSettings } from "@/components/settings/SandboxImageSettings";
 import {
   SectionHeader,
@@ -176,6 +177,7 @@ const SANDBOX_ENGINES: {
   blurb: string;
   icon: LucideIcon;
   warn?: boolean;
+  recommend?: boolean;
   disabled?: boolean;
 }[] = [
   {
@@ -188,19 +190,35 @@ const SANDBOX_ENGINES: {
   {
     id: "subprocess",
     icon: TerminalSquare,
-    title: "Local subprocess (real Python / Node)",
-    blurb:
-      "Runs real python/node in a per-chat temp folder. Full power, but code executes on your machine WITHOUT hard isolation — use only with models you trust.",
-    warn: true,
+    title: isMacRenderer()
+      ? "Seatbelt (real Python / Node, sandboxed by macOS)"
+      : "Local subprocess (real Python / Node)",
+    blurb: isMacRenderer()
+      ? "Runs real python/node in a per-chat folder, fenced by macOS's built-in sandbox (Seatbelt): writing outside the chat folder is blocked. Reads and network stay open — use with models you trust."
+      : "Runs real python/node in a per-chat temp folder. Full power, but code executes on your machine WITHOUT hard isolation — use only with models you trust.",
+    // The amber flag is about running unfenced on the host. macOS fences it
+    // (Seatbelt refuses writes outside the chat folder), so there the honest
+    // reading flips: it is the engine to pick. Reads and network are still
+    // open — the callout under the list says so either way.
+    warn: !isMacRenderer(),
+    recommend: isMacRenderer(),
   },
   {
     id: "docker",
     icon: Container,
     title: "Podman container",
-    blurb:
-      "Real Python + Node + LaTeX (tectonic) in an isolated container. The portable Podman CLI is provisioned automatically — no manual install. The Linux backend (WSL2) and the shared image build once on first use; chats then add only copy-on-write layers, not gigabytes.",
+    blurb: isMacRenderer()
+      ? "Real Python + Node + LaTeX (tectonic) in an isolated container. Needs Podman once: brew install podman, then podman machine init && podman machine start — the app finds it from there."
+      : "Real Python + Node + LaTeX (tectonic) in an isolated container. The portable Podman CLI is provisioned automatically — no manual install. The Linux backend (WSL2) and the shared image build once on first use; chats then add only copy-on-write layers, not gigabytes.",
   },
 ];
+
+function isMacRenderer(): boolean {
+  return (
+    (window as unknown as { electronAPI?: { platform?: string } }).electronAPI
+      ?.platform === "darwin"
+  );
+}
 
 function SandboxSection(): JSX.Element {
   const [engine, setEngine] = useState<string>("pyodide");
@@ -288,6 +306,7 @@ function SandboxSection(): JSX.Element {
               badge={
                 <>
                   {e.warn && <AlertTriangle className="size-3.5 text-amber-500" />}
+                  {e.recommend && <RecommendedChip />}
                   {e.disabled && (
                     <span className="rounded-full bg-black/[0.06] px-1.5 py-0.5 text-[10px] text-muted-foreground dark:bg-white/[0.08]">
                       soon
@@ -308,10 +327,10 @@ function SandboxSection(): JSX.Element {
         <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-[13px]">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
           <span>
-            <span className="font-medium">Heads up:</span> local subprocess runs
-            model-generated code on your computer without a hard sandbox. It can
-            read and write files and reach the network. Only use it with models
-            you trust.
+            <span className="font-medium">Heads up:</span>{" "}
+            {isMacRenderer()
+              ? "Seatbelt runs model-generated code on your computer. macOS blocks writes outside the chat folder, but code can still read your files and reach the network. Use it with models you trust."
+              : "local subprocess runs model-generated code on your computer without a hard sandbox. It can read and write files and reach the network. Only use it with models you trust."}
           </span>
         </div>
       )}
