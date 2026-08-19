@@ -616,24 +616,33 @@ export const ComputerTool = buildTool({
                 isError: true,
               },
             };
-          // Say when the text could not be confirmed to have landed. The
-          // helper reads the focused element back; some targets (a
-          // spreadsheet grid, a canvas) publish no value to read, and some
-          // simply do not accept synthetic keystrokes — in the reported Excel
-          // run every cell answered "Typed 7 chars" against an empty sheet.
-          // One warning after the FIRST cell is the difference between a
-          // mistake and twenty turns of them.
+          // Say when the text could not be confirmed to have landed — the
+          // helper reads the focused element back, and a spreadsheet grid or
+          // canvas publishes nothing to read. In that case the verification
+          // the model would request next is done HERE and returned with the
+          // result: a real Excel run spent one extra turn per cell asking for
+          // a screen read after every single "unverified", and forty turns
+          // ran out mid-table. Same shape as the click actions, which have
+          // always auto-verified.
+          if (r.unverified) {
+            await new Promise((res) => setTimeout(res, 350));
+            const state = blind()
+              ? await describeScreen(
+                  `Sent ${text.length} chars. This target does not report its ` +
+                    "contents, so the screen was re-read for you — check the state " +
+                    "below (a spreadsheet shows the active cell in its formula " +
+                    "bar) instead of asking for another read. If the text is not " +
+                    "there, the app refuses synthetic keystrokes; click or use a " +
+                    "scripted route.",
+                )
+              : await takeScreenshot(
+                  sessionId,
+                  `Sent ${text.length} chars (unconfirmed — check the screenshot).`,
+                );
+            return { data: state };
+          }
           return {
-            data: {
-              text: r.unverified
-                ? `Sent ${text.length} chars, but could not confirm they arrived — ` +
-                  "this target does not report its contents. Verify before typing " +
-                  "more: take a screenshot, or read the value back another way. If " +
-                  "the text is not there, the app is refusing synthetic keystrokes " +
-                  "and clicking or a scripted route is the way in."
-                : `Typed ${text.length} chars.`,
-              isError: false,
-            },
+            data: { text: `Typed ${text.length} chars.`, isError: false },
           };
         }
         case "key": {
