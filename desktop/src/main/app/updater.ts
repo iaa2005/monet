@@ -48,10 +48,31 @@ function setState(next: UpdateState): void {
   if (win && !win.isDestroyed()) win.webContents.send("update:state", next);
 }
 
-/** The engine, loaded lazily — it reads app-update.yml at import time. */
+/**
+ * The engine, loaded lazily — it reads app-update.yml at import time.
+ *
+ * Reached through `default` as well as the named export, and this is the whole
+ * reason auto-update never worked in a packaged build: electron-updater is
+ * CommonJS, and it publishes `autoUpdater` through a defined getter that
+ * cjs-module-lexer cannot see. In dev (vite, ESM interop) the named import
+ * resolves; in the packaged app `await import(...)` hands back a namespace
+ * whose only real member is `default`, so `const { autoUpdater } = …` was
+ * undefined, every call threw "Cannot read properties of undefined (reading
+ * 'checkForUpdates')", and the catch turned it into a console line nobody
+ * reads. Measured on the installed 0.1.3 over CDP: state idle, manual check →
+ * that exact error. No check ever ran, which is why no pill ever appeared.
+ */
 async function updater(): Promise<typeof import("electron-updater").autoUpdater> {
-  const { autoUpdater } = await import("electron-updater");
-  return autoUpdater;
+  const mod = (await import("electron-updater")) as unknown as {
+    autoUpdater?: typeof import("electron-updater").autoUpdater;
+    default?: { autoUpdater?: typeof import("electron-updater").autoUpdater };
+  };
+  const au = mod.autoUpdater ?? mod.default?.autoUpdater;
+  if (!au)
+    throw new Error(
+      "electron-updater loaded without an autoUpdater — the app cannot check for updates",
+    );
+  return au;
 }
 
 export function startAutoUpdater(): void {
@@ -156,10 +177,14 @@ export function startAutoUpdater(): void {
       check();
       setInterval(check, CHECK_EVERY_MS);
     } catch (err) {
+      // Not a console line this time. When the engine itself cannot be
+      // reached, the app can never offer an update again in this run, and the
+      // one surface that would have said so is the pill.
       console.warn(
         "[updater] unavailable:",
         err instanceof Error ? err.message : err,
       );
+      setState({ status: "error", message: describeError(err) });
     }
   })();
 }
