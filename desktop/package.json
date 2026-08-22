@@ -168,7 +168,8 @@
     "smoke:voiceready": "node scripts/smoke-agent.mjs scripts/voice-readiness-probe.ts",
     "smoke:pickcard": "node scripts/renderer-probe.mjs scripts/pick-card-probe.ts",
     "smoke:voicebutton": "node scripts/renderer-probe.mjs scripts/voice-button-probe.ts",
-    "smoke:inputpoint": "node scripts/smoke-agent.mjs scripts/input-point-probe.ts"
+    "smoke:inputpoint": "node scripts/smoke-agent.mjs scripts/input-point-probe.ts",
+    "smoke:toolschema": "node scripts/smoke-agent.mjs scripts/tool-schema-probe.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.3.0",

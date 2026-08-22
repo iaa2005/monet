@@ -123,7 +123,14 @@ const schema = lazySchema(() =>
         z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
         // Models guess [x, y, width, height] about as often as the object —
         // a real session burned a turn on the validation error. Take both.
-        z.tuple([z.number(), z.number(), z.number(), z.number()]),
+        //
+        // A length-bounded array rather than z.tuple(): a tuple becomes
+        // `prefixItems` in JSON Schema, and Google's function-calling schema
+        // knows no such keyword — it sees an array with no `items` and refuses
+        // the whole request ("function_declarations[25].parameters.properties
+        // [region].any_of[1].items: missing field"), which lands as a dead
+        // session on any Gemini model, through OpenRouter or direct.
+        z.array(z.number()).min(4).max(4),
       ])
       .optional()
       .describe(
