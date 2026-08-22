@@ -645,6 +645,8 @@ export interface ElectronAPI {
     /** What the updater is doing right now — nothing happens unasked. */
     state: () => Promise<UpdateState>;
     check: () => Promise<UpdateState>;
+    /** The version running right now. */
+    currentVersion: () => Promise<string>;
     /** Start the download the user just agreed to. */
     download: () => Promise<UpdateState>;
     /** Relaunch into the downloaded version (it also installs on quit). */

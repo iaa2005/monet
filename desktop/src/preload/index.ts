@@ -338,6 +338,8 @@ const electronAPI = {
      * error. Nothing downloads until download() is called. */
     state: (): Promise<UpdateState> => ipcRenderer.invoke("update:state"),
     check: (): Promise<UpdateState> => ipcRenderer.invoke("update:check"),
+    /** The version running right now. */
+    currentVersion: (): Promise<string> => ipcRenderer.invoke("update:current"),
     download: (): Promise<UpdateState> => ipcRenderer.invoke("update:download"),
     install: (): Promise<void> => ipcRenderer.invoke("update:install"),
     onState: (callback: (state: UpdateState) => void): (() => void) => {

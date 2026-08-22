@@ -56,6 +56,9 @@ async function updater(): Promise<typeof import("electron-updater").autoUpdater>
 
 export function startAutoUpdater(): void {
   ipcMain.handle("update:state", () => state);
+  // What is running right now. The About panel says it beside the check, so
+  // "am I on the latest?" has both halves of the answer in one place.
+  ipcMain.handle("update:current", () => app.getVersion());
 
   ipcMain.handle("update:check", async (): Promise<UpdateState> => {
     if (!app.isPackaged) return state;

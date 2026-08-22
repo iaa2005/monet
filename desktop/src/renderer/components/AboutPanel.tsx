@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { ExternalLink } from "@/components/icons/hg";
+import { ExternalLink, Download, RotateCw } from "@/components/icons/hg";
+import { useUpdateState } from "@/lib/updates";
 
 const RAW = "https://cdn.jsdelivr.net/gh/iaa2005/monet-paintings@main";
 
@@ -10,6 +11,77 @@ interface Painting {
   width: number;
   height: number;
   aspect_ratio: number;
+}
+
+/**
+ * The version, and a way to ask about updates.
+ *
+ * The automatic check says nothing when it finds nothing — which is right for
+ * a pill that exists to interrupt, and useless to someone wondering whether
+ * the app still checks at all ("I don't see the update button"). Here the
+ * question can be asked out loud, and every answer is an answer: up to date,
+ * a version to download, or why the check failed.
+ */
+function UpdateRow(): JSX.Element {
+  const { state, current, checking, check, download, install } = useUpdateState();
+
+  const line = (): JSX.Element => {
+    switch (state.status) {
+      case "available":
+        return (
+          <button
+            type="button"
+            onClick={download}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-link hover:underline"
+          >
+            <Download className="size-3.5" />
+            Download {state.version}
+          </button>
+        );
+      case "downloading":
+        return (
+          <span className="text-sm text-muted-foreground">
+            Downloading {state.version} — {state.percent}%
+          </span>
+        );
+      case "ready":
+        return (
+          <button
+            type="button"
+            onClick={install}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-link hover:underline"
+          >
+            <RotateCw className="size-3.5" />
+            Relaunch to update to {state.version}
+          </button>
+        );
+      case "error":
+        return (
+          <span className="text-sm text-amber-600 dark:text-amber-400">
+            {state.message}
+          </span>
+        );
+      default:
+        return (
+          <button
+            type="button"
+            onClick={() => void check()}
+            disabled={checking}
+            className="text-sm font-medium text-link hover:underline disabled:opacity-60"
+          >
+            {checking ? "Checking…" : "Check for updates"}
+          </button>
+        );
+    }
+  };
+
+  return (
+    <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+      <span>Version {current || "…"}</span>
+      <span aria-hidden>·</span>
+      {line()}
+    </div>
+  );
 }
 
 export function AboutPanel(): JSX.Element {
@@ -69,6 +141,7 @@ export function AboutPanel(): JSX.Element {
           Code Monet on GitHub
           <ExternalLink className="size-3.5" />
         </a>
+        <UpdateRow />
       </div>
     </div>
   );
@@ -113,6 +186,7 @@ export function AboutPanel(): JSX.Element {
               Code Monet on GitHub
               <ExternalLink className="size-3.5" />
             </a>
+            <UpdateRow />
           </div>
           <div className="shrink-0 self-end text-right">
             <div className="text-sm text-muted-foreground">

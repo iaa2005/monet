@@ -14,32 +14,20 @@
 
 import { useEffect, useState, type JSX } from "react";
 import { ArrowRight, Download, RotateCw, X } from "@/components/icons/hg";
-import type { ElectronAPI, UpdateState } from "@/types/electron";
-
-function api(): ElectronAPI | undefined {
-  return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
-}
+import { useUpdateState } from "@/lib/updates";
 
 const MB = (bytes?: number): string | null =>
   bytes && bytes > 0 ? `${(bytes / (1024 * 1024)).toFixed(0)} MB` : null;
 
 export function UpdatePill(): JSX.Element | null {
-  const [state, setState] = useState<UpdateState>({ status: "idle" });
+  const { state, check, download, install } = useUpdateState();
   // Hidden for this run only. The download is already on disk by then, and
   // the app installs it on quit — so this is "not now", not "never".
   const [hidden, setHidden] = useState(false);
 
-  useEffect(() => {
-    // Ask once (the state may predate this window), then listen.
-    void api()
-      ?.updates?.state()
-      .then((s) => s && setState(s))
-      .catch(() => {});
-    return api()?.updates?.onState((s) => {
-      setState(s);
-      setHidden(false);
-    });
-  }, []);
+  // A new state is news again: a pill dismissed while it said "failed" must
+  // come back when the download it is talking about starts working.
+  useEffect(() => setHidden(false), [state.status]);
 
   if (hidden) return null;
   if (state.status === "idle" || state.status === "checking") return null;
@@ -70,7 +58,7 @@ export function UpdatePill(): JSX.Element | null {
 
   if (state.status === "ready")
     return (
-      <button type="button" onClick={() => void api()?.updates?.install()} className={row}>
+      <button type="button" onClick={install} className={row}>
         <RotateCw className="size-4 shrink-0 text-foreground" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">
@@ -105,11 +93,7 @@ export function UpdatePill(): JSX.Element | null {
         </div>
         <button
           type="button"
-          onClick={() =>
-            void (state.version
-              ? api()?.updates?.download()
-              : api()?.updates?.check())
-          }
+          onClick={() => (state.version ? download() : void check())}
           className="mt-2 flex items-center gap-1.5 text-xs font-medium text-foreground hover:underline"
         >
           <RotateCw className="size-3.5" />
@@ -123,7 +107,7 @@ export function UpdatePill(): JSX.Element | null {
   return (
     <button
       type="button"
-      onClick={() => void api()?.updates?.download()}
+      onClick={download}
       className={row}
     >
       <Download className="size-4 shrink-0 text-foreground" />
