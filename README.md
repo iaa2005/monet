@@ -5,11 +5,19 @@ machine. It reads and writes files, runs commands, browses the web, talks to
 your connected services, and remembers what it learns about you between
 conversations.
 
+![Code Monet Main Interface](images/photo_2026-08-23_20-29-23.jpg)
+
 The agent runs a real toolset rather than a simplified imitation: file editing
 with read-before-write enforcement, shell commands gated by a permission
 engine, code search, language-server lookups, and everything a desktop app can
 do that a terminal cannot — a sandbox, a browser, connectors, scheduled
 routines, and long-term memory.
+
+## Screenshots
+
+| Terminal & Browser Automation | Connectors & Integrations |
+| :---: | :---: |
+| ![Terminal & Browser Automation](images/photo_2026-08-23_20-29-27.jpg) | ![Connectors & Integrations](images/photo_2026-08-23_20-29-30.jpg) |
 
 ## The two spaces
 
