@@ -38,6 +38,29 @@ Keychain on macOS — and never written to a readable file.
 
 A local model needs no key and no extra software beyond the server itself.
 
+### Monet Local
+
+The one that needs no setup. [Monet Local](https://github.com/iaa2005/monet-local)
+runs llama.cpp for you and tells Code Monet everything about the models it has
+loaded.
+
+**Add provider** → kind **Monet Local** → **Save**. The Base URL is already
+`http://127.0.0.1:17171/v1` and a server on your own machine needs no key.
+
+What this kind does that **OpenAI Compatible** does not:
+
+- the model list is **live**. Monet Local decides what is loaded, in front of
+  a memory estimate; a model unloaded there stops being offered here instead
+  of failing on the next request.
+- each model arrives with its **context length, whether it can see images, and
+  its display name**, read out of the GGUF header. With a plain OpenAI server
+  those fields are yours to guess.
+
+To use a Monet Local on **another computer**, add a second provider and change
+the address to that machine's. Turn on "Access from the network" there first,
+and set an API key — Monet Local requires one before it will listen beyond
+localhost.
+
 ### Ollama
 
 ```shell

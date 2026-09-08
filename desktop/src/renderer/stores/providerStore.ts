@@ -5,7 +5,13 @@
 
 import { create } from "zustand";
 
-export type ProviderKind = "anthropic" | "deepseek" | "openai" | "openrouter";
+/** Mirror of main's ProviderKind (src/main/provider/types.ts) — keep in step. */
+export type ProviderKind =
+  | "anthropic"
+  | "deepseek"
+  | "openai"
+  | "openrouter"
+  | "monet-local";
 
 /** What a model accepts as input. */
 export type Modality = "text" | "image" | "audio" | "file" | "video";

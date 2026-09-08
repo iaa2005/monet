@@ -7,9 +7,16 @@
  * richer catalog endpoint (openrouter-api.ts) and does not go through here.
  */
 
+import type { Modality, ProviderKind } from "../provider/types.js";
+import { fetchMonetLocalModels } from "./monet-local.js";
+
 export interface DiscoveredModel {
   name: string;
   label?: string;
+  /** Filled in by servers that know; left alone by the rest. */
+  contextLength?: number;
+  modalities?: Modality[];
+  supportsEffort?: boolean;
 }
 
 /** The shapes these servers actually return for GET /models. */
@@ -23,7 +30,20 @@ interface ModelsResponse {
 export async function fetchProviderModels(
   baseURL: string,
   apiKey: string,
+  kind?: ProviderKind,
 ): Promise<DiscoveredModel[]> {
+  // Monet Local answers a richer list on its own endpoint: only the models it
+  // has loaded, each carrying the context and modalities it read out of the
+  // GGUF header. Falling back keeps an older Monet Local — or something else
+  // pointed at this kind — working as an ordinary OpenAI server.
+  if (kind === "monet-local") {
+    try {
+      return await fetchMonetLocalModels(baseURL, apiKey);
+    } catch {
+      // fall through to /v1/models
+    }
+  }
+
   const root = baseURL.replace(/\/+$/, "");
   const headers: Record<string, string> = { Accept: "application/json" };
   // Local servers take no key; sending an empty bearer makes some of them 401.

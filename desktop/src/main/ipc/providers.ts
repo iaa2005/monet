@@ -6,7 +6,8 @@ import { ipcMain } from 'electron'
 import { getProviderManager, type ProviderManager } from '../provider/manager.js'
 import type { LLMProviderInput } from '../provider/types.js'
 import { fetchORModels, fetchORBalance } from '../llm/openrouter-api.js'
-import { fetchProviderModels } from '../llm/fetch-models.js'
+import { fetchProviderModels, type DiscoveredModel } from '../llm/fetch-models.js'
+import { probeMonetLocal } from '../llm/monet-local.js'
 import {
   catalogAge,
   getCatalog,
@@ -106,12 +107,23 @@ export function registerProvidersIPC(): void {
       _e,
       baseURL: string,
       apiKey: string,
-    ): Promise<{ ok: boolean; models?: { name: string }[]; error?: string }> => {
+      kind?: LLMProviderInput["kind"],
+    ): Promise<{ ok: boolean; models?: DiscoveredModel[]; error?: string }> => {
       try {
-        return { ok: true, models: await fetchProviderModels(baseURL, apiKey) };
+        return { ok: true, models: await fetchProviderModels(baseURL, apiKey, kind) };
       } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
+    },
+  );
+
+  // Is a Monet Local answering at this address? Used by the "find it on this
+  // computer" button, so adding the provider needs no typing at all.
+  ipcMain.handle(
+    "providers:probeMonetLocal",
+    async (_e, baseURL: string, apiKey: string) => {
+      const info = await probeMonetLocal(baseURL, apiKey);
+      return { ok: !!info, info };
     },
   );
 

@@ -212,6 +212,9 @@ export function createAdapter(provider: ActiveModel): LLMAdapter {
       return new AnthropicClient(provider);
     case "openai":
     case "openrouter":
+    // Monet Local speaks the same wire protocol; it is a separate kind for
+    // how its model list behaves, not for how a request is sent.
+    case "monet-local":
       return new OpenAICompatClient(provider);
     default:
       throw new Error(`Unknown provider kind: ${provider.kind}`);

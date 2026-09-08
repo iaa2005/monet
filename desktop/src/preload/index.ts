@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { LLMEvent } from "../main/llm/adapter.js";
-import type { LLMProvider, LLMProviderInput } from "../main/provider/types.js";
+import type {
+  LLMProvider,
+  LLMProviderInput,
+  ProviderKind,
+} from "../main/provider/types.js";
+import type { DiscoveredModel } from "../main/llm/fetch-models.js";
+import type { MonetLocalInfo } from "../main/llm/monet-local.js";
 import type {
   CatalogModelInfo,
   CatalogProviderInfo,
@@ -294,8 +300,15 @@ const electronAPI = {
     fetchModels: (
       baseURL: string,
       apiKey: string,
-    ): Promise<{ ok: boolean; models?: { name: string }[]; error?: string }> =>
-      ipcRenderer.invoke("providers:fetchModels", baseURL, apiKey),
+      kind?: ProviderKind,
+    ): Promise<{ ok: boolean; models?: DiscoveredModel[]; error?: string }> =>
+      ipcRenderer.invoke("providers:fetchModels", baseURL, apiKey, kind),
+    /** Is a Monet Local answering here? Powers "find it on this computer". */
+    probeMonetLocal: (
+      baseURL: string,
+      apiKey: string,
+    ): Promise<{ ok: boolean; info?: MonetLocalInfo | null }> =>
+      ipcRenderer.invoke("providers:probeMonetLocal", baseURL, apiKey),
     catalogProviders: (
       force?: boolean,
     ): Promise<{

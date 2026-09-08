@@ -3,7 +3,12 @@
  */
 
 import type { LLMEvent, LLMRequest } from "../../main/llm/adapter.js";
-import type { LLMProvider, LLMProviderInput } from "../../main/provider/types.js";
+import type {
+  LLMProvider,
+  LLMProviderInput,
+  Modality,
+  ProviderKind,
+} from "../../main/provider/types.js";
 import type {
   CatalogModelInfo,
   CatalogProviderInfo,
@@ -587,7 +592,25 @@ export interface ElectronAPI {
     fetchModels: (
       baseURL: string,
       apiKey: string,
-    ) => Promise<{ ok: boolean; models?: { name: string }[]; error?: string }>;
+      kind?: ProviderKind,
+    ) => Promise<{
+      ok: boolean;
+      models?: {
+        name: string;
+        label?: string;
+        contextLength?: number;
+        modalities?: Modality[];
+        supportsEffort?: boolean;
+      }[];
+      error?: string;
+    }>;
+    probeMonetLocal: (
+      baseURL: string,
+      apiKey: string,
+    ) => Promise<{
+      ok: boolean;
+      info?: { name: string; version?: string; backend?: string } | null;
+    }>;
     catalogProviders: (force?: boolean) => Promise<{
       ok: boolean;
       providers?: CatalogProviderInfo[];

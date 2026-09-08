@@ -12,7 +12,32 @@
  * this?" has an answer the compiler can check.
  */
 
-export type ProviderKind = 'anthropic' | 'deepseek' | 'openai' | 'openrouter'
+export type ProviderKind =
+  | 'anthropic'
+  | 'deepseek'
+  | 'openai'
+  | 'openrouter'
+  /**
+   * Monet Local — a llama.cpp server on this machine or another one on the
+   * network. The transport is the OpenAI-compatible one, so nothing new is
+   * needed to talk to it; what makes it its own kind is that the model list
+   * is LIVE. Monet Local decides which models are loaded, and a model that
+   * has been unloaded there must stop being offered here — see
+   * `dynamicModels` below.
+   */
+  | 'monet-local'
+
+/**
+ * Whether a kind's model list is discovered rather than configured.
+ *
+ * Every other provider has a fixed catalogue: the models a key gives access
+ * to do not change while the app is open. Monet Local's do — its whole point
+ * is that loading and unloading is a decision made there, in front of a
+ * memory estimate. So the list is re-read rather than trusted from storage.
+ */
+export function hasDynamicModels(kind: ProviderKind): boolean {
+  return kind === 'monet-local'
+}
 
 /** What a model can accept as input. */
 export type Modality = 'text' | 'image' | 'audio' | 'file' | 'video'
@@ -263,6 +288,24 @@ export function resolveModelOn(
 
 /** Preset providers with defaults (apiKey left empty for user to fill). */
 export const PRESET_PROVIDERS: LLMProviderInput[] = [
+  {
+    /**
+     * Monet Local, on this computer. Nothing to fill in: the address is its
+     * default port and a local server needs no key. The model list arrives
+     * from Monet Local itself — including which models are loaded right now,
+     * how much context each is configured for, and whether it can see images —
+     * so there is no model spelled out here to go stale.
+     *
+     * Another machine on the network is the same entry with its address
+     * edited, which is why several of these can coexist.
+     */
+    name: 'Monet Local',
+    kind: 'monet-local',
+    baseURL: 'http://127.0.0.1:17171/v1',
+    apiKey: '',
+    isActive: false,
+    models: [],
+  },
   {
     // Ollama, LM Studio and llama.cpp's own server all expose the
     // OpenAI-compatible API this app already speaks, so a local model needs no

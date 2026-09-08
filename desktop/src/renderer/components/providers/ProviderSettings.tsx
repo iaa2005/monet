@@ -45,6 +45,7 @@ const KIND_LABELS: Record<ProviderKind, string> = {
   deepseek: "DeepSeek (Anthropic compat)",
   openrouter: "OpenRouter",
   openai: "OpenAI Compatible",
+  "monet-local": "Monet Local",
 };
 
 const KIND_URLS: Record<ProviderKind, string> = {
@@ -52,6 +53,9 @@ const KIND_URLS: Record<ProviderKind, string> = {
   deepseek: "https://api.deepseek.com/anthropic",
   openrouter: "https://openrouter.ai/api/v1",
   openai: "http://localhost:8080/v1",
+  // This computer, on Monet Local's own port. Editable, because the whole
+  // point of allowing several is that one of them can be another machine.
+  "monet-local": "http://127.0.0.1:17171/v1",
 };
 
 const inputCls =
@@ -139,7 +143,11 @@ function ProviderModal({
     setDiscoverNote(null);
     try {
       const key = apiKey || (isEdit ? (provider?.apiKey ?? "") : "");
-      const r = await window.electronAPI?.providers.fetchModels(baseURL.trim(), key);
+      const r = await window.electronAPI?.providers.fetchModels(
+        baseURL.trim(),
+        key,
+        kind,
+      );
       if (!r?.ok) {
         setDiscoverNote(r?.error ? `Couldn't load models: ${r.error}` : "Couldn't load models.");
         return;
@@ -152,9 +160,21 @@ function ProviderModal({
       let added = 0;
       setModels((prev) => {
         const have = new Set(prev.map((m: ProviderModel) => m.name).filter(Boolean));
+        // Keep whatever the endpoint knew about itself. Monet Local fills in
+        // context and modalities from the GGUF header; a plain OpenAI server
+        // sends only a name and these stay undefined, exactly as before.
         const fresh = found
-          .filter((m: { name: string }) => !have.has(m.name))
-          .map((m: { name: string }) => ({ id: newModelId(), name: m.name }));
+          .filter((m) => !have.has(m.name))
+          .map((m) => ({
+            id: newModelId(),
+            name: m.name,
+            ...(m.label ? { label: m.label } : {}),
+            ...(m.contextLength ? { contextLength: m.contextLength } : {}),
+            ...(m.modalities ? { modalities: m.modalities } : {}),
+            ...(m.supportsEffort !== undefined
+              ? { supportsEffort: m.supportsEffort }
+              : {}),
+          }));
         added = fresh.length;
         // Drop a single blank row left over from "Add model".
         const kept = prev.filter((m: ProviderModel) => m.name.trim());
