@@ -8,6 +8,8 @@
   "scripts": {
     "dev": "node scripts/dev-quiet.mjs",
     "dev:raw": "electron-vite dev",
+    "postinstall": "node scripts/rebuild-native.mjs",
+    "rebuild:native": "electron-rebuild --only better-sqlite3 --force",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package": "electron-builder",
