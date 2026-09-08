@@ -190,6 +190,57 @@ function ProviderModal({
     }
   };
 
+  /**
+   * Monet Local's list is not a list the user keeps — it is a reading.
+   *
+   * So this REPLACES rather than adds. A model unloaded over there has to
+   * disappear here, which is the entire reason this provider kind exists:
+   * offering a model that is no longer resident means the next request fails
+   * on a multi-minute load nobody asked for.
+   *
+   * Ids and the hidden flag are carried across by name, so the composer's
+   * current pick survives a refresh and "don't show me this one" is not
+   * undone every ten seconds.
+   */
+  const syncDynamicModels = async (): Promise<void> => {
+    setDiscovering(true);
+    setDiscoverNote(null);
+    try {
+      const key = apiKey || (isEdit ? (provider?.apiKey ?? "") : "");
+      const r = await window.electronAPI?.providers.fetchModels(
+        baseURL.trim(),
+        key,
+        kind,
+      );
+      if (!r?.ok) {
+        setDiscoverNote(
+          r?.error ? `Couldn't reach it: ${r.error}` : "Couldn't reach it.",
+        );
+        return;
+      }
+      const found = r.models ?? [];
+      setModels((prev) =>
+        found.map((m) => {
+          const old = prev.find((p: ProviderModel) => p.name === m.name);
+          return {
+            id: old?.id ?? newModelId(),
+            name: m.name,
+            ...(m.label ? { label: m.label } : old?.label ? { label: old.label } : {}),
+            ...(m.contextLength ? { contextLength: m.contextLength } : {}),
+            ...(m.modalities ? { modalities: m.modalities } : {}),
+            ...(m.supportsEffort !== undefined
+              ? { supportsEffort: m.supportsEffort }
+              : {}),
+            ...(old?.hidden ? { hidden: true } : {}),
+          };
+        }),
+      );
+      setDiscoverNote(null);
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
   // Editing a provider starts from its models; adding one starts from a blank
   // row. There was a third branch — build a row out of the record's flat
   // `model`/`contextLimit`/`maxTokens` — for a stored provider with no
@@ -200,6 +251,18 @@ function ProviderModal({
       ? provider.models.map((m) => ({ ...m }))
       : [{ id: newModelId(), name: "" }],
   );
+
+  /**
+   * Read it on open, and again when the address changes. Debounced because
+   * this fires on every keystroke in the Base URL field.
+   */
+  const dynamic = kind === "monet-local";
+  useEffect(() => {
+    if (!dynamic || !baseURL.trim()) return;
+    const t = setTimeout(() => void syncDynamicModels(), 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dynamic, baseURL, apiKey]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
@@ -331,10 +394,90 @@ function ProviderModal({
             />
           </div>
 
-          <div className="mb-1.5 mt-5">
+          <div className="mb-1.5 mt-5 flex items-center justify-between gap-3">
             <span className="text-sm font-medium">Models</span>
+            {dynamic && (
+              <button
+                type="button"
+                disabled={discovering || !baseURL.trim()}
+                onClick={() => void syncDynamicModels()}
+                className={cn(ghostBtn, "gap-1.5 px-2 text-xs")}
+                title="Read the list again"
+              >
+                <RefreshCw
+                  className={cn("size-3.5", discovering && "animate-spin")}
+                />
+              </button>
+            )}
           </div>
 
+          {dynamic ? (
+            /* Nothing to edit: Monet Local decides what is loaded and knows
+               each model's context and modalities from the GGUF header, so
+               everything this form would ask for is already answered. What
+               is left is to show what is there. */
+            <div className="space-y-2 pb-3">
+              <p className="text-xs text-muted-foreground">
+                Loaded in Monet Local right now. Load or unload models there
+                and this follows.
+              </p>
+              {models.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
+                  {discovering
+                    ? "Reading…"
+                    : (discoverNote ??
+                      "Nothing is loaded. Load a model in Monet Local and it appears here.")}
+                </div>
+              ) : (
+                models.map((m) => (
+                  <div key={m.id} className="rounded-xl border border-border p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs">{m.name}</span>
+                      {m.label && (
+                        <span className="text-xs text-muted-foreground">
+                          {m.label}
+                        </span>
+                      )}
+                      <div className="flex-1" />
+                      <button
+                        type="button"
+                        title={
+                          m.hidden
+                            ? "Hidden from the model picker — click to show"
+                            : "Shown in the model picker — click to hide"
+                        }
+                        onClick={() => patchModel(m.id, { hidden: !m.hidden })}
+                        className={ghostBtn}
+                      >
+                        {m.hidden ? (
+                          <EyeOff className="size-3.5" />
+                        ) : (
+                          <Eye className="size-3.5" />
+                        )}
+                      </button>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                      {m.contextLength ? (
+                        <span>
+                          Context{" "}
+                          <span className="text-foreground">
+                            {m.contextLength.toLocaleString("en-US")}
+                          </span>
+                        </span>
+                      ) : null}
+                      {m.modalities?.length ? (
+                        <span>Accepts {m.modalities.join(", ")}</span>
+                      ) : null}
+                      {m.supportsEffort ? <span>Reasoning effort</span> : null}
+                    </div>
+                  </div>
+                ))
+              )}
+              {discoverNote && models.length > 0 && (
+                <p className="text-xs text-muted-foreground">{discoverNote}</p>
+              )}
+            </div>
+          ) : (
           <div className="space-y-2 pb-3">
             {models.map((m) => {
               return (
@@ -708,6 +851,7 @@ function ProviderModal({
               </p>
             )}
           </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-2 border-t border-border px-5 py-3">

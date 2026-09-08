@@ -539,6 +539,14 @@ app.whenReady().then(() => {
   if (!initBetaGuard()) return;
 
   registerAllIPC();
+
+  // A Monet Local provider's model list is a reading, not a setting: it
+  // follows what is loaded over there. Nothing was refreshing it, so the
+  // picker showed whatever the settings dialog last wrote.
+  void import("./llm/monet-local-sync.js").then((m) =>
+    m.startDynamicModelSync(),
+  );
+
   // Rows from chats that no longer exist — a crash, or a version that did not
   // clean up after a delete. Startup-only: an incognito chat has no session
   // row while it runs, so sweeping mid-session would erase a live one.

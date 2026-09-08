@@ -37,6 +37,7 @@ const { PRESET_PROVIDERS, hasDynamicModels } = await import(
   '../src/main/provider/types.js'
 )
 const { createAdapter } = await import('../src/main/llm/adapter.js')
+const { merge, same } = await import('../src/main/llm/monet-local-sync.js')
 
 /** One loaded model with everything filled in, one that is not loaded. */
 const MODELS = [
@@ -71,6 +72,9 @@ const MODELS = [
   },
 ]
 
+/** Ids the stub pretends have been unloaded since the last read. */
+const dropped = new Set<string>()
+
 function serve(withManagement: boolean): Promise<{ url: string; close: () => Promise<void> }> {
   const server: Server = createServer((req, res) => {
     const json = (body: unknown, status = 200): void => {
@@ -83,7 +87,7 @@ function serve(withManagement: boolean): Promise<{ url: string; close: () => Pro
     }
     if (req.url === '/monet-local/v1/models') {
       if (!withManagement) return json({ error: 'not found' }, 404)
-      return json({ data: MODELS })
+      return json({ data: MODELS.filter((m) => !dropped.has(m.id)) })
     }
     if (req.url?.startsWith('/v1/models')) {
       // The standard endpoint shows only what is loaded, as the gateway does.
@@ -198,6 +202,36 @@ function serve(withManagement: boolean): Promise<{ url: string; close: () => Pro
     model: 'qwen3.8-27b-q4_k_m',
   } as Parameters<typeof createAdapter>[0])
   check('a request has a transport', typeof adapter.stream === 'function')
+}
+
+// ─── The list is a reading, not a setting ───────────────────────────────
+//
+// What "dynamic" was supposed to mean and did not: nothing refreshed the
+// stored list, so unloading a model in Monet Local left it on offer here
+// until someone reopened the settings dialog and pressed a button.
+
+{
+  const s = await serve(true)
+
+  const first = merge([], await fetchProviderModels(s.url, '', 'monet-local'))
+  check('a first read produces the loaded model', first.length === 1, first)
+
+  // The user hides it and the composer pins it; neither may be churned by a
+  // refresh that found nothing new.
+  const kept = first.map((m) => ({ ...m, hidden: true }))
+  const again = merge(kept, await fetchProviderModels(s.url, '', 'monet-local'))
+  check('the generated id survives a refresh', again[0]?.id === kept[0]?.id)
+  check('the hidden flag survives a refresh', again[0]?.hidden === true)
+  check('an unchanged list is recognised as unchanged', same(kept, again))
+
+  // Now it is unloaded over there.
+  dropped.add('qwen3.8-27b-q4_k_m')
+  const after = merge(again, await fetchProviderModels(s.url, '', 'monet-local'))
+  check('an unloaded model stops being offered', after.length === 0, after)
+  check('and that counts as a change worth storing', !same(again, after))
+
+  dropped.clear()
+  await s.close()
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nMONET LOCAL PROVIDER OK')
