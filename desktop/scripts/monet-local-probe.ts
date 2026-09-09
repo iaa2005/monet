@@ -52,6 +52,10 @@ const MODELS = [
     // Advertised 262144, actually running at 8192 — the gap that matters.
     context_max: 262_144,
     context_configured: 8192,
+    // The profile's --n-predict. The caller's own default is 16000, so
+    // without this a model configured to answer at length is asked for less
+    // than half of what it was given.
+    predict_configured: 32_000,
     modalities: ['text', 'image'],
     moe: false,
     verdict: 'fits',
@@ -140,6 +144,11 @@ function serve(withManagement: boolean): Promise<{ url: string; close: () => Pro
     model?.contextLength,
   )
   check(
+    'the ANSWER limit comes across too, not just the context',
+    model?.maxOutputTokens === 32_000,
+    model?.maxOutputTokens,
+  )
+  check(
     'vision is reported, not guessed from the id',
     !!model?.modalities?.includes('image'),
     model?.modalities,
@@ -216,6 +225,12 @@ function serve(withManagement: boolean): Promise<{ url: string; close: () => Pro
   const first = merge([], await fetchProviderModels(s.url, '', 'monet-local'))
   check('a first read produces the loaded model', first.length === 1, first)
 
+  check(
+    'and it carries the server answer limit into the stored record',
+    first[0]?.maxOutputTokens === 32_000,
+    first[0]?.maxOutputTokens,
+  )
+
   // The user hides it and the composer pins it; neither may be churned by a
   // refresh that found nothing new.
   const kept = first.map((m) => ({ ...m, hidden: true }))
@@ -223,6 +238,27 @@ function serve(withManagement: boolean): Promise<{ url: string; close: () => Pro
   check('the generated id survives a refresh', again[0]?.id === kept[0]?.id)
   check('the hidden flag survives a refresh', again[0]?.hidden === true)
   check('an unchanged list is recognised as unchanged', same(kept, again))
+
+  // THE ONE THAT BIT: this runs every ten seconds and replaces the list, so
+  // a per-model setting not carried across is erased moments after it is
+  // typed — and the settings screen shows the erased value, so it looks like
+  // the app simply ignored what was entered.
+  {
+    const typed = again.map((m) => ({
+      ...m,
+      temperature: 0.3,
+      maxInputTokens: 6000,
+      streamTimeoutSec: 1800,
+    }))
+    const round = merge(typed, await fetchProviderModels(s.url, '', 'monet-local'))
+    check('a hand-set temperature survives the ten-second refresh', round[0]?.temperature === 0.3, round[0])
+    check('so does a per-model silence timeout', round[0]?.streamTimeoutSec === 1800)
+    check('and a per-model input limit', round[0]?.maxInputTokens === 6000)
+    check(
+      'and none of that counts as a change worth rewriting the store for',
+      same(typed, round),
+    )
+  }
 
   // Now it is unloaded over there.
   dropped.add('qwen3.8-27b-q4_k_m')

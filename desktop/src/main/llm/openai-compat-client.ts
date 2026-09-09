@@ -20,6 +20,7 @@ import type {
   LLMUsage,
 } from "./adapter.js";
 import { sanitizeMaxTokens } from "./adapter.js";
+import { droppedStream } from "./stream-end.js";
 import {
   asDeadlineError,
   isLocalEndpoint,
@@ -381,6 +382,9 @@ export class OpenAICompatClient implements LLMAdapter {
     const t0 = Date.now();
     let textLen = 0;
     let textTail = "";
+    // Reasoning is output too — a turn that thought and then lost the
+    // connection is not a turn that produced nothing.
+    let reasoningLen = 0;
     let chunkCount = 0;
     let toolDeltaCount = 0;
     let progressSeen = 0;
@@ -432,6 +436,7 @@ export class OpenAICompatClient implements LLMAdapter {
       }
       const reasoning = delta.reasoning ?? delta.reasoning_content;
       if (typeof reasoning === "string" && reasoning) {
+        reasoningLen += reasoning.length;
         onEvent({ type: "reasoning_delta", text: reasoning });
       }
       if (delta.tool_calls) {
@@ -459,6 +464,25 @@ export class OpenAICompatClient implements LLMAdapter {
       }
       buffer += decoder.decode();
       for (const line of buffer.split("\n")) processLine(line);
+
+      // A stream with no verdict and no output did not finish — it broke.
+      // Reported before the tool calls are flushed, because there are none:
+      // this is the case where NOTHING came back. See llm/stream-end.ts.
+      const dropped = droppedStream({
+        finishReason,
+        textLen,
+        reasoningLen,
+        toolCalls: toolCalls.size,
+        progressChunks: progressSeen,
+        leftover: buffer.trim().length,
+      });
+      if (dropped && !timedOut) {
+        console.error(
+          `${tag} dropped after ${Date.now() - t0}ms: chunks=${chunkCount}, progress=${progressSeen}, leftover=${buffer.trim().length}`,
+        );
+        onEvent({ type: "error", error: dropped });
+        return;
+      }
 
       // Emit accumulated tool calls (index order), then the terminal stop.
       for (const [index, tc] of [...toolCalls.entries()].sort(

@@ -13,6 +13,7 @@ import type {
   LLMRequest,
 } from "./adapter.js";
 import { sanitizeMaxTokens } from "./adapter.js";
+import { droppedStream } from "./stream-end.js";
 import { asDeadlineError, streamTimeoutMs, withDeadline } from "./timeouts.js";
 
 /** Extended-thinking token budget per effort level (Anthropic has no named
@@ -256,6 +257,11 @@ export class AnthropicClient implements LLMAdapter {
     // looks cut off" report can be checked against what the adapter actually
     // received (UI truncation vs the model/provider stopping early).
     let textTail = "";
+    // Output that is not the answer, counted for the same reason: a turn that
+    // thought, or called a tool, and then lost the connection did not come
+    // back empty. See llm/stream-end.ts.
+    let reasoningLen = 0;
+    let toolUseCount = 0;
     let sawMessageStop = false;
     let finalStopReason: string | undefined;
     const counts: Record<string, number> = {};
@@ -312,6 +318,7 @@ export class AnthropicClient implements LLMAdapter {
           ) {
             // Extended-thinking tokens — surfaced to the UI (Thinking mode) but
             // never added to the model context.
+            reasoningLen += event.delta.thinking.length;
             onEvent({ type: "reasoning_delta", text: event.delta.thinking });
           } else if (
             event.delta?.type === "input_json_delta" &&
@@ -329,6 +336,7 @@ export class AnthropicClient implements LLMAdapter {
                 name: currentToolName,
                 input: JSON.parse(currentToolInput),
               });
+              toolUseCount++;
             } catch {
               onEvent({ type: "error", error: "Failed to parse tool input" });
             }
@@ -373,11 +381,26 @@ export class AnthropicClient implements LLMAdapter {
 
       // If the provider closed the stream without a message_stop (abrupt close,
       // or OpenAI-style [DONE]), synthesize one so the turn actually completes
-      // instead of the UI staying stuck "streaming".
+      // instead of the UI staying stuck "streaming" — UNLESS nothing came back
+      // at all, in which case the connection dropped and saying "end_turn"
+      // sends the harness off nudging a model that never spoke. See
+      // llm/stream-end.ts.
       if (!sawMessageStop) {
+        const dropped = droppedStream({
+          finishReason: finalStopReason,
+          textLen,
+          reasoningLen,
+          toolCalls: toolUseCount,
+          progressChunks: 0,
+          leftover: buffer.trim().length,
+        });
         console.error(
-          `${tag} stream ended WITHOUT message_stop (stop_reason=${finalStopReason ?? "unknown"}, text=${textLen}) — synthesizing`,
+          `${tag} stream ended WITHOUT message_stop (stop_reason=${finalStopReason ?? "unknown"}, text=${textLen}) — ${dropped ? "dropped" : "synthesizing"}`,
         );
+        if (dropped && !timedOut) {
+          onEvent({ type: "error", error: dropped });
+          return;
+        }
         onEvent({
           type: "message_stop",
           stop_reason: finalStopReason ?? "end_turn",

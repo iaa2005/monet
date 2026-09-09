@@ -611,6 +611,8 @@ export interface ElectronAPI {
         name: string;
         label?: string;
         contextLength?: number;
+        /** Only Monet Local reports one — its `--n-predict`. */
+        maxOutputTokens?: number;
         modalities?: Modality[];
         supportsEffort?: boolean;
       }[];

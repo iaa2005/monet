@@ -37,6 +37,8 @@ interface MonetLocalModel {
   size_bytes?: number
   context_max?: number | null
   context_configured?: number | null
+  /** `--n-predict`: the most tokens one answer may use. Null = unbounded. */
+  predict_configured?: number | null
   modalities?: string[]
   verdict?: 'fits' | 'tight' | 'wont_fit'
 }
@@ -45,6 +47,15 @@ export interface MonetLocalDiscovered {
   name: string
   label?: string
   contextLength?: number
+  /**
+   * The server's own ceiling on one answer.
+   *
+   * Worth carrying because the caller sets `max_tokens` on every request and
+   * defaults to 16000 when nothing says otherwise: a profile raised to 32000
+   * over there did nothing at all, because the limit that actually applied
+   * was this side's default and this side had never been told.
+   */
+  maxOutputTokens?: number
   modalities?: Modality[]
   supportsEffort?: boolean
   /** Loaded right now. Unloaded models are not returned at all. */
@@ -113,10 +124,17 @@ export async function fetchMonetLocalModels(
       // a 262144-token model running at 8192 will refuse anything longer, and
       // a compaction budget built on the advertised figure would walk into it.
       const ctx = m.context_configured ?? m.context_max ?? undefined
+      // Null means unbounded (-1) or unset, and neither is a number to send
+      // as max_tokens — left off, so this side's own default applies.
+      const predict =
+        typeof m.predict_configured === 'number' && m.predict_configured > 0
+          ? m.predict_configured
+          : undefined
       return {
         name: m.id,
         ...(m.display_name ? { label: m.display_name } : {}),
         ...(ctx ? { contextLength: ctx } : {}),
+        ...(predict ? { maxOutputTokens: predict } : {}),
         modalities: modalities.length ? modalities : (['text'] as Modality[]),
         loaded: true as const,
       }

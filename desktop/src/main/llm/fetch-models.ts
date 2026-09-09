@@ -15,6 +15,8 @@ export interface DiscoveredModel {
   label?: string;
   /** Filled in by servers that know; left alone by the rest. */
   contextLength?: number;
+  /** Likewise for the answer ceiling — only Monet Local reports one. */
+  maxOutputTokens?: number;
   modalities?: Modality[];
   supportsEffort?: boolean;
 }

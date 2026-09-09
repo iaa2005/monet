@@ -45,6 +45,7 @@
     "smoke:fileops": "node scripts/renderer-probe.mjs scripts/file-ops-probe.ts",
     "smoke:emptyturn": "node scripts/renderer-probe.mjs scripts/empty-turn-probe.ts",
     "smoke:timeouts": "node scripts/renderer-probe.mjs scripts/timeouts-probe.ts",
+    "smoke:streamend": "node scripts/smoke-agent.mjs scripts/stream-end-probe.ts",
     "smoke:shell": "node scripts/renderer-probe.mjs scripts/shell-choice-probe.ts",
     "smoke:todoprompt": "node scripts/renderer-probe.mjs scripts/todo-prompt-probe.ts",
     "smoke:memcfg": "node scripts/renderer-probe.mjs scripts/memory-config-probe.ts",

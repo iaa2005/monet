@@ -170,6 +170,7 @@ function ProviderModal({
             name: m.name,
             ...(m.label ? { label: m.label } : {}),
             ...(m.contextLength ? { contextLength: m.contextLength } : {}),
+            ...(m.maxOutputTokens ? { maxOutputTokens: m.maxOutputTokens } : {}),
             ...(m.modalities ? { modalities: m.modalities } : {}),
             ...(m.supportsEffort !== undefined
               ? { supportsEffort: m.supportsEffort }
@@ -227,10 +228,34 @@ function ProviderModal({
             name: m.name,
             ...(m.label ? { label: m.label } : old?.label ? { label: old.label } : {}),
             ...(m.contextLength ? { contextLength: m.contextLength } : {}),
+            // The server's own answer ceiling (--n-predict) when it reports
+            // one, and otherwise whatever was typed here. Asking for more
+            // than the server will produce is not an error, but it is a
+            // number that means nothing — this is the one that applies.
+            ...(m.maxOutputTokens
+              ? { maxOutputTokens: m.maxOutputTokens }
+              : old?.maxOutputTokens !== undefined
+                ? { maxOutputTokens: old.maxOutputTokens }
+                : {}),
             ...(m.modalities ? { modalities: m.modalities } : {}),
             ...(m.supportsEffort !== undefined
               ? { supportsEffort: m.supportsEffort }
               : {}),
+            // This list is a READING of what is loaded, so it replaces rather
+            // than merges — which quietly threw away every per-model setting
+            // on each ten-second refresh. What the server does not know is
+            // the user's, and it is carried across.
+            ...(old?.maxInputTokens !== undefined
+              ? { maxInputTokens: old.maxInputTokens }
+              : {}),
+            ...(old?.temperature !== undefined
+              ? { temperature: old.temperature }
+              : {}),
+            ...(old?.streamTimeoutSec !== undefined
+              ? { streamTimeoutSec: old.streamTimeoutSec }
+              : {}),
+            ...(old?.baseURL ? { baseURL: old.baseURL } : {}),
+            ...(old?.routing ? { routing: old.routing } : {}),
             ...(old?.hidden ? { hidden: true } : {}),
           };
         }),

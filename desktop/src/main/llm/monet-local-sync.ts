@@ -26,7 +26,14 @@ const EVERY_MS = 10_000;
 let timer: ReturnType<typeof setInterval> | null = null;
 
 /**
- * Ids and the user's hidden flag survive a refresh; they are keyed by name.
+ * What the server knows wins; everything else is the user's and survives.
+ *
+ * This runs every ten seconds and REPLACES the stored list, so anything not
+ * carried across here is not merely lost — it is lost silently, moments after
+ * being typed. That was true of every per-model setting: a max_tokens raised
+ * by hand, a temperature, the per-model silence timeout. Keyed by name, since
+ * the ids on this side are generated.
+ *
  * Exported for the smoke probe — this and `same` are the whole behaviour, and
  * the rest of this module is the storage they act on.
  */
@@ -41,10 +48,29 @@ export function merge(
       name: m.name,
       ...(m.label ? { label: m.label } : old?.label ? { label: old.label } : {}),
       ...(m.contextLength ? { contextLength: m.contextLength } : {}),
+      // The server's own ceiling on one answer (--n-predict) when it reports
+      // one. Without it this side asked for its default 16000 tokens no
+      // matter what the model was configured to give.
+      ...(m.maxOutputTokens
+        ? { maxOutputTokens: m.maxOutputTokens }
+        : old?.maxOutputTokens !== undefined
+          ? { maxOutputTokens: old.maxOutputTokens }
+          : {}),
       ...(m.modalities ? { modalities: m.modalities } : {}),
       ...(m.supportsEffort !== undefined
         ? { supportsEffort: m.supportsEffort }
         : {}),
+      // Nothing below is discoverable — it is what the user set on this
+      // model, and a reading of what is loaded has no business erasing it.
+      ...(old?.maxInputTokens !== undefined
+        ? { maxInputTokens: old.maxInputTokens }
+        : {}),
+      ...(old?.temperature !== undefined ? { temperature: old.temperature } : {}),
+      ...(old?.streamTimeoutSec !== undefined
+        ? { streamTimeoutSec: old.streamTimeoutSec }
+        : {}),
+      ...(old?.baseURL ? { baseURL: old.baseURL } : {}),
+      ...(old?.routing ? { routing: old.routing } : {}),
       ...(old?.hidden ? { hidden: true } : {}),
     };
   });
@@ -57,6 +83,10 @@ export function same(a: ProviderModel[], b: ProviderModel[]): boolean {
       m.name,
       m.label ?? "",
       m.contextLength ?? "",
+      m.maxOutputTokens ?? "",
+      m.maxInputTokens ?? "",
+      m.temperature ?? "",
+      m.streamTimeoutSec ?? "",
       (m.modalities ?? []).join("+"),
       m.supportsEffort ?? "",
       m.hidden ?? false,
