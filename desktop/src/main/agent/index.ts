@@ -105,7 +105,8 @@ import {
   isCaveman,
   cavemanDirective,
   CAVEMAN_COMPACT_HINT,
-  withCavemanReminder,
+  CAVEMAN_TURN_REMINDER,
+  withTurnTail,
 } from "./caveman.js";
 import { resultsOutOfPlace, turnRange } from "./turn-context.js";
 import { anyWriters, WRITERS } from "./writers.js";
@@ -329,26 +330,18 @@ function withUserMemory(
   model?: string,
 ): string {
   try {
+    // ORDER IS THE CHEAPEST THING HERE, so it is deliberate: least likely to
+    // change first, most likely last. A server reuses its KV cache for the
+    // longest common PREFIX, so what a changed block costs is not its own
+    // size but the size of everything standing after it. Memory can change
+    // mid-conversation — the Remember tool writes a file — and it used to sit
+    // second, with every other block behind it.
     const extra = [
       // What it is, before who the user is: with this slot empty a weak model
       // fills it from training and introduces itself by an invented name.
       agentIdentityPrompt(model),
-      // Who the user is, in ONE block: what they typed into their profile and
-      // what has accumulated in memory since. `includeMemory: false` is an
-      // eval asking to be judged on the context alone — the standing profile
-      // goes with it, because it is memory too.
-      includeMemory && getMemoryConfig().useInChats
-        ? buildMemoryPrompt(getProfilePrompt())
-        : "",
       // The vault map + protocol — present only while a vault is enabled.
       buildVaultPrompt(),
-      // Project lessons ride only into chats working in THAT workspace —
-      // Home has no workspace, and a lesson about this repo's flaky build
-      // belongs in no other folder's context. The run pinned its cwd before
-      // the prompt was built, so the global path is this run's path.
-      includeMemory && space !== "home" && getMemoryConfig().useInChats
-        ? buildLessonsPrompt(getWorkspacePath())
-        : "",
       // Each of these is paid on EVERY turn, which is why each is a switch —
       // see shared/agent-features.ts.
       isFeatureOn("method") ? tunablePrompt("method", METHOD_DEFAULT) : "",
@@ -356,6 +349,21 @@ function withUserMemory(
         ? tunablePrompt("discipline", DISCIPLINE_DEFAULT)
         : "",
       isFeatureOn("design") ? agentDesignPrompt() : "",
+      // Project lessons ride only into chats working in THAT workspace —
+      // Home has no workspace, and a lesson about this repo's flaky build
+      // belongs in no other folder's context. The run pinned its cwd before
+      // the prompt was built, so the global path is this run's path.
+      includeMemory && space !== "home" && getMemoryConfig().useInChats
+        ? buildLessonsPrompt(getWorkspacePath())
+        : "",
+      // Who the user is, in ONE block: what they typed into their profile and
+      // what has accumulated in memory since. LAST of the standing blocks,
+      // because it is the one a running turn can change. `includeMemory:
+      // false` is an eval asking to be judged on the context alone — the
+      // standing profile goes with it, because it is memory too.
+      includeMemory && getMemoryConfig().useInChats
+        ? buildMemoryPrompt(getProfilePrompt())
+        : "",
       tunablePrompt("system-append", ""),
       isCaveman() ? cavemanDirective() : "",
     ]
@@ -471,6 +479,32 @@ export function buildDirectives(
     // How to draw a chart. Both spaces: a chart is an answer, not a workspace
     // capability.
     chartWidgetDirective(),
+  ].filter(Boolean);
+}
+
+/**
+ * What changes between one turn and the next, kept OUT of the system prompt.
+ *
+ * A server caches the longest common prefix of a request, and the prefix here
+ * is the system prompt plus the tool schemas — twelve thousand tokens. On a
+ * model running from system memory that is twenty minutes of reading, and it
+ * is paid again in full the moment one character of it changes.
+ *
+ * Both of these change constantly. The browser block is rebuilt from the open
+ * tabs and a dev-server scan that refreshes every sixty seconds; the deferred
+ * inventory shrinks the moment ToolSearch reveals a tool, which happens in the
+ * middle of a run. Either one at the front means every later turn re-reads the
+ * whole prompt.
+ *
+ * So they ride at the TAIL, where a change costs only itself. Same mechanism
+ * the caveman reminder already used, and for a related reason: what belongs at
+ * the end is what the model needs latest and what changes soonest.
+ */
+export function turnTailBlocks(
+  space: string | undefined,
+  sessionId: string | undefined,
+): string[] {
+  return [
     // What ToolSearch is holding back. Without this the model cannot tell a
     // deferred capability from an absent one, and answers as if it were absent.
     deferredToolsDirective(space, sessionId),
@@ -1285,9 +1319,16 @@ export async function computeContextBreakdown(
         ? buildSystemPrompt(provider.model, space, sessionId)
         : Promise.resolve(""),
     ]);
-    // The run's own list, so the meter bills exactly what is sent.
+    // The run's own lists, so the meter bills exactly what is sent — the
+    // per-turn tail included. That tail is not in `system` and not in the
+    // stored transcript, so this is the only place it can be counted at all,
+    // and it is paid every turn like everything else counted here.
     const directives = buildDirectives(space, sessionId);
-    const systemPrompt = [...directives, basePrompt]
+    const systemPrompt = [
+      ...directives,
+      basePrompt,
+      ...turnTailBlocks(space, sessionId),
+    ]
       .filter(Boolean)
       .join("\n\n");
     let systemTotal = Math.ceil(systemPrompt.length / 4);
@@ -1898,7 +1939,10 @@ async function runAgentScoped(
     // not sent. Whole turns only (see setTurnContext), because an
     // assistant `tool_use` without its `tool_result` is a request the API
     // refuses outright.
-    const turnMessages = withCavemanReminder(messages.filter(isInContext), cave);
+    const turnMessages = withTurnTail(messages.filter(isInContext), [
+      ...turnTailBlocks(space, sessionId),
+      ...(cave ? [CAVEMAN_TURN_REMINDER] : []),
+    ]);
     // THE INVARIANT, CHECKED RATHER THAN HOPED FOR.
     //
     // A tool_use must be answered by the message immediately after it, or the

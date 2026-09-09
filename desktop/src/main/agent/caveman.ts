@@ -143,11 +143,33 @@ export function withCavemanReminder<T extends { role: string; content: unknown }
   messages: T[],
   caveman: boolean,
 ): T[] {
-  if (!caveman) return messages;
-  return [
-    ...messages,
-    { role: "user", content: CAVEMAN_TURN_REMINDER } as unknown as T,
-  ];
+  return withTurnTail(messages, caveman ? [CAVEMAN_TURN_REMINDER] : []);
+}
+
+/**
+ * Append this turn's volatile text as one extra message.
+ *
+ * A separate message rather than a block merged into the last one, because
+ * the array handed in shares its objects with the durable transcript — and a
+ * merge would write this turn's browser state into the conversation's own
+ * history. Never persisted: it is rebuilt from scratch every turn, so it
+ * cannot accumulate and cannot reach compaction.
+ *
+ * Everything here is at the tail for one of two reasons. The caveman reminder
+ * is there because adherence to a style rule decays with distance and the
+ * system prompt is thousands of tokens behind by the time the model writes.
+ * The directives are there because they CHANGE between turns, and anything
+ * that changes near the front of a request throws away the server's cached
+ * prefix — twelve thousand tokens, twenty minutes of reading on a local
+ * model, re-read because a dev-server scan refreshed.
+ */
+export function withTurnTail<T extends { role: string; content: unknown }>(
+  messages: T[],
+  blocks: string[],
+): T[] {
+  const text = blocks.filter(Boolean).join("\n\n");
+  if (!text) return messages;
+  return [...messages, { role: "user", content: text } as unknown as T];
 }
 
 /** Extra instruction appended to the compaction summary request in caveman mode:

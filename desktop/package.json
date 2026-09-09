@@ -48,6 +48,7 @@
     "smoke:todoprompt": "node scripts/renderer-probe.mjs scripts/todo-prompt-probe.ts",
     "smoke:memcfg": "node scripts/renderer-probe.mjs scripts/memory-config-probe.ts",
     "smoke:timeouts:live": "node scripts/renderer-probe.mjs scripts/timeouts-live-probe.ts",
+    "smoke:prefix": "node scripts/renderer-probe.mjs scripts/prefix-cache-live-probe.ts",
     "smoke:turnbudget": "node scripts/renderer-probe.mjs scripts/turn-budget-probe.ts",
     "smoke:diff": "node scripts/renderer-probe.mjs scripts/diff-core-probe.ts",
     "smoke:codetheme": "node scripts/renderer-probe.mjs scripts/code-theme-probe.ts",

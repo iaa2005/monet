@@ -30,7 +30,11 @@ import {
   getVendorToolsForSpace,
 } from "@main/agent/vendor-tools.js";
 import { initVendorRuntime } from "@main/agent/vendor-context.js";
-import { buildDirectives, buildSystemPrompt } from "@main/agent/index.js";
+import {
+  buildDirectives,
+  buildSystemPrompt,
+  turnTailBlocks,
+} from "@main/agent/index.js";
 import { stripExamples } from "@main/agent/lean-context.js";
 import { SEEDED } from "@main/agent/seed-skills.js";
 
@@ -65,15 +69,24 @@ async function measure(space: "code" | "home"): Promise<number> {
   // sections rather than re-listed here — a list of the parts is a list that
   // goes stale, and this is the string the run actually sends.
   const directives = buildDirectives(space, undefined);
+  // The per-turn tail is no longer in `system` (see turnTailBlocks) but it is
+  // sent on every turn, so leaving it out would report a saving the request
+  // never made. It is listed apart because what it costs is not the point —
+  // where it sits is: at the tail, a change costs only itself, while at the
+  // front it throws away the server's cached prefix.
+  const tail = turnTailBlocks(space, undefined);
   const whole = [
     ...directives,
     await buildSystemPrompt("claude-opus-4-6", space, undefined),
+    ...tail,
   ]
     .filter(Boolean)
     .join("\n\n");
   for (const d of directives) console.log(`  ${pad(tok(d), 6)}  ${headline(d)}`);
+  for (const t of tail)
+    console.log(`  ${pad(tok(t), 6)}  ${headline(t)}  ← per-turn tail`);
   console.log(
-    `  ${pad(tok(whole) - systemTotal - directives.reduce((n, d) => n + tok(d), 0), 6)}  ── identity / profile / memory / method / discipline`,
+    `  ${pad(tok(whole) - systemTotal - [...directives, ...tail].reduce((n, d) => n + tok(d), 0), 6)}  ── identity / profile / memory / method / discipline`,
   );
   systemTotal = tok(whole);
   console.log(`  ${pad(systemTotal, 6)}  ── total system`);
