@@ -55,6 +55,7 @@ import {
 } from "@shared/composer-height";
 import { cn } from "@/lib/utils";
 import type { ElectronAPI, VoiceReadiness } from "@/types/electron";
+import { effortLadder, remapEffort } from "@shared/effort";
 
 type StagedFile = StagedAttachment;
 
@@ -69,6 +70,8 @@ interface ProviderModelEntry {
   maxInputTokens?: number;
   modalities?: string[];
   supportsEffort?: boolean;
+  /** This model's effort steps, weakest first — see @shared/effort.ts. */
+  effortLevels?: string[];
   hidden?: boolean;
 }
 
@@ -84,12 +87,20 @@ interface ProviderModelEntry {
 interface Provider {
   id: string;
   name: string;
+  /** Decides the default effort ladder when a model reports none. */
+  kind?: string;
   models?: ProviderModelEntry[];
   activeModelId?: string;
 }
 
 function activeModelOf(p: Provider): ProviderModelEntry | undefined {
   return p.models?.find((m) => m.id === p.activeModelId) ?? p.models?.[0];
+}
+
+/** Two ladders are the same ladder — compared by value, since effortLadder
+ * builds a fresh array whenever the model record is re-read. */
+function sameLadder(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
 }
 
 function formatSize(bytes: number): string {
@@ -625,6 +636,18 @@ export function MessageInput({
     activeModel?.label || activeModel?.name || activeProvider?.name || "Model";
   // Context meter budget comes from the ACTIVE MODEL's context length.
   const ctxWindow = activeModel?.contextLength ?? 200000;
+  /**
+   * The effort steps THIS model takes, weakest first.
+   *
+   * Three, four or six of them, in the model's own names and order — see
+   * @shared/effort.ts. Reported by the server where the server knows (Monet
+   * Local publishes its llama.cpp four), otherwise the honest default for
+   * the kind of provider.
+   */
+  const effortSteps = useMemo(
+    () => effortLadder(activeProvider?.kind, activeModel?.effortLevels),
+    [activeProvider?.kind, activeModel?.effortLevels],
+  );
   const usedTokens = usage ? usage.input_tokens + usage.output_tokens : 0;
   const ctxPct = Math.min(100, Math.round((usedTokens / ctxWindow) * 100));
 
@@ -789,17 +812,34 @@ export function MessageInput({
 
   // Reasoning effort (Faster ↔ Smarter). A global composer preference, only
   // sent when the active model supports it. null = off (provider default).
-  const [effort, setEffort] = useState<EffortValue>(() => {
-    const v = localStorage.getItem(`${STORAGE_PREFIX}effort`);
-    return v &&
-      ["minimal", "low", "medium", "high", "xhigh", "max"].includes(v)
-      ? (v as EffortValue)
-      : null;
-  });
+  //
+  // Stored as whatever string was chosen, not as one of a fixed six: the
+  // steps belong to the model, and the one saved last time may not exist on
+  // the model in front of you now.
+  const [effort, setEffort] = useState<EffortValue>(
+    () => localStorage.getItem(`${STORAGE_PREFIX}effort`) || null,
+  );
   useEffect(() => {
     if (effort) localStorage.setItem(`${STORAGE_PREFIX}effort`, effort);
     else localStorage.removeItem(`${STORAGE_PREFIX}effort`);
   }, [effort]);
+
+  /**
+   * Carry the chosen effort across a model switch.
+   *
+   * By position, not by name: someone on the top step of a six-step model
+   * means "think as hard as you can", and the four-step model they just
+   * switched to has a top step too. Keeping the name would silently turn
+   * "max" into nothing at all on the model that has no such step, and the
+   * pill would go on saying Max while nothing was being sent.
+   */
+  const lastLadder = useRef<readonly string[]>(effortSteps);
+  useEffect(() => {
+    const from = lastLadder.current;
+    lastLadder.current = effortSteps;
+    if (sameLadder(from, effortSteps)) return;
+    setEffort((cur) => remapEffort(cur, from, effortSteps));
+  }, [effortSteps]);
 
   // Files dropped anywhere over the chat window (ChatView catches the drop).
   const droppedFiles = useChatStore((s) => s.droppedFiles);
@@ -2141,20 +2181,29 @@ export function MessageInput({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className={cn(pillBtn, effortBgClass(effort))}
-                    title="Reasoning effort (Faster ↔ Smarter)"
+                    className={cn(pillBtn, effortBgClass(effort, effortSteps))}
+                    title={`Reasoning effort — ${effortSteps.length} steps on this model (Faster ↔ Smarter)`}
                   >
                     {/* No glyph: "Max" is the whole message, and a sparkle
                         beside it only competed with the words for the eye.
                         The colour still carries the level. */}
-                    <span className={cn("font-medium", effortTextClass(effort))}>
+                    <span
+                      className={cn(
+                        "font-medium",
+                        effortTextClass(effort, effortSteps),
+                      )}
+                    >
                       {effortLabel(effort)}
                     </span>
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="end" className="w-56">
+                <DropdownMenuContent side="top" align="end" className="w-64">
                   <DropdownMenuLabel>Reasoning effort</DropdownMenuLabel>
-                  <EffortSlider value={effort} onChange={setEffort} />
+                  <EffortSlider
+                    value={effort}
+                    ladder={effortSteps}
+                    onChange={setEffort}
+                  />
                 </DropdownMenuContent>
               </DropdownMenu>
             )}

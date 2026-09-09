@@ -39,6 +39,8 @@ interface MonetLocalModel {
   context_configured?: number | null
   /** `--n-predict`: the most tokens one answer may use. Null = unbounded. */
   predict_configured?: number | null
+  /** `--reasoning-effort`: the steps this server takes, weakest first. */
+  effort_levels?: string[]
   modalities?: string[]
   verdict?: 'fits' | 'tight' | 'wont_fit'
 }
@@ -56,6 +58,15 @@ export interface MonetLocalDiscovered {
    * was this side's default and this side had never been told.
    */
   maxOutputTokens?: number
+  /**
+   * The reasoning-effort steps this server takes, weakest first.
+   *
+   * llama.cpp's four (low…xhigh) are not OpenAI's four and not Anthropic's
+   * none-at-all, and a composer offering one fixed ladder to all of them
+   * shows steps that quietly do nothing. So it is asked for rather than
+   * assumed — see @shared/effort.ts.
+   */
+  effortLevels?: string[]
   modalities?: Modality[]
   supportsEffort?: boolean
   /** Loaded right now. Unloaded models are not returned at all. */
@@ -130,11 +141,15 @@ export async function fetchMonetLocalModels(
         typeof m.predict_configured === 'number' && m.predict_configured > 0
           ? m.predict_configured
           : undefined
+      const efforts = (m.effort_levels ?? []).filter(
+        (x): x is string => typeof x === 'string' && x.trim().length > 0,
+      )
       return {
         name: m.id,
         ...(m.display_name ? { label: m.display_name } : {}),
         ...(ctx ? { contextLength: ctx } : {}),
         ...(predict ? { maxOutputTokens: predict } : {}),
+        ...(efforts.length ? { effortLevels: efforts } : {}),
         modalities: modalities.length ? modalities : (['text'] as Modality[]),
         loaded: true as const,
       }

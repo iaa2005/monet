@@ -117,10 +117,24 @@ function parseNameList(val: string | undefined): string[] | undefined {
   return names.length ? names : undefined;
 }
 
+/**
+ * An agent file's `effort:` line.
+ *
+ * Not checked against a fixed list any more: the steps belong to the model
+ * an agent runs on, and there is no set that is right for all of them (see
+ * @shared/effort.ts). A name this app has never heard of is passed through
+ * and dropped at the request if the model does not have that step — which is
+ * the only place that can actually know.
+ *
+ * EFFORT_VALUES stays as the vocabulary an agent file is WRITTEN in, and a
+ * value from it is normalised to lower case; anything else is taken as
+ * typed, since a model may well be case-sensitive about its own names.
+ */
 function parseEffort(val: string | undefined): EffortLevel | undefined {
-  if (!val) return undefined;
-  const v = val.toLowerCase() as EffortLevel;
-  return EFFORT_VALUES.includes(v) ? v : undefined;
+  const v = val?.trim();
+  if (!v) return undefined;
+  const lower = v.toLowerCase();
+  return EFFORT_VALUES.includes(lower) ? lower : v;
 }
 
 export function parseAgentFile(

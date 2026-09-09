@@ -17,6 +17,8 @@ export interface DiscoveredModel {
   contextLength?: number;
   /** Likewise for the answer ceiling — only Monet Local reports one. */
   maxOutputTokens?: number;
+  /** The reasoning-effort steps the server takes, weakest first. */
+  effortLevels?: string[];
   modalities?: Modality[];
   supportsEffort?: boolean;
 }

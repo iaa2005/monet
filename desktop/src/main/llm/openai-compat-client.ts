@@ -21,6 +21,7 @@ import type {
 } from "./adapter.js";
 import { sanitizeMaxTokens } from "./adapter.js";
 import { droppedStream } from "./stream-end.js";
+import { effortIndex, effortLadder } from "@shared/effort.js";
 import {
   asDeadlineError,
   isLocalEndpoint,
@@ -193,6 +194,8 @@ export class OpenAICompatClient implements LLMAdapter {
   private readonly timeoutMs: number;
   /** Whether to ask for prefill progress — see `return_progress` below. */
   private readonly wantsProgress: boolean;
+  /** This model's effort steps, weakest first — see @shared/effort.ts. */
+  private readonly ladder: readonly string[];
 
   constructor(provider: ActiveModel) {
     this.providerId = provider.id;
@@ -204,6 +207,7 @@ export class OpenAICompatClient implements LLMAdapter {
     this.timeoutMs = streamTimeoutMs(provider);
     this.wantsProgress =
       provider.kind === "monet-local" || isLocalEndpoint(provider.baseURL);
+    this.ladder = effortLadder(provider.kind, provider.effortLevels);
   }
 
   private headers(): Record<string, string> {
@@ -236,18 +240,24 @@ export class OpenAICompatClient implements LLMAdapter {
       stream,
     };
     if (tools && tools.length > 0) body.tools = tools;
-    if (request.effort) {
+    // A step this model does not have is not a step: the composer offers the
+    // model's own ladder, but a routine or a sub-agent can name anything, and
+    // an unknown value would either be rejected by the server or — worse —
+    // silently ignored while the user believes it was asked for.
+    const effort =
+      request.effort && effortIndex(request.effort, this.ladder) >= 0
+        ? request.effort
+        : undefined;
+    if (effort) {
       // OpenRouter exposes a UNIFIED `reasoning` object it normalises to each
       // underlying provider, and accepts the full effort set (minimal…max).
-      // Native OpenAI uses the flat `reasoning_effort` and only knows
-      // minimal/low/medium/high, so clamp xhigh/max down. Reasoning models
-      // reject a custom temperature, so send reasoning OR temperature.
-      if (this.isOpenRouter) {
-        body.reasoning = { effort: request.effort };
-      } else {
-        const e = request.effort;
-        body.reasoning_effort = e === "xhigh" || e === "max" ? "high" : e;
-      }
+      // Everything else takes the flat `reasoning_effort` with whatever its
+      // own ladder says — for llama.cpp that is low…xhigh, for OpenAI
+      // minimal…high, and the ladder is where that distinction lives now
+      // rather than in a clamp here. Reasoning models reject a custom
+      // temperature, so send reasoning OR temperature.
+      if (this.isOpenRouter) body.reasoning = { effort };
+      else body.reasoning_effort = effort;
     } else if (request.temperature != null) {
       body.temperature = request.temperature;
     }

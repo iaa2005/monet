@@ -418,7 +418,9 @@ export interface ElectronAPI {
       userMessageId?: string;
       mode?: string;
       space?: string;
-      effort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+      /** A step on THIS model's ladder — the set differs per model, so
+       * it travels as a string. See @shared/effort.ts. */
+      effort?: string;
       voiceGender?: "female" | "male";
       attachments?: {
         name: string;
@@ -613,6 +615,8 @@ export interface ElectronAPI {
         contextLength?: number;
         /** Only Monet Local reports one — its `--n-predict`. */
         maxOutputTokens?: number;
+        /** The reasoning-effort steps the server takes, weakest first. */
+        effortLevels?: string[];
         modalities?: Modality[];
         supportsEffort?: boolean;
       }[];

@@ -56,6 +56,13 @@ export function merge(
         : old?.maxOutputTokens !== undefined
           ? { maxOutputTokens: old.maxOutputTokens }
           : {}),
+      // The server's own ladder, which is the only place the real one is
+      // known — see @shared/effort.ts for what a wrong ladder costs.
+      ...(m.effortLevels?.length
+        ? { effortLevels: m.effortLevels }
+        : old?.effortLevels?.length
+          ? { effortLevels: old.effortLevels }
+          : {}),
       ...(m.modalities ? { modalities: m.modalities } : {}),
       ...(m.supportsEffort !== undefined
         ? { supportsEffort: m.supportsEffort }
@@ -84,6 +91,7 @@ export function same(a: ProviderModel[], b: ProviderModel[]): boolean {
       m.label ?? "",
       m.contextLength ?? "",
       m.maxOutputTokens ?? "",
+      (m.effortLevels ?? []).join("+"),
       m.maxInputTokens ?? "",
       m.temperature ?? "",
       m.streamTimeoutSec ?? "",

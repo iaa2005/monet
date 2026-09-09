@@ -56,6 +56,9 @@ const MODELS = [
     // without this a model configured to answer at length is asked for less
     // than half of what it was given.
     predict_configured: 32_000,
+    // llama.cpp's four. Note what is NOT here: no "minimal", no "max" — the
+    // two steps the composer used to offer everybody.
+    effort_levels: ['low', 'medium', 'high', 'xhigh'],
     modalities: ['text', 'image'],
     moe: false,
     verdict: 'fits',
@@ -149,6 +152,11 @@ function serve(withManagement: boolean): Promise<{ url: string; close: () => Pro
     model?.maxOutputTokens,
   )
   check(
+    "the effort steps come across, in the server's own order",
+    model?.effortLevels?.join() === 'low,medium,high,xhigh',
+    model?.effortLevels,
+  )
+  check(
     'vision is reported, not guessed from the id',
     !!model?.modalities?.includes('image'),
     model?.modalities,
@@ -229,6 +237,11 @@ function serve(withManagement: boolean): Promise<{ url: string; close: () => Pro
     'and it carries the server answer limit into the stored record',
     first[0]?.maxOutputTokens === 32_000,
     first[0]?.maxOutputTokens,
+  )
+  check(
+    'and the effort ladder with it',
+    first[0]?.effortLevels?.join() === 'low,medium,high,xhigh',
+    first[0]?.effortLevels,
   )
 
   // The user hides it and the composer pins it; neither may be churned by a

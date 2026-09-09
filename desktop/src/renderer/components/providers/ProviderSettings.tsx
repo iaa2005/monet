@@ -23,6 +23,7 @@ import {
   X,
 } from "@/components/icons/hg";
 import { cn } from "@/lib/utils";
+import { effortLadder } from "@shared/effort";
 import { Switch } from "@/components/ui/switch";
 import {
   useProviderStore,
@@ -171,6 +172,7 @@ function ProviderModal({
             ...(m.label ? { label: m.label } : {}),
             ...(m.contextLength ? { contextLength: m.contextLength } : {}),
             ...(m.maxOutputTokens ? { maxOutputTokens: m.maxOutputTokens } : {}),
+            ...(m.effortLevels?.length ? { effortLevels: m.effortLevels } : {}),
             ...(m.modalities ? { modalities: m.modalities } : {}),
             ...(m.supportsEffort !== undefined
               ? { supportsEffort: m.supportsEffort }
@@ -236,6 +238,13 @@ function ProviderModal({
               ? { maxOutputTokens: m.maxOutputTokens }
               : old?.maxOutputTokens !== undefined
                 ? { maxOutputTokens: old.maxOutputTokens }
+                : {}),
+            // The steps this model's server really takes. Four for
+            // llama.cpp, and not the same four as OpenAI's.
+            ...(m.effortLevels?.length
+              ? { effortLevels: m.effortLevels }
+              : old?.effortLevels?.length
+                ? { effortLevels: old.effortLevels }
                 : {}),
             ...(m.modalities ? { modalities: m.modalities } : {}),
             ...(m.supportsEffort !== undefined
@@ -584,6 +593,35 @@ function ProviderModal({
                         Supports reasoning effort — shows the composer's
                         Faster↔Smarter control
                       </label>
+
+                      {/* The steps THIS model takes. Monet Local reports its
+                          own (llama.cpp's four), and the placeholder shows
+                          what the composer would offer without an answer —
+                          which is the honest default for the kind, not a
+                          universal set. Worth typing only for a model whose
+                          server takes something unusual. */}
+                      {m.supportsEffort ? (
+                        <div className="mt-2">
+                          <label className="text-[11px] text-muted-foreground">
+                            Effort steps — weakest first, comma separated
+                          </label>
+                          <input
+                            type="text"
+                            value={(m.effortLevels ?? []).join(", ")}
+                            onChange={(e) => {
+                              const list = e.target.value
+                                .split(",")
+                                .map((x) => x.trim())
+                                .filter(Boolean);
+                              patchModel(m.id, {
+                                effortLevels: list.length ? list : undefined,
+                              });
+                            }}
+                            className={inputXs}
+                            placeholder={effortLadder(kind, undefined).join(", ")}
+                          />
+                        </div>
+                      ) : null}
 
                       <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
                         <NumField

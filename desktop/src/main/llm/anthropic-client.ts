@@ -14,32 +14,32 @@ import type {
 } from "./adapter.js";
 import { sanitizeMaxTokens } from "./adapter.js";
 import { droppedStream } from "./stream-end.js";
+import { effortLadder, thinkingBudget } from "@shared/effort.js";
 import { asDeadlineError, streamTimeoutMs, withDeadline } from "./timeouts.js";
-
-/** Extended-thinking token budget per effort level (Anthropic has no named
- * effort levels, so we map each to a budget). */
-const THINKING_BUDGET: Record<EffortLevel, number> = {
-  minimal: 1024,
-  low: 2048,
-  medium: 6144,
-  high: 12288,
-  xhigh: 20480,
-  max: 30720,
-};
 
 /**
  * Apply reasoning to an Anthropic request body. With effort set we enable
  * extended thinking (a token budget) and OMIT temperature — the API rejects a
  * custom temperature alongside thinking. max_tokens must exceed the budget, so
  * bump it if the caller's output budget is too small.
+ *
+ * Anthropic has no named effort levels at all: the names are this app's, and
+ * what goes on the wire is a number. So the budget comes from the step's
+ * POSITION on this model's ladder (@shared/effort.ts) rather than a lookup
+ * table — which is what lets a ladder of any length, with any names, mean
+ * something here.
  */
 function applyThinking(
   body: Record<string, unknown>,
   request: LLMRequest,
+  ladder: readonly string[],
 ): void {
   // No effort requested → send no thinking config at all.
   if (!request.effort) return;
-  const budget = THINKING_BUDGET[request.effort];
+  const budget = thinkingBudget(request.effort, ladder);
+  // A step this model does not have is not a step. Sending some fallback
+  // budget would be inventing an instruction the user did not give.
+  if (budget === null) return;
   body.thinking = { type: "enabled", budget_tokens: budget };
   const min = Math.min(budget + 4096, request.max_tokens);
   if ((body.max_tokens as number) < min) body.max_tokens = min;
@@ -111,6 +111,8 @@ export class AnthropicClient implements LLMAdapter {
 
   /** Silence before the stream is abandoned. 0 = wait indefinitely. */
   private readonly timeoutMs: number;
+  /** This model's effort steps, weakest first — what a level MEANS here. */
+  private readonly ladder: readonly string[];
 
   constructor(provider: ActiveModel) {
     this.providerId = provider.id;
@@ -121,6 +123,7 @@ export class AnthropicClient implements LLMAdapter {
     // deadline is a property of the endpoint, and the endpoint is what this
     // object is. See llm/timeouts.ts for why it is not a constant any more.
     this.timeoutMs = streamTimeoutMs(provider);
+    this.ladder = effortLadder(provider.kind, provider.effortLevels);
   }
 
   async stream(
@@ -148,7 +151,7 @@ export class AnthropicClient implements LLMAdapter {
       tools: tools && tools.length > 0 ? tools : undefined,
       stream: true,
     };
-    applyThinking(body, request);
+    applyThinking(body, request, this.ladder);
 
     // The watchdog aborts the REQUEST, not just the reader: cancelling the
     // reader leaves the server generating into a socket nobody reads, and on
@@ -455,7 +458,7 @@ export class AnthropicClient implements LLMAdapter {
       })),
       stream: false,
     };
-    applyThinking(body, request);
+    applyThinking(body, request, this.ladder);
 
     // A completion has no stream to keep it alive, so the same number bounds
     // the whole request rather than the gaps in it. Background work — the

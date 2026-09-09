@@ -32,6 +32,15 @@ export interface ProviderModel {
   modalities?: Modality[];
   /** Whether this model exposes a reasoning-effort knob. Unset → inferred. */
   supportsEffort?: boolean;
+  /**
+   * The effort steps THIS model takes, weakest first.
+   *
+   * Unset → the default ladder for the provider kind (@shared/effort.ts).
+   * There is no universal set: llama.cpp takes four, OpenAI a different
+   * four, Anthropic none at all — so the composer draws this list rather
+   * than one of its own.
+   */
+  effortLevels?: string[];
   /** Seconds of silence before a stream from this model is abandoned.
    * Unset = the global default for where the endpoint is; 0 = never. */
   streamTimeoutSec?: number;

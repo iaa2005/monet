@@ -12,6 +12,8 @@
  * this?" has an answer the compiler can check.
  */
 
+import { effortLadder, type EffortLevel as SharedEffortLevel } from '@shared/effort.js'
+
 export type ProviderKind =
   | 'anthropic'
   | 'deepseek'
@@ -42,15 +44,15 @@ export function hasDynamicModels(kind: ProviderKind): boolean {
 /** What a model can accept as input. */
 export type Modality = 'text' | 'image' | 'audio' | 'file' | 'video'
 
-/** Reasoning-effort level the composer can request (null/absent = off).
- * Full OpenRouter/OpenAI-style set; adapters translate/clamp per provider. */
-export type EffortLevel =
-  | 'minimal'
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'xhigh'
-  | 'max'
+/**
+ * Reasoning-effort level the composer can request (null/absent = off).
+ *
+ * A STRING, not a closed union: the steps belong to the model, and there are
+ * three, four or six of them depending on who is answering — see
+ * @shared/effort.ts, which owns the ladders and the mapping between them.
+ * The common names are kept in the type for autocomplete only.
+ */
+export type EffortLevel = SharedEffortLevel
 
 /** Best-effort guess at whether a model exposes a reasoning-effort knob, used
  * as the default when a model has no explicit supportsEffort flag. */
@@ -144,6 +146,14 @@ export interface ProviderModel {
   modalities?: Modality[]
   /** Whether this model exposes a reasoning-effort knob. Unset → inferred. */
   supportsEffort?: boolean
+  /**
+   * The effort steps THIS model takes, weakest first.
+   *
+   * Unset → the default ladder for the provider kind (@shared/effort.ts).
+   * Monet Local reports its own (`effort_levels`), because llama.cpp's four
+   * are not OpenAI's four and neither is Anthropic's five.
+   */
+  effortLevels?: string[]
   /**
    * Seconds of silence before a stream from this model is abandoned.
    *
@@ -252,6 +262,8 @@ export interface ActiveModel {
   modalities?: Modality[]
   /** Whether this model exposes a reasoning-effort knob. */
   supportsEffort?: boolean
+  /** The effort steps this model takes, weakest first — see ProviderModel. */
+  effortLevels?: string[]
   /** Silence timeout for this model, in seconds. Unset = the global default. */
   streamTimeoutSec?: number
   /** OpenRouter: provider routing for this model. */
@@ -293,6 +305,10 @@ export function resolveModelOn(
     // hand-added vision model used to have its images silently diverted.
     modalities: m.modalities ?? inferModalities(p.kind, m.name),
     supportsEffort: m.supportsEffort ?? inferEffortSupport(p.kind, m.name),
+    // Resolved here rather than at the request: the ladder decides what the
+    // composer offers AND how the client translates it, and those two
+    // reading different lists is exactly how a step becomes a no-op.
+    effortLevels: [...effortLadder(p.kind, m.effortLevels)],
     // Left undefined on purpose when the model does not set one: the default
     // depends on where the endpoint is, and that is resolved where the
     // request is made rather than frozen into the record here.
