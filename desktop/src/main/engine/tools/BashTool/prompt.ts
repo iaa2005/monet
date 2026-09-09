@@ -39,6 +39,15 @@ function getBackgroundUsageNote(): string | null {
   return "You can use the `run_in_background` parameter to run the command in the background. Only use this if you don't need the result immediately and are OK being notified when the command completes later. You do not need to check the output right away - you'll be notified when it finishes. You do not need to use '&' at the end of the command when using this parameter."
 }
 
+const GIT_SAFETY_PROTOCOL = `Git Safety Protocol:
+- NEVER update the git config
+- NEVER run destructive git commands (push --force, reset --hard, checkout ., restore ., clean -f, branch -D) unless the user explicitly requests these actions. Taking unauthorized destructive actions is unhelpful and can result in lost work, so it's best to ONLY run these commands when given direct instructions 
+- NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
+- NEVER run force push to main/master, warn the user if they request it
+- CRITICAL: Always create NEW commits rather than amending, unless the user explicitly requests a git amend. When a pre-commit hook fails, the commit did NOT happen — so --amend would modify the PREVIOUS commit, which may result in destroying work or losing previous changes. Instead, after hook failure, fix the issue, re-stage, and create a NEW commit
+- When staging files, prefer adding specific files by name rather than using "git add -A" or "git add .", which can accidentally include sensitive files (.env, credentials) or large binaries
+- NEVER commit changes unless the user explicitly asks you to. It is VERY IMPORTANT to only commit when explicitly asked, otherwise the user will feel that you are being too proactive`
+
 function getCommitAndPRInstructions(): string {
   // Defense-in-depth: undercover instructions must survive even if the user
   // has disabled git instructions entirely. Attribution stripping and model-ID
@@ -52,16 +61,50 @@ function getCommitAndPRInstructions(): string {
 
   if (!shouldIncludeGitInstructions()) return undercoverSection
 
-  // For ant users, use the short version pointing to skills
-  if (process.env.USER_TYPE === 'ant') {
+  // The short version, pointing at a skill instead of inlining the recipe.
+  //
+  // Measured on this app: the long form below is 1,461 tokens of the 2,398
+  // Bash costs, and it is spent on every turn of every chat, whether or not
+  // anything is ever committed. What it contains is two kinds of thing —
+  // RULES ("never skip hooks", "never git add -A") and RECIPES (compose the
+  // message like this, run these four commands in parallel, here is the
+  // heredoc for a PR body). The rules are short and belong in context always;
+  // they live in this app's own working-discipline block (agent/index.ts) and
+  // are checked against this text by scripts/git-rules-probe.ts. The recipe
+  // is long and belongs where a recipe belongs: in the /commit skill, loaded
+  // on the turn someone actually asks to commit.
+  //
+  // Ant users already took this path with their own skills. This is the same
+  // trade with ours.
+  if (process.env.USER_TYPE === 'ant' || isEnvTruthy(process.env.MONET_GIT_SKILL)) {
+    const ant = process.env.USER_TYPE === 'ant'
+    // The attribution stays inline even in the short form: it is two lines,
+    // and it is computed for THIS run (the model's own name goes in it), so
+    // a static skill file cannot carry it.
+    const { commit: shortCommitAttr, pr: shortPrAttr } = getAttributionTexts()
+    const attribution = [
+      shortCommitAttr ? `
+End git commit messages with:
+${shortCommitAttr}` : '',
+      shortPrAttr ? `
+End pull request descriptions with:
+${shortPrAttr}` : '',
+    ].join('')
     const skillsSection = !isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE)
-      ? `For git commits and pull requests, use the \`/commit\` and \`/commit-push-pr\` skills:
+      ? ant
+        ? `For git commits and pull requests, use the \`/commit\` and \`/commit-push-pr\` skills:
 - \`/commit\` - Create a git commit with staged changes
 - \`/commit-push-pr\` - Commit, push, and create a pull request
 
 These skills handle git safety protocols, proper commit message formatting, and PR creation.
 
 Before creating a pull request, run \`/simplify\` to review your changes, then test end-to-end (e.g. via \`/tmux\` for interactive features).
+
+`
+        : `${GIT_SAFETY_PROTOCOL}
+
+To commit, or to open a pull request, run the \`/commit\` skill first — it carries the message format and the gh recipe. Do not improvise those steps from memory. The rules above hold whether or not you run it.
+${attribution}
 
 `
       : ''
@@ -84,14 +127,7 @@ Only create commits when requested by the user. If unclear, ask first. When the 
 
 You can call multiple tools in a single response. When multiple independent pieces of information are requested and all commands are likely to succeed, run multiple tool calls in parallel for optimal performance. The numbered steps below indicate which commands should be batched in parallel.
 
-Git Safety Protocol:
-- NEVER update the git config
-- NEVER run destructive git commands (push --force, reset --hard, checkout ., restore ., clean -f, branch -D) unless the user explicitly requests these actions. Taking unauthorized destructive actions is unhelpful and can result in lost work, so it's best to ONLY run these commands when given direct instructions 
-- NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
-- NEVER run force push to main/master, warn the user if they request it
-- CRITICAL: Always create NEW commits rather than amending, unless the user explicitly requests a git amend. When a pre-commit hook fails, the commit did NOT happen — so --amend would modify the PREVIOUS commit, which may result in destroying work or losing previous changes. Instead, after hook failure, fix the issue, re-stage, and create a NEW commit
-- When staging files, prefer adding specific files by name rather than using "git add -A" or "git add .", which can accidentally include sensitive files (.env, credentials) or large binaries
-- NEVER commit changes unless the user explicitly asks you to. It is VERY IMPORTANT to only commit when explicitly asked, otherwise the user will feel that you are being too proactive
+${GIT_SAFETY_PROTOCOL}
 
 1. Run the following bash commands in parallel, each using the ${BASH_TOOL_NAME} tool:
   - Run a git status command to see all untracked files. IMPORTANT: Never use the -uall flag as it can cause memory issues on large repos.

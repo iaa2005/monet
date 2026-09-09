@@ -32,6 +32,7 @@ import {
 import { initVendorRuntime } from "@main/agent/vendor-context.js";
 import { buildDirectives, buildSystemPrompt } from "@main/agent/index.js";
 import { stripExamples } from "@main/agent/lean-context.js";
+import { SEEDED } from "@main/agent/seed-skills.js";
 
 const tok = (s: string): number => Math.ceil(s.length / 4);
 const RULE = /\b(NEVER|ALWAYS|IMPORTANT|CRITICAL|do not|don't|must not)\b/i;
@@ -135,6 +136,38 @@ async function main(): Promise<void> {
       .filter((x) => !after.has(x)).length;
   }
 
+  // The other guard, for the other kind of trimming: the Bash tool's git
+  // RECIPE moved to the /commit skill and its RULES stayed. Every prohibition
+  // the long inline form carried has to still be in the short one, verbatim —
+  // a rule that survives as a paraphrase has not survived.
+  const bash = getVendorToolsForSpace("code").find((t) => t.name === "Bash") as
+    | { prompt: () => Promise<string> }
+    | undefined;
+  let gitLost: string[] = [];
+  if (bash) {
+    const was = process.env.MONET_GIT_SKILL;
+    process.env.MONET_GIT_SKILL = "0";
+    const long = await bash.prompt();
+    process.env.MONET_GIT_SKILL = "1";
+    const short = await bash.prompt();
+    if (was === undefined) delete process.env.MONET_GIT_SKILL;
+    else process.env.MONET_GIT_SKILL = was;
+
+    const rules = (text: string): string[] =>
+      text
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => /^-?\s*(NEVER|CRITICAL|ALWAYS)\b/.test(l));
+    // A rule that MOVED is fine; a rule that vanished is not. So the short
+    // form and the skill it points at are checked together.
+    const skill = SEEDED.find((x) => x.name === "commit")?.body ?? "";
+    const kept = new Set([...rules(short), ...rules(skill)]);
+    gitLost = rules(long).filter((l) => !kept.has(l));
+    console.log(
+      `\nBash: ${tok(long)} tok with the git recipe inline, ${tok(short)} with it in /commit`,
+    );
+  }
+
   console.log("\n═════════════════════════════════════════════════");
   console.log(`code ${code} · home ${home}`);
   console.log(
@@ -142,7 +175,12 @@ async function main(): Promise<void> {
       ? "rules preserved by lean mode: yes"
       : `RULES LOST TO LEAN MODE: ${lost}`,
   );
-  if (lost > 0) process.exitCode = 1;
+  console.log(
+    gitLost.length === 0
+      ? "git rules preserved by the short form: yes"
+      : `GIT RULES LOST: ${gitLost.length}\n  ${gitLost.join("\n  ")}`,
+  );
+  if (lost > 0 || gitLost.length > 0) process.exitCode = 1;
 }
 
 void main();

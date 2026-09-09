@@ -75,6 +75,9 @@ const r = spawnSync(
       // memoises that section on first build, so measuring without it would
       // report a prompt the app never sends.
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+      // Same reason: main sets it in applyLeanEnv(), so a measurement taken
+      // without it is of a prompt the app does not send.
+      MONET_GIT_SKILL: process.env.MONET_GIT_SKILL ?? '1',
     },
   },
 )

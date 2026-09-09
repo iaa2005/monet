@@ -67,6 +67,15 @@ export function setLeanConfig(patch: Partial<LeanConfig>): LeanConfig {
  */
 export function applyLeanEnv(): void {
   process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
+  /**
+   * The Bash tool's git RECIPE moves to the `/commit` skill; its RULES stay
+   * inline. Measured: 1,461 of Bash's 2,398 tokens, paid on every turn of
+   * every chat whether or not anything was ever committed.
+   *
+   * `??=`, so `MONET_GIT_SKILL=0` in the environment brings the long inline
+   * form back for anyone who wants it.
+   */
+  process.env.MONET_GIT_SKILL ??= "1";
 }
 
 // ─── Tool description compression ───────────────────────────────────────────
