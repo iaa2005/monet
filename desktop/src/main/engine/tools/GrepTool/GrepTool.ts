@@ -30,61 +30,59 @@ import {
   renderToolUseMessage,
 } from './UI.jsx'
 
+/**
+ * Fourteen parameters, and the descriptions were 589 tokens — a third more
+ * than the tool's own description, and the largest schema in the toolset. The
+ * bulk was repetition: "Requires output_mode: 'content', ignored otherwise"
+ * five times over, each mode's effect on head_limit spelled out separately,
+ * and shell equivalents ("| tail -n +N | head -N") for a tool that is not a
+ * shell. Every FACT is still here, said once — including which flags need
+ * content mode, because getting that wrong costs a round trip and this is a
+ * tool that runs on nearly every turn.
+ */
 const inputSchema = lazySchema(() =>
   z.strictObject({
-    pattern: z
-      .string()
-      .describe(
-        'The regular expression pattern to search for in file contents',
-      ),
+    pattern: z.string().describe('Regular expression (ripgrep syntax).'),
     path: z
       .string()
       .optional()
-      .describe(
-        'File or directory to search in (rg PATH). Defaults to current working directory.',
-      ),
+      .describe('File or directory to search. Default: the working directory.'),
     glob: z
       .string()
       .optional()
-      .describe(
-        'Glob pattern to filter files (e.g. "*.js", "*.{ts,tsx}") - maps to rg --glob',
-      ),
+      .describe('Only these files, e.g. "*.js" or "*.{ts,tsx}" (rg --glob).'),
     output_mode: z
       .enum(['content', 'files_with_matches', 'count'])
       .optional()
       .describe(
-        'Output mode: "content" shows matching lines (supports -A/-B/-C context, -n line numbers, head_limit), "files_with_matches" shows file paths (supports head_limit), "count" shows match counts (supports head_limit). Defaults to "files_with_matches".',
+        '"files_with_matches" (default) = paths; "content" = matching lines; "count" = matches per file.',
       ),
     '-B': semanticNumber(z.number().optional()).describe(
-      'Number of lines to show before each match (rg -B). Requires output_mode: "content", ignored otherwise.',
+      'Lines of context before each match. Content mode only, as are -A, -C, context and -n.',
     ),
-    '-A': semanticNumber(z.number().optional()).describe(
-      'Number of lines to show after each match (rg -A). Requires output_mode: "content", ignored otherwise.',
-    ),
+    '-A': semanticNumber(z.number().optional()).describe('Lines after each match.'),
     '-C': semanticNumber(z.number().optional()).describe('Alias for context.'),
     context: semanticNumber(z.number().optional()).describe(
-      'Number of lines to show before and after each match (rg -C). Requires output_mode: "content", ignored otherwise.',
+      'Lines before AND after each match.',
     ),
     '-n': semanticBoolean(z.boolean().optional()).describe(
-      'Show line numbers in output (rg -n). Requires output_mode: "content", ignored otherwise. Defaults to true.',
+      'Line numbers. Default true.',
     ),
-    '-i': semanticBoolean(z.boolean().optional()).describe(
-      'Case insensitive search (rg -i)',
-    ),
+    '-i': semanticBoolean(z.boolean().optional()).describe('Case insensitive.'),
     type: z
       .string()
       .optional()
       .describe(
-        'File type to search (rg --type). Common types: js, py, rust, go, java, etc. More efficient than include for standard file types.',
+        'File type: js, py, rust, go, java… (rg --type). Cheaper than glob for a standard type.',
       ),
     head_limit: semanticNumber(z.number().optional()).describe(
-      'Limit output to first N lines/entries, equivalent to "| head -N". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults to 250 when unspecified. Pass 0 for unlimited (use sparingly — large result sets waste context).',
+      'Keep only the first N results, whatever the mode. Default 250; 0 = unlimited, which is how a search fills the context.',
     ),
     offset: semanticNumber(z.number().optional()).describe(
-      'Skip first N lines/entries before applying head_limit, equivalent to "| tail -n +N | head -N". Works across all output modes. Defaults to 0.',
+      'Skip N results before head_limit. Default 0.',
     ),
     multiline: semanticBoolean(z.boolean().optional()).describe(
-      'Enable multiline mode where . matches newlines and patterns can span lines (rg -U --multiline-dotall). Default: false.',
+      'Let . match newlines so a pattern can span lines (rg -U --multiline-dotall). Default false.',
     ),
   }),
 )
