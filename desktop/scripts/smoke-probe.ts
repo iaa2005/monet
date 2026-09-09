@@ -904,72 +904,137 @@ async function main() {
     ),
   )
 
-  // ── CreateRoutine ──────────────────────────────────────────────────────
-  // A routine is a standing grant that runs with tools pre-approved, so the
-  // guards matter more than the happy path.
-  check('CreateRoutine tool present', tools.some(t => t.name === 'CreateRoutine'))
+  // ── Routine ────────────────────────────────────────────────────────────
+  // A routine is not an action, it is a STANDING GRANT: it runs unattended
+  // with bypassPermissions, so every tool it touches is auto-approved from
+  // then on. The guards matter more than the happy path, and none of them is
+  // tested by "the call returned an error" — an error is what you get from a
+  // tool that does not exist. This block asked for `CreateRoutine`, which was
+  // renamed to `Routine` with a different schema, so for some time three of
+  // these passed because the wrong error arrived and four failed because the
+  // right one never did. Every check below names the error it expects.
+  check('Routine tool present', tools.some(t => t.name === 'Routine'))
 
-  const unattended = await run(
-    'CreateRoutine',
-    { name: 'x', prompt: 'y', trigger: 'schedule', cron: '0 9 * * *' },
-    { unattended: true },
-  )
-  check(
-    'CreateRoutine refuses to self-replicate in an unattended run',
-    unattended.isError && /can't create routines/i.test(unattended.content),
-  )
+  const routine = (
+    input: Record<string, unknown>,
+    opts?: Parameters<typeof run>[2],
+  ) => run('Routine', input, opts)
 
-  // The regression that shipped: "Skip all approvals" is bypassPermissions too,
-  // so keying the guard off the permission mode refused a user their own
-  // routine while they sat watching. Attended means attended, whatever the mode.
-  const skipAll = await run(
-    'CreateRoutine',
-    { name: 'x', prompt: 'y', trigger: 'schedule', cron: 'nonsense' },
-    { permissionMode: 'bypassPermissions' },
-  )
-  check(
-    'CreateRoutine still works for a user with Skip all approvals on',
-    skipAll.isError && !/can't create routines/i.test(skipAll.content),
-    skipAll.content.slice(0, 60),
-  )
+  const SCHEDULE = { name: 'x', prompt: 'y', trigger: 'schedule' }
 
-  const badCron = await run('CreateRoutine', {
-    name: 'x',
-    prompt: 'y',
-    trigger: 'schedule',
-    cron: 'not a cron',
-  }, { permissionMode: 'default' })
-  check('CreateRoutine rejects an unparseable cron', badCron.isError)
-
-  const neverFires = await run('CreateRoutine', {
-    name: 'x',
-    prompt: 'y',
-    trigger: 'schedule',
-    cron: '0 0 30 2 *', // parses, but Feb 30 never comes
-  }, { permissionMode: 'default' })
-  check(
-    'CreateRoutine rejects a cron that never fires',
-    neverFires.isError && /never comes round/i.test(neverFires.content),
-  )
-
-  const ghost = await run('CreateRoutine', {
-    name: 'x',
-    prompt: 'y',
-    trigger: 'schedule',
-    cron: '0 9 * * *',
-    connectors: ['not-a-connector'],
-  }, { permissionMode: 'default' })
-  check(
-    'CreateRoutine rejects an unknown connector',
-    ghost.isError && /not connected/i.test(ghost.content),
-  )
-
-  const noCron = await run('CreateRoutine', {
-    name: 'x',
-    prompt: 'y',
-    trigger: 'schedule',
-  }, { permissionMode: 'default' })
-  check('CreateRoutine requires cron for a schedule', noCron.isError)
+  {
+    const r = await routine(
+      { action: 'create', ...SCHEDULE, cron: '0 9 * * *' },
+      { unattended: true },
+    )
+    check(
+      'a routine may not create a routine',
+      r.isError && /can't create, edit or delete routines/i.test(r.content),
+      r.content.slice(0, 80),
+    )
+  }
+  {
+    // Reading is not granting. Asserted on the tool's own contract rather
+    // than on a call: `list` reaches the session store, which is a native
+    // module this probe cannot load, so a call would "pass" on the absence of
+    // one error while a different one arrived — which is the exact way the
+    // block this replaces was broken.
+    const tool = tools.find(t => t.name === 'Routine') as
+      | { isReadOnly: (input?: unknown) => boolean }
+      | undefined
+    check('listing needs no permission prompt', tool?.isReadOnly({ action: 'list' }) === true)
+    check(
+      'and everything else always does',
+      (['create', 'update', 'delete'] as const).every(
+        action => tool?.isReadOnly({ action }) === false,
+      ),
+    )
+  }
+  {
+    // The regression that shipped: "Skip all approvals" is bypassPermissions
+    // too, so keying the guard off the permission MODE refused a user their
+    // own routine while they sat watching. Attended means attended.
+    // Deliberately invalid cron, so a pass here is the gate letting it
+    // through to validation rather than the routine being written.
+    const r = await routine(
+      { action: 'create', ...SCHEDULE, cron: 'nonsense' },
+      { permissionMode: 'bypassPermissions' },
+    )
+    check(
+      'a watching user with Skip all approvals is not refused',
+      r.isError && !/can't create, edit or delete routines/i.test(r.content),
+      r.content.slice(0, 80),
+    )
+  }
+  {
+    const r = await routine(
+      { action: 'create', ...SCHEDULE, cron: 'not a cron' },
+      { permissionMode: 'default' },
+    )
+    check(
+      'an unparseable cron is refused as one',
+      r.isError && /isn't a valid 5-field cron/i.test(r.content),
+      r.content.slice(0, 80),
+    )
+  }
+  {
+    // Parses, and never comes round. A routine that never runs is worse than
+    // an error, because nothing ever tells you.
+    const r = await routine(
+      { action: 'create', ...SCHEDULE, cron: '0 0 30 2 *' },
+      { permissionMode: 'default' },
+    )
+    check(
+      'a cron that can never fire is refused',
+      r.isError && /never comes round/i.test(r.content),
+      r.content.slice(0, 80),
+    )
+  }
+  {
+    // Scoped to a connector that does not exist, it would run with no tools
+    // and quietly do nothing.
+    const r = await routine(
+      {
+        action: 'create',
+        ...SCHEDULE,
+        cron: '0 9 * * *',
+        connectors: ['not-a-connector'],
+      },
+      { permissionMode: 'default' },
+    )
+    check(
+      'an unknown connector is refused, by name',
+      r.isError && /not connected: not-a-connector/i.test(r.content),
+      r.content.slice(0, 80),
+    )
+  }
+  {
+    const r = await routine(
+      { action: 'create', ...SCHEDULE },
+      { permissionMode: 'default' },
+    )
+    check(
+      'a schedule with no cron is refused',
+      r.isError && /needs `cron`/i.test(r.content),
+      r.content.slice(0, 80),
+    )
+  }
+  {
+    // Editing is not lesser than creating: a patch can add grants or change
+    // what runs, which is why `update` and `delete` go through the same gate.
+    const r = await routine({ action: 'update', id: 'nope' }, { unattended: true })
+    check(
+      'editing is gated exactly like creating',
+      r.isError && /can't create, edit or delete routines/i.test(r.content),
+      r.content.slice(0, 80),
+    )
+    const d = await routine({ action: 'delete', id: 'nope' }, { unattended: true })
+    check(
+      'and so is deleting',
+      d.isError && /can't create, edit or delete routines/i.test(d.content),
+      d.content.slice(0, 80),
+    )
+  }
 
   // Every service must be honest about itself. These checks exist because a
   // guessed catalog once shipped fake endpoints, a missing Test branch showed
