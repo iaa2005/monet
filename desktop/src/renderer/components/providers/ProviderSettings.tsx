@@ -588,6 +588,18 @@ function ProviderModal({
                           placeholder="default"
                           step={0.1}
                         />
+                        {/* Silence, not total time: the clock restarts on
+                            every byte. Worth setting per model when one of a
+                            provider's models is much slower than the rest —
+                            a 27B on the CPU beside a 4B on the GPU. */}
+                        <NumField
+                          label="Silence timeout, s"
+                          value={m.streamTimeoutSec}
+                          onChange={(v) =>
+                            patchModel(m.id, { streamTimeoutSec: v })
+                          }
+                          placeholder="default · 0 = never"
+                        />
                       </div>
 
                       <div className="mt-2">

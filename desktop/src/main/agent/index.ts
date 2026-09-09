@@ -2133,7 +2133,14 @@ async function runAgentScoped(
         // announced it as the model going quiet. The abort check at the top
         // of the loop is too late: this runs before the loop comes round.
         !signal?.aborted &&
-        shouldNudge({ emptyReply: empty, nudgesUsed, nudgedLastTurn })
+        shouldNudge({
+          emptyReply: empty,
+          nudgesUsed,
+          nudgedLastTurn,
+          // A stream that FAILED is not a model that went quiet — see the
+          // field's own note for what nudging one costs.
+          streamFailed: !!streamError,
+        })
       ) {
         nudgesUsed++;
         nudgedLastTurn = true;
@@ -2154,8 +2161,10 @@ async function runAgentScoped(
       onEvent({
         type: "message_stop",
         // Propagate the turn's real stop_reason (message_delta): the renderer
-        // flags max_tokens so a silently truncated reply is visible.
-        stop_reason: lastStopReason ?? "end_turn",
+        // flags max_tokens so a silently truncated reply is visible. A stream
+        // that failed has no stop_reason of its own worth believing — the
+        // provider never sent one — so say what actually happened.
+        stop_reason: streamError ? "error" : (lastStopReason ?? "end_turn"),
         usage: lastUsage,
         // A run that ends with nothing said: the one distinction a
         // post-mortem needs, and the only trace such a turn leaves.

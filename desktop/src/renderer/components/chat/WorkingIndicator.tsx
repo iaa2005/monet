@@ -107,11 +107,24 @@ export function formatElapsed(ms: number): string {
   return s ? `${m}m ${s}s` : `${m}m`;
 }
 
+/** How far the server has got through the prompt — see LLMEvent. */
+export interface PromptProgress {
+  processed: number;
+  total: number;
+  cache: number;
+}
+
+const count = (n: number): string => n.toLocaleString("en-US");
+
 /**
  * What to put next to the spinner.
  *
  * A running tool always wins — "Running command · npm run build" beats any
- * adjective. `startedAt` seeds the filler rotation so two chats started at
+ * adjective. Then the prefill, when the server is narrating one: on a local
+ * model reading a long prompt is minutes of work that used to render as
+ * "Pondering", which is not merely unhelpful but wrong — nothing is being
+ * pondered, a number is climbing, and it is the number that tells you whether
+ * to wait. `startedAt` seeds the filler rotation so two chats started at
  * different moments are not locked in step, and so the word does not jump
  * back to the top of the list every time the row remounts.
  */
@@ -119,6 +132,7 @@ export function workingLabel(
   running: ToolCall[],
   elapsedMs: number,
   startedAt: number,
+  progress?: PromptProgress | null,
 ): string {
   if (running.length > 1) return `Running ${running.length} tools`;
   const call = running[0];
@@ -126,6 +140,11 @@ export function workingLabel(
     const name = RUNNING_NAMES[call.name] ?? call.name;
     const arg = argPreview(call);
     return arg ? `${name} · ${arg}` : name;
+  }
+  if (progress && progress.total > 0) {
+    const done = Math.min(progress.processed, progress.total);
+    const pct = Math.floor((done / progress.total) * 100);
+    return `Reading the prompt · ${count(done)} / ${count(progress.total)} · ${pct}%`;
   }
   const words = elapsedMs >= LATE_AFTER_MS ? LATE_WORDS : EARLY_WORDS;
   const step = Math.floor(elapsedMs / WORD_MS) + startedAt;
@@ -176,12 +195,16 @@ export function Spinner({ className }: { className?: string }): JSX.Element {
 export function WorkingIndicator({
   messages,
   startedAt,
+  progress,
   className,
 }: {
   messages: ChatMessage[];
   /** When the current run began. Owned by the parent so the clock survives
    * this component unmounting whenever the model emits a burst of text. */
   startedAt: number;
+  /** The server's own account of how far into the prompt it is, when it
+   * gives one. Null the rest of the time — most providers say nothing. */
+  progress?: PromptProgress | null;
   className?: string;
 }): JSX.Element {
   const [now, setNow] = useState(() => Date.now());
@@ -196,7 +219,7 @@ export function WorkingIndicator({
 
   const elapsed = Math.max(0, now - startedAt);
   const running = runningCalls(messages);
-  const label = workingLabel(running, elapsed, startedAt);
+  const label = workingLabel(running, elapsed, startedAt, progress);
 
   return (
     <div

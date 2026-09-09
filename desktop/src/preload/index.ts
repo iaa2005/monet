@@ -1498,6 +1498,13 @@ const electronAPI = {
       leanTools?: boolean;
     }): Promise<{ leanTools: boolean }> =>
       ipcRenderer.invoke("lean:set", patch),
+    timeoutsGet: (): Promise<{ remoteSec: number; localSec: number }> =>
+      ipcRenderer.invoke("timeouts:get"),
+    timeoutsSet: (patch: {
+      remoteSec?: number;
+      localSec?: number;
+    }): Promise<{ remoteSec: number; localSec: number }> =>
+      ipcRenderer.invoke("timeouts:set", patch),
     lspGet: (): Promise<{ enabled: boolean }> => ipcRenderer.invoke("lsp:get"),
     lspSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
       ipcRenderer.invoke("lsp:set", patch),

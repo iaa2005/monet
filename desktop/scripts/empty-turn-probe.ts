@@ -64,6 +64,19 @@ check(
 )
 check('and the budget is small', MAX_NUDGES <= 2, MAX_NUDGES)
 
+check(
+  'a stream that failed is not nudged',
+  !shouldNudge(state({ streamFailed: true })),
+)
+check(
+  'and no amount of unused budget changes that',
+  !shouldNudge(state({ streamFailed: true, nudgesUsed: 0, max: 99 })),
+)
+check(
+  'a genuinely empty reply on the same run still is',
+  shouldNudge(state({ streamFailed: false })),
+)
+
 // ─── Where the "." lands ────────────────────────────────────────────────
 
 {

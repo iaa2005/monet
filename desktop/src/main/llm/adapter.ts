@@ -90,6 +90,26 @@ export function sanitizeMaxTokens(n: number | undefined): number {
 
 export type LLMEvent =
   | { type: "text_delta"; text: string }
+  /**
+   * The server is still READING the prompt, and here is how far it has got.
+   *
+   * llama.cpp sends this when asked (`return_progress`), and it is the only
+   * thing that comes down the wire during a prefill — which on a local 27B is
+   * minutes of otherwise perfect silence. Two jobs: it feeds the watchdog, so
+   * a slow read is not mistaken for a dead connection, and it lets the chat
+   * say "reading the prompt, 554 of 6040" instead of spinning.
+   *
+   * Display-only. Nothing about the conversation changes because of it.
+   */
+  | {
+      type: "prompt_progress";
+      /** Prompt tokens computed so far this turn. */
+      processed: number;
+      /** The whole prompt, in tokens. */
+      total: number;
+      /** Of which this many were reused from the server's cache. */
+      cache: number;
+    }
   // Extended-thinking / reasoning tokens. Display-only — the agent loop
   // forwards these to the UI but never adds them to the model context.
   | { type: "reasoning_delta"; text: string }

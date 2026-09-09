@@ -1398,6 +1398,11 @@ export interface ElectronAPI {
       leanTools?: boolean;
       vendorMemory?: boolean;
     }) => Promise<{ leanTools: boolean; vendorMemory: boolean }>;
+    timeoutsGet: () => Promise<{ remoteSec: number; localSec: number }>;
+    timeoutsSet: (patch: {
+      remoteSec?: number;
+      localSec?: number;
+    }) => Promise<{ remoteSec: number; localSec: number }>;
     lspGet: () => Promise<{ enabled: boolean }>;
     lspSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
     promptsReload: () => Promise<{ ok: boolean }>;

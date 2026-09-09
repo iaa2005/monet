@@ -1114,6 +1114,9 @@ export function ChatView({
   const messages = useChatStore((s) => s.messages);
   const error = useChatStore((s) => s.error);
   const isStreaming = useChatStore((s) => s.isStreaming);
+  // Only ever non-null while a server is narrating a prefill — see the
+  // prompt_progress event in main/llm/adapter.ts.
+  const promptProgress = useChatStore((s) => s.promptProgress);
   const queue = useChatStore((s) => s.queue);
   const pendingInjections = useChatStore((s) => s.pendingInjections);
   const dequeueMessage = useChatStore((s) => s.dequeueMessage);

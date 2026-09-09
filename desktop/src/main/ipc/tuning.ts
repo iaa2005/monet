@@ -24,6 +24,11 @@ import {
   type LeanConfig,
 } from "../agent/lean-context.js";
 import {
+  getTimeoutConfig,
+  setTimeoutConfig,
+  type TimeoutConfig,
+} from "../llm/timeouts.js";
+import {
   getPowerConfig,
   setPowerConfig,
   isKeepingAwake,
@@ -85,6 +90,16 @@ export function registerTuningIPC(): void {
     resetVendorTools();
     return next;
   });
+
+  // How long to wait on a model that has gone quiet. Read fresh on every
+  // request (llm/timeouts.ts), so a change here applies to the next message
+  // with no restart and no cache to invalidate.
+  ipcMain.handle("timeouts:get", (): TimeoutConfig => getTimeoutConfig());
+  ipcMain.handle(
+    "timeouts:set",
+    (_e, patch: Partial<TimeoutConfig>): TimeoutConfig =>
+      setTimeoutConfig(patch),
+  );
 
   ipcMain.handle("lsp:get", (): LspConfig => getLspConfig());
   ipcMain.handle("lsp:set", (_e, patch: Partial<LspConfig>): LspConfig => {

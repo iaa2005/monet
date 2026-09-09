@@ -105,6 +105,42 @@ function ToggleRow({
   );
 }
 
+/** Seconds, as a number box that cannot be left in a half-typed state. */
+function SecondsField({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: number;
+  onChange: (v: number) => void;
+}): JSX.Element {
+  return (
+    <div className="rounded-lg border border-border bg-card px-3 py-2.5">
+      <label className="text-[13px] font-medium">{label}</label>
+      <div className="mt-1.5 flex items-center gap-2">
+        <input
+          type="number"
+          min={0}
+          step={30}
+          value={value}
+          // Committed on blur, not on every keystroke: typing "1800" passes
+          // through 1, 18 and 180, and writing each of those would leave the
+          // file holding whichever one the user paused on.
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="w-28 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-foreground/20"
+        />
+        <span className="text-xs text-muted-foreground">
+          {value === 0 ? "never give up" : "seconds of silence"}
+        </span>
+      </div>
+      <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p>
+    </div>
+  );
+}
+
 export function AdvancedSettings(): JSX.Element {
   const [toolSearch, setToolSearch] = useState(false);
   const [lsp, setLsp] = useState(false);
@@ -118,6 +154,7 @@ export function AdvancedSettings(): JSX.Element {
   const [bgProvider, setBgProvider] = useState("");
   const [bgModel, setBgModel] = useState("");
   const [features, setFeatures] = useState<FeatureFlags>(defaultFeatures());
+  const [timeouts, setTimeouts] = useState({ remoteSec: 300, localSec: 1800 });
 
   const toggleFeature = (id: keyof FeatureFlags, v: boolean): void => {
     setFeatures((prev) => ({ ...prev, [id]: v }));
@@ -138,6 +175,7 @@ export function AdvancedSettings(): JSX.Element {
 
   useEffect(() => {
     api()?.tuning.featuresGet().then(setFeatures).catch(() => {});
+    api()?.tuning.timeoutsGet().then(setTimeouts).catch(() => {});
     api()?.tuning.toolSearchGet().then((c) => setToolSearch(c.enabled)).catch(() => {});
     api()?.tuning.lspGet().then((c) => setLsp(c.enabled)).catch(() => {});
     api()?.tuning.cavemanGet().then((c) => setCaveman(c.enabled)).catch(() => {});
@@ -178,6 +216,11 @@ export function AdvancedSettings(): JSX.Element {
       })
       .catch(() => {});
   }, []);
+
+  const saveTimeout = (patch: { remoteSec?: number; localSec?: number }): void => {
+    setTimeouts((prev) => ({ ...prev, ...patch }));
+    void api()?.tuning.timeoutsSet(patch);
+  };
 
   const toggleToolSearch = (v: boolean): void => {
     setToolSearch(v);
@@ -282,6 +325,30 @@ export function AdvancedSettings(): JSX.Element {
             onChange={toggleLeanTools}
           />
         </div>
+      </section>
+
+      <section>
+        <SectionHeader
+          title="Waiting for a model"
+          description="How long a model may say nothing before the app gives up on the answer. It measures SILENCE, not total time: every byte that arrives restarts the clock. A model on this computer reads a long prompt for minutes before its first word, and five minutes of that is normal — which is why the two numbers are separate. 0 means wait as long as it takes."
+        />
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <SecondsField
+            label="A model over the network"
+            hint="An API that has said nothing for five minutes is broken."
+            value={timeouts.remoteSec}
+            onChange={(v) => saveTimeout({ remoteSec: v })}
+          />
+          <SecondsField
+            label="A model on this computer"
+            hint="Reading the prompt is the slow part; the app shows how far it has got."
+            value={timeouts.localSec}
+            onChange={(v) => saveTimeout({ localSec: v })}
+          />
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          A single model can override both in Settings → Providers.
+        </p>
       </section>
 
       <section>

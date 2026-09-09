@@ -77,6 +77,9 @@ export interface ToolCall {
 export type LLMEvent =
   | { type: 'text_delta'; text: string }
   | { type: 'reasoning_delta'; text: string }
+  /** The server is still reading the prompt. Display-only; on a local model
+   * this is the only thing that arrives for minutes. See main/llm/adapter.ts. */
+  | { type: 'prompt_progress'; processed: number; total: number; cache: number }
   | {
       type: 'user_message'
       content: string

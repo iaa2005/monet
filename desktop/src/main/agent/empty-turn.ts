@@ -34,11 +34,25 @@ export interface EmptyTurnState {
   nudgesUsed: number;
   /** The previous turn of this run was itself a nudge. */
   nudgedLastTurn: boolean;
+  /**
+   * The stream ended in an error rather than an answer — a timeout, a refused
+   * request, a dropped connection.
+   *
+   * It looks identical to a model going quiet: no text, no tool calls. It is
+   * not the same thing, and nudging it re-sends the whole request into the
+   * same wall. On a local model, where a long prompt could outlast the
+   * watchdog, that turned one timeout into three: "Stream timed out" and
+   * "nudged it to continue" alternating for a quarter of an hour, each round
+   * re-reading twenty thousand tokens.
+   */
+  streamFailed?: boolean;
   max?: number;
 }
 
 export function shouldNudge(state: EmptyTurnState): boolean {
   if (!state.emptyReply) return false;
+  // The turn did not go quiet, it broke. The error has already been shown.
+  if (state.streamFailed) return false;
   // Two empties in a row: the model is not stuck, it is finished or broken.
   if (state.nudgedLastTurn) return false;
   return state.nudgesUsed < (state.max ?? MAX_NUDGES);

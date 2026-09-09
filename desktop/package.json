@@ -43,6 +43,8 @@
     "smoke:autotitle": "node scripts/smoke-agent.mjs scripts/auto-title-probe.ts",
     "smoke:fileops": "node scripts/renderer-probe.mjs scripts/file-ops-probe.ts",
     "smoke:emptyturn": "node scripts/renderer-probe.mjs scripts/empty-turn-probe.ts",
+    "smoke:timeouts": "node scripts/renderer-probe.mjs scripts/timeouts-probe.ts",
+    "smoke:timeouts:live": "node scripts/renderer-probe.mjs scripts/timeouts-live-probe.ts",
     "smoke:turnbudget": "node scripts/renderer-probe.mjs scripts/turn-budget-probe.ts",
     "smoke:diff": "node scripts/renderer-probe.mjs scripts/diff-core-probe.ts",
     "smoke:codetheme": "node scripts/renderer-probe.mjs scripts/code-theme-probe.ts",

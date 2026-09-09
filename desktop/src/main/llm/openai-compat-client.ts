@@ -20,6 +20,12 @@ import type {
   LLMUsage,
 } from "./adapter.js";
 import { sanitizeMaxTokens } from "./adapter.js";
+import {
+  asDeadlineError,
+  isLocalEndpoint,
+  streamTimeoutMs,
+  withDeadline,
+} from "./timeouts.js";
 
 interface ToolCallDelta {
   index: number;
@@ -42,6 +48,18 @@ interface OpenAIChunk {
   usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
   /** OpenRouter: the company that served this reply ("Novita", "OpenAI"). */
   provider?: string | null;
+  /**
+   * llama.cpp, when `return_progress` was asked for: how much of the prompt
+   * has been read. Arrives on its own chunks during prefill, before any
+   * content delta. `total` is the whole prompt; `cache` is the part that was
+   * already in the server's cache and cost nothing.
+   */
+  prompt_progress?: {
+    total?: number;
+    cache?: number;
+    processed?: number;
+    time_ms?: number;
+  } | null;
   error?: { message?: string };
 }
 
@@ -170,6 +188,11 @@ export class OpenAICompatClient implements LLMAdapter {
   private apiKey: string;
   private isOpenRouter: boolean;
 
+  /** Silence before the stream is abandoned. 0 = wait indefinitely. */
+  private readonly timeoutMs: number;
+  /** Whether to ask for prefill progress — see `return_progress` below. */
+  private readonly wantsProgress: boolean;
+
   constructor(provider: ActiveModel) {
     this.providerId = provider.id;
     this.providerName = provider.name;
@@ -177,6 +200,9 @@ export class OpenAICompatClient implements LLMAdapter {
     this.apiKey = provider.apiKey;
     this.isOpenRouter =
       provider.kind === "openrouter" || /openrouter\.ai/i.test(provider.baseURL);
+    this.timeoutMs = streamTimeoutMs(provider);
+    this.wantsProgress =
+      provider.kind === "monet-local" || isLocalEndpoint(provider.baseURL);
   }
 
   private headers(): Record<string, string> {
@@ -243,7 +269,15 @@ export class OpenAICompatClient implements LLMAdapter {
       if (r.serviceTier === "flex" || r.serviceTier === "priority")
         body.service_tier = r.serviceTier;
     }
-    if (stream) body.stream_options = { include_usage: true };
+    if (stream) {
+      body.stream_options = { include_usage: true };
+      // Reading a long prompt on a local server is minutes of silence, and
+      // silence is indistinguishable from a dead connection. llama.cpp will
+      // narrate the prefill if asked; measured, it sends a chunk per batch.
+      // Only asked of local endpoints: a remote API that does not know the
+      // field would at best ignore it and at worst refuse the request.
+      if (this.wantsProgress) body.return_progress = true;
+    }
     return body;
   }
 
@@ -255,11 +289,20 @@ export class OpenAICompatClient implements LLMAdapter {
     const url = `${this.baseURL}/chat/completions`;
     const body = this.buildBody(request, true);
 
+    // The watchdog aborts the REQUEST, not just the reader: cancelling the
+    // reader leaves the server generating into a socket nobody reads, and on
+    // llama.cpp that means a slot held by an answer no one will ever see.
+    const watchdog = new AbortController();
+    let timedOut = false;
+    const wire = signal
+      ? AbortSignal.any([signal, watchdog.signal])
+      : watchdog.signal;
+
     const response = await fetch(url, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify(body),
-      signal,
+      signal: wire,
     });
 
     if (!response.ok) {
@@ -287,27 +330,30 @@ export class OpenAICompatClient implements LLMAdapter {
     // OpenRouter names the serving company on the chunks; the last word wins.
     let servedBy: string | undefined;
 
-    // Same watchdog/guarded-read pattern as AnthropicClient.
-    let watchdog: ReturnType<typeof setTimeout> | null = null;
-    const STREAM_TIMEOUT_MS = 300_000;
+    // Same watchdog/guarded-read pattern as AnthropicClient, and the same
+    // per-endpoint deadline — see llm/timeouts.ts.
+    const timeoutMs = this.timeoutMs;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const disarmWatchdog = (): void => {
-      if (watchdog != null) {
-        clearTimeout(watchdog);
-        watchdog = null;
+      if (timer != null) {
+        clearTimeout(timer);
+        timer = null;
       }
     };
     const armWatchdog = (): void => {
       disarmWatchdog();
-      watchdog = setTimeout(() => {
+      if (timeoutMs <= 0) return; // configured to wait as long as it takes
+      timer = setTimeout(() => {
+        timedOut = true;
         console.error(
-          `${tag} WATCHDOG fired — ${STREAM_TIMEOUT_MS / 1000}s of silence, cancelling reader`,
+          `${tag} WATCHDOG fired — ${timeoutMs / 1000}s of silence, aborting the request`,
         );
         onEvent({
           type: "error",
-          error: `Stream timed out after ${STREAM_TIMEOUT_MS / 1000}s of silence`,
+          error: `Stream timed out after ${timeoutMs / 1000}s of silence`,
         });
-        reader.cancel().catch(() => {});
-      }, STREAM_TIMEOUT_MS);
+        watchdog.abort();
+      }, timeoutMs);
     };
     const guardedRead = (): Promise<ReadableStreamReadResult<Uint8Array>> =>
       new Promise((resolve, reject) => {
@@ -337,6 +383,7 @@ export class OpenAICompatClient implements LLMAdapter {
     let textTail = "";
     let chunkCount = 0;
     let toolDeltaCount = 0;
+    let progressSeen = 0;
 
     const processLine = (line: string): void => {
       if (!line.startsWith("data: ")) return;
@@ -354,6 +401,19 @@ export class OpenAICompatClient implements LLMAdapter {
         return;
       }
       if (typeof chunk.provider === "string" && chunk.provider) servedBy = chunk.provider;
+      // Prefill narration. Emitted before anything else is looked at: these
+      // chunks carry an empty delta, and the early `if (!choice) return` below
+      // would otherwise drop the only sign of life a long prompt gives.
+      const pp = chunk.prompt_progress;
+      if (pp && typeof pp.total === "number") {
+        progressSeen++;
+        onEvent({
+          type: "prompt_progress",
+          processed: pp.processed ?? 0,
+          total: pp.total,
+          cache: pp.cache ?? 0,
+        });
+      }
       if (chunk.usage) {
         usage = {
           input_tokens: chunk.usage.prompt_tokens ?? 0,
@@ -426,12 +486,14 @@ export class OpenAICompatClient implements LLMAdapter {
       });
 
       console.error(
-        `${tag} done in ${Date.now() - t0}ms: text=${textLen} chars, stop_reason=${mapStopReason(finishReason)}, max_tokens=${body.max_tokens}, chunks=${chunkCount}, tool_calls=${toolCalls.size} (${toolDeltaCount} deltas), leftover=${buffer.trim().length}, tail=${JSON.stringify(textTail.slice(-60))}`,
+        `${tag} done in ${Date.now() - t0}ms: text=${textLen} chars, stop_reason=${mapStopReason(finishReason)}, max_tokens=${body.max_tokens}, chunks=${chunkCount}, progress=${progressSeen}, tool_calls=${toolCalls.size} (${toolDeltaCount} deltas), leftover=${buffer.trim().length}, tail=${JSON.stringify(textTail.slice(-60))}`,
       );
     } catch (err) {
+      // A timeout has already said what happened; anything after it is the
+      // abort we ourselves asked for.
       if (err instanceof DOMException && err.name === "AbortError") {
-        onEvent({ type: "error", error: "Aborted" });
-      } else {
+        if (!timedOut) onEvent({ type: "error", error: "Aborted" });
+      } else if (!timedOut) {
         const message = err instanceof Error ? err.message : "Unknown error";
         onEvent({ type: "error", error: message });
       }
@@ -455,12 +517,19 @@ export class OpenAICompatClient implements LLMAdapter {
     signal?: AbortSignal,
   ): Promise<{ role: "assistant"; content: string }> {
     const url = `${this.baseURL}/chat/completions`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify(this.buildBody(request, false)),
-      signal,
-    });
+    // Same deadline as the stream, bounding the whole request — see the note
+    // in AnthropicClient.complete.
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify(this.buildBody(request, false)),
+        signal: withDeadline(signal, this.timeoutMs),
+      });
+    } catch (err) {
+      throw asDeadlineError(err, this.timeoutMs, signal);
+    }
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`API ${response.status}: ${errorText}`);

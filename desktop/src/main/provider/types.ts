@@ -144,6 +144,15 @@ export interface ProviderModel {
   modalities?: Modality[]
   /** Whether this model exposes a reasoning-effort knob. Unset → inferred. */
   supportsEffort?: boolean
+  /**
+   * Seconds of silence before a stream from this model is abandoned.
+   *
+   * Unset = the global default for where the endpoint is (llm/timeouts.ts):
+   * five minutes for the network, half an hour for this machine. 0 = never
+   * give up. Worth setting per model when one of a provider's models is much
+   * slower than the rest — a 27B on the CPU beside a 4B on the GPU.
+   */
+  streamTimeoutSec?: number
   /** Hidden models don't show in the composer's model picker. */
   hidden?: boolean
   /** OpenRouter: per-1M-token pricing for display. */
@@ -243,6 +252,8 @@ export interface ActiveModel {
   modalities?: Modality[]
   /** Whether this model exposes a reasoning-effort knob. */
   supportsEffort?: boolean
+  /** Silence timeout for this model, in seconds. Unset = the global default. */
+  streamTimeoutSec?: number
   /** OpenRouter: provider routing for this model. */
   routing?: OpenRouterRouting
 }
@@ -282,6 +293,10 @@ export function resolveModelOn(
     // hand-added vision model used to have its images silently diverted.
     modalities: m.modalities ?? inferModalities(p.kind, m.name),
     supportsEffort: m.supportsEffort ?? inferEffortSupport(p.kind, m.name),
+    // Left undefined on purpose when the model does not set one: the default
+    // depends on where the endpoint is, and that is resolved where the
+    // request is made rather than frozen into the record here.
+    streamTimeoutSec: m.streamTimeoutSec,
     routing: m.routing,
   }
 }

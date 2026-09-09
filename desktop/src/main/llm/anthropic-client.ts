@@ -13,6 +13,7 @@ import type {
   LLMRequest,
 } from "./adapter.js";
 import { sanitizeMaxTokens } from "./adapter.js";
+import { asDeadlineError, streamTimeoutMs, withDeadline } from "./timeouts.js";
 
 /** Extended-thinking token budget per effort level (Anthropic has no named
  * effort levels, so we map each to a budget). */
@@ -107,11 +108,18 @@ export class AnthropicClient implements LLMAdapter {
   private baseURL: string;
   private apiKey: string;
 
+  /** Silence before the stream is abandoned. 0 = wait indefinitely. */
+  private readonly timeoutMs: number;
+
   constructor(provider: ActiveModel) {
     this.providerId = provider.id;
     this.providerName = provider.name;
     this.baseURL = provider.baseURL.replace(/\/+$/, "");
     this.apiKey = provider.apiKey;
+    // Resolved once, here, rather than threaded through every call site: the
+    // deadline is a property of the endpoint, and the endpoint is what this
+    // object is. See llm/timeouts.ts for why it is not a constant any more.
+    this.timeoutMs = streamTimeoutMs(provider);
   }
 
   async stream(
@@ -141,6 +149,15 @@ export class AnthropicClient implements LLMAdapter {
     };
     applyThinking(body, request);
 
+    // The watchdog aborts the REQUEST, not just the reader: cancelling the
+    // reader leaves the server generating into a socket nobody reads, and on
+    // llama.cpp that means a slot held by an answer no one will ever see.
+    const watchdog = new AbortController();
+    let timedOut = false;
+    const wire = signal
+      ? AbortSignal.any([signal, watchdog.signal])
+      : watchdog.signal;
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -149,7 +166,7 @@ export class AnthropicClient implements LLMAdapter {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify(body),
-      signal,
+      signal: wire,
     });
 
     if (!response.ok) {
@@ -171,29 +188,31 @@ export class AnthropicClient implements LLMAdapter {
     let currentToolName = "";
     let currentToolInput = "";
 
-    // Stream watchdog: abort on silence > 10s (prevent infinite hang
-    // when the server sends partial output then stalls).
-    let watchdog: ReturnType<typeof setTimeout> | null = null;
-    const STREAM_TIMEOUT_MS = 300_000; // 5 min — DeepSeek can pause for a long time mid-generation
+    // Stream watchdog: give up when the connection has gone quiet for longer
+    // than this endpoint's deadline. Not a constant — see llm/timeouts.ts.
+    const timeoutMs = this.timeoutMs;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
     function armWatchdog(): void {
       disarmWatchdog();
-      watchdog = setTimeout(() => {
+      if (timeoutMs <= 0) return; // configured to wait as long as it takes
+      timer = setTimeout(() => {
+        timedOut = true;
         console.error(
-          `[stream ${request.model}] WATCHDOG fired — ${STREAM_TIMEOUT_MS / 1000}s of silence, cancelling reader (this truncates the response)`,
+          `[stream ${request.model}] WATCHDOG fired — ${timeoutMs / 1000}s of silence, aborting the request (this truncates the response)`,
         );
         onEvent({
           type: "error",
-          error: `Stream timed out after ${STREAM_TIMEOUT_MS / 1000}s of silence`,
+          error: `Stream timed out after ${timeoutMs / 1000}s of silence`,
         });
-        reader.cancel().catch(() => {});
-      }, STREAM_TIMEOUT_MS);
+        watchdog.abort();
+      }, timeoutMs);
     }
 
     function disarmWatchdog(): void {
-      if (watchdog != null) {
-        clearTimeout(watchdog);
-        watchdog = null;
+      if (timer != null) {
+        clearTimeout(timer);
+        timer = null;
       }
     }
 
@@ -369,10 +388,13 @@ export class AnthropicClient implements LLMAdapter {
         `${tag} done in ${Date.now() - t0}ms: text=${textLen} chars, stop_reason=${finalStopReason ?? "n/a"}, max_tokens=${body.max_tokens}, events=${JSON.stringify(counts)}, leftover=${buffer.trim().length}, tail=${JSON.stringify(textTail.slice(-60))}`,
       );
     } catch (err) {
-      // AbortError from guardedRead means user clicked Stop — not a real error
+      // AbortError from guardedRead means user clicked Stop — not a real error.
+      // Unless it was the watchdog that aborted, and then the error the user
+      // needs to read has already been sent; a second "Aborted" on top of it
+      // would only say the truncation was their own doing.
       if (err instanceof DOMException && err.name === "AbortError") {
-        onEvent({ type: "error", error: "Aborted" });
-      } else {
+        if (!timedOut) onEvent({ type: "error", error: "Aborted" });
+      } else if (!timedOut) {
         const message = err instanceof Error ? err.message : "Unknown error";
         onEvent({ type: "error", error: message });
       }
@@ -412,16 +434,25 @@ export class AnthropicClient implements LLMAdapter {
     };
     applyThinking(body, request);
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": this.apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(body),
-      signal,
-    });
+    // A completion has no stream to keep it alive, so the same number bounds
+    // the whole request rather than the gaps in it. Background work — the
+    // nightly consolidation, the clarifier, the judge — comes through here,
+    // and without a deadline a local model that wedges wedges it forever.
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": this.apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify(body),
+        signal: withDeadline(signal, this.timeoutMs),
+      });
+    } catch (err) {
+      throw asDeadlineError(err, this.timeoutMs, signal);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();

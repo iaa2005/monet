@@ -53,6 +53,39 @@ check("drops a zero seconds part", formatElapsed(120_000) === "2m", formatElapse
 // A backwards clock (NTP step, sleep/wake) must not render "-3s".
 check("never goes negative", formatElapsed(-5_000) === "0s", formatElapsed(-5_000));
 
+// ── Reading the prompt beats filler, and loses to a running tool ──────
+
+{
+  const prog = { processed: 554, total: 6040, cache: 0 };
+  const l = workingLabel([], 90_000, 0, prog);
+  // The number is the point. Before this, minutes of prefill on a local model
+  // rendered as "Pondering" — nothing was being pondered, and the one fact
+  // that tells you whether to keep waiting was not on screen.
+  check(
+    "says how far into the prompt it is",
+    l === "Reading the prompt · 554 / 6,040 · 9%",
+    l,
+  );
+  check(
+    "a running tool still wins",
+    workingLabel([call({ name: "Bash", input: { command: "ls" } })], 0, 0, prog) ===
+      "Running command · ls",
+  );
+  // A percentage over 100 reads as a bug in the app rather than a quirk of
+  // the server; the two counters are sampled a moment apart and can cross.
+  const over = workingLabel([], 0, 0, { processed: 7000, total: 6040, cache: 0 });
+  check("never reports more than the whole prompt", over.endsWith("100%"), over);
+  check(
+    "no progress means the old filler",
+    workingLabel([], 0, 0, null) === workingLabel([], 0, 0),
+  );
+  check(
+    "and a zero-length prompt is not something to narrate",
+    workingLabel([], 0, 0, { processed: 0, total: 0, cache: 0 }) ===
+      workingLabel([], 0, 0),
+  );
+}
+
 // ── A running tool always beats filler ────────────────────────────────
 {
   const l = workingLabel([call({ name: "Bash", input: { command: "npm run build" } })], 0, 0);

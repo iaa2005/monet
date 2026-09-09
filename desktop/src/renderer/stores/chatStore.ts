@@ -254,6 +254,14 @@ interface SessionState {
    * those events alone and the next save wipes everything that came before.
    */
   hydrated: boolean;
+  /**
+   * How far the server has got through the prompt, while it is still reading
+   * it. Null whenever nothing is being read — which is most of the time, and
+   * always for a provider that does not narrate its prefill.
+   *
+   * Not part of the conversation: it is never saved and never sent anywhere.
+   */
+  promptProgress: { processed: number; total: number; cache: number } | null;
 }
 
 const EMPTY: SessionState = {
@@ -265,6 +273,7 @@ const EMPTY: SessionState = {
   queue: [],
   pendingInjections: [],
   hydrated: false,
+  promptProgress: null,
 };
 
 export const INTERRUPT_MARK = "\n\n⏹️ Generation interrupted.";
@@ -331,6 +340,9 @@ export interface ChatStore {
   isStreaming: boolean;
   error: string | null;
   usage: ChatUsage | null;
+  /** Mirror of the current session's prefill progress. Null unless a server
+   * is reading a prompt right now and says so. */
+  promptProgress: SessionState["promptProgress"];
 
   currentSessionId?: string;
   /** Bumped whenever sessions change, so the sidebar reloads. */
@@ -685,6 +697,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           isStreaming: next.isStreaming,
           usage: next.usage,
           error: next.error,
+          promptProgress: next.promptProgress,
           queue: next.queue,
           pendingInjections: next.pendingInjections,
         };
@@ -699,7 +712,25 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
   /** Apply a stream event to a session's message list (pure-ish reducer). */
   function reduce(prev: SessionState, event: LLMEvent): SessionState {
+    // Anything that is not another progress chunk means the prompt has been
+    // read: the first token, a tool call, the end of the turn. Cleared here
+    // rather than in each of those cases because the server sends no final
+    // "100%" — the reading simply stops being mentioned — and a rule spread
+    // over six branches is a rule that will be missed by the seventh.
+    if (event.type !== "prompt_progress" && prev.promptProgress)
+      prev = { ...prev, promptProgress: null };
     switch (event.type) {
+      case "prompt_progress":
+        return {
+          ...prev,
+          isStreaming: true,
+          promptProgress: {
+            processed: event.processed,
+            total: event.total,
+            cache: event.cache,
+          },
+        };
+
       case "text_delta": {
         const msgs = [...prev.messages];
         const last = msgs[msgs.length - 1];
@@ -935,6 +966,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
     isStreaming: false,
     error: null,
     usage: null,
+    promptProgress: null,
     currentSessionId: undefined,
     sessionsVersion: 0,
     contextVersion: 0,

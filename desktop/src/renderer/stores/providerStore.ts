@@ -32,6 +32,9 @@ export interface ProviderModel {
   modalities?: Modality[];
   /** Whether this model exposes a reasoning-effort knob. Unset → inferred. */
   supportsEffort?: boolean;
+  /** Seconds of silence before a stream from this model is abandoned.
+   * Unset = the global default for where the endpoint is; 0 = never. */
+  streamTimeoutSec?: number;
   /** Hidden models don't show in the composer's model picker. */
   hidden?: boolean;
   /** OpenRouter: per-1M-token pricing for display. */
