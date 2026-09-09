@@ -590,6 +590,16 @@ export async function getVendorApiTools(
     const revealed = getRevealedTools(sessionId ?? "default");
     base = base.filter((t) => !isDeferrable(t.name) || revealed.has(t.name));
   }
+  // A tempting idea that MEASURES AS WORTHLESS, recorded so it is not tried
+  // again: appending a newly revealed tool to the end of this array instead
+  // of leaving it in place, so the schemas before it stay byte-identical and
+  // the server can reuse its cache up to that point. It cannot. On
+  // Qwen3.8-27B, revealing a tool costs 23 of 1,708 prompt tokens reused —
+  // 98% re-read — and it is 23 either way, spliced into the middle or
+  // appended last. The tools block is rendered as its own system message
+  // ahead of everything, and this server does not reuse a partial match
+  // inside it. Order within the toolset buys nothing; where the VOLATILE
+  // TEXT sits does (see turnTailBlocks, and §7 of the audit).
 
   // Routine scoping for the connector TOOLS: a routine that declares ["gmail"]
   // gets Mail and not Telegram. The scope is EXPLICIT: an empty array means no
