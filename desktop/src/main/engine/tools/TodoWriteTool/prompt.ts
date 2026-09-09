@@ -1,6 +1,13 @@
 import { FILE_EDIT_TOOL_NAME } from '../FileEditTool/constants.js'
 
-export const PROMPT = `Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+/**
+ * The long form, kept because it is the vendor's and because a rewrite is
+ * easier to check against the thing it replaces than against memory.
+ * `PROMPT` below is what is actually sent; this is what it was measured and
+ * checked against — 920 tokens after lean mode, on every turn, mostly the
+ * same rules said three ways.
+ */
+export const PROMPT_LONG = `Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
 It also helps the user understand the progress of the task and overall progress of their requests.
 
 ## When to Use This Tool
@@ -178,6 +185,29 @@ The assistant did not use the todo list because this is a single command executi
      - activeForm: "Fixing authentication bug"
 
 When in doubt, use this tool. Being proactive with task management demonstrates attentiveness and ensures you complete all requirements successfully.
+`
+
+/**
+ * The same rules, once each.
+ *
+ * Every constraint the long form states is here — the three states, exactly
+ * one in_progress, the two forms of a description, the four conditions that
+ * forbid "completed", what blocked means, deleting what stopped mattering,
+ * and both lists of when to use it and when not. What is gone is the saying
+ * of them a second and third time, and five worked examples of a dark-mode
+ * feature that `stripExamples` was already removing before this.
+ *
+ * 920 tokens to about 230, paid on every turn of every chat.
+ */
+export const PROMPT = `Keep a visible list for a multi-step task, so both you and the user can see where it stands.
+
+Use it when the work has three or more distinct steps, when the user asks for a list or gives you one, and to capture new instructions as they arrive. Skip it for a single straightforward task, for anything under three trivial steps, and for pure conversation — doing the thing beats listing it.
+
+Every task carries two forms: \`content\` in the imperative ("Fix the auth bug") and \`activeForm\` in the present continuous ("Fixing the auth bug"). Make them specific and actionable; break a large one down.
+
+States are pending, in_progress and completed. EXACTLY ONE task is in_progress at any moment — mark it before you begin, not after. Mark a task completed the moment it is done and never batch completions.
+
+NEVER mark a task completed while tests are failing, the implementation is partial, an error is unresolved, or a file or dependency you needed was not found. Blocked means it stays in_progress and a NEW task describes the blocker. Delete tasks that have stopped being relevant.
 `
 
 export const DESCRIPTION =
