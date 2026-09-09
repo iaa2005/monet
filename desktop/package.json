@@ -25,6 +25,7 @@
     "smoke:catalog": "node scripts/renderer-probe.mjs scripts/catalog-probe.ts",
     "smoke:permissions": "node scripts/renderer-probe.mjs scripts/permission-probe.ts",
     "smoke:injection": "node scripts/renderer-probe.mjs scripts/injection-probe.ts",
+    "smoke:pending": "node scripts/renderer-probe.mjs scripts/pending-actions-probe.ts",
     "smoke:media": "node scripts/renderer-probe.mjs scripts/media-fit-probe.ts",
     "smoke:nativeimage": "electron scripts/nativeimage-probe.cjs",
     "smoke:mcp": "node scripts/renderer-probe.mjs scripts/mcp-probe.ts",

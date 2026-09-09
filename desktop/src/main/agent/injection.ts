@@ -20,10 +20,20 @@
  * any user message, tool results or not.
  */
 
+import { randomUUID } from "crypto";
 import type { LLMContentBlock } from "../llm/adapter.js";
 
 /** One thing said (or attached) mid-run. */
 export interface InjectionNote {
+  /**
+   * Identifies THIS note, so the chat can take it back.
+   *
+   * A note lives here between the moment it is said and the next step
+   * boundary, which on a slow tool call is minutes — long enough to think
+   * better of it. Matching by text to withdraw one would pick the wrong note
+   * the first time someone says the same thing twice.
+   */
+  id: string;
   text: string;
   /** Media blocks (images and the like) attached to this note. */
   blocks?: LLMContentBlock[];
@@ -53,23 +63,41 @@ export function isRunning(sessionId: string): boolean {
 /**
  * Offer a note to a running turn.
  *
- * Returns false when the session is idle, so the caller can fall back to an
- * ordinary send instead of dropping the message — the user pressed a key, and
- * something must happen. A note with attachments but no words is fine; a note
- * with neither is not a note.
+ * Returns the note's id, or null when the session is idle — so the caller can
+ * fall back to an ordinary send instead of dropping the message. The user
+ * pressed a key, and something must happen. A note with attachments but no
+ * words is fine; a note with neither is not a note.
  */
 export function injectMessage(
   sessionId: string,
   text: string,
   blocks?: LLMContentBlock[],
-): boolean {
+): string | null {
   const trimmed = text.trim();
-  if ((!trimmed && !blocks?.length) || !running.has(sessionId)) return false;
-  const note: InjectionNote = { text: trimmed, blocks };
+  if ((!trimmed && !blocks?.length) || !running.has(sessionId)) return null;
+  const note: InjectionNote = { id: randomUUID(), text: trimmed, blocks };
   const list = pending.get(sessionId);
   if (list) list.push(note);
   else pending.set(sessionId, [note]);
-  return true;
+  return note.id;
+}
+
+/**
+ * Take a note back before the run reads it.
+ *
+ * Returns what it said, so the chat can put the words back in the composer
+ * rather than throwing away something the user typed. Null when there is
+ * nothing to take back — the note was already delivered, or the run ended and
+ * markStopped dropped everything.
+ */
+export function cancelInjection(sessionId: string, id: string): string | null {
+  const list = pending.get(sessionId);
+  if (!list) return null;
+  const i = list.findIndex((n) => n.id === id);
+  if (i < 0) return null;
+  const [note] = list.splice(i, 1);
+  if (list.length === 0) pending.delete(sessionId);
+  return note?.text ?? "";
 }
 
 /** Take everything pending for this session (empty array when there is none). */

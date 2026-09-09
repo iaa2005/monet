@@ -448,7 +448,12 @@ export interface ElectronAPI {
         dataBase64?: string;
       }[],
       space?: string,
-    ) => Promise<{ ok: boolean }>;
+    ) => Promise<{ ok: boolean; id?: string }>;
+    /** Take back a note the running turn has not read yet. */
+    cancelInject: (
+      sessionId: string,
+      id: string,
+    ) => Promise<{ ok: boolean; text?: string }>;
     turnContext: (
       sessionId: string,
     ) => Promise<{ id: string; inContext: boolean }[]>;

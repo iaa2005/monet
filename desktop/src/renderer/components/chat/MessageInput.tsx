@@ -875,7 +875,9 @@ export function MessageInput({
     applyText("");
     const { payload, display } = await takeStagedFiles();
     const r = await api()?.chat.inject(sid, text, payload, store.space);
-    if (r?.ok) store.addPendingInjection(sid, text, display);
+    // The id is main's handle on the note, and the only way to take it back
+    // before the run reads it — see cancelPendingInjection.
+    if (r?.ok) store.addPendingInjection(sid, text, display, r.id);
     else store.enqueueMessage(sid, text, display, payload);
   };
 

@@ -88,8 +88,14 @@ const electronAPI = {
       text: string,
       attachments?: unknown[],
       space?: string,
-    ): Promise<{ ok: boolean }> =>
+    ): Promise<{ ok: boolean; id?: string }> =>
       ipcRenderer.invoke("chat:inject", sessionId, text, attachments, space),
+    /** Take back a note the running turn has not read yet. */
+    cancelInject: (
+      sessionId: string,
+      id: string,
+    ): Promise<{ ok: boolean; text?: string }> =>
+      ipcRenderer.invoke("chat:cancelInject", sessionId, id),
     /** Which prompts the model can still read — drawn directly, not derived. */
     turnContext: (
       sessionId: string,

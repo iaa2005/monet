@@ -9,6 +9,7 @@
  */
 
 import {
+  cancelInjection,
   drainInjections,
   formatInjection,
   hasInjections,
@@ -52,6 +53,41 @@ check('text is trimmed', drained[1]?.text === 'and add a test', drained[1])
 check('draining empties the queue', !hasInjections('s1'))
 check('draining twice is safe', drainInjections('s1').length === 0)
 
+// ─── Taking a note back ─────────────────────────────────────────────────
+
+// The window between saying something and the run reading it is a whole
+// tool call — minutes, on a slow one. Withdrawing has to be decided by the
+// side that owns the list, because only it knows whether the step boundary
+// has already passed; the chat asks and believes the answer.
+
+markRunning('s9')
+{
+  const first = injectMessage('s9', 'the first thing')!
+  const second = injectMessage('s9', 'the second thing')!
+  check('two notes, two different ids', !!first && !!second && first !== second, {
+    first,
+    second,
+  })
+  check('cancelling gives the words back', cancelInjection('s9', first) === 'the first thing')
+  check('cancelling the same note twice says no', cancelInjection('s9', first) === null)
+  check('the other note is untouched', hasInjections('s9'))
+  const left = drainInjections('s9')
+  check('and it is the one NOT cancelled', left.map((n) => n.text).join() === 'the second thing', left)
+  check('a cancel after delivery says no', cancelInjection('s9', second) === null)
+}
+// Saying the same thing twice is exactly where matching by text picks the
+// wrong note — which is why notes carry an id at all.
+{
+  const a = injectMessage('s9', 'same words')!
+  const b = injectMessage('s9', 'same words')!
+  check('identical text still gets distinct ids', a !== b)
+  cancelInjection('s9', a)
+  const left = drainInjections('s9')
+  check('cancelling one of a pair leaves exactly one', left.length === 1, left)
+}
+check('an unknown id on an unknown session says no', cancelInjection('nope', 'nope') === null)
+markStopped('s9')
+
 // ─── Sessions do not bleed into each other ──────────────────────────────
 
 markRunning('s2')
@@ -80,7 +116,7 @@ markStopped('s2')
 
 // ─── Framing ────────────────────────────────────────────────────────────
 
-const framed = formatInjection([{ text: 'stop using regex here' }])
+const framed = formatInjection([{ id: 'n1', text: 'stop using regex here' }])
 check('the note carries the user text', framed.includes('stop using regex here'))
 check(
   'and says it came from the user mid-turn',
@@ -94,7 +130,7 @@ check(
 check(
   'several notes are joined, not lost',
   ((): boolean => {
-    const f = formatInjection([{ text: 'first' }, { text: 'second' }])
+    const f = formatInjection([{ id: 'n1', text: 'first' }, { id: 'n2', text: 'second' }])
     return f.includes('first') && f.includes('second')
   })(),
 )

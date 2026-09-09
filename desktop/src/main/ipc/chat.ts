@@ -22,7 +22,7 @@ import {
   lastRunEditedFiles,
 } from "../agent/index.js";
 import type { UiPermissionMode } from "../agent/permission-types.js";
-import { injectMessage } from "../agent/injection.js";
+import { cancelInjection, injectMessage } from "../agent/injection.js";
 import { stopReasonLabel } from "../agent/empty-turn.js";
 import { expandSlashCommand } from "../agent/skill-tool.js";
 import { abortAllBgAgents, abortBgAgents } from "../agent/bg-agents.js";
@@ -757,14 +757,28 @@ export function registerChatIPC(): void {
       text: string,
       attachments?: ChatAttachment[],
       space?: string,
-    ): Promise<{ ok: boolean }> => {
-      if (!attachments?.length) return { ok: injectMessage(sessionId, text) };
+      // The id comes back so the chat can take the note away again: a run
+      // waiting on a slow tool can sit on an injection for minutes, which is
+      // long enough to think better of it.
+    ): Promise<{ ok: boolean; id?: string }> => {
+      const done = (id: string | null): { ok: boolean; id?: string } =>
+        id ? { ok: true, id } : { ok: false };
+      if (!attachments?.length) return done(injectMessage(sessionId, text));
       const content = await buildUserContent(text, attachments, space, sessionId);
       if (typeof content === "string")
-        return { ok: injectMessage(sessionId, content) };
+        return done(injectMessage(sessionId, content));
       const [head, ...media] = content;
       const noteText = head?.type === "text" ? head.text : text;
-      return { ok: injectMessage(sessionId, noteText, media) };
+      return done(injectMessage(sessionId, noteText, media));
+    },
+  );
+
+  /** Take back a note the run has not read yet; returns what it said. */
+  ipcMain.handle(
+    "chat:cancelInject",
+    (_e, sessionId: string, id: string): { ok: boolean; text?: string } => {
+      const text = cancelInjection(sessionId, id);
+      return text === null ? { ok: false } : { ok: true, text };
     },
   );
 

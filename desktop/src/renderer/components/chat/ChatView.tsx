@@ -36,7 +36,9 @@ import {
   Clock,
   CornerDownLeft,
   Brain,
+  Square,
   X as XIcon,
+  type LucideIcon,
 } from "@/components/icons/hg";
 import { ArtifactsStrip } from "@/components/ArtifactsPanel";
 import { stripIndexes } from "./artifact-strips";
@@ -72,6 +74,47 @@ type TranscriptMode = "normal" | "thinking" | "verbose" | "summary";
 
 function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
+}
+
+/**
+ * One action on a message that has not been sent yet.
+ *
+ * Queued and injected messages are the two things on screen the user can
+ * still change their mind about, and until now neither said so: a queued
+ * message had one button that deleted it and threw the text away, and an
+ * injected one had nothing at all. The row is small, always visible rather
+ * than hover-only, and each button says what it will do rather than naming a
+ * mechanism.
+ */
+function PendingAction({
+  icon: Icon,
+  label,
+  title,
+  onClick,
+  danger,
+}: {
+  icon: LucideIcon;
+  label: string;
+  title: string;
+  onClick: () => void;
+  danger?: boolean;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors",
+        danger
+          ? "hover:bg-destructive/10 hover:text-destructive"
+          : "hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]",
+      )}
+    >
+      <Icon className="size-3" />
+      {label}
+    </button>
+  );
 }
 
 function WorkingRow({
@@ -1155,6 +1198,67 @@ export function ChatView({
    */
   const [outOfContext, setOutOfContext] = useState<Set<string>>(new Set());
   /**
+   * Take back a note that was handed to the running turn.
+   *
+   * Whether it CAN be taken back is main's to answer, not the view's — the
+   * run may already have read it at a step boundary a second ago. The store
+   * asks, and returns the words only when the answer is yes; on no, the chip
+   * stays and the message will arrive, which is the honest outcome.
+   */
+  const withdrawInjection = useCallback(
+    async (messageId: string, toComposer: boolean) => {
+      const store = useChatStore.getState();
+      const sid = store.currentSessionId;
+      if (!sid) return;
+      const text = await store.cancelPendingInjection(sid, messageId);
+      if (text === null) {
+        store.setError(
+          "That note has already gone to the model — it was read at the last " +
+            "step boundary, so it can no longer be taken back.",
+        );
+        return;
+      }
+      if (toComposer && text) store.setComposerDraft(text);
+    },
+    [],
+  );
+
+  /** Hand a queued message to the run instead of waiting for it to end. */
+  const sayQueuedNow = useCallback(async (messageId: string) => {
+    const store = useChatStore.getState();
+    const sid = store.currentSessionId;
+    if (!sid) return;
+    // The run can end between the render and the click. Then there is
+    // nothing to join, and the queue is about to drain by itself — leaving
+    // it where it is does exactly what the button promised.
+    await store.handQueuedToRun(sid, messageId);
+  }, []);
+
+  /**
+   * Stop the run and send this message as a new turn.
+   *
+   * Nothing else here sends it: aborting drains the queue, and the queue is
+   * drained from the front — so the move is to put this one at the front and
+   * then stop. Anything else queued keeps its place behind it.
+   */
+  const sendQueuedNow = useCallback(async (messageId: string) => {
+    const store = useChatStore.getState();
+    const sid = store.currentSessionId;
+    if (!sid) return;
+    store.promoteQueued(sid, messageId);
+    await api()?.chat.abort(sid);
+  }, []);
+
+  /** Put a queued message back in the composer, words and all. */
+  const editQueued = useCallback((messageId: string) => {
+    const store = useChatStore.getState();
+    const sid = store.currentSessionId;
+    if (!sid) return;
+    const text = store.unqueueForEdit(sid, messageId);
+    if (text) store.setComposerDraft(text);
+  }, []);
+
+  /**
    * The same set, for the CALLBACK to read rather than close over.
    *
    * This decides which DIRECTION the toggle goes — it is the difference
@@ -1532,7 +1636,13 @@ export function ChatView({
 
                   {/* Handed to the RUNNING turn — visible at once, replaced by
                       the real bubble when main delivers it at the next step
-                      boundary. No remove button: it is already the model's. */}
+                      boundary.
+
+                      That boundary is the end of the current tool call, which
+                      on a slow one is minutes. It used to carry no controls at
+                      all, on the grounds that the note was "already the
+                      model's" — which is true only after delivery, and the
+                      whole point of this chip is the wait before it. */}
                   {pendingInjections.map((msg) => (
                     <MessageScrollerItem
                       key={`pi-${msg.id}`}
@@ -1555,46 +1665,98 @@ export function ChatView({
                                 </BubbleContent>
                               </Bubble>
                             )}
+                            <div className="mt-0.5 flex items-center gap-1">
+                              {/* Files are already stashed to the workspace by
+                                  the time the note exists, and the composer
+                                  cannot take them back — so a note carrying
+                                  them can be cancelled but not re-opened. */}
+                              {(msg.attachments?.length ?? 0) === 0 && (
+                                <PendingAction
+                                  icon={Pencil}
+                                  label="Edit"
+                                  title="Take it back and put it in the composer — only while the run has not read it yet"
+                                  onClick={() => void withdrawInjection(msg.id, true)}
+                                />
+                              )}
+                              <PendingAction
+                                icon={XIcon}
+                                label="Cancel"
+                                danger
+                                title="Take it back before the run reads it"
+                                onClick={() => void withdrawInjection(msg.id, false)}
+                              />
+                            </div>
                           </div>
                         </MessageContent>
                       </Message>
                     </MessageScrollerItem>
                   ))}
 
-                  {queue.map((msg) => (
+                  {/* Waiting for the run to end. Four things can be done with
+                      it, and until now there was one: a button that deleted it
+                      and threw away what had been typed. */}
+                  {queue.map((msg, qi) => (
                     <MessageScrollerItem
                       key={`q-${msg.id}`}
                       messageId={`q-${msg.id}`}
                     >
                       <Message align="end">
                         <MessageContent>
-                          <div className="group flex items-start justify-end gap-1">
-                            <button
-                              type="button"
-                              title="Remove from queue"
-                              onClick={() => {
-                                const sid = useChatStore.getState().currentSessionId;
-                                if (sid) dequeueMessage(sid, msg.id);
-                              }}
-                              className="mt-5 shrink-0 rounded-md p-1 text-muted-foreground transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                            >
-                              <XIcon className="size-5" />
-                            </button>
-                            <div className="flex flex-col items-end">
-                              <div className="mb-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/70">
-                                <Clock className="size-3" />
-                                Queued
-                              </div>
-                              {(msg.attachments?.length ?? 0) > 0 && (
-                                <AttachmentChips attachments={msg.attachments!} />
+                          <div className="flex flex-col items-end">
+                            <div className="mb-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                              <Clock className="size-3" />
+                              {qi === 0 ? "Queued — next" : `Queued — #${qi + 1}`}
+                            </div>
+                            {(msg.attachments?.length ?? 0) > 0 && (
+                              <AttachmentChips attachments={msg.attachments!} />
+                            )}
+                            {msg.content && (
+                              <Bubble variant="secondary" align="end">
+                                <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.06] glass-panel rounded-xl border border-dashed border-border opacity-70">
+                                  {msg.content}
+                                </BubbleContent>
+                              </Bubble>
+                            )}
+                            <div className="mt-0.5 flex items-center gap-1">
+                              {/* Hand it to the turn that is running rather
+                                  than waiting for it to finish. The model
+                                  reads it at the next step boundary and keeps
+                                  the work it has done — which is why this
+                                  comes before Send now, not after. */}
+                              <PendingAction
+                                icon={CornerDownLeft}
+                                label="Say it now"
+                                title="Hand it to the running turn — it is read at the next step, and nothing is thrown away"
+                                onClick={() => void sayQueuedNow(msg.id)}
+                              />
+                              <PendingAction
+                                icon={Square}
+                                label="Send now"
+                                title="Stop the run and send this as a new message. Anything else queued stays queued."
+                                onClick={() => void sendQueuedNow(msg.id)}
+                              />
+                              {/* Attachments cannot go back into the composer
+                                  — it holds Files and the queue holds encoded
+                                  payloads — so Edit is offered only when there
+                                  is nothing to lose by it. */}
+                              {(msg.attachments?.length ?? 0) === 0 && (
+                                <PendingAction
+                                  icon={Pencil}
+                                  label="Edit"
+                                  title="Take it out of the queue and put it back in the composer"
+                                  onClick={() => editQueued(msg.id)}
+                                />
                               )}
-                              {msg.content && (
-                                <Bubble variant="secondary" align="end">
-                                  <BubbleContent className="whitespace-pre-wrap dark:bg-white/[0.06] glass-panel rounded-xl border border-dashed border-border opacity-70">
-                                    {msg.content}
-                                  </BubbleContent>
-                                </Bubble>
-                              )}
+                              <PendingAction
+                                icon={XIcon}
+                                label="Remove"
+                                danger
+                                title="Drop it — it will not be sent"
+                                onClick={() => {
+                                  const sid = useChatStore.getState().currentSessionId;
+                                  if (sid) dequeueMessage(sid, msg.id);
+                                }}
+                              />
                             </div>
                           </div>
                         </MessageContent>

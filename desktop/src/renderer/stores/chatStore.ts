@@ -526,12 +526,33 @@ export interface ChatStore {
   queue: ChatMessage[];
   /** Mirror of the current session's undelivered injections. */
   pendingInjections: ChatMessage[];
-  /** Record a message handed to the running turn, until main delivers it. */
+  /** Record a message handed to the running turn, until main delivers it.
+   * `injectionId` is main's handle on it, needed to take it back. */
   addPendingInjection: (
     sessionId: string,
     content: string,
     display?: ChatAttachmentMeta[],
+    injectionId?: string,
   ) => void;
+  /**
+   * Take back a note the run has not read yet. Resolves with its text, so the
+   * caller can put the words back in the composer instead of losing them —
+   * or null when the run has already read it and it is too late.
+   */
+  cancelPendingInjection: (
+    sessionId: string,
+    messageId: string,
+  ) => Promise<string | null>;
+  /** Move a queued message to the front, so it is the next one sent. */
+  promoteQueued: (sessionId: string, messageId: string) => void;
+  /**
+   * Hand a queued message to the turn that is already running, instead of
+   * waiting for it to end. Resolves false when there is no run to hand it to
+   * — the caller leaves it in the queue.
+   */
+  handQueuedToRun: (sessionId: string, messageId: string) => Promise<boolean>;
+  /** Take a queued message out and hand back its text, for editing. */
+  unqueueForEdit: (sessionId: string, messageId: string) => string | null;
 }
 
 interface SessionsBridge {
@@ -657,6 +678,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
   /** Send-ready attachment payloads for queued messages, keyed by message id.
    * Kept out of session state: base64-heavy and meaningless after the send. */
   const queuedPayloads = new Map<string, SendAttachment[]>();
+  /** main's id for each undelivered injection, keyed by the chip's message id.
+   * Kept beside the state rather than in it for the same reason as the
+   * payloads above: it is plumbing, and it is meaningless once delivered. */
+  const injectionIds = new Map<string, string>();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   /** Throttle for mid-run checkpoint saves (per session). */
   const lastCheckpoint = new Map<string, number>();
@@ -1406,7 +1431,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
       }));
     },
 
-    addPendingInjection: (sessionId, content, display) => {
+    addPendingInjection: (sessionId, content, display, injectionId) => {
       const msg: ChatMessage = {
         id: generateId(),
         role: "user",
@@ -1414,10 +1439,77 @@ export const useChatStore = create<ChatStore>((set, get) => {
         timestamp: Date.now(),
         ...(display?.length ? { attachments: display } : {}),
       };
+      if (injectionId) injectionIds.set(msg.id, injectionId);
       mutate(sessionId, (p) => ({
         ...p,
         pendingInjections: [...p.pendingInjections, msg],
       }));
+    },
+
+    cancelPendingInjection: async (sessionId, messageId) => {
+      const injectionId = injectionIds.get(messageId);
+      if (!injectionId) return null;
+      // main owns the list the run reads from, so it decides whether this is
+      // still cancellable. Only when it says yes does the chip come off the
+      // screen — a chip removed for a note the model then reads would be the
+      // one lie this whole row exists to avoid.
+      const r = await electron()?.chat.cancelInject(sessionId, injectionId);
+      if (!r?.ok) return null;
+      injectionIds.delete(messageId);
+      mutate(sessionId, (p) => ({
+        ...p,
+        pendingInjections: p.pendingInjections.filter((m) => m.id !== messageId),
+      }));
+      return r.text ?? "";
+    },
+
+    promoteQueued: (sessionId, messageId) => {
+      mutate(sessionId, (p) => {
+        const msg = p.queue.find((m) => m.id === messageId);
+        if (!msg) return p;
+        return {
+          ...p,
+          queue: [msg, ...p.queue.filter((m) => m.id !== messageId)],
+        };
+      });
+    },
+
+    handQueuedToRun: async (sessionId, messageId) => {
+      const st = get();
+      const msg = st.sessions[sessionId]?.queue.find((m) => m.id === messageId);
+      if (!msg) return false;
+      // The payload map lives in this module, which is why the move happens
+      // here rather than in the view: a queued message's files are encoded
+      // and waiting, and injection takes the same shape the composer sends.
+      const payload = queuedPayloads.get(messageId);
+      const r = await electron()?.chat.inject(
+        sessionId,
+        msg.content,
+        payload,
+        st.space,
+      );
+      if (!r?.ok) return false;
+      queuedPayloads.delete(messageId);
+      if (r.id) injectionIds.set(msg.id, r.id);
+      // Same message object, same id: the chip changes its label from Queued
+      // to Joining the run rather than blinking out and back.
+      mutate(sessionId, (p) => ({
+        ...p,
+        queue: p.queue.filter((m) => m.id !== messageId),
+        pendingInjections: [...p.pendingInjections, msg],
+      }));
+      return true;
+    },
+
+    unqueueForEdit: (sessionId, messageId) => {
+      const msg = get().sessions[sessionId]?.queue.find((m) => m.id === messageId);
+      if (!msg) return null;
+      queuedPayloads.delete(messageId);
+      mutate(sessionId, (p) => ({
+        ...p,
+        queue: p.queue.filter((m) => m.id !== messageId),
+      }));
+      return msg.content ?? "";
     },
 
     handleLLMEvent: (sessionId, event) => {
