@@ -441,23 +441,39 @@ async function main() {
   // sent. One buildDirectives() now, and this is the guard on it.
   {
     const { buildDirectives } = await import('../src/main/agent/index.js')
+    const { SEEDED } = await import('../src/main/agent/seed-skills.js')
     for (const space of ['home', 'code', undefined]) {
       const text = buildDirectives(space, undefined).join("\n\n")
+      // What must stay in the PROMPT is that the capability exists. A model
+      // that does not know it can draw writes a table instead, and no skill
+      // catalogue will change its mind — a catalogue is read by a model that
+      // is already looking for something.
       check(
-        `the chart instruction is sent in ${space ?? 'no'} space`,
-        /language is chart/.test(text) && text.includes('ohlc'),
-      )
-      // The fence itself must be IN the example. It was not, and the model
-      // wrote bare JSON into its answer — it reproduced the shape it was
-      // shown, which was the payload without its delimiters.
-      check(
-        `…showing the fence, twice (${space ?? 'none'})`,
-        (text.match(/```chart/g) ?? []).length >= 2,
+        `the chart capability is stated in ${space ?? 'no'} space`,
+        /language is chart/.test(text),
       )
       check(
-        `…and src, so the data is not retyped (${space ?? 'none'})`,
-        text.includes('src'),
+        `…pointing at the skill that carries the format (${space ?? 'none'})`,
+        text.includes('/chart'),
       )
+      // And it must NOT carry the format itself any more: that was 581 tokens
+      // in the system prompt of every turn, for something most chats never
+      // draw.
+      check(
+        `…without inlining the format again (${space ?? 'none'})`,
+        !text.includes('ohlc'),
+      )
+    }
+    // The format moved to /chart, and the failure it guards moved with it.
+    // The fence itself must be IN the example: once it was not, and the model
+    // wrote bare JSON into its answer — it reproduced the shape it was shown,
+    // which was the payload without its delimiters.
+    {
+      const chart = SEEDED.find(x => x.name === 'chart')?.body ?? ''
+      check('the /chart skill exists', chart.length > 0)
+      check('it shows the fence, twice', (chart.match(/```chart/g) ?? []).length >= 2)
+      check('and src, so the data is not retyped', chart.includes('src'))
+      check('and ohlc, so a price chart is a candlestick', chart.includes('ohlc'))
     }
     // The mode directive is the only thing the meter's list may lack.
     const run = buildDirectives('home', undefined, 'MODE')
