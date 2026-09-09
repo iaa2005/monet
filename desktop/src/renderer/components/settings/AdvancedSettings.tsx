@@ -44,6 +44,14 @@ function api(): ElectronAPI | undefined {
   return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
+/** Only Windows has two shells to choose between. */
+function isWindows(): boolean {
+  return (
+    (window as unknown as { electronAPI?: { platform?: string } }).electronAPI
+      ?.platform === "win32"
+  );
+}
+
 /** The icons the feature registry names. Resolved here rather than stored as
  * components: shared/ is imported by main too, and main has no lucide. */
 const ICONS: Record<string, LucideIcon> = {
@@ -155,6 +163,9 @@ export function AdvancedSettings(): JSX.Element {
   const [bgModel, setBgModel] = useState("");
   const [features, setFeatures] = useState<FeatureFlags>(defaultFeatures());
   const [timeouts, setTimeouts] = useState({ remoteSec: 300, localSec: 1800 });
+  const [shell, setShell] = useState<"auto" | "bash" | "powershell" | "both">(
+    "auto",
+  );
 
   const toggleFeature = (id: keyof FeatureFlags, v: boolean): void => {
     setFeatures((prev) => ({ ...prev, [id]: v }));
@@ -176,6 +187,7 @@ export function AdvancedSettings(): JSX.Element {
   useEffect(() => {
     api()?.tuning.featuresGet().then(setFeatures).catch(() => {});
     api()?.tuning.timeoutsGet().then(setTimeouts).catch(() => {});
+    api()?.tuning.shellGet().then((c) => setShell(c.choice)).catch(() => {});
     api()?.tuning.toolSearchGet().then((c) => setToolSearch(c.enabled)).catch(() => {});
     api()?.tuning.lspGet().then((c) => setLsp(c.enabled)).catch(() => {});
     api()?.tuning.cavemanGet().then((c) => setCaveman(c.enabled)).catch(() => {});
@@ -220,6 +232,11 @@ export function AdvancedSettings(): JSX.Element {
   const saveTimeout = (patch: { remoteSec?: number; localSec?: number }): void => {
     setTimeouts((prev) => ({ ...prev, ...patch }));
     void api()?.tuning.timeoutsSet(patch);
+  };
+
+  const saveShell = (choice: "auto" | "bash" | "powershell" | "both"): void => {
+    setShell(choice);
+    void api()?.tuning.shellSet({ choice });
   };
 
   const toggleToolSearch = (v: boolean): void => {
@@ -326,6 +343,29 @@ export function AdvancedSettings(): JSX.Element {
           />
         </div>
       </section>
+
+      {isWindows() && (
+        <section>
+          <SectionHeader
+            title="Shell"
+            description="Windows has two, and the model used to be handed both — 4,551 tokens of the two largest tool descriptions in the toolset, to say the same thing twice, on every turn. One is enough, and which one is a real preference: the commands are not interchangeable in the details."
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Select
+              ariaLabel="Shell offered to the model"
+              value={shell}
+              onChange={(v) => saveShell(v as "auto" | "bash" | "powershell" | "both")}
+              className="py-1.5 text-sm"
+              options={[
+                { value: "auto", label: "Bash if Git Bash is installed, else PowerShell" },
+                { value: "bash", label: "Bash only" },
+                { value: "powershell", label: "PowerShell only" },
+                { value: "both", label: "Both (costs ~1,800 extra tokens a turn)" },
+              ]}
+            />
+          </div>
+        </section>
+      )}
 
       <section>
         <SectionHeader

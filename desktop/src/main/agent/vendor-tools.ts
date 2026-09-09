@@ -59,6 +59,7 @@ import { ToolSearchTool } from "./tool-search-tool.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import { getRevealedTools } from "./revealed-tools.js";
 import { BUILT_IN_GROUP, isDeferrable } from "./deferrable.js";
+import { getShellConfig, shellAllowed } from "./shell-choice.js";
 import { renderDeferredDirective } from "./deferred-inventory.js";
 import { getService as getConnectorService } from "../connectors/services/registry.js";
 import { LSPTool } from "./lsp-tool.js";
@@ -222,17 +223,22 @@ export function getVendorTools(): Tools {
     cachedForWorkspace = ws;
   }
   if (cachedTools) return cachedTools;
-  // Without a POSIX shell the vendor Bash tool errors on every call — drop
-  // it so the model goes straight to PowerShell. (ensurePosixShell also
-  // exports SHELL when git-bash exists, which makes Bash actually WORK.)
-  const posixShell = ensurePosixShell();
+  // One shell, not two. Windows used to be offered both, which is 4,551
+  // tokens of the largest two descriptions in the toolset to say the same
+  // thing twice — see agent/shell-choice.ts for what decides, and for why
+  // the machine's own facts (no Git Bash; not Windows) beat the setting.
+  // (ensurePosixShell also exports SHELL when git-bash exists, which is what
+  // makes the Bash tool actually WORK.)
+  const world = {
+    platform: process.platform,
+    hasPosixShell: ensurePosixShell() !== null,
+    choice: getShellConfig().choice,
+  };
   cachedTools = ALL_TOOLS.filter(
     (t) =>
       t.isEnabled() &&
-      (posixShell !== null || t.name !== "Bash") &&
-      // PowerShell exists only on Windows; offered elsewhere it would fail
-      // on every call (its own isEnabled() does not check the platform).
-      (process.platform === "win32" || t.name !== "PowerShell"),
+      (t.name !== "Bash" || shellAllowed("Bash", world)) &&
+      (t.name !== "PowerShell" || shellAllowed("PowerShell", world)),
   );
   return cachedTools;
 }

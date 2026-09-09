@@ -1403,6 +1403,10 @@ export interface ElectronAPI {
       remoteSec?: number;
       localSec?: number;
     }) => Promise<{ remoteSec: number; localSec: number }>;
+    shellGet: () => Promise<{ choice: "auto" | "bash" | "powershell" | "both" }>;
+    shellSet: (patch: {
+      choice?: "auto" | "bash" | "powershell" | "both";
+    }) => Promise<{ choice: "auto" | "bash" | "powershell" | "both" }>;
     lspGet: () => Promise<{ enabled: boolean }>;
     lspSet: (patch: { enabled?: boolean }) => Promise<{ enabled: boolean }>;
     promptsReload: () => Promise<{ ok: boolean }>;

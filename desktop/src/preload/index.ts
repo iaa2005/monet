@@ -1505,6 +1505,12 @@ const electronAPI = {
       localSec?: number;
     }): Promise<{ remoteSec: number; localSec: number }> =>
       ipcRenderer.invoke("timeouts:set", patch),
+    shellGet: (): Promise<{ choice: "auto" | "bash" | "powershell" | "both" }> =>
+      ipcRenderer.invoke("shell:get"),
+    shellSet: (patch: {
+      choice?: "auto" | "bash" | "powershell" | "both";
+    }): Promise<{ choice: "auto" | "bash" | "powershell" | "both" }> =>
+      ipcRenderer.invoke("shell:set", patch),
     lspGet: (): Promise<{ enabled: boolean }> => ipcRenderer.invoke("lsp:get"),
     lspSet: (patch: { enabled?: boolean }): Promise<{ enabled: boolean }> =>
       ipcRenderer.invoke("lsp:set", patch),

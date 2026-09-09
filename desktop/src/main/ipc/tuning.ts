@@ -29,6 +29,11 @@ import {
   type TimeoutConfig,
 } from "../llm/timeouts.js";
 import {
+  getShellConfig,
+  setShellConfig,
+  type ShellConfig,
+} from "../agent/shell-choice.js";
+import {
   getPowerConfig,
   setPowerConfig,
   isKeepingAwake,
@@ -100,6 +105,15 @@ export function registerTuningIPC(): void {
     (_e, patch: Partial<TimeoutConfig>): TimeoutConfig =>
       setTimeoutConfig(patch),
   );
+
+  // Which shell the model is offered on Windows. Changing it changes the
+  // advertised toolset, so the cached one goes.
+  ipcMain.handle("shell:get", (): ShellConfig => getShellConfig());
+  ipcMain.handle("shell:set", (_e, patch: Partial<ShellConfig>): ShellConfig => {
+    const next = setShellConfig(patch);
+    resetVendorTools();
+    return next;
+  });
 
   ipcMain.handle("lsp:get", (): LspConfig => getLspConfig());
   ipcMain.handle("lsp:set", (_e, patch: Partial<LspConfig>): LspConfig => {
