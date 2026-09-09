@@ -62,6 +62,44 @@ check(
   "…and mentions the frame that was cut off",
   /cut off/i.test(droppedStream({ ...END, progressChunks: 10, leftover: 38 }) ?? ""),
 );
+// THE DISTINCTION THIS EXISTS FOR. Both of these are "no verdict, no
+// output"; only the narration says which. The field case was the second —
+// the router log had `progress = 1.00` five seconds before the child exited
+// with 0xC0000005, and the crash was a full GPU offload the driver could not
+// hold, nothing whatever to do with the prompt.
+{
+  const early = droppedStream({
+    ...END,
+    progressChunks: 3,
+    lastProgress: { processed: 1200, total: 12240 },
+  });
+  const done = droppedStream({
+    ...END,
+    progressChunks: 10,
+    leftover: 38,
+    lastProgress: { processed: 12240, total: 12240 },
+  });
+  check("a prefill that died part-way says how far it got", /1,200 of 12,240/.test(early ?? ""), early);
+  check("…and blames the prompt, which is fair there", /prompt is what the machine/.test(early ?? ""));
+  check(
+    "A PREFILL THAT FINISHED IS NOT BLAMED ON THE PROMPT",
+    /finished reading the prompt/.test(done ?? ""),
+    done,
+  );
+  check(
+    "…it says the backend process died, and to read its log",
+    /shortening it will not help/.test(done ?? "") && /server's own log/.test(done ?? ""),
+  );
+  // A batch short of the end is still "it finished" — llama.cpp narrates in
+  // ubatch steps and the last one need not land exactly on the total.
+  check(
+    "one batch short of the end counts as finished",
+    /finished reading the prompt/.test(
+      droppedStream({ ...END, progressChunks: 9, lastProgress: { processed: 12_190, total: 12_240 } }) ?? "",
+    ),
+  );
+}
+
 check(
   "a drop with no progress chunks is still a drop, worded plainly",
   /without saying why/i.test(droppedStream(END) ?? ""),
@@ -211,6 +249,11 @@ async function run(
   check(
     "…and the message says what the server was doing",
     /reading the prompt/i.test(r.error ?? ""),
+    r.error,
+  );
+  check(
+    "…and how far it had got, from the last progress chunk",
+    /2,400 of 6,040/.test(r.error ?? ""),
     r.error,
   );
 }

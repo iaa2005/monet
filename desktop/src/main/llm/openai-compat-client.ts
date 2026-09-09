@@ -388,6 +388,7 @@ export class OpenAICompatClient implements LLMAdapter {
     let chunkCount = 0;
     let toolDeltaCount = 0;
     let progressSeen = 0;
+    let lastProgress: { processed: number; total: number } | undefined;
 
     const processLine = (line: string): void => {
       if (!line.startsWith("data: ")) return;
@@ -411,6 +412,9 @@ export class OpenAICompatClient implements LLMAdapter {
       const pp = chunk.prompt_progress;
       if (pp && typeof pp.total === "number") {
         progressSeen++;
+        // Kept for the post-mortem: where the reading had got to when the
+        // stream stopped is what says whether the prompt was the problem.
+        lastProgress = { processed: pp.processed ?? 0, total: pp.total };
         onEvent({
           type: "prompt_progress",
           processed: pp.processed ?? 0,
@@ -474,6 +478,7 @@ export class OpenAICompatClient implements LLMAdapter {
         reasoningLen,
         toolCalls: toolCalls.size,
         progressChunks: progressSeen,
+        ...(lastProgress ? { lastProgress } : {}),
         leftover: buffer.trim().length,
       });
       if (dropped && !timedOut) {

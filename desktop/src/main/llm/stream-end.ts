@@ -43,6 +43,18 @@ export interface StreamEnd {
   toolCalls: number;
   /** How many prefill-progress chunks arrived (local servers narrate these). */
   progressChunks: number;
+  /**
+   * The last thing the prefill narration said, when there was one.
+   *
+   * It is the difference between two failures that look identical from here.
+   * A server that died at 20% of the prompt ran out of something while
+   * reading it; a server whose last word was 100% finished reading and then
+   * went away — which, measured on the machine this came from, is the model
+   * process crashing on its first generated token. Telling someone their
+   * prompt is too long when the prompt was fine sends them to tune the wrong
+   * thing for an hour.
+   */
+  lastProgress?: { processed: number; total: number };
   /** Characters left unparsed in the buffer — a frame cut mid-line. */
   leftover: number;
 }
@@ -62,12 +74,25 @@ export function droppedStream(end: StreamEnd): string | null {
   if (end.textLen > 0 || end.reasoningLen > 0 || end.toolCalls > 0) return null;
 
   const cut = end.leftover > 0 ? " The last message was cut off mid-frame." : "";
-  if (end.progressChunks > 0) {
+  const p = end.lastProgress;
+  // Within a batch of the end: the prompt was read. What broke was whatever
+  // came next, and on a local server that is the model process itself.
+  if (p && p.total > 0 && p.total - p.processed <= 256) {
     return (
-      `The connection dropped while the server was still reading the prompt ` +
-      `— ${end.progressChunks} progress update${end.progressChunks === 1 ? "" : "s"} ` +
-      `and no answer.${cut} Nothing was generated, so nothing was lost; the ` +
-      `prompt is what the machine could not get through.`
+      `The server finished reading the prompt and then went away without ` +
+      `generating anything.${cut} That is what a backend process dying on its ` +
+      `first token looks like from here — the prompt got through, so shortening ` +
+      `it will not help; the server's own log will say why it stopped.`
+    );
+  }
+  if (end.progressChunks > 0) {
+    const where = p?.total
+      ? ` — it had read ${p.processed.toLocaleString("en-US")} of ${p.total.toLocaleString("en-US")} tokens`
+      : ` — ${end.progressChunks} progress update${end.progressChunks === 1 ? "" : "s"} and no answer`;
+    return (
+      `The connection dropped while the server was still reading the prompt` +
+      `${where}.${cut} Nothing was generated, so nothing was lost; the prompt ` +
+      `is what the machine could not get through.`
     );
   }
   return (
