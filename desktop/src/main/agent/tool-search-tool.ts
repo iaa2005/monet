@@ -13,6 +13,8 @@ import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
 import { getMcpTools, connectorServerNames } from "../mcp/manager.js";
+import { isDeferrable } from "./deferrable.js";
+import { getVendorToolsForSpace } from "./vendor-tools.js";
 import { revealTools } from "./revealed-tools.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import { tunablePrompt } from "../prompts/index.js";
@@ -49,13 +51,26 @@ function deferredCatalog(space?: string): {
   params: string[];
 }[] {
   const allowed = space === "home" ? connectorServerNames() : null;
-  return getMcpTools()
-    .filter((t) => !allowed || allowed.has(t.serverName))
+  // The app's own deferred tools are searchable on the same terms — see
+  // deferrable.ts. Their one-line hint is what a keyword query matches
+  // against, which is what `searchHint` was written for.
+  const builtIn = getVendorToolsForSpace(space)
+    .filter((t) => isDeferrable(t.name))
     .map((t) => ({
-      name: t.fullName,
-      description: t.description,
-      params: Object.keys(t.inputSchema.properties ?? {}),
+      name: t.name,
+      description: (t as { searchHint?: string }).searchHint ?? t.name,
+      params: [] as string[],
     }));
+  return [
+    ...builtIn,
+    ...getMcpTools()
+      .filter((t) => !allowed || allowed.has(t.serverName))
+      .map((t) => ({
+        name: t.fullName,
+        description: t.description,
+        params: Object.keys(t.inputSchema.properties ?? {}),
+      })),
+  ];
 }
 
 const inputSchema = lazySchema(() =>
@@ -98,11 +113,13 @@ export const ToolSearchTool = buildTool({
     return tunablePrompt(
       "tool-search",
       [
-        "Find and load tools that aren't advertised upfront (e.g. MCP connector",
-        "tools, kept out of the standing toolset to save context). Search with",
-        'keywords, or pass "select:name1,name2" to load exact tools by name. The',
-        "matches become callable on your next turn — call ToolSearch first, then",
-        "call the tool it reveals.",
+        "Find and load tools that aren't advertised upfront — connector (MCP)",
+        "tools, and this app's own rarely-used ones, kept out of the standing",
+        "toolset to save context. Everything held back is listed by name in the",
+        '"Tools not yet loaded" section. Search with keywords, or pass',
+        '"select:name1,name2" to load exact tools by name. The matches become',
+        "callable on your next turn — call ToolSearch first, then call the tool",
+        "it reveals.",
       ].join(" "),
     );
   },
@@ -118,7 +135,7 @@ export const ToolSearchTool = buildTool({
     if (catalog.length === 0)
       return {
         data: {
-          text: "No searchable tools — no MCP connectors are currently connected.",
+          text: "No searchable tools — everything available is already in your toolset.",
           isError: false,
         },
       };

@@ -42,15 +42,27 @@ export const SAMPLE_AFTER = 40;
 export interface DeferredTool {
   serverName: string;
   fullName: string;
+  /**
+   * A few words on what it does, for tools whose name does not say it.
+   *
+   * MCP names carry their server and their verb — `mcp__dropbox__upload` needs
+   * no gloss. The app's own do not: "OCRScan" and "SandboxImage" are guesses
+   * without one, and a model that guesses wrong about what it has is the
+   * failure this whole file exists to prevent. Six tokens each, against the
+   * two hundred a real schema costs.
+   */
+  hint?: string;
 }
 
 /** Group tools by server, preserving first-seen order. */
 function byServer(tools: DeferredTool[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
+  const render = (t: DeferredTool): string =>
+    t.hint ? `${t.fullName} (${t.hint})` : t.fullName;
   for (const t of tools) {
     const list = out.get(t.serverName);
-    if (list) list.push(t.fullName);
-    else out.set(t.serverName, [t.fullName]);
+    if (list) list.push(render(t));
+    else out.set(t.serverName, [render(t)]);
   }
   return out;
 }

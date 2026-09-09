@@ -117,6 +117,7 @@ import {
 } from "./file-ledger.js";
 import { clearRevealedTools } from "./revealed-tools.js";
 import { deferredLines } from "./deferred-inventory.js";
+import { BUILT_IN_GROUP } from "./deferrable.js";
 import { browserDirective } from "./browser-directive.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import {
@@ -164,7 +165,12 @@ import {
  * per-tool guidance). Falls back to the local facade if the vendor prompt
  * builder trips over a CLI-only dependency at runtime.
  */
-async function buildSystemPrompt(
+// Exported for scripts/measure-prompt-probe.ts. A measurement that
+// re-assembles the prompt out of its parts measures the reassembly, and the
+// parts it forgets are exactly the ones nobody remembers to count — the
+// identity block, the method block, the memory. This is the builder the run
+// uses, called the way the run calls it.
+export async function buildSystemPrompt(
   model: string,
   space?: string,
   sessionId?: string,
@@ -1365,7 +1371,13 @@ export async function computeContextBreakdown(
     )) {
       const size = Math.ceil((line.length + 1) / 4);
       systemTotal -= size;
-      if (connectorServers.has(server)) {
+      if (server === BUILT_IN_GROUP) {
+        // The app's own deferred tools. They are tools, not MCP and not a
+        // connector, and billing them to either would put a row in the
+        // breakdown for something the user has not attached.
+        toolTokens += size;
+        toolItems.push({ label: "deferred tools", tokens: size });
+      } else if (connectorServers.has(server)) {
         connectorTokens += size;
         const label = connectorLabel(server);
         connectorByName.set(label, (connectorByName.get(label) ?? 0) + size);

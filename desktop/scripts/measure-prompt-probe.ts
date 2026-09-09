@@ -30,6 +30,7 @@ import {
   getVendorToolsForSpace,
 } from "@main/agent/vendor-tools.js";
 import { initVendorRuntime } from "@main/agent/vendor-context.js";
+import { buildDirectives, buildSystemPrompt } from "@main/agent/index.js";
 import { stripExamples } from "@main/agent/lean-context.js";
 
 const tok = (s: string): number => Math.ceil(s.length / 4);
@@ -55,7 +56,26 @@ async function measure(space: "code" | "home"): Promise<number> {
     console.log(`  ${pad(tok(s), 6)}  ${headline(s)}`);
     systemTotal += tok(s);
   }
-  console.log(`  ${pad(systemTotal, 6)}  ── total`);
+  console.log(`  ${pad(systemTotal, 6)}  ── vendor sections`);
+
+  // Everything the app adds on top: the mode and space directives, and the
+  // blocks withUserMemory folds in (identity, profile, memory, vault,
+  // lessons, method, discipline). Taken as the DIFFERENCE against the vendor
+  // sections rather than re-listed here — a list of the parts is a list that
+  // goes stale, and this is the string the run actually sends.
+  const directives = buildDirectives(space, undefined);
+  const whole = [
+    ...directives,
+    await buildSystemPrompt("claude-opus-4-6", space, undefined),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  for (const d of directives) console.log(`  ${pad(tok(d), 6)}  ${headline(d)}`);
+  console.log(
+    `  ${pad(tok(whole) - systemTotal - directives.reduce((n, d) => n + tok(d), 0), 6)}  ── identity / profile / memory / method / discipline`,
+  );
+  systemTotal = tok(whole);
+  console.log(`  ${pad(systemTotal, 6)}  ── total system`);
 
   // The tools AS SENT: descriptions already through lean mode, schemas as
   // the API will see them. Measuring the raw prompt() instead is how a diet

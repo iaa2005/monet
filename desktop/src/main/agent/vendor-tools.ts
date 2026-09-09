@@ -58,6 +58,7 @@ import { AskUserQuestionTool } from "./ask-user-tool.js";
 import { ToolSearchTool } from "./tool-search-tool.js";
 import { getToolSearchConfig } from "./toolsearch-config.js";
 import { getRevealedTools } from "./revealed-tools.js";
+import { BUILT_IN_GROUP, isDeferrable } from "./deferrable.js";
 import { renderDeferredDirective } from "./deferred-inventory.js";
 import { getService as getConnectorService } from "../connectors/services/registry.js";
 import { LSPTool } from "./lsp-tool.js";
@@ -409,8 +410,11 @@ export function isSpaceToolAllowed(
   // MCP tools were held back with no way left to reveal them. Home does get
   // connector-backed MCP (see spaceAllowed in the tool list), so the tool
   // belongs here too; its catalog is filtered by the same rule.
-  if (name === "ToolSearch")
-    return getToolSearchConfig().enabled && hasMcpServers();
+  // It no longer needs a server to be useful: the app's own rarely-used tools
+  // are deferred too (deferrable.ts), so with the switch on there is always
+  // something to load. Requiring an MCP server here was the version that
+  // would have left those unreachable on an install with no connectors.
+  if (name === "ToolSearch") return getToolSearchConfig().enabled;
   // LSP (opt-in) needs the real workspace + installed language servers; Code-only.
   if (name === "LSP") return space !== "home" && getLspConfig().enabled;
   // DevServer runs a command on the HOST in the Code workspace — in Home
@@ -565,6 +569,16 @@ export async function getVendorApiTools(
       }),
     );
     apiToolsCache.set(cacheKey, base);
+  }
+
+  // Hold back the app's own rarely-used tools until the model asks for one.
+  // AFTER the cache, like the routine filter below and for the same reason:
+  // what is revealed is per session and changes turn to turn, while the cache
+  // key is the tool NAMES — folding it in would give every session its own
+  // copy of every description.
+  if (getToolSearchConfig().enabled) {
+    const revealed = getRevealedTools(sessionId ?? "default");
+    base = base.filter((t) => !isDeferrable(t.name) || revealed.has(t.name));
   }
 
   // Routine scoping for the connector TOOLS: a routine that declares ["gmail"]
@@ -1005,15 +1019,29 @@ export async function executeVendorTool(opts: {
 export function deferredToolsPending(
   space?: string,
   sessionId?: string,
-): { serverName: string; fullName: string }[] {
+): { serverName: string; fullName: string; hint?: string }[] {
   if (!getToolSearchConfig().enabled) return [];
   try {
     const revealed = getRevealedTools(sessionId ?? "default");
     const allowed = space === "home" ? connectorServerNames() : null;
-    return getMcpTools()
-      .filter((t) => !revealed.has(t.fullName))
-      .filter((t) => !allowed || allowed.has(t.serverName))
-      .map((t) => ({ serverName: t.serverName, fullName: t.fullName }));
+    // The app's own deferred tools, filtered by the SAME space rule that
+    // decides what may be advertised — announcing one this space would refuse
+    // to load is the failure this function's header warns about.
+    const builtIn = getVendorToolsForSpace(space, sessionId)
+      .filter((t) => isDeferrable(t.name) && !revealed.has(t.name))
+      .map((t) => ({
+        serverName: BUILT_IN_GROUP,
+        fullName: t.name,
+        // Its own one-liner, already written and already kept up to date.
+        hint: (t as { searchHint?: string }).searchHint,
+      }));
+    return [
+      ...builtIn,
+      ...getMcpTools()
+        .filter((t) => !revealed.has(t.fullName))
+        .filter((t) => !allowed || allowed.has(t.serverName))
+        .map((t) => ({ serverName: t.serverName, fullName: t.fullName })),
+    ];
   } catch {
     // Never block a run on the inventory — a missing announcement degrades to
     // the old behaviour, a thrown one loses the turn.

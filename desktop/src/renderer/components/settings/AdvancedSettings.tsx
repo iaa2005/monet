@@ -298,8 +298,8 @@ export function AdvancedSettings(): JSX.Element {
         <div className="mt-4 grid gap-2">
           <ToggleRow
             icon="Search"
-            title="ToolSearch (defer MCP tools)"
-            desc="Don't advertise connector (MCP) tools upfront — the model is told which ones exist and loads the ones it needs on demand. Saves context when many connectors are attached. Works in Code and Home; in Home only connector-backed servers are reachable."
+            title="Load rarely-used tools on demand (ToolSearch)"
+            desc="Keep the tools most messages never touch out of the standing toolset — connector (MCP) tools, and the app's own: the Obsidian six, routines, skills, swarms, the notebook editor. The model is told by name what exists and loads what it needs, which costs it one extra step on the turns it needs one. Measured on a Code turn with a vault and LSP on: 20,444 tokens down to 15,719."
             checked={toolSearch}
             onChange={toggleToolSearch}
           />

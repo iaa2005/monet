@@ -16,13 +16,19 @@
  * load — a name the model can see but not use is a worse failure than silence.
  */
 
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync, statSync } from "fs";
+import { join } from "path";
 import {
   SAMPLE_AFTER,
   deferredLines,
   renderDeferredDirective,
   type DeferredTool,
 } from "../src/main/agent/deferred-inventory";
+import {
+  BUILT_IN_GROUP,
+  DEFERRABLE_TOOLS,
+  isDeferrable,
+} from "../src/main/agent/deferrable";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown): void => {
@@ -211,8 +217,16 @@ const labelled = (s: string): string =>
     JSON.stringify(gate.trim()),
   );
   check(
-    "it still requires the feature and a server",
-    /getToolSearchConfig\(\)\.enabled/.test(gate) && /hasMcpServers\(\)/.test(gate),
+    "it still requires the feature",
+    /getToolSearchConfig\(\)\.enabled/.test(gate),
+    JSON.stringify(gate.trim()),
+  );
+  // And no longer a server. The app's OWN tools are deferred now too, so on
+  // an install with no connectors there would be things held back and
+  // nothing left to load them with.
+  check(
+    "but no longer an MCP server",
+    !/hasMcpServers\(\)/.test(gate),
     JSON.stringify(gate.trim()),
   );
 
@@ -224,6 +238,105 @@ const labelled = (s: string): string =>
     /space === "home" \? connectorServerNames\(\)/.test(cat),
   );
   check("and the tool passes its space in", /deferredCatalog\(space\)/.test(cat));
+}
+
+// ── 5. Which of the app's own tools may be held back ──────────────────
+//
+// The list is a judgement call, and the way it goes wrong is silent: defer
+// something needed on the first turn of every chat and every chat pays a
+// round trip; defer the exit of a mode and the mode cannot be left.
+{
+  // The working set. A turn that had to search for Read would be worse in
+  // every way than one that paid the tokens for it.
+  for (const keep of [
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "Grep",
+    "Bash",
+    "PowerShell",
+    "TodoWrite",
+    "Task",
+    "ToolSearch",
+  ]) {
+    check(`${keep} is never deferred`, !isDeferrable(keep));
+  }
+  // Plan mode ENDS by calling ExitPlanMode. A mode whose exit has to be
+  // searched for is a trap, not a saving.
+  check("ExitPlanMode is never deferred", !isDeferrable("ExitPlanMode"));
+  check("nor EnterPlanMode", !isDeferrable("EnterPlanMode"));
+  // Home hands over what it made with this, at the end of a turn — the point
+  // at which a model is least likely to go looking for a tool.
+  check("DeliverFiles is never deferred", !isDeferrable("DeliverFiles"));
+
+  // And the ones that are, because they are what the saving is made of.
+  for (const gone of ["ObsidianSearch", "Routine", "AgentSwarm", "NotebookEdit"]) {
+    check(`${gone} is deferred`, isDeferrable(gone));
+  }
+
+  // A name matching no tool defers nothing and says nothing: the list would
+  // look like a saving and be a typo.
+  //
+  // Read as SOURCE, like the gate check above. Importing the registry pulls
+  // the whole toolset — browser, computer use, connectors — into a probe that
+  // only needs two strings from it, and the bundle does not survive the trip.
+  /** tool name → does its declaration carry a searchHint. */
+  const declared = new Map<string, boolean>();
+  /** CONSTANT → does the tool named by it carry a searchHint. */
+  const viaConst = new Map<string, boolean>();
+  /** CONSTANT → its literal value, resolved from anywhere in the tree. */
+  const constValue = new Map<string, string>();
+
+  const note = (name: string, hasHint: boolean): void => {
+    declared.set(name, declared.get(name) === true || hasHint);
+  };
+  const HINT = /^\s*searchHint:/m;
+
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!/\.tsx?$/.test(entry)) continue;
+      const src = readFileSync(full, "utf8");
+      // `name: "X"` followed within a few lines by a searchHint — the shape
+      // every buildTool() call has.
+      for (const m of src.matchAll(/name:\s*"([A-Za-z][A-Za-z0-9_]*)",([\s\S]{0,200})/g)) {
+        if (m[1]) note(m[1], HINT.test(m[2] ?? ""));
+      }
+      // Some name themselves with a constant (NOTEBOOK_EDIT_TOOL_NAME).
+      for (const m of src.matchAll(/name:\s*([A-Z][A-Z0-9_]*),([\s\S]{0,200})/g)) {
+        if (m[1]) viaConst.set(m[1], HINT.test(m[2] ?? ""));
+      }
+      for (const m of src.matchAll(/\b([A-Z][A-Z0-9_]{2,})\s*=\s*['"]([^'"]+)['"]/g)) {
+        if (m[1] && m[2]) constValue.set(m[1], m[2]);
+      }
+    }
+  };
+  walk("src/main");
+  for (const [ident, hasHint] of viaConst) {
+    const value = constValue.get(ident);
+    if (value) note(value, hasHint);
+  }
+
+  const unknown = [...DEFERRABLE_TOOLS].filter((n) => !declared.has(n));
+  check("every deferrable name is a real tool", unknown.length === 0, unknown.join(", "));
+
+  // Each stands in for its schema with one line, and that line is the tool's
+  // own searchHint. Without one the model sees a bare name and has to guess
+  // what it does — which is the failure this whole file was written for.
+  const hintless = [...DEFERRABLE_TOOLS].filter((n) => declared.get(n) === false);
+  check("and every one of them says what it does", hintless.length === 0, hintless.join(", "));
+
+  // The hint has to reach the announcement, or it was written for nothing.
+  const line = deferredLines(
+    [{ serverName: BUILT_IN_GROUP, fullName: "OCRScan", hint: "scan a document" }],
+    (x) => x,
+  )[0]!.line;
+  check("the announcement carries it", line.includes("OCRScan (scan a document)"), line);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL DEFERRED-INVENTORY CHECKS PASSED");
