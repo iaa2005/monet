@@ -18,6 +18,13 @@
  *    it has its own memory with its own UI (Settings → Memory). Disabling it
  *    is a startup-time env var: the vendor memoises that section on first
  *    build, so it cannot be toggled mid-process.
+ *
+ *    The env var does more than silence the prompt, which is why the modules
+ *    behind it are still here rather than deleted. `isAutoMemoryEnabled()` is
+ *    read by the file tools, the agent loader and the swarm — memory/dir is
+ *    shared machinery for recognising a memory FILE, not the leftovers of a
+ *    parallel store. What is dead is the pathway, and the var is what keeps
+ *    it that way.
  */
 
 import { readFileSync, writeFileSync } from "fs";
@@ -57,9 +64,10 @@ export function setLeanConfig(patch: Partial<LeanConfig>): LeanConfig {
 /**
  * Suppress the vendor's own auto-memory instructions. They describe a SECOND
  * memory system (its own directory, its own index) that nothing in this app
- * maintains — the app runs its own daily-log → nightly-consolidation → index
- * memory, so leaving the vendor block in would point the model at a parallel
- * store and waste ~3100 tokens doing it.
+ * maintains — the app has its own: appended to during the day by the Remember
+ * tool, sorted once a night, folded back into the prompt as one block. Leaving
+ * the vendor block in would point the model at a parallel store and waste
+ * ~3100 tokens doing it.
  *
  * MUST run before anything builds a system prompt: the vendor caches that
  * section on first computation, so setting it later has no effect until

@@ -11,11 +11,10 @@ import {
   readMemoryFile,
   setMemoryConfig,
   writeMemoryFile,
+  addMemoryNote,
   type MemoryConfig,
 } from "../memory/store.js";
-import { addMemoryNote } from "../memory/extract.js";
 import { getConsolidationState, runConsolidation } from "../memory/consolidate.js";
-import { pendingBulletCount } from "../memory/daily-log.js";
 import { resetVendorTools } from "../agent/vendor-tools.js";
 
 export function registerMemoryIPC(): void {
@@ -41,10 +40,7 @@ export function registerMemoryIPC(): void {
 
   // Consolidation: the nightly pass runs itself, but the user can see when it
   // last ran and trigger one now (force skips the time/signal gates).
-  ipcMain.handle("memory:consolidationState", () => {
-    const s = getConsolidationState();
-    return { ...s, pending: pendingBulletCount(s.lastConsolidatedAt) };
-  });
+  ipcMain.handle("memory:consolidationState", () => getConsolidationState());
   ipcMain.handle("memory:consolidate", () => runConsolidation({ force: true }));
 
   // Project lessons: the per-workspace half of the dream (memory/lessons.ts).

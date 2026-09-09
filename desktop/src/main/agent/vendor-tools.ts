@@ -384,7 +384,11 @@ export function isSpaceToolAllowed(
   // Routines exist for both spaces, so the tool does too. It's still gated by
   // the permission prompt, and its mutations refuse inside an unattended run.
   if (name === "Routine") return true;
-  if (name === "SearchPastChats") return getMemoryConfig().searchChats;
+  // Both memory tools follow the one switch: with memory off the agent
+  // neither reads it nor writes it, and advertising a Remember it has been
+  // told not to use is how a model spends a call on nothing.
+  if (name === "SearchPastChats" || name === "Remember")
+    return getMemoryConfig().useInChats;
   // Vault tools appear only when a vault is enabled — an empty ObsidianSearch
   // is schema tax that invites a call destined to fail. Both spaces: the
   // knowledge base is the USER's, not the machine's, so Home's isolation

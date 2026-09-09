@@ -17,6 +17,7 @@ import type {
 } from "../main/ipc/permissions.js";
 import type { AskUserRequest, AskUserAnswer } from "../main/ipc/ask-user.js";
 import type { UiPrefs } from "../main/app/ui-prefs.js";
+import type { MemoryConfig } from "../main/memory/store.js";
 import type { UpdateState } from "../main/app/updater.js";
 import type { FeatureFlags } from "../shared/agent-features.js";
 import type { PlanApprovalRequest, PlanDecision } from "../main/ipc/plan.js";
@@ -679,13 +680,13 @@ const electronAPI = {
   },
 
   memory: {
-    getConfig: (): Promise<{ searchChats: boolean; generateMemory: boolean; extractEveryMinutes: number }> =>
+    getConfig: (): Promise<MemoryConfig> =>
       ipcRenderer.invoke("memory:getConfig"),
     setConfig: (patch: {
-      searchChats?: boolean;
-      generateMemory?: boolean;
-      extractEveryMinutes?: number;
-    }): Promise<{ searchChats: boolean; generateMemory: boolean; extractEveryMinutes: number }> =>
+      useInChats?: boolean;
+      nightly?: boolean;
+      runNotes?: boolean;
+    }): Promise<MemoryConfig> =>
       ipcRenderer.invoke("memory:setConfig", patch),
     list: (): Promise<unknown[]> => ipcRenderer.invoke("memory:list"),
     read: (
@@ -704,7 +705,7 @@ const electronAPI = {
       ipcRenderer.invoke("memory:write", id, data),
     deleteById: (id: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("memory:delete", id),
-    addNote: (note: string): Promise<{ ok: boolean; applied: string[] }> =>
+    addNote: (note: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("memory:addNote", note),
     consolidationState: (): Promise<{
       lastConsolidatedAt: number;
@@ -713,8 +714,6 @@ const electronAPI = {
       lastError: string | null;
       lastTouched: string[];
       runs: number;
-      /** Log bullets waiting for the next pass. */
-      pending: number;
     }> => ipcRenderer.invoke("memory:consolidationState"),
     consolidate: (): Promise<{
       ok: boolean;

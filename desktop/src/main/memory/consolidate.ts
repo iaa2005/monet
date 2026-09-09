@@ -1,16 +1,22 @@
 /**
  * Memory consolidation — the "dream".
  *
- * The nightly counterpart to the append-only daily log: one thoughtful pass
- * that reads the whole picture (every memory file + the logs written since the
- * last run + what the user has been working on) and reorganises it, instead of
- * many cheap per-turn passes each rewriting a file from an 8K keyhole.
+ * The one automatic model call the memory system makes. Everything else that
+ * writes to memory during the day APPENDS: the Remember tool when the agent
+ * learns something, the note box on the Memory page. Appending cannot lose
+ * anything, and it cannot sort either — so once a night, when there is
+ * something new, one pass reads every file at once and reorganises: merge the
+ * duplicates, drop what has been contradicted, move a fact to the topic it
+ * actually belongs to, rewrite the index.
  *
- * Modelled on the vendor's /dream: gather signal → merge into topic files,
- * dropping duplicates and contradicted facts → prune and rewrite the MEMORY.md
- * index. The model returns a JSON edit plan rather than free-writing files, so
- * every write goes through the store's validated ids and can't escape the
- * memory directory.
+ * It used to read a daily log written by a per-turn extraction pass. Both are
+ * gone. The log was a third file format and a second prompt maintaining it,
+ * for facts the agent can write itself at the moment it learns them, and the
+ * pass that filled it was a model call every few minutes in every chat.
+ *
+ * The model returns a JSON edit plan rather than free-writing files, so every
+ * write goes through the store's validated ids and cannot escape the memory
+ * directory.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
@@ -21,7 +27,6 @@ import { createAdapter } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
 import { resolveBackgroundModel } from "../provider/routing.js";
 import { getSessionStore } from "../session/store.js";
-import { pendingBulletCount, readLogsSince } from "./daily-log.js";
 import {
   deleteMemoryFile,
   getMemoryConfig,
@@ -35,8 +40,6 @@ import {
 
 /** Don't re-dream more often than this (hours), except on force. */
 const MIN_HOURS = 20;
-/** Below this many new bullets there is nothing worth waking up for. */
-const MIN_BULLETS = 3;
 
 export interface ConsolidationState {
   lastConsolidatedAt: number;
@@ -86,9 +89,9 @@ function saveState(patch: Partial<ConsolidationState>): void {
 
 const SYSTEM = `You are performing a "dream" — a reflective consolidation pass over an AI assistant's long-term memory of its user.
 
-You receive: the CURRENT MEMORY files, the DAILY LOGS appended since the last consolidation (raw, unfiltered observations), and RECENT SESSIONS (what the user has been working on).
+You receive: the CURRENT MEMORY files, and RECENT SESSIONS (what the user has been working on).
 
-Your job: turn the raw logs into durable, well-organised memory, then rewrite the index.
+The files have been appended to since you last saw them — by the assistant as it learned things, and by the user typing a note. Nothing has sorted them. Your job is to do that, then rewrite the index.
 
 Memory file ids:
 - "profile" — who the user is: role, field, languages, stable preferences.
@@ -96,10 +99,11 @@ Memory file ids:
 - "areas/<slug>" — a long-running project.
 
 Rules:
-- MERGE, don't append blindly. The content you emit REPLACES the file: carry over still-valid facts, fold in the new ones, drop duplicates.
+- MERGE. The content you emit REPLACES the file: carry over still-valid facts, fold in the new ones, drop duplicates and near-duplicates.
+- MOVE a fact to the file it belongs in. What was appended during the day landed wherever was convenient; a project fact belongs in an area, a way of working in a topic.
 - Prefer updating an existing file over creating a near-duplicate.
 - Convert relative dates ("yesterday", "last week") to absolute ones.
-- Delete facts the logs contradict, and memories that are now stale or superseded.
+- Delete facts that later ones contradict, and memories that are now stale or superseded.
 - Do NOT save: secrets, one-off task details, anything derivable from the code, or things the assistant said about itself.
 - Write names, summaries and content in the USER'S language.
 - The index is an index, not a dump: one line per memory, a title plus a short hook.
@@ -127,6 +131,19 @@ function currentMemoryBlock(): string {
     })
     .join("\n\n")
     .slice(0, 14_000);
+}
+
+/**
+ * Which memory files have been written since a given moment.
+ *
+ * By mtime, which is exactly right here: every daytime write is an append
+ * through the store, and an append touches the file. A file nobody has added
+ * to holds nothing this pass has not already read and reorganised.
+ */
+export function changedSince(since: number): string[] {
+  return listMemoryFiles()
+    .filter((f) => f.updatedAt > since)
+    .map((f) => f.id);
 }
 
 function recentSessionsBlock(since: number): string {
@@ -184,13 +201,17 @@ export async function runConsolidation(
   const since = state.lastConsolidatedAt;
 
   if (!opts.force) {
-    if (!getMemoryConfig().generateMemory)
-      return { ok: true, ran: false, reason: "memory generation is off" };
+    if (!getMemoryConfig().nightly)
+      return { ok: true, ran: false, reason: "the nightly pass is off" };
     const hours = (Date.now() - since) / 3_600_000;
     if (hours < MIN_HOURS)
       return { ok: true, ran: false, reason: `only ${hours.toFixed(1)}h since last run` };
-    if (pendingBulletCount(since) < MIN_BULLETS)
-      return { ok: true, ran: false, reason: "not enough new signal" };
+    // What "new signal" means now that there is no log to count bullets in:
+    // a file has been written since the last pass. Appending is the only way
+    // anything reaches memory during the day, so a file whose mtime has not
+    // moved holds nothing this pass has not already read.
+    if (changedSince(since).length === 0)
+      return { ok: true, ran: false, reason: "nothing new since the last pass" };
   }
 
   const routed = resolveBackgroundModel();
@@ -200,10 +221,12 @@ export async function runConsolidation(
   running = true;
   const startedAt = Date.now();
   try {
-    const logs = readLogsSince(since);
+    const changed = changedSince(since);
     const content = [
       `CURRENT MEMORY:\n${currentMemoryBlock()}`,
-      `DAILY LOGS since last consolidation (${logs.bullets} entries over ${logs.files} day(s)):\n${logs.text || "(none)"}`,
+      changed.length
+        ? `APPENDED TO SINCE THE LAST PASS (look hardest at these):\n${changed.join(", ")}`
+        : "APPENDED TO SINCE THE LAST PASS: nothing — this is a tidy-up.",
       `RECENT SESSIONS:\n${recentSessionsBlock(since)}`,
       `Today is ${new Date().toISOString().slice(0, 10)}.`,
     ].join("\n\n---\n\n");
@@ -272,7 +295,7 @@ export async function runConsolidation(
     let summary =
       typeof plan.summary === "string" && plan.summary.trim()
         ? plan.summary.trim()
-        : `Consolidated ${logs.bullets} log entries.`;
+        : `Tidied ${touched.length} file(s).`;
     if (truncated)
       // Say so rather than reporting a clean run: the tail of the plan (often
       // the index, sometimes a whole file) never arrived.
@@ -288,8 +311,9 @@ export async function runConsolidation(
     return { ok: true, ran: true, summary, touched };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
-    // Don't advance lastConsolidatedAt: the logs stay pending so the next run
-    // still sees them.
+    // Don't advance lastConsolidatedAt: a file that changed stays "changed"
+    // as far as the next run is concerned, so nothing is skipped because one
+    // pass failed.
     saveState({ lastRunAt: startedAt, lastError: error });
     return { ok: false, ran: false, error };
   } finally {

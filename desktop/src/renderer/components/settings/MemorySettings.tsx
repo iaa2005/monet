@@ -1,7 +1,13 @@
 /**
- * Settings → Memory — mirrors Claude.ai's Memory page: two toggles, the
- * memory-file table grouped You / Topics / Areas, an editor modal, and a
- * "tell Claude something to remember" box at the bottom.
+ * Settings → Memory — everything the app remembers, and everything that
+ * decides whether it does.
+ *
+ * One page, three levels, in the order a person asks about them: is memory
+ * used at all, what tops it up and what that costs, and what is actually in
+ * there. The switches used to be six, spread over this page and Advanced,
+ * and two of them crossed — see the note on MemoryConfig in
+ * main/memory/store.ts for the install where that showed "enabled" on one
+ * page and did nothing at night.
  */
 import { useEffect, useState } from "react";
 import {
@@ -11,15 +17,19 @@ import {
   ChevronRight,
   GraduationCap,
   MoonStar,
+  NotebookPen,
   Search,
-  Timer,
   Trash2,
   Undo2,
   X,
 } from "@/components/icons/hg";
 import { Switch } from "@/components/ui/switch";
-import type { ElectronAPI, MemoryFileInfo, ProjectLessons } from "@/types/electron";
-import { Select } from "@/components/ui/select";
+import type {
+  ElectronAPI,
+  MemoryConfig,
+  MemoryFileInfo,
+  ProjectLessons,
+} from "@/types/electron";
 import { SettingCard } from "./SettingCard";
 import { SectionTitle } from "@/components/settings/SectionTitle";
 
@@ -147,15 +157,13 @@ interface ConsolidationState {
   lastSummary: string;
   lastError: string | null;
   runs: number;
-  pending: number;
 }
 
 /** One line of status: when it last ran, what it did, what's queued. */
 function describeConsolidation(s: ConsolidationState | null): string {
   if (!s) return "";
-  const queued = s.pending > 0 ? `${s.pending} note${s.pending === 1 ? "" : "s"} waiting` : "nothing waiting";
   if (!s.lastConsolidatedAt)
-    return s.lastError ? `Last attempt failed: ${s.lastError}` : `Never run — ${queued}.`;
+    return s.lastError ? `Last attempt failed: ${s.lastError}` : "Never run.";
   const hours = (Date.now() - s.lastConsolidatedAt) / 3_600_000;
   const when =
     hours < 1
@@ -164,17 +172,14 @@ function describeConsolidation(s: ConsolidationState | null): string {
         ? `${Math.round(hours)}h ago`
         : `${Math.round(hours / 24)}d ago`;
   const tail = s.lastError ? ` Last attempt failed: ${s.lastError}` : "";
-  return `Last run ${when}${s.lastSummary ? ` — ${s.lastSummary}` : ""} · ${queued}.${tail}`;
+  return `Last run ${when}${s.lastSummary ? ` — ${s.lastSummary}` : ""}.${tail}`;
 }
 
 export function MemorySettings(): JSX.Element {
-  const [config, setConfig] = useState({
-    searchChats: true,
-    generateMemory: true,
-    // Matches main's default (memory/store.ts): off until asked for, so the
-    // first paint does not claim a paid pass is running before the real
-    // config arrives.
-    extractEveryMinutes: 0,
+  const [config, setConfig] = useState<MemoryConfig>({
+    useInChats: true,
+    nightly: true,
+    runNotes: true,
   });
   const [files, setFiles] = useState<MemoryFileInfo[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
@@ -232,10 +237,7 @@ export function MemorySettings(): JSX.Element {
     }
   };
 
-  const toggle = async (
-    key: "searchChats" | "generateMemory",
-    v: boolean,
-  ): Promise<void> => {
+  const toggle = async (key: keyof MemoryConfig, v: boolean): Promise<void> => {
     const next = await api()?.memory.setConfig({ [key]: v });
     if (next) setConfig(next);
   };
@@ -267,110 +269,116 @@ export function MemorySettings(): JSX.Element {
       <SectionTitle>Memory</SectionTitle>
 
       <div className="mt-4 grid gap-2">
-      <SettingCard
-        icon={Search}
-        title="Search and reference chats"
-        description="Allow the agent to search for relevant details in past chats (adds the SearchPastChats tool)."
-        on={config.searchChats}
-        control={
-          <Switch
-            checked={config.searchChats}
-            onChange={(v) => void toggle("searchChats", v)}
-          />
-        }
-      />
-
+      {/* 1 ─ Is memory used at all. One switch, because there is one answer:
+             the files in the prompt, this project's lessons, the tool that
+             searches past chats and the tool that writes a new memory all
+             stand or fall together. Two of these used to be separate and
+             they disagreed. */}
       <SettingCard
         icon={BookMarked}
-        title="Generate memory from chats"
-        description="After a conversation, quietly note durable facts (who you are, projects, workflows) in a daily log. Overnight those notes are consolidated into the memory files below."
-        on={config.generateMemory}
+        title="Use memory in chats"
+        description="What is saved below travels with every conversation, along with this project's lessons. The agent can also search past chats and save a new memory as it works. Turning this off keeps everything — it just stops being read or written."
+        on={config.useInChats}
         control={
           <Switch
-            checked={config.generateMemory}
-            onChange={(v) => void toggle("generateMemory", v)}
+            checked={config.useInChats}
+            onChange={(v) => void toggle("useInChats", v)}
           />
         }
       />
 
-      {config.generateMemory && (
-        <SettingCard
-          icon={Timer}
-          title="Memory extraction"
-          on
-          description="How often a conversation may be read for durable facts. Off by default: each pass is a model call on your own key, so it starts only once you ask for it."
-        >
-          <div className="mt-2 flex items-center justify-between gap-4">
-            <span className="text-[13px] text-muted-foreground">
-              Run extraction at most once per…
-            </span>
-            <Select
-              ariaLabel="Extract every"
-              value={String(config.extractEveryMinutes)}
-              onChange={(v) =>
-                void api()
-                  ?.memory.setConfig({ extractEveryMinutes: Number(v) })
-                  .then((next) => next && setConfig(next))
-              }
-              className="py-1.5 text-sm"
-              options={[
-                { value: "0", label: "Never" },
-                ...[1, 3, 10, 30, 60].map((m) => ({
-                  value: String(m),
-                  label: `${m} min`,
-                })),
-              ]}
-            />
-          </div>
-          {config.extractEveryMinutes === 0 && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Nothing is noted automatically. Memories you ask for explicitly
-              still get saved, and nightly consolidation still tidies them up.
-            </p>
-          )}
-        </SettingCard>
-      )}
+      <SectionTitle className="mt-5">How it fills up</SectionTitle>
+
+      {/* 2 ─ What tops it up, each with its price said in words. Two of the
+             three cost nothing at all, which is the point of listing them
+             beside the one that does. */}
+      <SettingCard
+        icon={Search}
+        title="The agent saves what it learns"
+        on={config.useInChats}
+        description="When you state a preference, correct it, or tell it something about your work, it writes that down as it happens. No extra model call — it is part of the reply it was already writing."
+      />
+
+      <SettingCard
+        icon={ArrowUp}
+        title="You tell it something"
+        on
+        description="The box at the bottom of this page. Saved word for word, immediately, with no model in the way."
+      />
 
       <SettingCard
         icon={MoonStar}
-        title="Nightly consolidation"
-        on
-        description="Runs itself around 3–5am when the computer is on (and catches up if it was off). Reads the day's notes with the whole memory in view, merges them in, drops what's stale, and rewrites the index."
+        title="Tidied up overnight"
+        description="Around 3–5am when the computer is on, and it catches up if it was off. Reads every memory file at once, merges what was added during the day, moves a fact to the topic it belongs in, drops what has been contradicted, and rewrites the index. The same pass distils each project's lessons. One call to the background model a night; nothing else here costs one."
+        on={config.nightly}
         control={
+          <Switch
+            checked={config.nightly}
+            onChange={(v) => void toggle("nightly", v)}
+          />
+        }
+      >
+        <div className="mt-2 flex items-center gap-2">
           <button
             type="button"
             onClick={() => void consolidateNow()}
             disabled={consolidating}
             className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
           >
-            {consolidating ? "Consolidating…" : "Consolidate now"}
+            {consolidating ? "Consolidating…" : "Tidy up now"}
           </button>
-        }
-      >
-        <div className="mt-2 text-xs text-muted-foreground">
-          {consolidateMsg ?? describeConsolidation(consState)}
-        </div>
-      </SettingCard>
-
-      <SettingCard
-        icon={GraduationCap}
-        title="Project lessons"
-        on
-        description="Overnight, failures from each workspace — failed commands, chats that stopped on errors, goals that ran out of budget — are distilled into lessons injected only when you work in that folder. A bad night is one click to undo."
-        control={
           <button
             type="button"
             onClick={() => void dreamNow()}
             disabled={dreaming}
             className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
           >
-            {dreaming ? "Learning…" : "Learn now"}
+            {dreaming ? "Learning…" : "Learn from failures now"}
           </button>
-        }
-      >
+          {/* Both buttons work with the switch off — they are a request, not
+              a schedule. Saying so is the difference between a button that
+              looks broken and one that is a choice. */}
+          {!config.nightly && (
+            <span className="text-xs text-muted-foreground">
+              Automatic runs are off; these still work.
+            </span>
+          )}
+        </div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          {consolidateMsg ?? describeConsolidation(consState)}
+        </div>
         {dreamMsg && (
-          <div className="mt-2 text-xs text-muted-foreground">{dreamMsg}</div>
+          <div className="mt-1 text-xs text-muted-foreground">{dreamMsg}</div>
         )}
+      </SettingCard>
+
+      {/* 3 ─ Memory of a PROJECT rather than of the user. It lived under
+             Advanced → "Between runs", where nothing else was about memory
+             and nobody would look for it. */}
+      <SettingCard
+        icon={NotebookPen}
+        title="Notes between runs"
+        description="A goal that finishes writes what it did; one that blocks writes what stopped it. The next run in that same folder starts with those lines, so it neither redoes the work nor walks into the same wall. Costs nothing."
+        on={config.runNotes}
+        control={
+          <Switch
+            checked={config.runNotes}
+            onChange={(v) => void toggle("runNotes", v)}
+          />
+        }
+      />
+
+      <SectionTitle className="mt-5">What it remembers</SectionTitle>
+
+      {/* The per-project half of what the night pass produces. The switch and
+          the button for it are up with the other one, where the cost is
+          stated; this is the contents, and the undo. */}
+      <SettingCard
+        icon={GraduationCap}
+        title="Project lessons"
+        on={config.useInChats}
+        description="What went wrong in each folder — failed commands, chats that stopped on an error, goals that ran out of budget — distilled into lessons that ride only into chats working there. A bad night is one click to undo."
+      >
         {lessons.length > 0 && (
           <div className="mt-2">
             {lessons.map((l) => {

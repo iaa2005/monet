@@ -166,6 +166,13 @@ export interface SkillInfo {
   updatedAt: number;
 }
 
+/** The three memory switches — see main/memory/store.ts for what each gates. */
+export interface MemoryConfig {
+  useInChats: boolean;
+  nightly: boolean;
+  runNotes: boolean;
+}
+
 export interface MemoryFileInfo {
   id: string;
   section: "you" | "topics" | "areas";
@@ -845,12 +852,12 @@ export interface ElectronAPI {
     graph: () => Promise<VaultGraph>;
   };
   memory: {
-    getConfig: () => Promise<{ searchChats: boolean; generateMemory: boolean; extractEveryMinutes: number }>;
+    getConfig: () => Promise<MemoryConfig>;
     setConfig: (patch: {
-      searchChats?: boolean;
-      generateMemory?: boolean;
-      extractEveryMinutes?: number;
-    }) => Promise<{ searchChats: boolean; generateMemory: boolean; extractEveryMinutes: number }>;
+      useInChats?: boolean;
+      nightly?: boolean;
+      runNotes?: boolean;
+    }) => Promise<MemoryConfig>;
     list: () => Promise<MemoryFileInfo[]>;
     read: (id: string) => Promise<{
       ok: boolean;
@@ -864,7 +871,7 @@ export interface ElectronAPI {
       data: { name: string; summary: string; body: string },
     ) => Promise<{ ok: boolean; error?: string }>;
     deleteById: (id: string) => Promise<{ ok: boolean }>;
-    addNote: (note: string) => Promise<{ ok: boolean; applied: string[] }>;
+    addNote: (note: string) => Promise<{ ok: boolean; error?: string }>;
     consolidationState: () => Promise<{
       lastConsolidatedAt: number;
       lastRunAt: number;
@@ -872,7 +879,6 @@ export interface ElectronAPI {
       lastError: string | null;
       lastTouched: string[];
       runs: number;
-      pending: number;
     }>;
     consolidate: () => Promise<{
       ok: boolean;

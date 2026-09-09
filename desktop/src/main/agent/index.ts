@@ -72,7 +72,7 @@ import {
 } from "./vendor-context.js";
 import { clearSessionMode } from "./session-mode.js";
 import { drainBgResults } from "./bg-agents.js";
-import { buildMemoryPrompt } from "../memory/store.js";
+import { buildMemoryPrompt, getMemoryConfig } from "../memory/store.js";
 import { buildLessonsPrompt } from "../memory/lessons.js";
 import { buildVaultPrompt, seedVaultPrompt } from "../obsidian/prompt.js";
 import { getWorkspacePath } from "../ipc/workspace.js";
@@ -333,17 +333,20 @@ function withUserMemory(
       // What it is, before who the user is: with this slot empty a weak model
       // fills it from training and introduces itself by an invented name.
       agentIdentityPrompt(model),
-      getProfilePrompt(),
-      // The switch a routine flips: everything else here is style and
-      // discipline, but THIS is the user's private notebook.
-      includeMemory ? buildMemoryPrompt() : "",
+      // Who the user is, in ONE block: what they typed into their profile and
+      // what has accumulated in memory since. `includeMemory: false` is an
+      // eval asking to be judged on the context alone — the standing profile
+      // goes with it, because it is memory too.
+      includeMemory && getMemoryConfig().useInChats
+        ? buildMemoryPrompt(getProfilePrompt())
+        : "",
       // The vault map + protocol — present only while a vault is enabled.
       buildVaultPrompt(),
       // Project lessons ride only into chats working in THAT workspace —
       // Home has no workspace, and a lesson about this repo's flaky build
       // belongs in no other folder's context. The run pinned its cwd before
       // the prompt was built, so the global path is this run's path.
-      includeMemory && space !== "home" && isFeatureOn("lessons")
+      includeMemory && space !== "home" && getMemoryConfig().useInChats
         ? buildLessonsPrompt(getWorkspacePath())
         : "",
       // Each of these is paid on EVERY turn, which is why each is a switch —
@@ -406,32 +409,6 @@ export async function seedTunablePrompts(): Promise<void> {
   } catch {
     /* best-effort */
   }
-}
-
-/** Plain-text tail of a session's conversation (for memory extraction):
- * user/assistant text only, tool blocks reduced to one-line markers. */
-export function getConversationText(
-  sessionId: string,
-  maxChars = 8_000,
-): string | null {
-  const messages = conversations.get(sessionId);
-  if (!messages || messages.length === 0) return null;
-  const lines: string[] = [];
-  for (const m of messages.slice(-14)) {
-    if (typeof m.content === "string") {
-      lines.push(`${m.role}: ${m.content}`);
-      continue;
-    }
-    const chunks: string[] = [];
-    for (const b of m.content) {
-      if (b.type === "text") chunks.push(b.text);
-      else if (b.type === "tool_use") chunks.push(`[tool: ${b.name}]`);
-      else if (b.type === "tool_result") chunks.push(`[tool result]`);
-    }
-    if (chunks.length) lines.push(`${m.role}: ${chunks.join(" ")}`);
-  }
-  const text = lines.join("\n");
-  return text.length > maxChars ? text.slice(-maxChars) : text;
 }
 
 /** Prepended in Home so the model knows the ground rules of the space.
@@ -1394,8 +1371,10 @@ export async function computeContextBreakdown(
       const md = space === "home" ? null : loadClaudeMd(getWorkspacePath());
       const tok = (s: string | null): number => (s ? Math.ceil(s.length / 4) : 0);
       memoryItems = [
-        { label: "Profile", tokens: tok(getProfilePrompt()) },
-        { label: "User memory", tokens: tok(buildMemoryPrompt()) },
+        // ONE item, because it is one block in the request now. Billing the
+        // profile apart from the memory would count the same characters twice
+        // — the meter's whole job is to be the same arithmetic as the run.
+        { label: "About the user", tokens: tok(buildMemoryPrompt(getProfilePrompt())) },
         { label: "Project memory (MONET.md)", tokens: tok(md) },
       ].filter((i) => i.tokens > 0);
       memoryTokens = memoryItems.reduce((n, i) => n + i.tokens, 0);
@@ -1671,7 +1650,7 @@ async function runAgentScoped(
     if (
       activeGoal.status === "active" &&
       space !== "home" &&
-      isFeatureOn("runNotes")
+      getMemoryConfig().runNotes
     ) {
       try {
         history =

@@ -271,7 +271,6 @@ export function AdvancedSettings(): JSX.Element {
     "Habits",
     "Checking the work",
     "Recovery",
-    "Between runs",
   ] as const;
 
   return (

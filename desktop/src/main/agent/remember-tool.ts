@@ -3,17 +3,16 @@
  *
  * This is the good half of the vendor's memory design, wired into the memory
  * this app actually reads back. The vendor ships 3,146 tokens of instructions
- * telling the agent to append to daily log files; in this app nothing ever
- * distils or re-reads them (no nightly consolidation runs, and the daily-log
- * prompt never injects the index), so that memory is write-only. Ours already
- * closes the loop — buildMemoryPrompt() folds every file back into the system
- * prompt and Settings → Memory shows them — it was just missing the ability
- * for the agent to write at the moment it learns something. That is what this
- * tool adds, for ~200 tokens instead of 3,146.
+ * telling the agent to append to daily log files that nothing ever re-reads.
+ * Ours closes the loop — buildMemoryPrompt() folds every file back into the
+ * system prompt, Settings → Memory shows them, and the nightly pass sorts
+ * them — for ~200 tokens instead of 3,146.
  *
- * Background extraction still runs (memory/extract.ts); it guesses after the
- * fact from the transcript. This tool is the deliberate path: the agent has
- * the full context of WHY a fact matters exactly when it learns it.
+ * It is now the ONLY thing that writes memory from inside a conversation.
+ * There used to be a background pass as well, guessing after the fact from a
+ * transcript excerpt every few minutes; it is gone. This one has the full
+ * context of WHY a fact matters at the moment it learns it, and costs no
+ * extra model call at all.
  */
 
 import type { ToolResultBlockParam } from "@anthropic-ai/sdk/resources/index.mjs";
@@ -21,10 +20,10 @@ import { z } from "zod/v4";
 import { buildTool, type ToolUseContext } from "../engine/Tool.js";
 import { lazySchema } from "./lazy-schema.js";
 import {
+  appendToMemoryFile,
   listMemoryFiles,
   readMemoryFile,
   slugifyMemoryName,
-  writeMemoryFile,
 } from "../memory/store.js";
 import { tunablePrompt } from "../prompts/index.js";
 
@@ -123,12 +122,6 @@ export const RememberTool = buildTool({
         ? `- ${fact}\n  Why: ${input.why.trim()}`
         : `- ${fact}`;
 
-      // Appending, never overwriting: a memory file accumulates across chats,
-      // and clobbering one would silently drop everything learned before.
-      const body = existing.ok && existing.body?.trim()
-        ? `${existing.body.trim()}\n${entry}`
-        : entry;
-
       // The id is slug-safe by construction (slugifyMemoryName strips every
       // path character), but the DISPLAY name is model-supplied and shown in
       // Settings — keep it to plain readable text so a title like
@@ -148,7 +141,9 @@ export const RememberTool = buildTool({
           ? "Who the user is and how they like to work."
           : fact.slice(0, 120));
 
-      const w = writeMemoryFile(id, { name, summary, body });
+      // Appending, never overwriting: a memory file accumulates across chats,
+      // and clobbering one would silently drop everything learned before.
+      const w = appendToMemoryFile(id, entry, { name, summary });
       if (!w.ok) return out(w.error ?? "Could not write the memory file.", true);
 
       return out(

@@ -476,8 +476,8 @@ export async function runLessonsDream(
   const state = getLessonsState();
 
   if (!opts.force) {
-    if (!getMemoryConfig().generateMemory)
-      return { ok: true, ran: false, reason: "memory generation is off" };
+    if (!getMemoryConfig().nightly)
+      return { ok: true, ran: false, reason: "the nightly pass is off" };
     const hours = (Date.now() - state.lastRunAt) / 3_600_000;
     if (hours < MIN_HOURS)
       return { ok: true, ran: false, reason: `only ${hours.toFixed(1)}h since last run` };

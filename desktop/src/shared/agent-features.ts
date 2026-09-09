@@ -1,6 +1,15 @@
 /**
  * What the harness does FOR the model — as a list you can switch off.
  *
+ * Two ids used to live here and no longer do: `lessons` and `runNotes`. They
+ * were not about how the agent WORKS, they were about what the app
+ * remembers — one of them gating the injection of a workspace's lessons while
+ * a switch on the Memory page gated generating them, so the two pages
+ * disagreed and neither said so. They are on the Memory page now, under the
+ * switch whose description covers them. Ids here are stable; these two are
+ * simply gone, and an old file naming them is ignored on read, which is what
+ * this file has always promised.
+ *
  * Everything here exists for one reason: a weak model fails at deciding
  * WHEN, not at doing. It can read a file and fix a named error; it cannot
  * reliably decide that now is the moment to read rather than write. So the
@@ -34,10 +43,7 @@ export type FeatureId =
   | "recon"
   | "clarify"
   // ── Craft ──
-  | "design"
-  // ── Carrying knowledge between runs ──
-  | "lessons"
-  | "runNotes";
+  | "design";
 
 export interface FeatureSpec {
   id: FeatureId;
@@ -47,7 +53,7 @@ export interface FeatureSpec {
   description: string;
   /** lucide-react icon name, resolved in the renderer. */
   icon: string;
-  group: "Habits" | "Before the work" | "Checking the work" | "Recovery" | "Between runs";
+  group: "Habits" | "Before the work" | "Checking the work" | "Recovery";
   /** Off by default only where the cost is real and the win situational. */
   defaultOn: boolean;
   /** Roughly what turning it on adds per turn, in the user's terms. */
@@ -172,26 +178,6 @@ export const FEATURES: FeatureSpec[] = [
       "Ten steps before the run's real end — extensions it is on course to earn included — the model is told how many are left, so it converges instead of opening a new thread. After the last step it gets a turn with no tools: it can no longer act, but it can still say what happened.",
     icon: "PlaneLanding",
     group: "Recovery",
-    defaultOn: true,
-    cost: "free",
-  },
-  {
-    id: "lessons",
-    name: "Learn from failures",
-    description:
-      "Failed tool calls, chats that ended on an error and goals that ran out of budget are distilled overnight into a short list of lessons, injected into every later chat in THAT folder. One model call a night, per workspace.",
-    icon: "GraduationCap",
-    group: "Between runs",
-    defaultOn: true,
-    cost: "free",
-  },
-  {
-    id: "runNotes",
-    name: "Notes for the next run",
-    description:
-      "A goal that finishes writes what it did; one that blocks writes what stopped it. The next run in the same folder starts with those lines, so it neither redoes the work nor walks into the same wall. Costs nothing.",
-    icon: "NotebookPen",
-    group: "Between runs",
     defaultOn: true,
     cost: "free",
   },

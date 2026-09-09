@@ -165,10 +165,17 @@ export function setAvatarFromFile(path: string): { ok: boolean; error?: string }
  */
 
 /** System-prompt block, or null when the profile is empty. */
+/**
+ * What the user typed about themselves, with no heading of its own.
+ *
+ * It used to open with "# User profile", a second section about the user
+ * beside the memory files' own. buildMemoryPrompt folds this in under the one
+ * heading now, so the heading here would be a heading inside a heading.
+ */
 export function getProfilePrompt(): string | null {
   const p = getProfile();
   if (!p.name && !p.about && !p.fullName && !p.work) return null;
-  const lines = ["# User profile"];
+  const lines: string[] = [];
   if (p.name) lines.push(`Call the user "${p.name}".`);
   if (p.fullName) lines.push(`Full name: ${p.fullName}.`);
   if (p.work) lines.push(`Their work: ${p.work}.`);

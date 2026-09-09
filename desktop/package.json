@@ -46,6 +46,7 @@
     "smoke:timeouts": "node scripts/renderer-probe.mjs scripts/timeouts-probe.ts",
     "smoke:shell": "node scripts/renderer-probe.mjs scripts/shell-choice-probe.ts",
     "smoke:todoprompt": "node scripts/renderer-probe.mjs scripts/todo-prompt-probe.ts",
+    "smoke:memcfg": "node scripts/renderer-probe.mjs scripts/memory-config-probe.ts",
     "smoke:timeouts:live": "node scripts/renderer-probe.mjs scripts/timeouts-live-probe.ts",
     "smoke:turnbudget": "node scripts/renderer-probe.mjs scripts/turn-budget-probe.ts",
     "smoke:diff": "node scripts/renderer-probe.mjs scripts/diff-core-probe.ts",

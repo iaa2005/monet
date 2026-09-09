@@ -23,26 +23,74 @@ import { getDataDir } from "../data-dir.js";
 import { tunablePrompt } from "../prompts/index.js";
 
 /**
- * Off, out of the box.
+ * Three switches, one per LEVEL, and that is the whole design.
  *
- * The per-turn pass is a MODEL call on the user's own key, fired every few
- * minutes in every chat — a running cost that starts before anyone has asked
- * for memory and that nothing in the UI is loud about. Explicit "remember
- * this" and the nightly consolidation both work without it, so the feature is
- * not absent by default, only its polling is. Anyone who wants the automatic
- * pass turns it on in Settings → Memory and is choosing to spend on it.
+ * There used to be six, spread over two settings pages that did not know
+ * about each other: `generateMemory` and `extractEveryMinutes` and
+ * `searchChats` here, `lessons` and `runNotes` in the agent-features file
+ * behind Advanced, and the Remember tool ungated entirely. They crossed:
+ * project lessons were GENERATED under `generateMemory` and INJECTED under
+ * `lessons`, so an install with the first off and the second on — which is
+ * what the reporting machine had — showed "enabled" on one page, offered a
+ * "Learn now" button on the other, and did nothing at night. Neither page
+ * said so.
+ *
+ * Now: what is read, what tops it up, and what carries between runs.
  */
-const DEFAULT_EXTRACT_MINUTES = 0;
-
 export interface MemoryConfig {
-  searchChats: boolean;
-  generateMemory: boolean;
   /**
-   * Auto-extraction runs at most once per this many minutes per chat.
-   * 0 = never: no per-turn pass at all, while explicit memories and the
-   * nightly consolidation keep working.
+   * Memory is used in chats at all: the files in the system prompt, this
+   * workspace's lessons, the SearchPastChats tool, the Remember tool.
+   *
+   * Off means the agent neither reads memory nor writes it. Nothing is
+   * deleted — the files stay, and the page still shows them.
    */
-  extractEveryMinutes: number;
+  useInChats: boolean;
+  /**
+   * The nightly pass runs by itself: consolidation, and the per-workspace
+   * lessons alongside it.
+   *
+   * The only automatic model call memory makes. There used to be a second —
+   * a per-turn extraction, every few minutes in every chat, writing to a
+   * daily log the nightly pass then read. It is gone: two writers, two
+   * prompts and a third file format, for facts the agent can write itself
+   * with the Remember tool at the moment it learns them.
+   */
+  nightly: boolean;
+  /**
+   * A goal that finishes writes what it did; one that blocks writes what
+   * stopped it, and the next run in that folder starts with those lines.
+   *
+   * Memory of a project rather than of the user, which is why it lives here
+   * and not under "how the agent works": it is a thing the app remembers.
+   * Costs nothing — no model call, no tokens beyond the lines themselves.
+   */
+  runNotes: boolean;
+}
+
+const DEFAULTS: MemoryConfig = { useInChats: true, nightly: true, runNotes: true };
+
+/**
+ * A switch that used to live in `<dataDir>/agent-features.json`.
+ *
+ * Read as a file rather than through agent/features.ts: this is a one-way
+ * migration of two keys, and importing the feature registry from the memory
+ * store to do it would be a dependency that outlives the reason for it.
+ *
+ * Only `runNotes` is carried. The other, `lessons`, gated INJECTING a
+ * workspace's lessons while a different switch gated generating them — the
+ * pair that disagreed on the reporting machine. It folds into `useInChats`,
+ * which is what the page now says it covers.
+ */
+function legacyFeature(name: "runNotes"): boolean | undefined {
+  try {
+    const raw = JSON.parse(
+      readFileSync(join(getDataDir(), "agent-features.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    return typeof raw[name] === "boolean" ? (raw[name] as boolean) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface MemoryFileInfo {
@@ -79,31 +127,38 @@ function configFile(): string {
 
 export function getMemoryConfig(): MemoryConfig {
   try {
-    const j = JSON.parse(readFileSync(configFile(), "utf-8")) as Partial<MemoryConfig>;
-    const mins = Number(j.extractEveryMinutes);
+    const j = JSON.parse(readFileSync(configFile(), "utf-8")) as Partial<MemoryConfig> &
+      // What the file held before the three switches replaced the six.
+      Partial<{ searchChats: boolean; generateMemory: boolean }>;
     return {
-      searchChats: j.searchChats !== false,
-      generateMemory: j.generateMemory !== false,
-      // 0 = never run the per-turn pass. Distinct from generateMemory: off —
-      // explicit "remember this" and the nightly consolidation still work.
-      // A missing/NaN value means "unconfigured" → the default. A present but
-      // negative one is nonsense, and the safe reading of nonsense is "don't
-      // run" rather than silently resurrecting a per-turn request.
-      extractEveryMinutes: Number.isFinite(mins)
-        ? Math.min(Math.max(mins, 0), 240)
-        : DEFAULT_EXTRACT_MINUTES,
+      // `searchChats` was the nearest old equivalent: it gated the one memory
+      // tool a user could see, so someone who turned it off had said "keep
+      // memory out of my chats" as plainly as the old settings allowed.
+      useInChats: (j.useInChats ?? j.searchChats) !== false,
+      nightly: (j.nightly ?? j.generateMemory) !== false,
+      // `runNotes` used to live in the agent-features file, behind Advanced →
+      // "Between runs", where nothing else was about memory. Carried over so
+      // someone who switched it off there does not find it back on here.
+      runNotes: (j.runNotes ?? legacyFeature("runNotes")) !== false,
     };
   } catch {
-    return {
-      searchChats: true,
-      generateMemory: true,
-      extractEveryMinutes: DEFAULT_EXTRACT_MINUTES,
-    };
+    return { ...DEFAULTS };
   }
 }
 
 export function setMemoryConfig(patch: Partial<MemoryConfig>): MemoryConfig {
-  const next = { ...getMemoryConfig(), ...patch };
+  // Written from the whole config rather than merged into the file, so a key
+  // that no longer exists — `extractEveryMinutes`, from the per-turn pass —
+  // disappears from disk the first time anything is changed.
+  const cur = getMemoryConfig();
+  const next: MemoryConfig = {
+    useInChats: patch.useInChats ?? cur.useInChats,
+    nightly: patch.nightly ?? cur.nightly,
+    runNotes: patch.runNotes ?? cur.runNotes,
+  };
+  // Written field by field rather than merged over what was there, so the
+  // keys of the old six-switch shape leave the file the first time anything
+  // is changed instead of sitting in it looking meaningful.
   writeFileSync(configFile(), JSON.stringify(next, null, 2));
   return next;
 }
@@ -203,6 +258,54 @@ export function slugifyMemoryName(name: string): string {
   );
 }
 
+/**
+ * Add one fact to a memory file, keeping everything already in it.
+ *
+ * The only way anything writes to memory during a conversation, and append is
+ * the whole point: a file accumulates across chats, and the alternative —
+ * handing a cheap model the file and asking for a replacement — is how months
+ * of accumulated facts get dropped by a pass that could not see them. The
+ * nightly consolidation is allowed to rewrite, because it reads everything
+ * first.
+ */
+export function appendToMemoryFile(
+  id: string,
+  entry: string,
+  fallback: { name: string; summary: string },
+): { ok: boolean; error?: string } {
+  const existing = readMemoryFile(id);
+  const body = existing.ok && existing.body?.trim()
+    ? `${existing.body.trim()}
+${entry}`
+    : entry;
+  return writeMemoryFile(id, {
+    name: existing.name || fallback.name,
+    summary: existing.summary || fallback.summary,
+    body,
+  });
+}
+
+/**
+ * "Tell Code Monet to remember…", from the Memory page.
+ *
+ * Appended verbatim, with no model in the way. It used to run an extraction
+ * pass — the ACTIVE chat model, not the background one — which read every
+ * memory file and wrote back full replacements for up to three of them. One
+ * sentence typed into a box could rewrite the lot, and on a local model it
+ * was several minutes of prefill with no timeout behind it.
+ *
+ * Sorting it into the right topic is the nightly pass's job. It has the whole
+ * picture; a note box does not.
+ */
+export function addMemoryNote(note: string): { ok: boolean; error?: string } {
+  const text = note.trim();
+  if (!text) return { ok: false, error: "Nothing to remember." };
+  return appendToMemoryFile("profile", `- ${text}`, {
+    name: "Profile",
+    summary: "Who the user is",
+  });
+}
+
 /** The system-prompt injection: every memory file, size-capped. */
 /** The memory section's preamble. Exported so it can be seeded as an editable
  * prompt file even before any memory exists (buildMemoryPrompt returns early
@@ -211,9 +314,8 @@ export function memoryPreamble(): string {
   return tunablePrompt(
     "memory-preamble",
     [
-      "# User memory",
-      "Long-term facts about the user, accumulated across past conversations.",
-      "Use them for context; the user does not see this section.",
+      "# About the user",
+      "What they have told you about themselves, and what you have learned across past conversations. Use it for context; they do not see this section.",
     ].join("\n\n"),
   );
 }
@@ -253,15 +355,37 @@ export function writeMemoryIndex(
   writeFileSync(indexPath(), out, "utf-8");
 }
 
-export function buildMemoryPrompt(): string | null {
+/**
+ * One block for who the user is, from both places it is written down.
+ *
+ * `profile` is what they typed into Settings → Profile; the files are what
+ * has accumulated since. They used to be two sections with two headings —
+ * "# User profile" and "# User memory" — so a model reading the prompt was
+ * told about the user in two places and had to decide which was
+ * authoritative. One section now, with the standing facts first.
+ *
+ * The index is capped separately by writeMemoryIndex (200 lines / 25 KB), and
+ * that cap USED to be the only one it had: TOTAL_CAP counted the bodies and
+ * not the index, so a full index could add six thousand tokens to every turn
+ * on top of the ten thousand characters this thought it was allowing. It is
+ * inside the budget now.
+ */
+export function buildMemoryPrompt(profile?: string | null): string | null {
   const files = listMemoryFiles();
-  if (files.length === 0) return null;
   const parts: string[] = [memoryPreamble()];
-  // The index goes first: when the bodies below get capped, it still tells the
+  let total = 0;
+  const own = profile?.trim();
+  if (own) {
+    parts.push(own);
+    total += own.length;
+  }
+  // The index goes next: when the bodies below get capped, it still tells the
   // model which memories exist so it can go read one deliberately.
   const index = readMemoryIndex();
-  if (index) parts.push(index);
-  let total = 0;
+  if (index && total + index.length <= TOTAL_CAP) {
+    parts.push(index);
+    total += index.length;
+  }
   let bodies = 0;
   for (const f of files) {
     const r = readMemoryFile(f.id);
@@ -272,7 +396,7 @@ export function buildMemoryPrompt(): string | null {
     bodies++;
     parts.push(`## ${f.name}\n${body}`);
   }
-  // Emit when there is real content — a body, or an index pointing at files
-  // whose bodies were all capped out.
-  return bodies > 0 || index ? parts.join("\n\n") : null;
+  // Emit when there is real content — the profile, a body, or an index
+  // pointing at files whose bodies were all capped out.
+  return bodies > 0 || index || own ? parts.join("\n\n") : null;
 }
