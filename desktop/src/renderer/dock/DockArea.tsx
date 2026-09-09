@@ -606,6 +606,21 @@ export function DockArea(ctx: DockAreaContext): JSX.Element {
     if (panel && api?.activePanel?.id !== viewerActive) panel.api.setActive();
   }, [viewerActive, viewerRaise]);
 
+  // "Look at this" rather than "work on this beside the chat" — a file opened
+  // to be READ gets the whole window, the same maximize the group header
+  // offers. Keyed on its own signal so it happens when the app asks for it
+  // and never as a side effect of a card changing.
+  //
+  // In an effect rather than at the click, because the click may be what
+  // CREATES the card: the panel does not exist until the sync above has run.
+  const viewerMaximize = useViewerStore((s) => s.maximizeSeq);
+  useEffect(() => {
+    if (!viewerMaximize || !viewerActive) return;
+    const api = useDockStore.getState().api;
+    const panel = api?.getPanel(viewerActive);
+    if (panel) api?.maximizeGroup(panel);
+  }, [viewerMaximize, viewerActive, viewerDocs]);
+
   const onReady = useMemo(
     () =>
       (event: DockviewReadyEvent): void => {

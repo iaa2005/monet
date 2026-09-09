@@ -1720,6 +1720,11 @@ export function MessageInput({
                 key={f.id}
                 id={f.id}
                 file={f.file}
+                // With the draft key the tile can be opened: the viewer looks
+                // the File up here rather than being handed it, so a card that
+                // outlives the attachment says so instead of showing bytes
+                // that are no longer going anywhere.
+                stagedKey={draftKey}
                 previewUrl={f.url}
                 onRemove={() => removeFile(f.id)}
               />

@@ -535,12 +535,16 @@ export function FileTile({ a }: { a: ArtifactItem }): JSX.Element {
 export function StagedFileTile({
   file,
   id,
+  stagedKey,
   previewUrl,
   onRemove,
 }: {
   file: File;
   /** Stable across renders — used as the thumbnail cache key. */
   id: string;
+  /** Which composer draft holds it; with `id`, how the viewer finds the File
+   * again. Without it the tile is a thumbnail and nothing more. */
+  stagedKey?: string;
   /** Object URL, for images (the composer already made one). */
   previewUrl?: string;
   onRemove: () => void;
@@ -556,6 +560,26 @@ export function StagedFileTile({
       badge={extOf(file.name).toUpperCase() || "FILE"}
       meta={formatBytes(file.size)}
       thumbUrl={thumb}
+      // A 144px tile is enough to recognise a file and not enough to READ
+      // one. Clicking opens it full size in the viewer, before it is sent —
+      // which is exactly when someone wants to check they attached the right
+      // page of the right scan.
+      onClick={
+        stagedKey
+          ? () =>
+              useChatStore.getState().openViewer(
+                {
+                  name: file.name,
+                  mediaType: file.type || "application/octet-stream",
+                  kind: file.type.startsWith("image/") ? "image" : "file",
+                  source: "staged",
+                  stagedKey,
+                  stagedId: id,
+                },
+                { maximize: true },
+              )
+          : undefined
+      }
       onRemove={onRemove}
     />
   );

@@ -20,7 +20,20 @@ export interface ViewerFile {
   mediaType: string;
   kind: string;
   dataUrl?: string;
-  source?: "artifact" | "file";
+  /**
+   * Where the bytes come from: a chat artifact, a file on disk, or a file
+   * STAGED in the composer and not sent anywhere yet.
+   *
+   * A staged file has no path — it is a browser `File` the user dropped a
+   * moment ago, and it lives in chatStore.stagedFiles until it is sent. The
+   * two ids below are how the viewer finds it again; they are strings so a
+   * doc still serialises, and the File itself is never in this object.
+   */
+  source?: "artifact" | "file" | "staged";
+  /** For `staged`: the composer draft key holding it. */
+  stagedKey?: string;
+  /** For `staged`: the attachment's id within that draft. */
+  stagedId?: string;
 }
 
 export interface ViewerDoc {
@@ -33,14 +46,29 @@ export interface ViewerDoc {
   dirty?: boolean;
 }
 
-/** What ui-state stores per session. */
+/**
+ * What ui-state stores per session.
+ *
+ * Narrower than ViewerFile on purpose: a staged file cannot be persisted (the
+ * File behind it does not survive a reload), and saying so in the type is
+ * what keeps serialize's filter and the stored shape from drifting apart.
+ */
+export type PersistedViewerFile = Omit<
+  ViewerFile,
+  "source" | "stagedKey" | "stagedId"
+> & { source?: "artifact" | "file" };
+
 export interface ViewerDocSnapshot {
-  file: ViewerFile;
+  file: PersistedViewerFile;
   preview: boolean;
 }
 
 /** Two entries are "the same file" if they resolve to the same thing. */
 function sameFile(a: ViewerFile, b: ViewerFile): boolean {
+  // Two staged files can share a name — dropping the same photo twice is a
+  // thing people do — so the identity is the staged id, not the name.
+  if (a.stagedId || b.stagedId)
+    return a.stagedId === b.stagedId && a.stagedKey === b.stagedKey;
   if (a.path && b.path) return a.path === b.path && a.source === b.source;
   return a.name === b.name && a.source === b.source && !a.path === !b.path;
 }
@@ -67,7 +95,18 @@ interface ViewerState {
    * takes the caret out of the editor mid-word.
    */
   raiseSeq: number;
-  open: (file: ViewerFile, opts?: { preview?: boolean }) => void;
+  /**
+   * Bumped when the caller wants the card given the whole window.
+   *
+   * "Look at this" and "work on this beside the chat" are different
+   * requests. A staged attachment is the first: it was opened to be read or
+   * looked at, and the dock's own Maximize is the app's word for that.
+   */
+  maximizeSeq: number;
+  open: (
+    file: ViewerFile,
+    opts?: { preview?: boolean; maximize?: boolean },
+  ) => void;
   /** A preview panel becomes permanent (its tab was clicked). */
   pin: (id: string) => void;
   /** The editor reports unsaved edits so the tab can say so. */
@@ -83,10 +122,12 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   docs: [],
   activeId: null,
   raiseSeq: 0,
+  maximizeSeq: 0,
 
   open: (file, opts) => {
     const preview = opts?.preview !== false;
     const { docs } = get();
+    if (opts?.maximize) set({ maximizeSeq: get().maximizeSeq + 1 });
 
     const existing = docs.find((d) => sameFile(d.file, file));
     if (existing) {
@@ -154,8 +195,16 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
 
   closeAll: () => set({ docs: [], activeId: null }),
 
+  // A staged file exists only while the composer holds it: it has no path,
+  // and the File behind it is gone after a reload. Restoring such a card
+  // would reopen a tab that can only say the file is not there.
   serialize: () =>
-    get().docs.map((d) => ({ file: d.file, preview: d.preview })),
+    get()
+      .docs.filter((d) => d.file.source !== "staged")
+      .map((d) => ({
+        file: d.file as PersistedViewerFile,
+        preview: d.preview,
+      })),
 
   restore: (snap) => {
     if (!snap?.length) {

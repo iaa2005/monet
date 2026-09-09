@@ -35,6 +35,13 @@ import { CsvTable } from "@/components/sheet/CsvTable";
 import { SheetEditor, type SheetData } from "@/components/sheet/SheetEditor";
 import { useViewerStore } from "@/stores/viewerStore";
 import { useDockStore } from "@/dock/dock-store";
+import {
+  MAX_STAGED_TEXT_BYTES,
+  humanBytes,
+  planStagedPreview,
+  tooBigMessage,
+  truncatedNote,
+} from "@/lib/staged-preview";
 import { MessageSquarePlus, Table2, Type, Waypoints } from "@/components/icons/hg";
 import type { ElectronAPI } from "@/types/electron";
 
@@ -87,8 +94,15 @@ export type FileViewerItem = {
   mediaType: string;
   kind: string;
   dataUrl?: string;
-  /** Where reads go: chat artifact (default) or an arbitrary file on disk. */
-  source?: "artifact" | "file";
+  /**
+   * Where the bytes come from: a chat artifact (default), a file on disk, or
+   * a file staged in the composer and not sent yet — see the staged branch in
+   * the read effect for why that one takes a different route entirely.
+   */
+  source?: "artifact" | "file" | "staged";
+  /** For `staged`: the composer draft key and the attachment's id in it. */
+  stagedKey?: string;
+  stagedId?: string;
 };
 
 // --- Rich preview detection ---
@@ -195,6 +209,64 @@ function previewKindOf(item: FileViewerItem): PreviewKind {
   return "text";
 }
 
+/** The `File` a staged viewer item points at, or null once it is gone. */
+function stagedFileOf(item: FileViewerItem): File | null {
+  if (item.source !== "staged" || !item.stagedKey || !item.stagedId) return null;
+  const staged = useChatStore.getState().stagedFiles[item.stagedKey];
+  return staged?.find((f) => f.id === item.stagedId)?.file ?? null;
+}
+
+type XLSXModule = typeof import("xlsx");
+
+/**
+ * A workbook, as far as the grid can show it.
+ *
+ * Capped at MAX_XLSX_ROWS × MAX_XLSX_CELLS and the first eight sheets: a
+ * spreadsheet is one of the few attachments that is routinely enormous, and
+ * drawing a hundred thousand rows nobody asked to see is how a preview
+ * becomes a hang. The whole workbook comes back too, because a save has to
+ * write the FILE — every other sheet, and everything the grid cannot show,
+ * survive the round trip.
+ */
+function readWorkbook(
+  XLSX: XLSXModule,
+  bytes: Uint8Array,
+): { wb: import("xlsx").WorkBook; sheets: SheetData[] } {
+  const wb = XLSX.read(bytes, { type: "array" });
+  const sheets: SheetData[] = [];
+  for (const sheetName of wb.SheetNames.slice(0, 8)) {
+    const sheet = wb.Sheets[sheetName];
+    const sourceRange = sheet["!ref"]
+      ? XLSX.utils.decode_range(sheet["!ref"])
+      : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
+    const sourceRows = sourceRange.e.r - sourceRange.s.r + 1;
+    const sourceCols = sourceRange.e.c - sourceRange.s.c + 1;
+    const rowCount = Math.min(sourceRows, MAX_XLSX_ROWS);
+    const colCount = Math.min(
+      sourceCols,
+      Math.max(1, Math.floor(MAX_XLSX_CELLS / rowCount)),
+    );
+    // Formatted text (`w`), not the raw value: a date is a serial number
+    // underneath, and 45678 in place of 2025-01-15 is not a preview anyone
+    // recognises as their file.
+    const rows: string[][] = [];
+    for (let r = 0; r < rowCount; r++) {
+      const row: string[] = [];
+      for (let c = 0; c < colCount; c++) {
+        const addr = XLSX.utils.encode_cell({
+          r: sourceRange.s.r + r,
+          c: sourceRange.s.c + c,
+        });
+        const cell = sheet[addr] as { w?: string; v?: unknown } | undefined;
+        row.push(cell ? String(cell.w ?? cell.v ?? "") : "");
+      }
+      rows.push(row);
+    }
+    sheets.push({ name: sheetName, rows });
+  }
+  return { wb, sheets };
+}
+
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -232,7 +304,8 @@ export function FileViewer({
           source: "file",
         }
       : null);
-  const source: "artifact" | "file" = eff?.source ?? (item ? "artifact" : "file");
+  const source: "artifact" | "file" | "staged" =
+    eff?.source ?? (item ? "artifact" : "file");
   const isRich = !!eff;
   const filePath = eff?.path ?? path ?? null;
 
@@ -473,6 +546,27 @@ export function FileViewer({
     };
   }, [path, isRich, nonce]);
 
+  /**
+   * A staged attachment that is no longer staged — sent, or removed.
+   *
+   * Its card is a window onto the composer, so when the thing it is looking
+   * at leaves the composer the window closes. Doing nothing would leave a
+   * perfectly readable preview of a file that is no longer going anywhere,
+   * which is the kind of lie a person only discovers after they have sent the
+   * message. The object URL keeps working, so this really is the only thing
+   * saying so.
+   */
+  const stagedGone = useChatStore((s) =>
+    eff?.source === "staged" && eff.stagedKey && eff.stagedId
+      ? !s.stagedFiles[eff.stagedKey]?.some((f) => f.id === eff.stagedId)
+      : false,
+  );
+  useEffect(() => {
+    if (!stagedGone) return;
+    if (docId) useViewerStore.getState().close(docId);
+    else setError("This attachment is no longer in the composer.");
+  }, [stagedGone, docId]);
+
   // --- Load rich preview ---
   const effPath = eff?.path;
 
@@ -517,8 +611,89 @@ export function FileViewer({
       }
     };
 
+    /**
+     * A file staged in the composer, which is not anywhere yet.
+     *
+     * Nothing below this can help: every other route reads bytes over IPC by
+     * path, and a staged attachment has no path — it is a `File` the user
+     * dropped a moment ago, sitting in chatStore until the message is sent.
+     * The same PREVIEWS are wanted though, so this fills the same state the
+     * IPC routes fill and the rendering below never learns the difference.
+     *
+     * What it may do with a file of unknown size is planStagedPreview's to
+     * decide — see lib/staged-preview.ts for why there are three answers.
+     */
+    const showStaged = async (file: File): Promise<void> => {
+      switch (planStagedPreview(preview, file.size)) {
+        case "stream": {
+          // A handle, not a copy: Chromium reads the blob as it draws or
+          // plays it, so a 2 GB video costs nothing here. Base64 of the same
+          // file would be 2.7 GB of string.
+          const url = URL.createObjectURL(file);
+          if (!alive) {
+            URL.revokeObjectURL(url);
+            return;
+          }
+          setBlobUrl(url);
+          if (preview === "image") setImgUrl(url);
+          return;
+        }
+        case "head": {
+          const head = file.slice(0, MAX_STAGED_TEXT_BYTES);
+          // The slice can cut a multi-byte character in half; a non-fatal
+          // decoder turns that into one replacement character at the very
+          // end, which beats refusing to show the other 400,000.
+          const text = new TextDecoder("utf-8").decode(await head.arrayBuffer());
+          if (alive)
+            setArtText(
+              file.size > head.size
+                ? text + truncatedNote(head.size, file.size)
+                : text,
+            );
+          return;
+        }
+        case "parse": {
+          if (preview === "docx") {
+            const buf = await file.arrayBuffer();
+            if (!alive || !docxRef.current) return;
+            const { renderAsync } = await import("docx-preview");
+            await renderAsync(buf, docxRef.current, undefined, {
+              ignoreWidth: false,
+              inWrapper: true,
+            });
+            return;
+          }
+          if (preview === "xlsx") {
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            if (alive) setSheets(readWorkbook(await import("xlsx"), bytes).sheets);
+            return;
+          }
+          // notebook: JSON, and NotebookViewer takes it as text.
+          const text = await file.text();
+          if (alive) setArtText(text);
+          return;
+        }
+        case "too-big":
+          if (alive) setError(tooBigMessage(file.size));
+          return;
+        default:
+          if (alive)
+            setError(`No preview for this file type (${humanBytes(file.size)}).`);
+      }
+    };
+
     void (async () => {
       try {
+        if (eff.source === "staged") {
+          const file = stagedFileOf(eff);
+          if (!file) {
+            if (alive)
+              setError("This attachment is no longer in the composer.");
+            return;
+          }
+          await showStaged(file);
+          return;
+        }
         if (preview === "image") {
           if (eff.dataUrl) {
             if (alive) setImgUrl(eff.dataUrl);
@@ -551,43 +726,12 @@ export function FileViewer({
           const b64 = await readB64();
           if (b64 && alive) {
             const XLSX = await import("xlsx");
-            const wb = XLSX.read(b64ToBytes(b64), { type: "array" });
+            const { wb, sheets } = readWorkbook(XLSX, b64ToBytes(b64));
             // The workbook is kept whole so a save writes back the FILE, not
             // just the cells drawn here: other sheets, and everything the grid
             // cannot show, survive the round trip.
             wbRef.current = wb;
-            const next: SheetData[] = [];
-            for (const sheetName of wb.SheetNames.slice(0, 8)) {
-              const sheet = wb.Sheets[sheetName];
-              const sourceRange = sheet["!ref"]
-                ? XLSX.utils.decode_range(sheet["!ref"])
-                : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
-              const sourceRows = sourceRange.e.r - sourceRange.s.r + 1;
-              const sourceCols = sourceRange.e.c - sourceRange.s.c + 1;
-              const rowCount = Math.min(sourceRows, MAX_XLSX_ROWS);
-              const colCount = Math.min(
-                sourceCols,
-                Math.max(1, Math.floor(MAX_XLSX_CELLS / rowCount)),
-              );
-              // Formatted text (`w`), not the raw value: a date is a serial
-              // number underneath, and 45678 in place of 2025-01-15 is not a
-              // preview anyone recognises as their file.
-              const rows: string[][] = [];
-              for (let r = 0; r < rowCount; r++) {
-                const row: string[] = [];
-                for (let c = 0; c < colCount; c++) {
-                  const addr = XLSX.utils.encode_cell({
-                    r: sourceRange.s.r + r,
-                    c: sourceRange.s.c + c,
-                  });
-                  const cell = sheet[addr] as { w?: string; v?: unknown } | undefined;
-                  row.push(cell ? String(cell.w ?? cell.v ?? "") : "");
-                }
-                rows.push(row);
-              }
-              next.push({ name: sheetName, rows });
-            }
-            if (alive) setSheets(next);
+            if (alive) setSheets(sheets);
           }
         } else if (preview === "notebook") {
           // Read as BYTES, not text: files.read truncates at 400KB and a
@@ -621,7 +765,10 @@ export function FileViewer({
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eff?.path, eff?.name, eff?.dataUrl, nonce]);
+    // stagedId as well as path: a staged file has no path, and two of them
+    // can share a name, so without it switching between two attachments in
+    // the same composer would show the first one twice.
+  }, [eff?.path, eff?.name, eff?.dataUrl, eff?.stagedId, nonce]);
 
   // Revoke the blob URL when it changes/unmounts.
   useEffect(() => {

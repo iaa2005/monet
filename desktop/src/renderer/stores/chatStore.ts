@@ -471,10 +471,15 @@ export interface ChatStore {
       mediaType: string;
       kind: string;
       dataUrl?: string;
-      source?: "artifact" | "file";
+      source?: "artifact" | "file" | "staged";
+      /** For `staged`: which composer draft holds it, and which entry. */
+      stagedKey?: string;
+      stagedId?: string;
     } | null,
-    /** `preview: false` pins the card — a double click rather than a click. */
-    opts?: { preview?: boolean },
+    /** `preview: false` pins the card — a double click rather than a click.
+     * `maximize` gives it the whole window: for a file opened to be LOOKED
+     * at rather than worked on beside the chat. */
+    opts?: { preview?: boolean; maximize?: boolean },
   ) => void;
   openExpandedSubAgent: (ref: ExpandedSubAgentRef | null) => void;
   setSpace: (v: string) => void;

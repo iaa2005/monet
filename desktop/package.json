@@ -69,6 +69,7 @@
     "smoke:harnessnote": "node scripts/renderer-probe.mjs scripts/harness-note-probe.ts",
     "smoke:graphlabels": "node scripts/renderer-probe.mjs scripts/graph-labels-probe.ts",
     "smoke:viewerraise": "node scripts/renderer-probe.mjs scripts/viewer-raise-probe.ts",
+    "smoke:staged": "node scripts/renderer-probe.mjs scripts/staged-preview-probe.ts",
     "smoke:onboarding": "node scripts/renderer-probe.mjs scripts/onboarding-probe.ts",
     "smoke:identity": "node scripts/smoke-agent.mjs scripts/identity-probe.ts",
     "smoke:onefont": "node scripts/smoke-agent.mjs scripts/one-font-probe.ts",
