@@ -11,7 +11,7 @@
  *     vendorRequireBanner).
  */
 
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs'
 import { dirname, resolve as resolvePath } from 'node:path'
 
 // This used to match src/vendor/leaked. When that folder was emptied into
@@ -153,7 +153,29 @@ export function bundledRipgrepPlugin(outDir) {
           : `${process.arch}-${process.platform}`,
       )
       mkdirSync(destDir, { recursive: true })
-      copyFileSync(src, resolvePath(destDir, binaryName))
+      const dest = resolvePath(destDir, binaryName)
+      // Idempotent, and it has to be. A copy left by an ELEVATED build is
+      // owned by Administrators, and a plain shell cannot overwrite it —
+      // every later build died here with EPERM on a file that was already
+      // exactly right. Same size and time means the same file; leave it.
+      const same = (a, b) => a.size === b.size && a.mtimeMs === b.mtimeMs
+      if (existsSync(dest) && same(statSync(src), statSync(dest))) return
+      try {
+        copyFileSync(src, dest)
+      } catch (err) {
+        if (
+          (err?.code === 'EPERM' || err?.code === 'EACCES') &&
+          existsSync(dest) &&
+          statSync(dest).size === statSync(src).size
+        ) {
+          console.warn(
+            `[bundled-ripgrep] ${dest} is not writable from this shell (${err.code}); ` +
+              'the copy already there is the same size and is kept',
+          )
+          return
+        }
+        throw err
+      }
     },
   }
 }
