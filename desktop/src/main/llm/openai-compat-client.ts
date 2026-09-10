@@ -551,49 +551,43 @@ export class OpenAICompatClient implements LLMAdapter {
     }
   }
 
+  /**
+   * One answer, whole. Collected from the STREAM rather than asked for as a
+   * single JSON body.
+   *
+   * A non-streaming request sends no byte until the answer is finished, and
+   * Node's fetch gives up on a response whose headers have not arrived in
+   * 300 seconds — undici's default, and not something a caller's own
+   * deadline can extend. On a local model writing at 3.4 tokens a second, a
+   * compaction summary takes longer than that to begin, so every summary
+   * ended in "fetch failed" while the server went on writing it for nobody.
+   * The stream sends its first bytes at once and the watchdog restarts on
+   * each of them, which is the behaviour the rest of this file already has.
+   */
   async complete(
     request: LLMRequest,
     signal?: AbortSignal,
   ): Promise<{ role: "assistant"; content: string }> {
-    const url = `${this.baseURL}/chat/completions`;
-    // Same deadline as the stream, bounding the whole request — see the note
-    // in AnthropicClient.complete.
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: this.headers(),
-        body: JSON.stringify(this.buildBody(request, false)),
-        signal: withDeadline(signal, this.timeoutMs),
-      });
-    } catch (err) {
-      throw asDeadlineError(err, this.timeoutMs, signal);
-    }
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`API ${response.status}: ${errorText}`);
-    }
-    const data = (await response.json()) as {
-      choices?: {
-        message?: {
-          content?: string | null;
-          reasoning?: string | null;
-          reasoning_content?: string | null;
-        };
-        finish_reason?: string | null;
-      }[];
-    };
-    const msg = data.choices?.[0]?.message;
-    const content = msg?.content ?? "";
+    let content = "";
+    let reasoning = "";
+    let error: string | undefined;
+    await this.stream(
+      request,
+      (e) => {
+        if (e.type === "text_delta") content += e.text;
+        else if (e.type === "reasoning_delta") reasoning += e.text;
+        else if (e.type === "error" && !error) error = e.error;
+      },
+      signal,
+    );
+    if (error && !content.trim()) throw new Error(error);
     if (content.trim()) return { role: "assistant", content };
-
     // A thinking model (deepseek-reasoner and friends) streams its chain of
-    // thought into reasoning_content and the answer into content. When the
-    // budget runs out mid-thought, content comes back EMPTY while the thinking
-    // holds the real work — and every caller here wants JSON, which the model
-    // has usually already written inside that thinking. Returning "" made
-    // Reflect report "empty response" and the routine drafter silently fail.
-    const reasoning = msg?.reasoning ?? msg?.reasoning_content ?? "";
+    // thought into reasoning and the answer into content. When the budget
+    // runs out mid-thought, content comes back EMPTY while the thinking holds
+    // the real work — and every caller here wants JSON, which the model has
+    // usually already written inside that thinking. Returning "" made Reflect
+    // report "empty response" and the routine drafter silently fail.
     return { role: "assistant", content: reasoning };
   }
 }

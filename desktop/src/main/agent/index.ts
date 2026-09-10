@@ -149,8 +149,7 @@ import {
   compactionThreshold,
   MAX_SUMMARY_FAILURES,
   estimateTokens,
-  type CompactionResult,
-} from "./compaction.js";
+  type CompactionResult, outputReserveFor, requestMaxTokens } from "./compaction.js";
 import {
   drainInjections,
   formatInjection,
@@ -884,7 +883,7 @@ export async function compactSessionNow(
       {
         inputLimit: provider.inputLimit,
         contextLimit: provider.contextLimit,
-        outputReserve: provider.maxTokens || 16000,
+        outputReserve: outputReserveFor(provider.maxTokens, provider.contextLimit),
       },
       "manual",
     ),
@@ -1219,6 +1218,30 @@ export interface ContextBreakdown {
  * Lets computeContextBreakdown report the REAL context total (input + cache)
  * instead of a chars/4 estimate once a turn has completed. Process-lived. */
 const lastUsageBySession = new Map<string, LLMUsage>();
+
+/**
+ * How big the prompt is about to be, in tokens.
+ *
+ * The last turn's measured input is the better number when there is one —
+ * a chars/4 estimate undercounts Cyrillic by about half — but it is a turn
+ * old, so whatever grew since (the new prompt, the last tool results) is
+ * added from the estimate of the tail. Good enough to keep a request inside
+ * the window; the server's own progress report corrects the meter after.
+ */
+function promptTokensNow(
+  sessionId: string,
+  system: string,
+  messages: LLMMessage[],
+): number {
+  const measured = lastUsageBySession.get(sessionId);
+  const estimated = estimateTokens(messages) + Math.ceil(system.length / 4);
+  if (!measured) return estimated;
+  const input =
+    measured.input_tokens +
+    (measured.cache_read_input_tokens ?? 0) +
+    (measured.cache_creation_input_tokens ?? 0);
+  return Math.max(input, estimated);
+}
 
 /**
  * Input+output tokens the session's last turn actually cost, for the goal
@@ -1861,7 +1884,7 @@ async function runAgentScoped(
     const threshold = compactionThreshold({
       inputLimit: provider.inputLimit,
       contextLimit: provider.contextLimit,
-      outputReserve: provider.maxTokens || 16000,
+      outputReserve: outputReserveFor(provider.maxTokens, provider.contextLimit),
     });
     const aim = cave ? Math.floor(threshold * 0.6) : threshold;
     // Measured on what is actually SENT. Counting prompts the user removed
@@ -1975,7 +1998,14 @@ async function runAgentScoped(
           system: systemPrompt,
           messages: turnMessages,
           tools: turnTools,
-          max_tokens: provider.maxTokens || 16000,
+          // What fits in the window after the prompt — measured from the
+          // last turn's usage where there is one, estimated otherwise. See
+          // requestMaxTokens for what asking for more did to this chat.
+          max_tokens: requestMaxTokens(
+            provider.maxTokens,
+            provider.contextLimit,
+            promptTokensNow(sessionId, systemPrompt, turnMessages),
+          ),
           temperature: provider.temperature,
           effort: provider.supportsEffort ? effort : undefined,
           routing: provider.routing,
@@ -2671,7 +2701,11 @@ async function runAgentScoped(
           // No tools: a model that still believes it can act will spend this
           // turn on a call nobody will answer, and end in the same silence.
           tools: [],
-          max_tokens: provider.maxTokens || 16000,
+          max_tokens: requestMaxTokens(
+            provider.maxTokens,
+            provider.contextLimit,
+            promptTokensNow(sessionId, systemPrompt, messages.filter(isInContext)),
+          ),
           temperature: provider.temperature,
           effort: provider.supportsEffort ? effort : undefined,
           routing: provider.routing,

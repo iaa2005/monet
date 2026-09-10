@@ -117,6 +117,49 @@ function PendingAction({
   );
 }
 
+/**
+ * The harness's own notes, kept out of the way.
+ *
+ * Several arrive in a row when a run is struggling — a nudge, a clearing, a
+ * summary that failed — and drawn one under another they read as the chat
+ * breaking down. So: the latest one on the line, a count beside it, and the
+ * earlier ones only when asked. Nothing here was said by anyone.
+ */
+function HarnessNotes({ text }: { text: string }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const lines = text.split("\n").filter(Boolean);
+  const latest = lines[lines.length - 1] ?? "";
+  const earlier = lines.slice(0, -1);
+  return (
+    <div className="my-1 px-1">
+      <div className="flex items-center gap-2">
+        <div className="h-px flex-1 bg-border" />
+        <span className="max-w-[80%] text-center text-[10px] text-muted-foreground">
+          {latest}
+          {earlier.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="ml-1.5 rounded px-1 text-[10px] text-muted-foreground/70 hover:text-foreground"
+              title={open ? "Hide the earlier notes" : `${earlier.length} earlier note${earlier.length === 1 ? "" : "s"}`}
+            >
+              {open ? "−" : `+${earlier.length}`}
+            </button>
+          )}
+        </span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+      {open && earlier.length > 0 && (
+        <div className="mt-0.5 text-center text-[10px] text-muted-foreground/70">
+          {earlier.map((l, i) => (
+            <div key={i}>{l}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WorkingRow({
   messages,
   startedAt,
@@ -428,17 +471,7 @@ const MessageRow = memo(
     // A harness intervention: the scaffolding redirected the model (a nudge,
     // a loop correction, a budget note). One slim line — enough to explain a
     // turn the model did not choose, without pretending anybody spoke.
-    if (msg.role === "system") {
-      return (
-        <div className="my-1 flex items-center gap-2 px-1">
-          <div className="h-px flex-1 bg-border" />
-          <span className="max-w-[80%] text-center text-[10px] text-muted-foreground">
-            {msg.content}
-          </span>
-          <div className="h-px flex-1 bg-border" />
-        </div>
-      );
-    }
+    if (msg.role === "system") return <HarnessNotes text={msg.content} />;
 
     const isUser = msg.role === "user";
     // A note said INTO a running turn is the user's words — it is drawn as

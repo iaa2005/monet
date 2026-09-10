@@ -25,6 +25,48 @@ const DEFAULT_THRESHOLD = EXPLICIT_THRESHOLD ?? 200_000
 
 const DEFAULT_OUTPUT_RESERVE = 16_000
 
+/**
+ * What to hold back for the answer, given what the model MAY produce and the
+ * window it has.
+ *
+ * The two are not the same number. `max_tokens` is a ceiling on one reply —
+ * 32,000 on a model configured for long thinking — and a reserve of 32,000
+ * on a 32,768 window leaves 768 tokens of input budget: every turn is "over
+ * the threshold", the lossless pass runs each time, and a summary is
+ * attempted each time. Seen live, on a chat that then drowned in its own
+ * harness notes. An answer rarely needs more than a quarter of the window,
+ * and never more than the default reserve.
+ */
+export function outputReserveFor(maxTokens: number | undefined, contextLimit: number | undefined): number {
+  const cap = validLimit(contextLimit) ? Math.max(1024, Math.floor(contextLimit / 4)) : DEFAULT_OUTPUT_RESERVE
+  const asked = validLimit(maxTokens) ? maxTokens : DEFAULT_OUTPUT_RESERVE
+  return Math.min(asked, DEFAULT_OUTPUT_RESERVE, cap)
+}
+
+/**
+ * The most tokens one request may ask for, given how much of the window the
+ * prompt already takes.
+ *
+ * llama.cpp does not refuse a `max_tokens` that overflows the window: it
+ * shifts the context and keeps going, and the reply that comes back is
+ * truncated in ways nothing reports — the run that prompted this ended four
+ * turns in a row with `n_tokens = 32767, truncated = 1` in the server log,
+ * and "the model answered with nothing" in the chat. Ask only for what fits.
+ */
+export function requestMaxTokens(
+  maxTokens: number | undefined,
+  contextLimit: number | undefined,
+  promptTokens: number,
+): number {
+  const asked = validLimit(maxTokens) ? maxTokens : DEFAULT_OUTPUT_RESERVE
+  if (!validLimit(contextLimit)) return asked
+  // A little under the window: the count is an estimate on the first turn
+  // and a measurement afterwards, and the template adds a few tokens of its
+  // own around every message.
+  const room = contextLimit - promptTokens - 256
+  return Math.max(256, Math.min(asked, room))
+}
+
 export interface CompactionBudget {
   /** Maximum prompt/input tokens, when the provider exposes one. */
   inputLimit?: number
@@ -41,7 +83,13 @@ export interface CompactionBudget {
 // is what a summary is for, and the guard below already rejects one that came out
 // bigger than the exchanges it replaces. Copying a number because it is theirs is
 // how the 0.7 threshold survived as long as it did.
-const SUMMARY_MAX_TOKENS = 8_000
+/**
+ * 2,048, not 8,000. A summary is a page, not a chapter — and on the local
+ * model this was measured on, generation runs at 3.4 tokens a second: 8,000
+ * tokens is forty minutes, and the summary that was actually being written
+ * had passed 2,400 tokens when the client gave up on it.
+ */
+const SUMMARY_MAX_TOKENS = 2_048
 
 /**
  * Consecutive failed summarisations before the attempt is abandoned.
@@ -164,9 +212,7 @@ function inputBudgetOf(budget?: number | CompactionBudget): number | null {
   if (!budget) return null
   if (validLimit(budget.inputLimit)) return budget.inputLimit
   if (validLimit(budget.contextLimit)) {
-    const reserve = validLimit(budget.outputReserve)
-      ? Math.min(budget.outputReserve, budget.contextLimit)
-      : Math.min(DEFAULT_OUTPUT_RESERVE, budget.contextLimit)
+    const reserve = outputReserveFor(budget.outputReserve, budget.contextLimit)
     return Math.max(1, budget.contextLimit - reserve)
   }
   return null

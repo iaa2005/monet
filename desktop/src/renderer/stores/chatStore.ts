@@ -869,6 +869,17 @@ export const useChatStore = create<ChatStore>((set, get) => {
         // The harness overrode or redirected the model. A system-role row —
         // it renders as a slim line, and every path that builds API messages
         // already filters to user/assistant, so it never reaches a model.
+        //
+        // Consecutive notes share ONE row. A run that is struggling produces
+        // several in a row — a nudge, a clearing, a failed summary — and as
+        // separate rows they read as the chat falling apart. The row shows
+        // the latest and keeps the rest a click away.
+        const last = prev.messages[prev.messages.length - 1];
+        if (last && last.role === "system") {
+          const msgs = prev.messages.slice(0, -1);
+          msgs.push({ ...last, content: `${last.content}\n${event.text}` });
+          return { ...prev, messages: msgs };
+        }
         const msgs = [
           ...prev.messages,
           {

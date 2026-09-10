@@ -344,7 +344,14 @@ const filler = (n: number): string => `Text about topic ${n}. ${'word '.repeat(2
 // a large tool result plus a reply. It does not grow because the window did.
 
 {
-  const { compactionThreshold, warningThreshold, AUTO_BUFFER_TOKENS, MANUAL_BUFFER_TOKENS } =
+  const {
+    compactionThreshold,
+    warningThreshold,
+    outputReserveFor,
+    requestMaxTokens,
+    AUTO_BUFFER_TOKENS,
+    MANUAL_BUFFER_TOKENS,
+  } =
     await import('../src/main/agent/compaction.js')
 
   check(
@@ -364,11 +371,44 @@ const filler = (n: number): string => `Text about topic ${n}. ${'word '.repeat(2
       MANUAL_BUFFER_TOKENS < AUTO_BUFFER_TOKENS,
   )
   check(
-    'a context limit reserves output space first',
+    'a context limit reserves output space first — capped at what an answer needs',
+    // 20,000 asked, 16,000 is the most an answer is ever reserved.
     compactionThreshold({ contextLimit: 100_000, outputReserve: 20_000 }) ===
-      80_000 - AUTO_BUFFER_TOKENS,
+      84_000 - AUTO_BUFFER_TOKENS,
     compactionThreshold({ contextLimit: 100_000, outputReserve: 20_000 }),
   )
+
+  // ─── The 32K window that drowned a chat ────────────────────────────────
+  //
+  // max_tokens = 32,000 on a 32,768 window: the reserve ate the window, the
+  // input budget was 768 tokens, and every turn was "over the threshold" —
+  // a lossless pass and a summary attempt on each. Seen live.
+  check(
+    'THE RESERVE IS WHAT AN ANSWER NEEDS, NOT WHAT THE MODEL MAY PRODUCE',
+    outputReserveFor(32_000, 32_768) === 8_192,
+    outputReserveFor(32_000, 32_768),
+  )
+  check(
+    '…so a 32K window keeps three quarters of itself for input',
+    compactionThreshold({ contextLimit: 32_768, outputReserve: 32_000 }) ===
+      32_768 - 8_192 - AUTO_BUFFER_TOKENS,
+    compactionThreshold({ contextLimit: 32_768, outputReserve: 32_000 }),
+  )
+  check('a big window still reserves the default', outputReserveFor(32_000, 262_144) === 16_000)
+  check('a small max_tokens is honoured as is', outputReserveFor(4_096, 262_144) === 4_096)
+  check('nothing known → the default', outputReserveFor(undefined, undefined) === 16_000)
+
+  // And the request itself asks only for what fits: llama.cpp shifts the
+  // context rather than refusing, and the reply comes back truncated with
+  // nothing saying so — four turns of `n_tokens = 32767, truncated = 1`.
+  check(
+    'A REQUEST NEVER ASKS FOR MORE THAN THE WINDOW HAS LEFT',
+    requestMaxTokens(32_000, 32_768, 24_180) === 32_768 - 24_180 - 256,
+    requestMaxTokens(32_000, 32_768, 24_180),
+  )
+  check('with room to spare it asks for what was configured', requestMaxTokens(4_096, 262_144, 20_000) === 4_096)
+  check('a window that is already full still asks for something', requestMaxTokens(32_000, 32_768, 32_700) === 256)
+  check('no window known → what was configured', requestMaxTokens(9_000, undefined, 50_000) === 9_000)
   check(
     'a window smaller than the buffer still gives a usable number',
     compactionThreshold({ inputLimit: 8_000 }) === 4_000,

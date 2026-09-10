@@ -279,6 +279,33 @@ async function run(
   );
 }
 
+// complete() is the stream collected — the same request, the same watchdog,
+// no wait for a JSON body that a slow local model would not begin sending
+// inside undici's 300 seconds.
+{
+  const s = await serve("proper", [text("Hello"), text(" there")]);
+  try {
+    const r = await new OpenAICompatClient(endpoint(s.url)).complete({
+      model: "qwen3.8-27b-q4_k_m",
+      max_tokens: 64,
+      messages: [{ role: "user", content: "hi" }],
+    });
+    check("COMPLETE COLLECTS THE STREAM INTO ONE ANSWER", r.content === "Hello there", r.content);
+  } finally {
+    await s.close();
+  }
+  const dead = await serve("cut-clean", []);
+  try {
+    let threw = "";
+    await new OpenAICompatClient(endpoint(dead.url))
+      .complete({ model: "m", max_tokens: 4, messages: [{ role: "user", content: "hi" }] })
+      .catch((e: Error) => (threw = e.message));
+    check("…and a dropped stream is an error to it, not an empty answer", /without an answer/.test(threw), threw);
+  } finally {
+    await dead.close();
+  }
+}
+
 // An answer that arrived and was then cut off: truncated, but there. Saying
 // "the connection dropped" here would put a red box under a real reply.
 {
