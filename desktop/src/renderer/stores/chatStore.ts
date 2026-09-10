@@ -47,6 +47,39 @@ const UNANCHORED_PROMPT =
   "This prompt has no model-facing turn bound to it, so there is nowhere to " +
   "cut. Nothing was changed. Prompts sent from now on can be rewound.";
 
+/**
+ * Does retrying or editing this prompt need the transcript cut at all?
+ *
+ * A prompt the model never saw has no turn to cut at — and there are real
+ * ways to end up with one on screen: a send that failed before the run
+ * started (no provider, a model that had just been unloaded, init throwing)
+ * leaves its bubble behind with nothing bound to it. Refusing to retry THAT
+ * with "nowhere to cut" is technically true and practically useless: the
+ * user pressed Retry precisely because nothing happened.
+ *
+ * So: if nothing AFTER this prompt is bound to a turn either, the transcript
+ * already ends before it, and a retry is just a send. Only when a later
+ * prompt IS bound does cutting matter, and then an unbound anchor is a real
+ * refusal — cutting past it would take that later turn out blind.
+ */
+function needsCut(
+  turns: { id: string }[],
+  msgs: ChatMessage[],
+  idx: number,
+): boolean {
+  // No turns at all: let main answer. It says "nothing to cut" for a chat
+  // with no model history, and that keeps one rule in one place.
+  if (turns.length === 0) return true;
+  // The transcript ends before this prompt only if EVERY turn it has is a
+  // prompt drawn earlier on screen. A turn bound to nothing on screen (one
+  // sent before ids were bound) may be this very prompt's — and cutting
+  // nothing while the screen forgets it is the two-halves hazard again.
+  const earlier = new Set(
+    msgs.slice(0, idx).filter((m) => m.role === "user").map((m) => m.id),
+  );
+  return !turns.every((t) => earlier.has(t.id));
+}
+
 /** What chat.send wants for each attachment (raw content, not display meta). */
 type SendAttachment = NonNullable<
   Parameters<NonNullable<ElectronAPI["chat"]>["send"]>[0]["attachments"]
@@ -1223,10 +1256,15 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // (No files are involved here, so there is nothing else to sequence.)
       const prior = msgs.slice(0, idx);
       const bridge = electron();
-      const cut = await bridge?.chat.rewindTranscript(sessionId, messageId);
-      if (cut && !cut.ok) {
-        mutate(sessionId, (p) => ({ ...p, error: cut.error ?? "Retry failed." }));
-        return;
+      // An orphan — a prompt the model never saw, nothing bound after it —
+      // has nothing to cut; the retry IS the send. See needsCut.
+      const turns = (await bridge?.chat.turnContext(sessionId)) ?? [];
+      if (needsCut(turns, msgs, idx)) {
+        const cut = await bridge?.chat.rewindTranscript(sessionId, messageId);
+        if (cut && !cut.ok) {
+          mutate(sessionId, (p) => ({ ...p, error: cut.error ?? "Retry failed." }));
+          return;
+        }
       }
 
       mutate(sessionId, (p) => ({
@@ -1335,7 +1373,8 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // empty turn list is fine — no model history means nothing to cut, and
       // the file rewind is still a good thing to do.
       const turns = (await bridge?.chat.turnContext(sessionId)) ?? [];
-      if (turns.length > 0 && !turns.some((t) => t.id === messageId)) {
+      const mustCut = needsCut(turns, msgs, idx);
+      if (mustCut && !turns.some((t) => t.id === messageId)) {
         mutate(sessionId, (p) => ({ ...p, error: UNANCHORED_PROMPT }));
         return;
       }
@@ -1365,10 +1404,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
       // so the next send continues with full fidelity, then the screen, then
       // the prompt goes into the composer.
       const prior = msgs.slice(0, idx);
-      const cut = await bridge?.chat.rewindTranscript(sessionId, messageId);
-      if (cut && !cut.ok) {
-        mutate(sessionId, (p) => ({ ...p, error: cut.error ?? "Rewind failed." }));
-        return;
+      if (mustCut) {
+        const cut = await bridge?.chat.rewindTranscript(sessionId, messageId);
+        if (cut && !cut.ok) {
+          mutate(sessionId, (p) => ({ ...p, error: cut.error ?? "Rewind failed." }));
+          return;
+        }
       }
 
       mutate(sessionId, (p) => ({

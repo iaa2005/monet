@@ -46,13 +46,20 @@ const DISK: Record<string, { text?: string; base64?: string }> = {
   "artifacts/s1/2-plan.pdf": { base64: Buffer.from("%PDF-1.4 fake").toString("base64") },
 };
 
+/** Which bubble ids the transcript knows. Empty = a chat with no turns. */
+let boundIds: string[] = [];
+
 const bridge = {
   chat: {
     send: async (p: SentPayload) => {
       sent.push(p);
       return { ok: true };
     },
+    turnContext: async () => boundIds.map((id) => ({ id, inContext: true })),
     rewindTranscript: async (_id: string, beforePromptId: string) => {
+      // Main's real rule: an id it has never seen is a refusal.
+      if (boundIds.length && !boundIds.includes(beforePromptId))
+        return { ok: false as const, removed: 0, error: "unanchored" };
       cuts.push({ beforePromptId });
       return { ok: true as const, removed: 2 };
     },
@@ -231,6 +238,48 @@ check(
     cuts.length === 1 && cuts[0].beforePromptId === first.id,
     cuts[0],
   );
+}
+
+// ─── An orphan prompt: sent, never seen, retried ─────────────────────────
+//
+// Seen live. The model server had just died; the user sent "." and the run
+// failed before it started (no provider to resolve), so the bubble stayed on
+// screen bound to nothing. Retry then said "no model-facing turn bound to it,
+// there is nowhere to cut" — true, and exactly why nothing needed cutting.
+{
+  const st = useChatStore.getState();
+  sent.length = 0;
+  cuts.length = 0;
+  st.setCurrentSessionId("s2");
+  const asked = st.addUserMessage("a real prompt");
+  boundIds = [asked.id];
+  const orphan = st.addUserMessage(".");
+  check(
+    "the orphan is on screen after the bound prompt",
+    useChatStore.getState().messages.map((m) => m.id).join() === `${asked.id},${orphan.id}`,
+  );
+  await st.resendFrom(orphan.id);
+  check("RETRY OF AN ORPHAN GOES OUT AS A SEND", sent.length === 1, sent.length);
+  check("…without asking the transcript to cut anything", cuts.length === 0, cuts);
+  check("…and without an error on screen", useChatStore.getState().error === null, useChatStore.getState().error);
+  check("…carrying the words", sent[0]?.message === ".", sent[0]?.message);
+
+  // The other shape must still refuse: an unbound prompt with a BOUND one
+  // after it. Cutting past it would take that later turn out blind.
+  sent.length = 0;
+  useChatStore.getState().setCurrentSessionId("s3");
+  const st3 = useChatStore.getState();
+  const ghost = st3.addUserMessage("never sent");
+  const later = st3.addUserMessage("this one the model saw");
+  boundIds = [later.id];
+  await useChatStore.getState().resendFrom(ghost.id);
+  check("an unbound prompt BEFORE a bound one is still refused", sent.length === 0, sent.length);
+  check(
+    "…with the reason on screen",
+    /unanchored|nowhere to cut/i.test(useChatStore.getState().error ?? ""),
+    useChatStore.getState().error,
+  );
+  boundIds = [];
 }
 
 console.log(failures === 0 ? "\nALL RETRY CHECKS PASSED" : `\n${failures} FAILED`);
