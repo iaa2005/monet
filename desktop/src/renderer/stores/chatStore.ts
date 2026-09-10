@@ -1243,9 +1243,10 @@ export const useChatStore = create<ChatStore>((set, get) => {
 
       const bubble = get().addUserMessage(text, carried);
       get().startStreaming();
-      const eff = localStorage.getItem(`${STORAGE_PREFIX}effort`);
-      const effort =
-        eff === "low" || eff === "medium" || eff === "high" ? eff : undefined;
+      // Whatever the pill says. The steps belong to the model now (see
+      // @shared/effort.ts) and the client drops one the model does not have;
+      // clamping to three names here silently lost xhigh on a local model.
+      const effort = localStorage.getItem(`${STORAGE_PREFIX}effort`) || undefined;
       await bridge?.chat.send({
         sessionId,
         message: text,

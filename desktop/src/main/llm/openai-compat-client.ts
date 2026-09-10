@@ -398,7 +398,7 @@ export class OpenAICompatClient implements LLMAdapter {
     let chunkCount = 0;
     let toolDeltaCount = 0;
     let progressSeen = 0;
-    let lastProgress: { processed: number; total: number } | undefined;
+    let lastProgress: { processed: number; total: number; cache: number } | undefined;
 
     const processLine = (line: string): void => {
       if (!line.startsWith("data: ")) return;
@@ -424,7 +424,7 @@ export class OpenAICompatClient implements LLMAdapter {
         progressSeen++;
         // Kept for the post-mortem: where the reading had got to when the
         // stream stopped is what says whether the prompt was the problem.
-        lastProgress = { processed: pp.processed ?? 0, total: pp.total };
+        lastProgress = { processed: pp.processed ?? 0, total: pp.total, cache: pp.cache ?? 0 };
         onEvent({
           type: "prompt_progress",
           processed: pp.processed ?? 0,
@@ -525,7 +525,7 @@ export class OpenAICompatClient implements LLMAdapter {
       });
 
       console.error(
-        `${tag} done in ${Date.now() - t0}ms: text=${textLen} chars, stop_reason=${mapStopReason(finishReason)}, max_tokens=${body.max_tokens}, chunks=${chunkCount}, progress=${progressSeen}, tool_calls=${toolCalls.size} (${toolDeltaCount} deltas), leftover=${buffer.trim().length}, tail=${JSON.stringify(textTail.slice(-60))}`,
+        `${tag} done in ${Date.now() - t0}ms: text=${textLen} chars, stop_reason=${mapStopReason(finishReason)}, max_tokens=${body.max_tokens}, chunks=${chunkCount}, progress=${progressSeen}${lastProgress ? ` (prompt ${lastProgress.total} tokens, ${lastProgress.cache} reused)` : ""}, tool_calls=${toolCalls.size} (${toolDeltaCount} deltas), leftover=${buffer.trim().length}, tail=${JSON.stringify(textTail.slice(-60))}`,
       );
     } catch (err) {
       // A timeout has already said what happened; anything after it is the

@@ -144,7 +144,13 @@ export function workingLabel(
   if (progress && progress.total > 0) {
     const done = Math.min(progress.processed, progress.total);
     const pct = Math.floor((done / progress.total) * 100);
-    return `Reading the prompt · ${count(done)} / ${count(progress.total)} · ${pct}%`;
+    // How much of the prompt the server did NOT have to read, said every
+    // time: "is it re-reading everything after each tool call?" is a question
+    // this number answers on the spot. Reused tokens count as done — the
+    // server reports them that way — so the fraction is of the whole prompt.
+    const reused = Math.min(progress.cache, progress.total);
+    const tail = reused > 0 ? ` · ${count(reused)} reused` : "";
+    return `Reading the prompt · ${count(done)} / ${count(progress.total)} · ${pct}%${tail}`;
   }
   const words = elapsedMs >= LATE_AFTER_MS ? LATE_WORDS : EARLY_WORDS;
   const step = Math.floor(elapsedMs / WORD_MS) + startedAt;
