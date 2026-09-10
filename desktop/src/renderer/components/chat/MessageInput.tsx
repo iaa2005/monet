@@ -72,6 +72,9 @@ interface ProviderModelEntry {
   supportsEffort?: boolean;
   /** This model's effort steps, weakest first — see @shared/effort.ts. */
   effortLevels?: string[];
+  /** Tokens per second a LOCAL server expects to write at; unset for cloud
+   * models, where the number would describe someone else's hardware. */
+  generationTps?: number;
   hidden?: boolean;
 }
 
@@ -2108,6 +2111,27 @@ export function MessageInput({
                               {m.contextLength
                                 ? `${fmtTok(m.contextLength)} ctx`
                                 : "ctx —"}
+                              {/* How fast it WRITES, when the server knows.
+                                  Only a local one does — generation there is
+                                  that machine's memory bandwidth divided by
+                                  the weights a token reads. Two models in one
+                                  library measured seven times apart, and this
+                                  list showed only their names. */}
+                              {m.generationTps ? (
+                                <span
+                                  className={cn(
+                                    "ml-1.5",
+                                    m.generationTps >= 15
+                                      ? "text-emerald-600 dark:text-emerald-400"
+                                      : m.generationTps < 6
+                                        ? "text-amber-600 dark:text-amber-400"
+                                        : undefined,
+                                  )}
+                                  title="Tokens per second this machine can generate with it — memory bandwidth divided by what one token reads"
+                                >
+                                  · ≈{Math.round(m.generationTps)} tok/s
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                           {m.id !== "__flat" && (

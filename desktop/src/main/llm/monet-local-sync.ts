@@ -63,6 +63,13 @@ export function merge(
         : old?.effortLevels?.length
           ? { effortLevels: old.effortLevels }
           : {}),
+      // The server's own estimate of how fast it will write. Nothing on this
+      // side can work it out, and it decides which model is worth loading.
+      ...(m.generationTps
+        ? { generationTps: m.generationTps }
+        : old?.generationTps
+          ? { generationTps: old.generationTps }
+          : {}),
       ...(m.modalities ? { modalities: m.modalities } : {}),
       ...(m.supportsEffort !== undefined
         ? { supportsEffort: m.supportsEffort }
@@ -92,6 +99,7 @@ export function same(a: ProviderModel[], b: ProviderModel[]): boolean {
       m.contextLength ?? "",
       m.maxOutputTokens ?? "",
       (m.effortLevels ?? []).join("+"),
+      m.generationTps ?? "",
       m.maxInputTokens ?? "",
       m.temperature ?? "",
       m.streamTimeoutSec ?? "",

@@ -59,6 +59,10 @@ const MODELS = [
     // llama.cpp's four. Note what is NOT here: no "minimal", no "max" — the
     // two steps the composer used to offer everybody.
     effort_levels: ['low', 'medium', 'high', 'xhigh'],
+    // What one token reads, and the speed that implies on that machine —
+    // the number no client can work out for itself.
+    active_bytes_per_token: 3_190_000_000,
+    generation_tps: 26.3,
     modalities: ['text', 'image'],
     moe: false,
     verdict: 'fits',
@@ -157,6 +161,11 @@ function serve(withManagement: boolean): Promise<{ url: string; close: () => Pro
     model?.effortLevels,
   )
   check(
+    'AND HOW FAST IT WILL WRITE — a local server is the only one that knows',
+    model?.generationTps === 26.3,
+    model?.generationTps,
+  )
+  check(
     'vision is reported, not guessed from the id',
     !!model?.modalities?.includes('image'),
     model?.modalities,
@@ -243,6 +252,7 @@ function serve(withManagement: boolean): Promise<{ url: string; close: () => Pro
     first[0]?.effortLevels?.join() === 'low,medium,high,xhigh',
     first[0]?.effortLevels,
   )
+  check('and the speed, into the stored record', first[0]?.generationTps === 26.3)
 
   // The user hides it and the composer pins it; neither may be churned by a
   // refresh that found nothing new.

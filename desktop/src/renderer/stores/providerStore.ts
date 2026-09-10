@@ -41,6 +41,9 @@ export interface ProviderModel {
    * than one of its own.
    */
   effortLevels?: string[];
+  /** Tokens per second a local server expects to write at; unset for cloud
+   * models, where it would be a fiction about someone else's hardware. */
+  generationTps?: number;
   /** Seconds of silence before a stream from this model is abandoned.
    * Unset = the global default for where the endpoint is; 0 = never. */
   streamTimeoutSec?: number;

@@ -173,6 +173,7 @@ function ProviderModal({
             ...(m.contextLength ? { contextLength: m.contextLength } : {}),
             ...(m.maxOutputTokens ? { maxOutputTokens: m.maxOutputTokens } : {}),
             ...(m.effortLevels?.length ? { effortLevels: m.effortLevels } : {}),
+            ...(m.generationTps ? { generationTps: m.generationTps } : {}),
             ...(m.modalities ? { modalities: m.modalities } : {}),
             ...(m.supportsEffort !== undefined
               ? { supportsEffort: m.supportsEffort }
@@ -245,6 +246,11 @@ function ProviderModal({
               ? { effortLevels: m.effortLevels }
               : old?.effortLevels?.length
                 ? { effortLevels: old.effortLevels }
+                : {}),
+            ...(m.generationTps
+              ? { generationTps: m.generationTps }
+              : old?.generationTps
+                ? { generationTps: old.generationTps }
                 : {}),
             ...(m.modalities ? { modalities: m.modalities } : {}),
             ...(m.supportsEffort !== undefined

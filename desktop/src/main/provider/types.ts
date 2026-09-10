@@ -155,6 +155,15 @@ export interface ProviderModel {
    */
   effortLevels?: string[]
   /**
+   * Tokens per second a LOCAL server expects to write at.
+   *
+   * Set only by a server that can know: generation on a local machine is its
+   * memory bandwidth divided by the weights a token reads. A cloud model
+   * leaves it unset — the number would be a fiction about somebody else's
+   * hardware.
+   */
+  generationTps?: number
+  /**
    * Seconds of silence before a stream from this model is abandoned.
    *
    * Unset = the global default for where the endpoint is (llm/timeouts.ts):

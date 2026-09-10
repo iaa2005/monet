@@ -41,6 +41,8 @@ interface MonetLocalModel {
   predict_configured?: number | null
   /** `--reasoning-effort`: the steps this server takes, weakest first. */
   effort_levels?: string[]
+  /** Tokens per second this machine can generate with it — see below. */
+  generation_tps?: number | null
   modalities?: string[]
   verdict?: 'fits' | 'tight' | 'wont_fit'
 }
@@ -67,6 +69,17 @@ export interface MonetLocalDiscovered {
    * assumed — see @shared/effort.ts.
    */
   effortLevels?: string[]
+  /**
+   * Tokens per second the server expects to WRITE at.
+   *
+   * Only a local server can know this: generation is that machine's memory
+   * bandwidth divided by the weights one token reads, and the second half
+   * needs the model's tensor table. Measured on the machine this was written
+   * for, two models in one library differed by seven times — 26 tok/s from a
+   * mixture of experts against 4 from a larger dense model — and the picker
+   * showed only their names.
+   */
+  generationTps?: number
   modalities?: Modality[]
   supportsEffort?: boolean
   /** Loaded right now. Unloaded models are not returned at all. */
@@ -150,6 +163,9 @@ export async function fetchMonetLocalModels(
         ...(ctx ? { contextLength: ctx } : {}),
         ...(predict ? { maxOutputTokens: predict } : {}),
         ...(efforts.length ? { effortLevels: efforts } : {}),
+        ...(typeof m.generation_tps === 'number' && m.generation_tps > 0
+          ? { generationTps: m.generation_tps }
+          : {}),
         modalities: modalities.length ? modalities : (['text'] as Modality[]),
         loaded: true as const,
       }

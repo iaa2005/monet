@@ -617,6 +617,8 @@ export interface ElectronAPI {
         maxOutputTokens?: number;
         /** The reasoning-effort steps the server takes, weakest first. */
         effortLevels?: string[];
+        /** Tokens per second a local server expects to generate at. */
+        generationTps?: number;
         modalities?: Modality[];
         supportsEffort?: boolean;
       }[];
