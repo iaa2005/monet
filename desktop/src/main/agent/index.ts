@@ -848,6 +848,27 @@ function noteCompactionFloor(sessionId: string, tokens: number): void {
 }
 
 /**
+ * llama.cpp's refusal of a prompt longer than the window it was loaded
+ * with, and the two numbers it puts in it:
+ *
+ *   {"error":{"code":400,"message":"request (11713 tokens) exceeds the
+ *    available context size (8192 tokens), try increasing it",
+ *    "type":"exceed_context_size_error","n_prompt_tokens":11713,"n_ctx":8192}}
+ *
+ * The window it names is the truth about the server, whatever the model
+ * list said — a profile edited after the load describes the next load. So
+ * the number is taken as the limit for the rest of this run, the history is
+ * compacted to it, and the turn is sent once more.
+ */
+function contextOverflow(error: string): { nCtx: number; prompt: number } | null {
+  if (!/exceed_context_size_error|exceeds the available context size/.test(error)) return null;
+  const nCtx = Number(/"n_ctx"\s*:\s*(\d+)/.exec(error)?.[1]);
+  const prompt = Number(/"n_prompt_tokens"\s*:\s*(\d+)/.exec(error)?.[1]);
+  if (!Number.isFinite(nCtx) || nCtx <= 0) return null;
+  return { nCtx, prompt: Number.isFinite(prompt) ? prompt : 0 };
+}
+
+/**
  * Compact a session's in-memory history on demand (e.g. before switching to a
  * model with a smaller context window). Returns the token estimates, or null
  * when there's nothing to compact / no provider.
@@ -1854,6 +1875,12 @@ async function runAgentScoped(
     }
   }
 
+  // One correction per run: the server said what its window really is, the
+  // history was cut to it, and the turn went out again. A second refusal is
+  // the prompt itself — system prompt and tools — being too big for the
+  // window, which no compaction can fix and the user has to hear about.
+  let overflowRetried = false;
+
   for (let turn = 0; turn < budget; turn++) {
     if (signal?.aborted) {
       onEvent({ type: "error", error: "Aborted" });
@@ -2054,6 +2081,10 @@ async function runAgentScoped(
               tool: event.name,
               input: event.input ?? {},
             });
+          // A window refusal is handled below, not shown: the first one is
+          // corrected and retried; the second is reworded so the user reads
+          // a sentence, not llama.cpp's JSON.
+          if (event.type === "error" && contextOverflow(event.error)) return;
           onEvent(event);
         },
         signal,
@@ -2064,6 +2095,33 @@ async function runAgentScoped(
       // Stream crashed — tell frontend we're done.
       onEvent({ type: "message_stop", stop_reason: "error" });
       return;
+    }
+
+    const overflow = streamError ? contextOverflow(streamError) : null;
+    if (overflow && !overflowRetried && !signal?.aborted) {
+      overflowRetried = true;
+      const before = provider.contextLimit;
+      provider.contextLimit = overflow.nCtx;
+      // The floor remembers a size compaction could not shrink; the target
+      // has moved, so it can.
+      compactionFloor.delete(sessionId);
+      onEvent({
+        type: "harness",
+        text:
+          `The model's window is ${overflow.nCtx.toLocaleString()} tokens, not ` +
+          `${before.toLocaleString()} — cutting the chat to fit and sending again`,
+      });
+      streamError = null;
+      turn--;
+      continue;
+    }
+    if (overflow) {
+      // Already retried, or stopped: the prompt does not fit, full stop.
+      streamError =
+        `The prompt (${overflow.prompt.toLocaleString()} tokens) does not fit the model's ` +
+        `${overflow.nCtx.toLocaleString()}-token window even after compaction. ` +
+        `Raise the context in Monet Local, or start a new chat.`;
+      onEvent({ type: "error", error: streamError });
     }
 
     // Remember this turn's real token usage so the context meter can report the
