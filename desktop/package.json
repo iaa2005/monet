@@ -164,6 +164,7 @@
     "smoke:palette": "electron scripts/palette-probe.cjs",
     "smoke:turnstate": "node scripts/renderer-probe.mjs scripts/working-copy-probe.ts",
     "smoke:timing": "node scripts/renderer-probe.mjs scripts/timing-probe.ts",
+    "smoke:modalityfit": "node scripts/renderer-probe.mjs scripts/modality-fit-probe.ts",
     "smoke:stt": "node scripts/build-stt-probe.mjs && electron scripts/stt-settings-probe.cjs",
     "smoke:transfer": "node scripts/build-transfer-probe.mjs && electron scripts/transfer-probe.cjs",
     "smoke:serve": "node scripts/renderer-probe.mjs scripts/sandbox-server-probe.ts",

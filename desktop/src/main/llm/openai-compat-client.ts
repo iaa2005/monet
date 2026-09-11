@@ -11,7 +11,8 @@
  */
 
 import { APP_NAME } from "@shared/brand.js";
-import type { ActiveModel } from "../provider/types.js";
+import type { ActiveModel, Modality } from "../provider/types.js";
+import { fitToModalities } from "./modality-fit.js";
 import type {
   LLMAdapter,
   LLMEvent,
@@ -201,6 +202,16 @@ function toOpenAIMessages(
  * and there is no header that puts it there. Say that, and what to do.
  */
 export function describeRefusal(status: number, body: string): string {
+  // llama.cpp, when the model was loaded without its projector and an image
+  // arrived anyway. The history is fitted before sending (modality-fit.ts),
+  // so this is reached only when the model list said "image" of a server
+  // that has none — an older Monet Local, or a plain llama-server.
+  if (/image input is not supported/i.test(body)) {
+    return (
+      "The loaded model has no vision projector (mmproj), so it cannot take images. " +
+      "Load it with its mmproj in Monet Local, or the pictures in this chat stay described in words."
+    );
+  }
   if (status === 403 && /only available on agentic harnesses/i.test(body)) {
     const model = /^\s*(?:\{.*?"message"\s*:\s*")?([\w./:-]+:free)/.exec(body)?.[1]
       ?? /([\w./-]+:free)/.exec(body)?.[1];
@@ -227,6 +238,8 @@ export class OpenAICompatClient implements LLMAdapter {
   private readonly wantsProgress: boolean;
   /** This model's effort steps, weakest first — see @shared/effort.ts. */
   private readonly ladder: readonly string[];
+  /** What the model can take in — media it cannot is described in words. */
+  private readonly modalities: readonly Modality[] | undefined;
 
   constructor(provider: ActiveModel) {
     this.providerId = provider.id;
@@ -239,6 +252,7 @@ export class OpenAICompatClient implements LLMAdapter {
     this.wantsProgress =
       provider.kind === "monet-local" || isLocalEndpoint(provider.baseURL);
     this.ladder = effortLadder(provider.kind, provider.effortLevels);
+    this.modalities = provider.modalities;
   }
 
   private headers(): Record<string, string> {
@@ -338,7 +352,10 @@ export class OpenAICompatClient implements LLMAdapter {
     signal?: AbortSignal,
   ): Promise<void> {
     const url = `${this.baseURL}/chat/completions`;
-    const body = this.buildBody(request, true);
+    const body = this.buildBody(
+      { ...request, messages: fitToModalities(request.messages, this.modalities) },
+      true,
+    );
 
     // The watchdog aborts the REQUEST, not just the reader: cancelling the
     // reader leaves the server generating into a socket nobody reads, and on

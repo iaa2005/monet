@@ -5,7 +5,8 @@
  * Handles SSE streaming for Anthropic and DeepSeek (Anthropic-compatible).
  */
 
-import type { ActiveModel, EffortLevel } from "../provider/types.js";
+import type { ActiveModel, EffortLevel, Modality } from "../provider/types.js";
+import { fitToModalities } from "./modality-fit.js";
 import type {
   LLMAdapter,
   LLMContentBlock,
@@ -108,6 +109,8 @@ export class AnthropicClient implements LLMAdapter {
   readonly providerName: string;
   private baseURL: string;
   private apiKey: string;
+  /** What the model can take in — media it cannot is described in words. */
+  private readonly modalities: readonly Modality[] | undefined;
 
   /** Silence before the stream is abandoned. 0 = wait indefinitely. */
   private readonly timeoutMs: number;
@@ -119,6 +122,7 @@ export class AnthropicClient implements LLMAdapter {
     this.providerName = provider.name;
     this.baseURL = provider.baseURL.replace(/\/+$/, "");
     this.apiKey = provider.apiKey;
+    this.modalities = provider.modalities;
     // Resolved once, here, rather than threaded through every call site: the
     // deadline is a property of the endpoint, and the endpoint is what this
     // object is. See llm/timeouts.ts for why it is not a constant any more.
@@ -144,7 +148,7 @@ export class AnthropicClient implements LLMAdapter {
       model: request.model,
       max_tokens: sanitizeMaxTokens(request.max_tokens),
       system: request.system,
-      messages: request.messages.map((m) => ({
+      messages: fitToModalities(request.messages, this.modalities).map((m) => ({
         role: m.role,
         content: toAnthropicContent(m.content),
       })),
@@ -481,7 +485,7 @@ export class AnthropicClient implements LLMAdapter {
       model: request.model,
       max_tokens: sanitizeMaxTokens(request.max_tokens),
       system: request.system,
-      messages: request.messages.map((m) => ({
+      messages: fitToModalities(request.messages, this.modalities).map((m) => ({
         role: m.role,
         content: toAnthropicContent(m.content),
       })),
