@@ -191,6 +191,29 @@ function toOpenAIMessages(
   return out;
 }
 
+/**
+ * A refusal the user can act on, where the raw body would only puzzle them.
+ *
+ * OpenRouter gates some free endpoints (Inkling, Inkling Small) to an
+ * allow-list of agentic harnesses — Claude Code, Codex, Hermes Agent and a
+ * few more — and answers everyone else with a 403 whose JSON says "try
+ * plugging it into a coding agent". Code Monet IS one, but not on the list,
+ * and there is no header that puts it there. Say that, and what to do.
+ */
+export function describeRefusal(status: number, body: string): string {
+  if (status === 403 && /only available on agentic harnesses/i.test(body)) {
+    const model = /^\s*(?:\{.*?"message"\s*:\s*")?([\w./:-]+:free)/.exec(body)?.[1]
+      ?? /([\w./-]+:free)/.exec(body)?.[1];
+    return (
+      `${model ? `${model} ` : "This free model "}is limited by OpenRouter to a list of ` +
+      `agentic harnesses (Claude Code, Codex, Hermes Agent…), and ${APP_NAME} is not on it yet. ` +
+      `Nothing in your key or settings changes that. Pick another free model, or the paid ` +
+      `variant without ":free".`
+    );
+  }
+  return `API ${status}: ${body}`;
+}
+
 export class OpenAICompatClient implements LLMAdapter {
   readonly providerId: string;
   readonly providerName: string;
@@ -222,9 +245,18 @@ export class OpenAICompatClient implements LLMAdapter {
     const h: Record<string, string> = { "Content-Type": "application/json" };
     if (this.apiKey) h.Authorization = `Bearer ${this.apiKey}`;
     if (this.isOpenRouter) {
-      // Attribution headers OpenRouter asks apps to send.
+      // Attribution headers OpenRouter asks apps to send. The referer is
+      // the app's identity there (its page: openrouter.ai/apps?url=...);
+      // the categories say what kind of app it is — a coding agent — which
+      // is how OpenRouter sorts its marketplace and, for some free
+      // endpoints, who may use them. Neither is a request to be treated as
+      // anything Code Monet is not: an allow-listed harness is added by
+      // OpenRouter, not by a header. X-Title is the old spelling, kept for
+      // any proxy that still reads it.
       h["HTTP-Referer"] = "https://github.com/iaa2005/monet";
+      h["X-OpenRouter-Title"] = APP_NAME;
       h["X-Title"] = APP_NAME;
+      h["X-OpenRouter-Categories"] = "cli-agent,programming-app";
     }
     return h;
   }
@@ -347,7 +379,7 @@ export class OpenAICompatClient implements LLMAdapter {
 
     if (!response.ok) {
       const errorText = await response.text();
-      onEvent({ type: "error", error: `API ${response.status}: ${errorText}` });
+      onEvent({ type: "error", error: describeRefusal(response.status, errorText) });
       return;
     }
     if (!response.body) {
