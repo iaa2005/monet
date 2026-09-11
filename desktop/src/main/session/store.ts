@@ -86,6 +86,8 @@ export interface ChatMessage {
    * needs was gone.
    */
   checkpointSha?: string;
+  /** How long the turn took and how fast the model wrote — see renderer/types/chat. */
+  timing?: { elapsedMs: number; generationMs: number; outputTokens: number };
 }
 
 export interface SessionWithMessages extends Session {
@@ -194,6 +196,9 @@ function getDb(): ReturnType<typeof Database> {
         -- because the sha it needs was gone.
         reasoning TEXT,
         checkpoint_sha TEXT,
+        -- JSON {elapsedMs, generationMs, outputTokens}: the time and speed
+        -- drawn after the turn's Copy button.
+        timing TEXT,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
@@ -207,7 +212,7 @@ function getDb(): ReturnType<typeof Database> {
     // is reconciled rather than rebuilt the way the transcript store is.
     for (const [table, columns] of [
       ["sessions", { workspace: "TEXT", routine_id: "TEXT", last_error: "TEXT", last_stop_reason: "TEXT" }],
-      ["messages", { attachments: "TEXT", reasoning: "TEXT", checkpoint_sha: "TEXT" }],
+      ["messages", { attachments: "TEXT", reasoning: "TEXT", checkpoint_sha: "TEXT", timing: "TEXT" }],
     ] as [string, Record<string, string>][]) {
       const present = new Set(
         (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
@@ -314,6 +319,7 @@ export class SessionStore {
       attachments: string | null;
       reasoning: string | null;
       checkpoint_sha: string | null;
+      timing: string | null;
     }>;
 
     return {
@@ -337,6 +343,7 @@ export class SessionStore {
         attachments: m.attachments ? JSON.parse(m.attachments) : undefined,
         reasoning: m.reasoning ?? undefined,
         checkpointSha: m.checkpoint_sha ?? undefined,
+        timing: m.timing ? JSON.parse(m.timing) : undefined,
       })),
     };
   }
@@ -368,7 +375,7 @@ export class SessionStore {
       // Replace messages
       d.prepare("DELETE FROM messages WHERE session_id = ?").run(session.id);
       const insert = d.prepare(
-        "INSERT INTO messages (id, session_id, role, content, timestamp, tool_call, attachments, reasoning, checkpoint_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO messages (id, session_id, role, content, timestamp, tool_call, attachments, reasoning, checkpoint_sha, timing) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       );
       for (const m of session.messages) {
         insert.run(
@@ -381,6 +388,7 @@ export class SessionStore {
           attachmentsJson(m),
           m.reasoning ?? null,
           m.checkpointSha ?? null,
+          m.timing ? JSON.stringify(m.timing) : null,
         );
       }
     });

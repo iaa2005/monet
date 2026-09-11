@@ -17,6 +17,7 @@ import type {
   LLMEvent,
   LLMMessage,
   LLMRequest,
+  LLMTiming,
   LLMUsage,
 } from "./adapter.js";
 import { sanitizeMaxTokens } from "./adapter.js";
@@ -61,6 +62,13 @@ interface OpenAIChunk {
     cache?: number;
     processed?: number;
     time_ms?: number;
+  } | null;
+  /** llama.cpp, on the final chunk: the two halves of the request, timed. */
+  timings?: {
+    prompt_n?: number;
+    prompt_ms?: number;
+    predicted_n?: number;
+    predicted_ms?: number;
   } | null;
   error?: { message?: string };
 }
@@ -359,6 +367,9 @@ export class OpenAICompatClient implements LLMAdapter {
     >();
     let finishReason: string | null | undefined;
     let usage: LLMUsage | undefined;
+    // The server's own stopwatch when it has one, else first delta → end.
+    let timing: LLMTiming | undefined;
+    let firstDeltaAt: number | null = null;
     // OpenRouter names the serving company on the chunks; the last word wins.
     let servedBy: string | undefined;
 
@@ -459,11 +470,21 @@ export class OpenAICompatClient implements LLMAdapter {
           output_tokens: chunk.usage.completion_tokens ?? 0,
         };
       }
+      const tm = chunk.timings;
+      if (tm && typeof tm.predicted_ms === "number" && typeof tm.predicted_n === "number") {
+        timing = {
+          generationMs: tm.predicted_ms,
+          outputTokens: tm.predicted_n,
+          ...(typeof tm.prompt_ms === "number" ? { promptMs: tm.prompt_ms } : {}),
+          ...(typeof tm.prompt_n === "number" ? { promptTokens: tm.prompt_n } : {}),
+        };
+      }
       const choice = chunk.choices?.[0];
       if (!choice) return;
       if (choice.finish_reason) finishReason = choice.finish_reason;
       const delta = choice.delta;
       if (!delta) return;
+      if (firstDeltaAt === null) firstDeltaAt = Date.now();
       if (typeof delta.content === "string" && delta.content) {
         textLen += delta.content.length;
         textTail = (textTail + delta.content).slice(-80);
@@ -543,6 +564,11 @@ export class OpenAICompatClient implements LLMAdapter {
         stop_reason: mapStopReason(finishReason),
         usage,
         servedBy,
+        timing:
+          timing ??
+          (usage && firstDeltaAt !== null
+            ? { generationMs: Date.now() - firstDeltaAt, outputTokens: usage.output_tokens }
+            : undefined),
       });
 
       console.error(

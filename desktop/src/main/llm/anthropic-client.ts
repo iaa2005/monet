@@ -286,12 +286,22 @@ export class AnthropicClient implements LLMAdapter {
     let sawMessageStop = false;
     let finalStopReason: string | undefined;
     const counts: Record<string, number> = {};
+    // First content delta → message_stop is the writing time; what came
+    // before it was the prompt being read.
+    let firstDeltaAt: number | null = null;
 
     const emitMessageStop = (event: AnthropicSSEEvent): void => {
       sawMessageStop = true;
       onEvent({
         type: "message_stop",
         stop_reason: finalStopReason ?? "end_turn",
+        timing:
+          event.usage && firstDeltaAt !== null
+            ? {
+                generationMs: Date.now() - firstDeltaAt,
+                outputTokens: event.usage.output_tokens,
+              }
+            : undefined,
         usage: event.usage
           ? {
               input_tokens: event.usage.input_tokens,
@@ -329,6 +339,7 @@ export class AnthropicClient implements LLMAdapter {
           }
           break;
         case "content_block_delta":
+          if (firstDeltaAt === null) firstDeltaAt = Date.now();
           if (event.delta?.type === "text_delta" && event.delta.text) {
             textLen += event.delta.text.length;
             textTail = (textTail + event.delta.text).slice(-80);

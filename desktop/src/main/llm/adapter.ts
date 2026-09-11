@@ -126,6 +126,7 @@ export type LLMEvent =
       type: "message_stop";
       stop_reason: string;
       usage?: LLMUsage;
+      timing?: LLMTiming;
       /**
        * The run ended with a reply that had no text and no tool calls. The
        * only trace such a turn leaves — nothing reaches the transcript —
@@ -212,6 +213,25 @@ export interface LLMUsage {
   output_tokens: number;
   cache_creation_input_tokens?: number;
   cache_read_input_tokens?: number;
+}
+
+/**
+ * How long the model took — what the transcript draws after Copy as
+ * "23m 34s · 6.8 tok/s".
+ *
+ * Generation is the time spent WRITING, with the prompt reading left out
+ * wherever the server separates the two (llama.cpp's `timings`); elsewhere it
+ * runs from the first delta to the end, which on a hosted model is the same
+ * thing to within a second. A local 27B reads an 11k prompt for minutes and
+ * then writes at 7 tokens a second; a speed averaged over both would say 1.
+ */
+export interface LLMTiming {
+  generationMs: number;
+  outputTokens: number;
+  promptMs?: number;
+  promptTokens?: number;
+  /** Set by the agent loop on the run's final stop: wall time since the prompt went out. */
+  elapsedMs?: number;
 }
 
 export interface LLMAdapter {

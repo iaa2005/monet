@@ -61,9 +61,10 @@ import type {
   PermissionRequest,
   AskUserRequest,
 } from "@/types/electron";
-import type { ChatMessage, ToolCall } from "@/types/chat";
+import type { ChatMessage, MessageTiming, ToolCall } from "@/types/chat";
 import { SelectionText } from "./SelectionText";
 import { joinSelections, splitSelections, usedRefs } from "@/lib/selection-marks";
+import { formatTiming } from "./timing";
 import {
   copyTargets as computeCopyTargets,
   rendersAsCard,
@@ -880,14 +881,29 @@ function CopyMessageButton({ text }: { text: string }): JSX.Element {
  * carries `peer/turn`) or over the row itself — a button that is always there
  * reads as part of the transcript, which it is not.
  */
-function CopyRow({ text }: { text: string }): JSX.Element {
+function CopyRow({
+  text,
+  timing,
+}: {
+  text: string;
+  timing?: MessageTiming;
+}): JSX.Element {
+  // "· 23m 34s · 6.8 tok/s" — how long the turn took, and how fast the
+  // model wrote once it started. Same muted face as the button, so the row
+  // reads as one line of metadata, not a button and a caption.
+  const timingText = formatTiming(timing);
   return (
     <MessageScrollerItem
       messageId={`copy-${text.slice(0, 32)}`}
       className="opacity-0 transition-opacity focus-within:opacity-100 hover:opacity-100 peer-hover/turn:opacity-100"
     >
-      <div className="flex justify-start pb-2">
+      <div className="flex items-center justify-start gap-1 pb-2 text-[11px] text-muted-foreground">
         <CopyMessageButton text={text} />
+        {timingText && (
+          <span className="select-none whitespace-nowrap" title="Time for the whole turn · tokens per second while writing">
+            · {timingText}
+          </span>
+        )}
       </div>
     </MessageScrollerItem>
   );
@@ -1400,6 +1416,23 @@ export function ChatView({
       ),
     [grouped, isStreaming],
   );
+  // The timing for each Copy row: the turn's stamp, carried forward to the
+  // index the button sits on (a tool group after the last text, at times).
+  const turnTimings = useMemo(() => {
+    const out = new Map<number, MessageTiming>();
+    let current: MessageTiming | undefined;
+    grouped.forEach((item, i) => {
+      if (!("type" in item)) {
+        if (item.role === "user") {
+          current = undefined;
+          return;
+        }
+        if (item.timing) current = item.timing;
+      }
+      if (current && copyTargets.has(i)) out.set(i, current);
+    });
+    return out;
+  }, [grouped, copyTargets]);
   const summaryTurns =
     transcriptMode === "summary" ? summarizeTurns(messages) : null;
 
@@ -1605,7 +1638,7 @@ export function ChatView({
                         </MessageScrollerItem>
                       );
                       if (!copyBtn) return withBreak([el]);
-                      return withBreak([el, <CopyRow key={`copy-${i}`} text={copyBtn} />]);
+                      return withBreak([el, <CopyRow key={`copy-${i}`} text={copyBtn} timing={turnTimings.get(i)} />]);
                     }
                     if ("type" in item && item.type === "artifact-strip") {
                       const el = (
@@ -1621,7 +1654,7 @@ export function ChatView({
                         </MessageScrollerItem>
                       );
                       if (!copyBtn) return withBreak([el]);
-                      return withBreak([el, <CopyRow key={`copy-${i}`} text={copyBtn} />]);
+                      return withBreak([el, <CopyRow key={`copy-${i}`} text={copyBtn} timing={turnTimings.get(i)} />]);
                     }
                     const el = (
                       <MessageScrollerItem
@@ -1645,7 +1678,7 @@ export function ChatView({
                       </MessageScrollerItem>
                     );
                     if (!copyBtn) return withBreak([el]);
-                    return withBreak([el, <CopyRow key={`copy-${i}`} text={copyBtn} />]);
+                    return withBreak([el, <CopyRow key={`copy-${i}`} text={copyBtn} timing={turnTimings.get(i)} />]);
                   })}
 
                   {showWorking && (

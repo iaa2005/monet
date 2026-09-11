@@ -13,6 +13,7 @@ import type {
   LLMMessage,
   LLMContentBlock,
   LLMUsage,
+  LLMTiming,
 } from "../llm/adapter.js";
 import { getProviderManager } from "../provider/manager.js";
 import type { EffortLevel } from "../provider/types.js";
@@ -1881,10 +1882,23 @@ async function runAgentScoped(
   // window, which no compaction can fix and the user has to hear about.
   let overflowRetried = false;
 
+  // The run's stopwatch, for the line after Copy: wall time since the prompt
+  // went out, and the model's own writing time and token count summed over
+  // every turn of the run — tool time is in the first and not the second,
+  // which is what makes the speed a speed.
+  const runStartedAt = Date.now();
+  let generationMs = 0;
+  let generatedTokens = 0;
+  const runTiming = (): LLMTiming => ({
+    generationMs,
+    outputTokens: generatedTokens,
+    elapsedMs: Date.now() - runStartedAt,
+  });
+
   for (let turn = 0; turn < budget; turn++) {
     if (signal?.aborted) {
       onEvent({ type: "error", error: "Aborted" });
-      onEvent({ type: "message_stop", stop_reason: "abort" });
+      onEvent({ type: "message_stop", stop_reason: "abort", timing: runTiming() });
       return;
     }
 
@@ -2068,6 +2082,10 @@ async function runAgentScoped(
           if (event.type === "message_stop") {
             lastUsage = event.usage;
             lastStopReason = event.stop_reason;
+            if (event.timing) {
+              generationMs += event.timing.generationMs;
+              generatedTokens += event.timing.outputTokens;
+            }
             return;
           }
           // Durable task log. Recorded HERE rather than in the renderer store:
@@ -2254,6 +2272,7 @@ async function runAgentScoped(
         // A run that ends with nothing said: the one distinction a
         // post-mortem needs, and the only trace such a turn leaves.
         empty,
+        timing: runTiming(),
       });
       // Code Rewind: snapshot the folder AFTER the reply is done (never
       // blocks it) so this turn can be restored later.
@@ -2592,7 +2611,7 @@ async function runAgentScoped(
       // the whole point of the block above.
       persistTranscript(sessionId);
       onEvent({ type: "error", error: "Aborted" });
-      onEvent({ type: "message_stop", stop_reason: "abort" });
+      onEvent({ type: "message_stop", stop_reason: "abort", timing: runTiming() });
       return;
     }
     if (injected.length > 0) {

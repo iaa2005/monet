@@ -23,11 +23,25 @@ export interface ChatAttachmentMeta {
   origin?: 'selection'
 }
 
+/**
+ * How long a reply took — the "23m 34s · 6.8 tok/s" after its Copy button.
+ * `elapsedMs` is the whole turn, tools included; the speed is tokens over
+ * the model's own writing time, so a run that spent an hour in tools and a
+ * minute writing still shows what the model can do.
+ */
+export interface MessageTiming {
+  elapsedMs: number
+  generationMs: number
+  outputTokens: number
+}
+
 export interface ChatMessage {
   id: string
   role: ChatRole
   content: string
   timestamp: number
+  /** Stamped on the turn's last reply when the run ends. Stored. */
+  timing?: MessageTiming
   toolCall?: ToolCall
   attachments?: ChatAttachmentMeta[]
   isStreaming?: boolean
@@ -87,7 +101,13 @@ export type LLMEvent =
       injected?: boolean
     }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-  | { type: 'message_stop'; stop_reason: string; usage?: { input_tokens: number; output_tokens: number } }
+  | {
+      type: 'message_stop'
+      stop_reason: string
+      usage?: { input_tokens: number; output_tokens: number }
+      /** The run's time and speed — see MessageTiming. */
+      timing?: { elapsedMs?: number; generationMs: number; outputTokens: number }
+    }
   | { type: 'error'; error: string }
   /** `final` marks the RESULT. The placeholder before a tool runs and each
    * progress update arrive as this same event, so anything that closes a row

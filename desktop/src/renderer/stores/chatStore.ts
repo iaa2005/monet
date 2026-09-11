@@ -241,6 +241,36 @@ function reduceSubMessages(
   return messages;
 }
 
+/**
+ * The run's time and speed, put on the reply it belongs to: the last
+ * assistant text of the turn, which is where the Copy button sits. Only the
+ * run's FINAL stop carries `elapsedMs`; per-turn stops inside an agentic run
+ * are not forwarded here at all.
+ */
+function stampTiming(
+  messages: ChatMessage[],
+  timing: { elapsedMs?: number; generationMs: number; outputTokens: number } | undefined,
+): ChatMessage[] {
+  if (!timing || typeof timing.elapsedMs !== "number") return messages;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!;
+    if (m.role === "user") return messages;
+    if (m.role === "assistant" && m.content) {
+      const out = [...messages];
+      out[i] = {
+        ...m,
+        timing: {
+          elapsedMs: timing.elapsedMs,
+          generationMs: timing.generationMs,
+          outputTokens: timing.outputTokens,
+        },
+      };
+      return out;
+    }
+  }
+  return messages;
+}
+
 export interface ChatUsage {
   input_tokens: number;
   output_tokens: number;
@@ -986,7 +1016,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
         if (event.stop_reason === "abort") {
           return {
             ...prev,
-            messages: markInterrupted(prev.messages),
+            messages: stampTiming(markInterrupted(prev.messages), event.timing),
             isStreaming: false,
             usage: event.usage ?? prev.usage,
           };
@@ -1006,7 +1036,7 @@ export const useChatStore = create<ChatStore>((set, get) => {
           });
         return {
           ...prev,
-          messages,
+          messages: stampTiming(messages, event.timing),
           isStreaming: false,
           usage: event.usage ?? prev.usage,
         };
