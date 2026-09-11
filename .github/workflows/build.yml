@@ -83,6 +83,11 @@ jobs:
             desktop/release/*.blockmap
             desktop/release/latest-mac.yml
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifest-mac-arm64
+          path: desktop/release/latest-mac.yml
+          if-no-files-found: error
 
   mac-x64:
     needs: mac-arm64
@@ -108,3 +113,33 @@ jobs:
             desktop/release/*.blockmap
             desktop/release/latest-mac.yml
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifest-mac-x64
+          path: desktop/release/latest-mac.yml
+          if-no-files-found: error
+
+  # Each Mac job wrote a latest-mac.yml naming only its own zip, and the
+  # updater reads ONE. Merge the two and put the merged one on the release
+  # — see desktop/scripts/merge-mac-manifest.mjs.
+  mac-manifest:
+    needs: [mac-arm64, mac-x64]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: manifest-mac-arm64
+          path: manifests/arm64
+      - uses: actions/download-artifact@v4
+        with:
+          name: manifest-mac-x64
+          path: manifests/x64
+      - run: node scripts/merge-mac-manifest.mjs ../latest-mac.yml ../manifests/arm64/latest-mac.yml ../manifests/x64/latest-mac.yml
+      - run: cat latest-mac.yml
+        working-directory: .
+      - run: gh release upload "${GITHUB_REF_NAME}" latest-mac.yml --clobber
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
