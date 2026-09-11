@@ -15,40 +15,27 @@ defaults:
   run:
     working-directory: desktop
 
+env:
+  # `always` on a tag, `never` otherwise: a push to main keeps its artifacts.
+  PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+  # Unsigned on macOS: there is no Developer ID here. Gatekeeper will
+  # quarantine the download; `xattr -cr "/Applications/Code Monet.app"`
+  # clears it. Signing and notarization are a certificate away — see
+  # electron-builder.yml.
+  CSC_IDENTITY_AUTO_DISCOVERY: false
+
+# One job per (OS, architecture): the app carries native modules — the
+# terminal's pty, the speech recognizer, the SQLite store — and a bundled
+# ripgrep, all picked for the machine that runs the build. An x64 app
+# cross-built on an arm64 runner ships arm64 binaries inside it, which is
+# exactly what happened when the config listed both architectures and every
+# Mac runner built both: the two then raced to upload the same files and
+# one of them lost. The architecture is the CLI flag's alone now, and the
+# Intel build waits for the Apple-silicon one so the two do not write the
+# shared latest-mac.yml at the same moment.
 jobs:
-  # One job per (OS, architecture): the app carries native modules — the
-  # terminal's pty, the speech recognizer, the SQLite store — and a bundled
-  # ripgrep, all picked for the machine that runs the build. A cross-built
-  # x64 app from an arm64 runner would ship arm64 binaries inside it.
-  package:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            args: --win
-            name: code-monet-windows
-            files: |
-              desktop/release/*.exe
-              desktop/release/*.blockmap
-              desktop/release/latest.yml
-          - os: macos-latest
-            args: --mac --arm64
-            name: code-monet-mac-arm64
-            files: |
-              desktop/release/*.dmg
-              desktop/release/*.zip
-              desktop/release/*.blockmap
-              desktop/release/latest-mac.yml
-          - os: macos-15-intel
-            args: --mac --x64
-            name: code-monet-mac-x64
-            files: |
-              desktop/release/*.dmg
-              desktop/release/*.zip
-              desktop/release/*.blockmap
-              desktop/release/latest-mac.yml
-    runs-on: ${{ matrix.os }}
+  windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -61,17 +48,63 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
-      # Unsigned on macOS: there is no Developer ID here. Gatekeeper will
-      # quarantine the download; `xattr -cr "/Applications/Code Monet.app"`
-      # clears it. Signing and notarization are a certificate away — see
-      # electron-builder.yml.
-      - name: Package
-        run: npx electron-builder ${{ matrix.args }} --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+      - run: npx electron-builder --win --publish ${{ env.PUBLISH }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: false
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}
-          path: ${{ matrix.files }}
+          name: code-monet-windows
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.blockmap
+            desktop/release/latest.yml
+          if-no-files-found: error
+
+  mac-arm64:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npx electron-builder --mac --arm64 --publish ${{ env.PUBLISH }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-monet-mac-arm64
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.blockmap
+            desktop/release/latest-mac.yml
+          if-no-files-found: error
+
+  mac-x64:
+    needs: mac-arm64
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npx electron-builder --mac --x64 --publish ${{ env.PUBLISH }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-monet-mac-x64
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.blockmap
+            desktop/release/latest-mac.yml
           if-no-files-found: error

@@ -72,11 +72,14 @@ mac:
       to: mac-computer
   # zip is NOT optional: electron-updater on macOS updates FROM the zip; a
   # dmg-only publish leaves the packaged app silently unable to update.
+  # No `arch` here on purpose. Listed, it made EVERY Mac build produce both
+  # architectures, whatever `--arm64` / `--x64` said — so the Apple-silicon
+  # runner cross-built an x64 app carrying arm64 native modules and an
+  # arm64 ripgrep, and the two runners then raced to upload the same
+  # files. The architecture is the machine's own, or the CLI flag's.
   target:
-    - target: dmg
-      arch: [arm64, x64]
-    - target: zip
-      arch: [arm64, x64]
+    - dmg
+    - zip
   icon: build/icon.png
   category: public.app-category.developer-tools
   # Hardened runtime is what notarization requires; the entitlements poke the
