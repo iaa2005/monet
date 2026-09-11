@@ -2,6 +2,12 @@ appId: com.codemonet.desktop
 productName: Code Monet
 directories:
   output: release
+# No blanket rebuild of native modules at package time: every one of them
+# ships prebuilt for Electron (node-pty, onnxruntime, sherpa-onnx, ws's
+# bufferutil), and the one that does not — better-sqlite3 — is rebuilt by
+# postinstall. The blanket rebuild needed Visual Studio for nothing and was
+# what stopped a package on a machine without it.
+npmRebuild: false
 # GitHub Releases are both the DISTRIBUTION channel and the UPDATE feed:
 # `npm run release` uploads the installer + latest.yml here, and the packaged
 # app's electron-updater polls the same place. Publishing needs GH_TOKEN in
