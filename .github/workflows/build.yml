@@ -1,0 +1,77 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+# Tag builds publish to the GitHub release the packaged app's updater polls;
+# that needs the token to write contents. Nothing else does.
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: desktop
+
+jobs:
+  # One job per (OS, architecture): the app carries native modules — the
+  # terminal's pty, the speech recognizer, the SQLite store — and a bundled
+  # ripgrep, all picked for the machine that runs the build. A cross-built
+  # x64 app from an arm64 runner would ship arm64 binaries inside it.
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: --win
+            name: code-monet-windows
+            files: |
+              desktop/release/*.exe
+              desktop/release/*.blockmap
+              desktop/release/latest.yml
+          - os: macos-latest
+            args: --mac --arm64
+            name: code-monet-mac-arm64
+            files: |
+              desktop/release/*.dmg
+              desktop/release/*.zip
+              desktop/release/*.blockmap
+              desktop/release/latest-mac.yml
+          - os: macos-15-intel
+            args: --mac --x64
+            name: code-monet-mac-x64
+            files: |
+              desktop/release/*.dmg
+              desktop/release/*.zip
+              desktop/release/*.blockmap
+              desktop/release/latest-mac.yml
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      # postinstall rebuilds better-sqlite3 for Electron's ABI; the other
+      # native modules ship prebuilt for every platform.
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      # Unsigned on macOS: there is no Developer ID here. Gatekeeper will
+      # quarantine the download; `xattr -cr "/Applications/Code Monet.app"`
+      # clears it. Signing and notarization are a certificate away — see
+      # electron-builder.yml.
+      - name: Package
+        run: npx electron-builder ${{ matrix.args }} --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
