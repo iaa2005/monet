@@ -309,12 +309,33 @@ export class OpenAICompatClient implements LLMAdapter {
       ? AbortSignal.any([signal, watchdog.signal])
       : watchdog.signal;
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify(body),
-      signal: wire,
-    });
+    // Stop pressed BEFORE the first byte — which on a local model is the
+    // whole of prompt processing, minutes on a long chat — used to escape
+    // here as fetch's own "This operation was aborted", and the chat drew a
+    // red box for what the user had just asked for. Same word as the
+    // in-stream abort below, so the renderer marks the turn interrupted.
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify(body),
+        signal: wire,
+      });
+    } catch (err) {
+      const stopped =
+        signal?.aborted === true ||
+        (err instanceof DOMException && err.name === "AbortError");
+      onEvent({
+        type: "error",
+        error: stopped
+          ? "Aborted"
+          : err instanceof Error
+            ? err.message
+            : "Unknown error",
+      });
+      return;
+    }
 
     if (!response.ok) {
       const errorText = await response.text();

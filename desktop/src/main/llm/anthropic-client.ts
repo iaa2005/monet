@@ -162,16 +162,34 @@ export class AnthropicClient implements LLMAdapter {
       ? AbortSignal.any([signal, watchdog.signal])
       : watchdog.signal;
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": this.apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(body),
-      signal: wire,
-    });
+    // Stop before the first byte is still Stop, not an error — see the
+    // OpenAI-compatible client for the long version.
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": this.apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify(body),
+        signal: wire,
+      });
+    } catch (err) {
+      const stopped =
+        signal?.aborted === true ||
+        (err instanceof DOMException && err.name === "AbortError");
+      onEvent({
+        type: "error",
+        error: stopped
+          ? "Aborted"
+          : err instanceof Error
+            ? err.message
+            : "Unknown error",
+      });
+      return;
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
